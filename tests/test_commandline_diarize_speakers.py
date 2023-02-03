@@ -7,7 +7,7 @@ from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 def test_cluster_mfa(
     combined_corpus_dir,
-    english_ivector_model,
+    multilingual_ivector_model,
     generated_dir,
     transcription_acoustic_model,
     transcription_language_model,
@@ -17,7 +17,7 @@ def test_cluster_mfa(
     command = [
         "diarize",
         combined_corpus_dir,
-        english_ivector_model,
+        multilingual_ivector_model,
         output_path,
         "-t",
         os.path.join(temp_dir, "diarize_cli"),
@@ -43,7 +43,7 @@ def test_cluster_mfa(
 
 def test_classify_mfa(
     combined_corpus_dir,
-    english_ivector_model,
+    multilingual_ivector_model,
     generated_dir,
     transcription_acoustic_model,
     transcription_language_model,
@@ -53,7 +53,7 @@ def test_classify_mfa(
     command = [
         "diarize",
         combined_corpus_dir,
-        english_ivector_model,
+        multilingual_ivector_model,
         output_path,
         "-t",
         os.path.join(temp_dir, "diarize_cli"),
@@ -94,6 +94,7 @@ def test_cluster_speechbrain(
         "--expected_num_speakers",
         "3",
         "--clean",
+        "--no_use_pca",
         "--evaluate",
     ]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(

@@ -802,9 +802,11 @@ class CreateHclgFunction(KaldiFunction):
             if not os.path.exists(small_g_path):
                 log_file.write("Generating small_G.fst...")
                 compose_g(self.small_arpa_path, self.words_path, small_g_path, log_file)
+                yield 1
             if not os.path.exists(medium_g_path):
                 log_file.write("Generating med_G.fst...")
                 compose_g(self.medium_arpa_path, self.words_path, medium_g_path, log_file)
+                yield 1
             if not os.path.exists(self.carpa_path):
                 log_file.write("Generating G.carpa...")
                 temp_carpa_path = self.carpa_path + ".temp"
@@ -815,9 +817,11 @@ class CreateHclgFunction(KaldiFunction):
                     self.carpa_path,
                     log_file,
                 )
+                yield 1
             if not os.path.exists(lg_path):
                 log_file.write("Generating LG.fst...")
                 compose_lg(self.disambig_L_path, small_g_path, lg_path, log_file)
+                yield 1
             if not os.path.exists(clg_path):
                 log_file.write("Generating CLG.fst...")
                 compose_clg(
@@ -830,6 +834,7 @@ class CreateHclgFunction(KaldiFunction):
                     clg_path,
                     log_file,
                 )
+                yield 1
             if not os.path.exists(hclga_path):
                 log_file.write("Generating HCLGa.fst...")
                 compose_hclg(
@@ -840,6 +845,7 @@ class CreateHclgFunction(KaldiFunction):
                     hclga_path,
                     log_file,
                 )
+                yield 1
             log_file.write("Generating HCLG.fst...")
             self_loop_proc = subprocess.Popen(
                 [
@@ -955,7 +961,7 @@ class DecodeFunction(KaldiFunction):
                         yield m.group("utterance"), float(m.group("loglike")), int(
                             m.group("num_frames")
                         )
-            self.check_call(decode_proc)
+                self.check_call(decode_proc)
 
 
 class LmRescoreFunction(KaldiFunction):

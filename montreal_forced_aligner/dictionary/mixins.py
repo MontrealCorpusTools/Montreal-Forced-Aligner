@@ -17,9 +17,9 @@ from montreal_forced_aligner.helper import mfa_open
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
 
-DEFAULT_PUNCTUATION = list(r'、。।，？!@<>→"”()“„–,.:;—¿?¡：）!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=‘')
+DEFAULT_PUNCTUATION = list(r'、。।，？！!@<>→"”()“„–,.:;—¿?¡：）!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=‘')
 
-DEFAULT_WORD_BREAK_MARKERS = list(r'？!()，,.:;¡¿?“„"”&~%#—…‥、。【】$+=〝〟″‹›«»・⟨⟩「」『』')
+DEFAULT_WORD_BREAK_MARKERS = list(r'？！!()，,.:;¡¿?“„"”&~%#—…‥、。【】$+=〝〟″‹›«»・⟨⟩「」『』')
 
 DEFAULT_QUOTE_MARKERS = list("“„\"”〝〟″「」『』‚ʻʿ‘′'")
 
@@ -135,8 +135,6 @@ class SplitWordsFunction:
         Set of special words
     oov_word : str
         What to label words not in the dictionary, defaults to None
-    oov_word : str
-        What to label words that are bracketed, defaults to None
     """
 
     def __init__(
@@ -217,6 +215,8 @@ class SplitWordsFunction:
             s = [item]
         if self.word_mapping is None:
             return [item]
+        clean_initial_quote_regex = re.compile("^'")
+        clean_final_quote_regex = re.compile("'$")
         benefit = False
         for seg in s:
             if not seg:
@@ -247,6 +247,8 @@ class SplitWordsFunction:
                     benefit = True
                     initial_clitics.append(clitic.group(0))
                     seg = seg[clitic.end(0) :]
+                    if seg in self.word_mapping:
+                        break
             if self.has_final:
                 while True:
                     clitic = self.final_clitic_regex.search(seg)
@@ -255,10 +257,14 @@ class SplitWordsFunction:
                     benefit = True
                     final_clitics.append(clitic.group(0))
                     seg = seg[: clitic.start(0)]
+                    if seg in self.word_mapping:
+                        break
                 final_clitics.reverse()
-            split.extend(initial_clitics)
-            split.append(seg)
-            split.extend(final_clitics)
+            split.extend([clean_initial_quote_regex.sub("", x) for x in initial_clitics])
+            seg = clean_final_quote_regex.sub("", clean_initial_quote_regex.sub("", seg))
+            if seg:
+                split.append(seg)
+            split.extend([clean_final_quote_regex.sub("", x) for x in final_clitics])
             if not benefit and seg in self.word_mapping:
                 benefit = True
         if not benefit:
@@ -604,7 +610,14 @@ class DictionaryMixin:
     @property
     def specials_set(self) -> Set[str]:
         """Special words, like the ``oov_word`` ``silence_word``, ``<s>``, and ``</s>``"""
-        return {self.silence_word, "<s>", "</s>"}
+        return {
+            self.silence_word,
+            self.oov_word,
+            self.bracketed_word,
+            self.laughter_word,
+            "<s>",
+            "</s>",
+        }
 
     @property
     def phone_mapping(self) -> Dict[str, int]:

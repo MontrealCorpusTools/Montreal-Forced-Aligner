@@ -253,6 +253,13 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
             logger.info("Performing first-pass alignment...")
             self.uses_speaker_adaptation = False
+            for j in self.jobs:
+                paths = j.construct_dictionary_dependent_paths(
+                    self.working_directory, "trans", "ark"
+                )
+                for p in paths.values():
+                    if os.path.exists(p):
+                        os.remove(p)
             self.align_utterances()
             if (
                 acoustic_model is not None
@@ -291,7 +298,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 log_kaldi_errors(e.error_logs)
                 e.update_log_file()
             raise
-        logger.debug(f"Generated alignments in {time.time() - begin} seconds")
+        logger.debug(f"Generated alignments in {time.time() - begin:.3f} seconds")
 
     def compute_pronunciation_probabilities(self):
         """
@@ -543,6 +550,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     non_application_query = session.query(Pronunciation).filter(
                         Pronunciation.pronunciation.regexp_match(
                             r.match_regex.pattern.replace("?P<segment>", "")
+                            .replace("?P<preceding>", "")
+                            .replace("?P<following>", "")
                         ),
                         Pronunciation.count > 1,
                     )
@@ -655,7 +664,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     logger.debug(
                         f"{d_name}: Reduced number of pronunciations from {prev_c} to {c}"
                     )
-        logger.debug(f"Calculating pronunciation probabilities took {time.time() - begin}")
+        logger.debug(
+            f"Calculating pronunciation probabilities took {time.time() - begin:.3f} seconds"
+        )
 
     def collect_alignments(self) -> None:
         """
@@ -742,6 +753,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             )
             conn = self.db_engine.raw_connection()
             cursor = conn.cursor()
+            new_words = []
+            word_index = self.get_next_primary_key(Word)
             for (
                 utterance,
                 word_intervals,
@@ -764,13 +777,25 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         }
                     )
                 for interval in word_intervals:
+                    word_id = interval.word_id
+                    if isinstance(word_id, str):
+                        new_words.append(
+                            {
+                                "id": word_index,
+                                "word": word_id,
+                                "dictionary_id": 1,
+                                "word_type": WordType.oov,
+                            }
+                        )
+                        word_id = word_index
+                        word_index += 1
                     max_word_interval_id += 1
                     new_word_interval_mappings.append(
                         {
                             "id": max_word_interval_id,
                             "begin": interval.begin,
                             "end": interval.end,
-                            "word_id": interval.word_id,
+                            "word_id": word_id,
                             "pronunciation_id": interval.pronunciation_id,
                             "utterance_id": utterance,
                             "workflow_id": workflow.id,
@@ -814,6 +839,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             with tqdm.tqdm(
                 total=len(indices), disable=GLOBAL_CONFIG.quiet
             ) as pbar, self.session() as session:
+                if new_words:
+                    session.execute(sqlalchemy.insert(Word).values(new_words))
                 for ix in indices:
                     session.execute(
                         sqlalchemy.text(f'CREATE INDEX {ix[0]} ON {ix[1]} ({", ".join(ix[2])})')
@@ -938,7 +965,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             bulk_update(session, WordInterval, word_update_mappings)
             session.commit()
         self.export_frame_shift = round(self.export_frame_shift / 10, 4)
-        logger.debug(f"Fine tuning alignments took {time.time() - begin}")
+        logger.debug(f"Fine tuning alignments took {time.time() - begin:.3f} seconds")
 
     def fine_tune_arguments(self) -> List[FineTuneArguments]:
         """
@@ -1128,7 +1155,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             )
         output_textgrid_writing_errors(self.export_output_directory, error_dict)
         logger.info(f"Finished exporting TextGrids to {self.export_output_directory}!")
-        logger.debug(f"Exported TextGrids in a total of {time.time() - begin} seconds")
+        logger.debug(f"Exported TextGrids in a total of {time.time() - begin:.3f} seconds")
 
     def export_files(
         self,

@@ -12,6 +12,7 @@ from montreal_forced_aligner.command_line.utils import (
     validate_ivector_extractor,
 )
 from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
+from montreal_forced_aligner.data import ClusterType
 from montreal_forced_aligner.diarization.speaker_diarizer import SpeakerDiarizer
 
 __all__ = ["diarize_speakers_cli"]
@@ -37,7 +38,9 @@ __all__ = ["diarize_speakers_cli"]
     help="Path to config file to use for training.",
     type=click.Path(exists=True, file_okay=True, dir_okay=False),
 )
-@click.option("--num_speakers", "-s", help="Number of speakers if known.", type=int, default=0)
+@click.option(
+    "--expected_num_speakers", "-s", help="Number of speakers if known.", type=int, default=0
+)
 @click.option(
     "--output_format",
     help="Format for aligned output files (default is long_textgrid).",
@@ -54,10 +57,8 @@ __all__ = ["diarize_speakers_cli"]
 @click.option(
     "--cluster_type",
     help="Type of clustering algorithm to use",
-    default="hdbscan",
-    type=click.Choice(
-        ["hdbscan", "optics", "dbscan", "affinity", "agglomerative", "spectral", "kmeans"]
-    ),
+    default=ClusterType.mfa.name,
+    type=click.Choice([x.name for x in ClusterType]),
 )
 @click.option(
     "--cuda/--no_cuda",
@@ -67,24 +68,24 @@ __all__ = ["diarize_speakers_cli"]
     help="Flag for using CUDA for SpeechBrain's model",
 )
 @click.option(
-    "--use_plda/--no_use_plda",
-    "use_plda",
+    "--use_pca/--no_use_pca",
+    "use_pca",
     is_flag=True,
-    default=False,
-    help="Flag for using PLDA log-likelihood ratios as distance metric.",
+    default=True,
+    help="Flag for using PCA representations of ivectors",
 )
 @click.option(
     "--evaluate",
     "--validate",
     "evaluation_mode",
     is_flag=True,
-    help="Perform an analysis of clustering/classification.",
+    help="Flag for whether to evaluate clustering/classification against existing speakers.",
     default=False,
 )
 @common_options
 @click.help_option("-h", "--help")
 @click.pass_context
-def diarize_speakers_cli(context, **kwargs) -> None:  # pragma: no cover
+def diarize_speakers_cli(context, **kwargs) -> None:
     """
     Use an ivector extractor to cluster utterances into speakers
 

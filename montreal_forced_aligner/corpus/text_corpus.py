@@ -203,12 +203,12 @@ class TextCorpusMixin(CorpusMixin):
             for p in procs:
                 p.join()
             if self.stopped.stop_check():
-                logger.info(f"Stopped parsing early ({time.time() - begin_time} seconds)")
+                logger.info(f"Stopped parsing early ({time.time() - begin_time:.3f} seconds)")
                 if self.stopped.source():
                     sys.exit(0)
             else:
                 logger.debug(
-                    f"Parsed corpus directory with {GLOBAL_CONFIG.num_jobs} jobs in {time.time() - begin_time} seconds"
+                    f"Parsed corpus directory with {GLOBAL_CONFIG.num_jobs} jobs in {time.time() - begin_time:.3f} seconds"
                 )
 
     def _load_corpus_from_source(self) -> None:

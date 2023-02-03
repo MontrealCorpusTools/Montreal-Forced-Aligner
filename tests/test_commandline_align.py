@@ -1,7 +1,6 @@
 import os
 
 import click.testing
-import pytest
 from praatio import textgrid as tgio
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
@@ -45,7 +44,6 @@ def test_align_no_speaker_adaptation(
     assert os.path.exists(output_directory)
 
 
-# @pytest.mark.skip(reason='Optimization')
 def test_align_single_speaker(
     basic_corpus_dir,
     generated_dir,
@@ -313,6 +311,8 @@ def test_align_split(
         "-q",
         "--clean",
         "--debug",
+        "--output_format",
+        "json",
         "--audio_directory",
         audio_dir,
     ]
@@ -546,7 +546,6 @@ def test_acoustic_g2p_model(
     temp_dir,
     basic_align_config_path,
 ):
-    pytest.skip("Not currently working")
     model_path = os.path.join(acoustic_model_dir, "acoustic_g2p_output_model.zip")
     dict_path = os.path.join(dict_dir, "acoustic_g2p_dictionary.yaml")
     output_directory = os.path.join(generated_dir, "acoustic_g2p_output")

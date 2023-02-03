@@ -264,31 +264,38 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         if self.uses_speaker_adaptation:
             self.acc_stats(alignment=True)
 
-        logger.debug(f"Mapping models took {time.time() - begin}")
+        logger.debug(f"Mapping models took {time.time() - begin:.3f} seconds")
 
     def adapt(self) -> None:
         """Run the adaptation"""
-        self.initialize_database()
-        self.create_new_current_workflow(WorkflowType.acoustic_model_adaptation)
-        self.setup()
-        wf = self.current_workflow
-        if wf.done:
-            logger.info("Adaptation already done, skipping.")
-            return
         logger.info("Generating initial alignments...")
-        for f in ["final.mdl", "final.alimdl"]:
-            p = os.path.join(self.working_directory, f)
-            if not os.path.exists(p):
-                continue
-            os.rename(p, os.path.join(self.working_directory, f.replace("final", "unadapted")))
         self.align()
         alignment_workflow = self.current_workflow
         self.create_new_current_workflow(WorkflowType.acoustic_model_adaptation)
+        for f in ["final.mdl", "final.alimdl"]:
+            shutil.copyfile(
+                os.path.join(alignment_workflow.working_directory, f),
+                os.path.join(self.working_directory, f.replace("final", "unadapted")),
+            )
+        shutil.copyfile(
+            os.path.join(alignment_workflow.working_directory, "tree"),
+            os.path.join(self.working_directory, "tree"),
+        )
+        shutil.copyfile(
+            os.path.join(alignment_workflow.working_directory, "lda.mat"),
+            os.path.join(self.working_directory, "lda.mat"),
+        )
         for j in self.jobs:
             old_paths = j.construct_path_dictionary(
                 alignment_workflow.working_directory, "ali", "ark"
             )
             new_paths = j.construct_path_dictionary(self.working_directory, "ali", "ark")
+            for k, v in old_paths.items():
+                shutil.copyfile(v, new_paths[k])
+            old_paths = j.construct_path_dictionary(
+                alignment_workflow.working_directory, "trans", "ark"
+            )
+            new_paths = j.construct_path_dictionary(self.working_directory, "trans", "ark")
             for k, v in old_paths.items():
                 shutil.copyfile(v, new_paths[k])
         os.makedirs(self.align_directory, exist_ok=True)
@@ -318,12 +325,14 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
                     os.path.join(self.working_directory, "lda.mat"),
                     os.path.join(self.align_directory, "lda.mat"),
                 )
+            wf = self.current_workflow
             with self.session() as session:
                 session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update(
                     {"done": True}
                 )
                 session.commit()
         except Exception as e:
+            wf = self.current_workflow
             with self.session() as session:
                 session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update(
                     {"dirty": True}

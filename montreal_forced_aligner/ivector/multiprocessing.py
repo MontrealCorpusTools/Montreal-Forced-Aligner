@@ -108,9 +108,7 @@ class GmmGselectFunction(KaldiFunction):
                 .first()
             )
             current_done_count = 0
-            feature_string = job.construct_online_feature_proc_string(
-                subsample_feats=self.ivector_options["subsample"]
-            )
+            feature_string = job.construct_online_feature_proc_string()
 
             gselect_proc = subprocess.Popen(
                 [
@@ -184,9 +182,7 @@ class GaussToPostFunction(KaldiFunction):
                 .filter(Job.id == self.job_name)
                 .first()
             )
-            feature_string = job.construct_online_feature_proc_string(
-                subsample_feats=self.ivector_options["subsample"]
-            )
+            feature_string = job.construct_online_feature_proc_string()
             gmm_global_get_post_proc = subprocess.Popen(
                 [
                     thirdparty_binary("gmm-global-get-post"),
@@ -265,9 +261,7 @@ class AccGlobalStatsFunction(KaldiFunction):
                 .filter(Job.id == self.job_name)
                 .first()
             )
-            feature_string = job.construct_online_feature_proc_string(
-                subsample_feats=self.ivector_options["subsample"], uses_vad=True
-            )
+            feature_string = job.construct_online_feature_proc_string()
             command = [
                 thirdparty_binary("gmm-global-acc-stats"),
                 "--verbose=2",
@@ -334,9 +328,7 @@ class AccIvectorStatsFunction(KaldiFunction):
                 .filter(Job.id == self.job_name)
                 .first()
             )
-            feature_string = job.construct_online_feature_proc_string(
-                subsample_feats=self.ivector_options["subsample"]
-            )
+            feature_string = job.construct_online_feature_proc_string()
             acc_stats_proc = subprocess.Popen(
                 [
                     thirdparty_binary("ivector-extractor-acc-stats"),

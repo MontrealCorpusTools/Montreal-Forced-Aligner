@@ -9,6 +9,7 @@ import time
 import typing
 
 import click
+import sqlalchemy.engine
 import yaml
 
 from montreal_forced_aligner.config import GLOBAL_CONFIG
@@ -209,17 +210,28 @@ def validate_ivector_extractor(ctx, param, value):
 
 
 def configure_pg(directory):
+    configuration_updates = {
+        "#log_min_duration_statement = -1": "log_min_duration_statement = 5000",
+        "#enable_partitionwise_join = off": "enable_partitionwise_join = on",
+        "#enable_partitionwise_aggregate = off": "enable_partitionwise_aggregate = on",
+        "#maintenance_work_mem = 64MB": "maintenance_work_mem = 500MB",
+        "#work_mem = 4MB": "work_mem = 128MB",
+        "#max_wal_senders = 10": "max_wal_senders = 0",
+        "max_wal_size = 1GB": "max_wal_size = 150GB",
+        "#wal_log_hints = off": "wal_log_hints = off",
+        "#synchronous_commit = on": "synchronous_commit = off",
+        "#wal_level = replica": "wal_level = minimal",
+        "shared_buffers = 128MB": "shared_buffers = 256MB",
+    }
     with mfa_open(os.path.join(directory, "postgresql.conf"), "r") as f:
         config = f.read()
-    config = config.replace("#enable_partitionwise_join = off", "enable_partitionwise_join = on")
-    config = config.replace(
-        "#enable_partitionwise_aggregate = off", "enable_partitionwise_aggregate = on"
-    )
+    for query, rep in configuration_updates.items():
+        config = config.replace(query, rep)
     with mfa_open(os.path.join(directory, "postgresql.conf"), "w") as f:
         f.write(config)
 
 
-def check_databases() -> None:
+def check_databases(db_name=None) -> None:
     """Check for existence of necessary databases"""
     GLOBAL_CONFIG.load()
 
@@ -235,6 +247,16 @@ def check_databases() -> None:
     )
     os.makedirs(GLOBAL_CONFIG["temporary_directory"], exist_ok=True)
     create = not os.path.exists(db_directory)
+    if not create:
+        try:
+            engine = sqlalchemy.create_engine(
+                f"postgresql+psycopg2://localhost:{GLOBAL_CONFIG.current_profile.database_port}/{db_name}"
+            )
+            conn = engine.connect()
+            conn.close()
+            return
+        except Exception:
+            pass
     with open(init_log_path, "w") as log_file:
         if create:
             subprocess.check_call(
@@ -242,6 +264,7 @@ def check_databases() -> None:
                 stdout=log_file,
                 stderr=log_file,
             )
+            configure_pg(db_directory)
             try:
                 subprocess.check_call(
                     [
@@ -297,7 +320,7 @@ def cleanup_databases() -> None:
     db_directory = os.path.join(
         GLOBAL_CONFIG["temporary_directory"], f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
-    time.sleep(5)
+    time.sleep(1)
     try:
         subprocess.check_call(
             ["pg_ctl", "-D", db_directory, "stop"],
@@ -310,7 +333,7 @@ def cleanup_databases() -> None:
 
 def remove_databases() -> None:
     """Remove database"""
-    time.sleep(5)
+    time.sleep(1)
     GLOBAL_CONFIG.load()
 
     db_directory = os.path.join(

@@ -404,16 +404,9 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
             output_format = TextFileType.TEXTGRID.value
         os.makedirs(output_directory, exist_ok=True)
         with self.session() as session:
-            for f in session.query(File).all():
-                print(f.utterances)
-                for u in f.utterances:
-                    print(u.speaker)
-                print(f.sound_file)
-                print(f.text_file)
             for f in session.query(File).options(
                 selectinload(File.utterances).joinedload(Utterance.speaker, innerjoin=True),
                 joinedload(File.sound_file, innerjoin=True),
                 joinedload(File.text_file),
             ):
-                print(f)
                 f.save(output_directory, output_format=output_format)

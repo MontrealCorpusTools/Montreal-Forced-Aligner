@@ -276,8 +276,11 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         data = {}
         utt2spk_data = {}
         with self.session() as session:
-            utterances = session.query(Utterance.kaldi_id, Utterance.speaker_id).order_by(
-                Utterance.kaldi_id
+            utterances = (
+                session.query(Utterance.kaldi_id, Utterance.speaker_id)
+                .join(Utterance.speaker)
+                .filter(Speaker.name != "MFA_UNKNOWN")
+                .order_by(Utterance.kaldi_id)
             )
 
             for utt_id, speaker_id in utterances:
@@ -627,6 +630,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     self.oov_word,
                     self.bracketed_word,
                     self.ignore_case,
+                    getattr(self, "use_g2p", False),
                 )
                 for j in jobs
             ]
@@ -654,11 +658,14 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         with tqdm.tqdm(
             total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar, self.session() as session:
+            dictionaries: typing.Dict[int, Dictionary] = {
+                d.id: d for d in session.query(Dictionary)
+            }
             has_words = session.query(Dictionary).filter(Dictionary.name == "unknown") is not None
             words = session.query(
                 Word.id, Word.mapping_id, Word.dictionary_id, Word.word
             ).order_by(Word.mapping_id)
-            if not has_words:
+            if not has_words or getattr(self, "use_g2p", False):
 
                 word_insert_mappings["<eps>"] = {
                     "id": word_key,
@@ -675,11 +682,13 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 max_mapping_ids[d_id] = m_id
             for result in run_kaldi_function(NormalizeTextFunction, args, pbar.update):
                 result, dict_id = result
-                if dict_id is not None:
+                if dict_id is not None and not getattr(self, "use_g2p", False):
                     oovs = set(result["oovs"].split())
                     for w in oovs:
+                        if w in dictionaries[dict_id].special_set:
+                            continue
                         if (w, dict_id) not in word_insert_mappings:
-                            max_mapping_ids[d_id] += 1
+                            max_mapping_ids[dict_id] += 1
                             word_insert_mappings[(w, dict_id)] = {
                                 "id": word_key,
                                 "mapping_id": max_mapping_ids[d_id],

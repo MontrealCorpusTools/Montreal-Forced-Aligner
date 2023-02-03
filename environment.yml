@@ -22,7 +22,7 @@ dependencies:
   - ngram
   - praatio
   - biopython=1.79
-  - sqlalchemy>=1.4
+  - sqlalchemy>=2.0
   - pgvector
   - pgvector-python
   - postgresql
@@ -38,6 +38,9 @@ dependencies:
   - coveralls
   - interrogate
   - numba
+  - kneed
+  - matplotlib
+  - seaborn
   - pip:
       - build
       - twine

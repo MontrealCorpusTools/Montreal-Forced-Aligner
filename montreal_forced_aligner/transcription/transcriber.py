@@ -241,7 +241,7 @@ class TranscriberMixin(CorpusAligner):
                     function = TrainSpeakerLmFunction(args)
                     for _ in function.run():
                         pbar.update(1)
-        logger.debug(f"Compiling speaker language models took {time.time() - begin}")
+        logger.debug(f"Compiling speaker language models took {time.time() - begin:.3f} seconds")
 
     @property
     def model_directory(self) -> str:
@@ -370,6 +370,8 @@ class TranscriberMixin(CorpusAligner):
         if not self.has_alignments(self.current_workflow.id):
             logger.error("Cannot train phone LM without alignments")
             return
+        if self.use_g2p:
+            return
         logger.info("Beginning phone LM training...")
         logger.info("Collecting training data...")
 
@@ -437,16 +439,19 @@ class TranscriberMixin(CorpusAligner):
         logger.info("Training model...")
         with mfa_open(log_path, "w") as log_file:
             merged_file = os.path.join(self.phones_dir, "merged.cnts")
-            ngrammerge_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("ngrammerge"),
-                    f"--ofile={merged_file}",
-                    *count_paths,
-                ],
-                stderr=log_file,
-                env=os.environ,
-            )
-            ngrammerge_proc.communicate()
+            if len(count_paths) > 1:
+                ngrammerge_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("ngrammerge"),
+                        f"--ofile={merged_file}",
+                        *count_paths,
+                    ],
+                    stderr=log_file,
+                    env=os.environ,
+                )
+                ngrammerge_proc.communicate()
+            else:
+                os.rename(count_paths[0], merged_file)
             ngrammake_proc = subprocess.Popen(
                 [thirdparty_binary("ngrammake"), "--v=2", "--method=kneser_ney", merged_file],
                 stderr=log_file,
@@ -635,17 +640,25 @@ class TranscriberMixin(CorpusAligner):
 
             self.decode()
             if workflow.workflow_type is WorkflowType.transcription:
-                logger.info("Performing speaker adjusted transcription...")
-                self.transcribe_fmllr()
-                self.lm_rescore()
-                self.carpa_lm_rescore()
+                done = True
+                for a in self.carpa_lm_rescore_arguments():
+                    for p in a.rescored_lat_paths.values():
+                        if not os.path.exists(p):
+                            done = False
+                            break
+                if done:
+                    logger.info("Rescoring already done.")
+                else:
+                    logger.info("Performing speaker adjusted transcription...")
+                    self.transcribe_fmllr()
+                    self.lm_rescore()
+                    self.carpa_lm_rescore()
             self.collect_alignments()
             if self.fine_tune:
                 self.fine_tune_alignments()
             if self.evaluation_mode:
                 os.makedirs(self.working_log_directory, exist_ok=True)
-                ser, wer = self.evaluate_transcriptions()
-                logger.info(f"SER={ser:.2f}%, WER={wer:.2f}%")
+                self.evaluate_transcriptions()
             with self.session() as session:
                 session.query(CorpusWorkflow).filter(CorpusWorkflow.id == workflow.id).update(
                     {"done": True}
@@ -679,7 +692,6 @@ class TranscriberMixin(CorpusAligner):
         logger.info("Evaluating transcripts...")
         ser, wer, cer = self.compute_wer()
         logger.info(f"SER: {100 * ser:.2f}%, WER: {100 * wer:.2f}%, CER: {100 * cer:.2f}%")
-        return ser, wer
 
     def save_transcription_evaluation(self, output_directory: str) -> None:
         """
@@ -881,9 +893,10 @@ class TranscriberMixin(CorpusAligner):
             ):
                 log_likelihood_sum += log_likelihood
                 log_likelihood_count += 1
-            with self.session() as session:
-                workflow.score = log_likelihood_sum / log_likelihood_count
-                session.commit()
+            if log_likelihood_count:
+                with self.session() as session:
+                    workflow.score = log_likelihood_sum / log_likelihood_count
+                    session.commit()
 
     def calc_initial_fmllr(self) -> None:
         """
@@ -1482,7 +1495,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
         self.acoustic_model = AcousticModel(acoustic_model_path)
         kwargs.update(self.acoustic_model.parameters)
         super(Transcriber, self).__init__(**kwargs)
-        self.language_model = LanguageModel(language_model_path, self.model_directory)
+        self.language_model = LanguageModel(language_model_path)
         self.output_type = output_type
         self.ignore_empty_utterances = False
 
@@ -1536,12 +1549,15 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
                 p = KaldiProcessWorker(i, return_queue, function, stopped)
                 procs.append(p)
                 p.start()
-            with tqdm.tqdm(total=len(dict_arguments), disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm.tqdm(total=len(dict_arguments) * 7, disable=GLOBAL_CONFIG.quiet) as pbar:
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
                         if isinstance(result, Exception):
                             error_dict[getattr(result, "job_name", 0)] = result
+                            continue
+                        elif not isinstance(result, tuple):
+                            pbar.update(1)
                             continue
                         if stopped.stop_check():
                             continue
@@ -1567,7 +1583,11 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
             for args in dict_arguments:
                 function = CreateHclgFunction(args)
                 with tqdm.tqdm(total=len(dict_arguments), disable=GLOBAL_CONFIG.quiet) as pbar:
-                    for result, hclg_path in function.run():
+                    for result in function.run():
+                        if not isinstance(result, tuple):
+                            pbar.update(1)
+                            continue
+                        result, hclg_path = result
                         if result:
                             logger.debug(f"Done generating {hclg_path}!")
                         else:
@@ -1724,13 +1744,20 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
             shutil.rmtree(self.model_directory)
         log_dir = os.path.join(self.model_directory, "log")
         os.makedirs(log_dir, exist_ok=True)
+        if self.acoustic_model.meta["version"] < "2.1":
+            logger.warning(
+                "The acoustic model was trained in an earlier version of MFA. "
+                "There may be incompatibilities in feature generation that cause errors. "
+                "Please download the latest version of the model via `mfa model download`, "
+                "use a different acoustic model, or use version 2.0.6 of MFA."
+            )
         self.acoustic_model.validate(self)
         self.acoustic_model.export_model(self.model_directory)
         self.acoustic_model.export_model(self.working_directory)
         self.acoustic_model.log_details()
         self.create_decoding_graph()
         self.initialized = True
-        logger.debug(f"Setup for transcription in {time.time() - begin} seconds")
+        logger.debug(f"Setup for transcription in {time.time() - begin:.3f} seconds")
 
     def export_transcriptions(self) -> None:
         """Export transcriptions"""
@@ -1764,16 +1791,19 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
                 if output_format == "lab":
                     for intervals in data.values():
                         with mfa_open(output_path, "w") as f:
-                            f.write(intervals[0].label)
+                            f.write(intervals["transcription"][0].label)
                 else:
                     tg = textgrid.Textgrid()
                     tg.minTimestamp = 0
-                    tg.maxTimestamp = duration
+                    tg.maxTimestamp = round(duration, 5)
                     for speaker in file.speakers:
                         speaker = speaker.name
-                        intervals = data[speaker]
+                        intervals = data[speaker]["transcription"]
                         tier = textgrid.IntervalTier(
-                            speaker, [x.to_tg_interval() for x in intervals], minT=0, maxT=duration
+                            speaker,
+                            [x.to_tg_interval() for x in intervals],
+                            minT=0,
+                            maxT=round(duration, 5),
                         )
 
                         tg.addTier(tier)

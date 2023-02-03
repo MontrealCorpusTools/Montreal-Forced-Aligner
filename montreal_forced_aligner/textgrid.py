@@ -207,7 +207,7 @@ def export_textgrid(
                     json_data["tiers"][tier_name]["entries"].append([a.begin, a.end, a.label])
         if has_data:
             with mfa_open(output_path, "w") as f:
-                json.dump(json_data, f, ensure_ascii=False)
+                json.dump(json_data, f, indent=4, ensure_ascii=False)
     else:
         # Create initial textgrid
         tg = tgio.Textgrid()

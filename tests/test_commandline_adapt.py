@@ -38,7 +38,6 @@ def test_adapt_basic(
     assert os.path.exists(adapted_model_path)
 
 
-# @pytest.mark.skip(reason='Optimization')
 def test_adapt_multilingual(
     multilingual_ipa_corpus_dir,
     mfa_speaker_dict_path,

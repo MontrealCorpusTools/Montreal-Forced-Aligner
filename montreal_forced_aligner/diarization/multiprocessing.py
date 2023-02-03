@@ -1,35 +1,41 @@
 """Multiprocessing functionality for speaker diarization"""
 from __future__ import annotations
 
-import gc
 import logging
 import multiprocessing as mp
 import os
+import queue
+import subprocess
+import sys
+import time
 import typing
 
 import dataclassy
 import hdbscan
+import kneed
 import librosa
 import numpy as np
 import sqlalchemy
-from numba import njit
-from sklearn import metrics
-from sklearn.cluster import (
-    DBSCAN,
-    OPTICS,
-    AffinityPropagation,
-    AgglomerativeClustering,
-    MiniBatchKMeans,
-    SpectralClustering,
-)
+from scipy.spatial import distance
+from sklearn import cluster, manifold, metrics, neighbors, preprocessing
 from sqlalchemy.orm import Session, joinedload
 
 from montreal_forced_aligner.abc import KaldiFunction
-from montreal_forced_aligner.config import GLOBAL_CONFIG, PLDA_DIMENSION
-from montreal_forced_aligner.corpus.features import PldaModel
-from montreal_forced_aligner.data import MfaArguments
+from montreal_forced_aligner.config import GLOBAL_CONFIG, IVECTOR_DIMENSION, XVECTOR_DIMENSION
+from montreal_forced_aligner.corpus.features import (
+    PldaModel,
+    classify_plda,
+    compute_classification_stats,
+    pairwise_plda_distance_matrix,
+)
+from montreal_forced_aligner.data import (
+    ClusterType,
+    DistanceMetric,
+    ManifoldAlgorithm,
+    MfaArguments,
+)
 from montreal_forced_aligner.db import File, Job, SoundFile, Speaker, Utterance
-from montreal_forced_aligner.utils import Stopped
+from montreal_forced_aligner.utils import Stopped, read_feats, thirdparty_binary
 
 try:
     import warnings
@@ -41,23 +47,25 @@ try:
         torch_logger = logging.getLogger("speechbrain.utils.train_logger")
         torch_logger.setLevel(logging.ERROR)
         import torch
-        from speechbrain.pretrained import EncoderClassifier
+        from speechbrain.pretrained import EncoderClassifier, SpeakerRecognition
     FOUND_SPEECHBRAIN = True
-except (ImportError, OSError) as e:
-    print(e)
+except (ImportError, OSError):
     FOUND_SPEECHBRAIN = False
     EncoderClassifier = None
-
-if typing.TYPE_CHECKING:
-    SpeakerCharacterType = typing.Union[str, int]
+    SpeakerRecognition = None
 
 __all__ = [
     "PldaClassificationArguments",
     "PldaClassificationFunction",
+    "ComputeEerArguments",
+    "ComputeEerFunction",
+    "SpeechbrainArguments",
+    "SpeechbrainClassificationFunction",
+    "SpeechbrainEmbeddingFunction",
+    "cluster_matrix",
 ]
 
 logger = logging.getLogger("mfa")
-M_LOG_2PI = 1.8378770664093454835606594728112
 
 
 # noinspection PyUnresolvedReferences
@@ -66,6 +74,21 @@ class PldaClassificationArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.diarization.multiprocessing.PldaClassificationFunction`"""
 
     plda: PldaModel
+    train_ivector_path: str
+    num_utts_path: str
+    use_xvector: bool
+
+
+# noinspection PyUnresolvedReferences
+@dataclassy.dataclass(slots=True)
+class ComputeEerArguments(MfaArguments):
+    """Arguments for :class:`~montreal_forced_aligner.diarization.multiprocessing.ComputeEerFunction`"""
+
+    plda: PldaModel
+    metric: DistanceMetric
+    use_xvector: bool
+    limit_within_speaker: int
+    limit_per_speaker: int
 
 
 # noinspection PyUnresolvedReferences
@@ -74,170 +97,368 @@ class SpeechbrainArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.diarization.multiprocessing.SpeechbrainClassificationFunction`"""
 
     cuda: bool
-    cuda_batch_size: int
+    cluster: bool
 
 
-@njit(parallel=True)
-def score_plda(
-    train_ivectors: np.ndarray,
-    test_ivectors: np.ndarray,
-    psi: np.ndarray,
-    normalize=True,
-    distance=False,
-) -> np.ndarray:
+def visualize_clusters(
+    ivectors: np.ndarray,
+    manifold_algorithm: ManifoldAlgorithm,
+    metric_type: DistanceMetric,
+    n_neighbors: int = 10,
+    plda: typing.Optional[PldaModel] = None,
+    quick=False,
+):
+    logger.debug(f"Generating 2D representation of ivectors with {manifold_algorithm.name}...")
+    begin = time.time()
+    to_fit = ivectors
+    metric = metric_type.name
+    tsne_angle = 0.5
+    tsne_iterations = 1000
+    mds_iterations = 300
+    if quick:
+        tsne_angle = 0.8
+        tsne_iterations = 500
+        mds_iterations = 150
+    if metric_type is DistanceMetric.plda:
+        logger.info("Generating precomputed distance matrix...")
+        to_fit = metrics.pairwise_distances(
+            ivectors, ivectors, metric=plda.distance, n_jobs=GLOBAL_CONFIG.current_profile.num_jobs
+        )
+        np.fill_diagonal(to_fit, 0)
+        metric = "precomputed"
+    if manifold_algorithm is ManifoldAlgorithm.mds:
+        if metric_type is DistanceMetric.cosine:
+            to_fit = preprocessing.normalize(ivectors, norm="l2")
+            metric = "euclidean"
+        points = manifold.MDS(
+            dissimilarity=metric,
+            random_state=0,
+            n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
+            max_iter=mds_iterations,
+            metric=False,
+            normalized_stress=True,
+        ).fit_transform(to_fit)
+    elif manifold_algorithm is ManifoldAlgorithm.tsne:
+        points = manifold.TSNE(
+            metric=metric,
+            random_state=0,
+            perplexity=n_neighbors,
+            init="pca" if metric != "precomputed" else "random",
+            n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
+            angle=tsne_angle,
+            n_iter=tsne_iterations,
+        ).fit_transform(to_fit)
+    elif manifold_algorithm is ManifoldAlgorithm.spectral:
+        points = manifold.SpectralEmbedding(
+            affinity="nearest_neighbors",
+            random_state=0,
+            n_neighbors=n_neighbors,
+            n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
+        ).fit_transform(to_fit)
+    elif manifold_algorithm is ManifoldAlgorithm.isomap:
+        points = manifold.Isomap(
+            metric=metric, n_neighbors=n_neighbors, n_jobs=GLOBAL_CONFIG.current_profile.num_jobs
+        ).fit_transform(to_fit)
+    else:
+        raise NotImplementedError
+    logger.debug(f"Generating 2D representation took {time.time() - begin:.3f} seconds")
+    return points
+
+
+def calculate_distance_threshold(
+    metric: typing.Union[str, callable],
+    to_fit: np.ndarray,
+    min_samples: int = 5,
+    working_directory: str = None,
+    score_metric_params=None,
+    no_visuals: bool = False,
+) -> float:
     """
-    Adapted from https://github.com/prachiisc/PLDA_scoring/blob/master/PLDA_scoring.py#L177
-    Computes plda affinity matrix using Loglikelihood function
+    Calculate a threshold for the given ivectors using a relative threshold
+
     Parameters
     ----------
-    train_ivectors : numpy.ndarray
-        Ivectors to compare test ivectors against against 1 X N X D
-    test_ivectors : numpy.ndarray
-        Ivectors to compare against training examples 1 X M X D
+    metric: str or callable
+        Metric to evaluate
+    to_fit: numpy.ndarray
+        Ivectors or distance matrix
+    relative_distance_threshold: float
+       Relative threshold from 0 to 1
+
     Returns
     -------
-    np.ndarray
-        Affinity matrix, shape is number of train ivectors by the number of test ivectors (M X N)
+    float
+        Absolute distance threshold
     """
-    train_ivectors = train_ivectors.astype("float64")
-    test_ivectors = test_ivectors.astype("float64")
-    psi = psi.astype("float64")
-    mean = (psi) / (psi + 1.0)
-    mean = mean.reshape(1, -1) * train_ivectors  # N X D , X[0]- Train ivectors
-    # given class computation
-    variance_given = 1.0 + psi / (psi + 1.0)
-    logdet_given = np.sum(np.log(variance_given))
-    variance_given = 1.0 / variance_given
-    # without class computation
-    variance_without = 1.0 + psi
-    logdet_without = np.sum(np.log(variance_without))
-    variance_without = 1.0 / variance_without
+    logger.debug(f"Calculating distance threshold from {min_samples} nearest neighbors...")
+    nbrs = neighbors.NearestNeighbors(
+        n_neighbors=min_samples,
+        metric=metric,
+        metric_params=score_metric_params,
+        n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
+    ).fit(to_fit)
+    distances, indices = nbrs.kneighbors(to_fit)
+    distances = distances[:, min_samples - 1]
+    distances = np.sort(distances, axis=0)
+    kneedle = kneed.KneeLocator(np.arange(distances.shape[0]), distances, curve="concave", S=5)
+    index = kneedle.elbow
+    threshold = distances[index]
 
-    sqdiff = test_ivectors  # ---- Test x-vectors
-    num_train = train_ivectors.shape[0]
-    num_test = test_ivectors.shape[0]
-    dim = test_ivectors.shape[1]
-
-    loglikes = np.empty((num_test, num_train))
-    for i in range(num_train):
-        sqdiff_given = sqdiff - mean[i]
-        sqdiff_given = sqdiff_given**2
-
-        loglikes[:, i] = -0.5 * (logdet_given + M_LOG_2PI * dim + (sqdiff_given @ variance_given))
-    sqdiff_without = sqdiff**2
-    loglike_without_class = -0.5 * (
-        logdet_without + M_LOG_2PI * dim + (sqdiff_without @ variance_without)
+    min_distance = np.min(distances)
+    max_distance = np.max(distances)
+    logger.debug(
+        f"Distance threshold was set to {threshold} (range = {min_distance:.4f} - {max_distance:.4f})"
     )
-    loglike_without_class = loglike_without_class.reshape(-1, 1)
-    # loglike_given_class - N X N, loglike_without_class - N X1
-    loglikes -= loglike_without_class  # N X N
-    if normalize:
-        # loglike_ratio -= np.min(loglike_ratio)
-        loglikes /= np.max(loglikes)
-    if distance:
-        loglikes = np.max(loglikes) - loglikes
-    return loglikes
+    if GLOBAL_CONFIG.current_profile.debug and not no_visuals:
+        import seaborn as sns
+        from matplotlib import pyplot as plt
+
+        sns.set()
+        plt.plot(distances)
+        plt.xlabel("Index")
+        plt.ylabel("Distance to NN")
+        plt.axvline(index, c="k")
+        plt.text(
+            index, max_distance, "threshold", horizontalalignment="right", verticalalignment="top"
+        )
+
+        if working_directory is not None:
+            plot_path = os.path.join(working_directory, "nearest_neighbor_distances.png")
+            close_string = f"Closing k-distance plot, it has been saved to {plot_path}."
+            plt.savefig(plot_path, transparent=True)
+        else:
+            close_string = "Closing k-distance plot."
+        if GLOBAL_CONFIG.current_profile.verbose:
+            plt.show(block=False)
+            plt.pause(10)
+            logger.debug(close_string)
+            plt.close()
+    return float(threshold)
 
 
-def score_plda_train_counts(
-    train_ivectors: np.ndarray,
-    test_ivectors: np.ndarray,
-    plda: PldaModel,
-    normalize=True,
-    distance=False,
-    counts=None,
+def cluster_matrix(
+    ivectors: np.ndarray,
+    cluster_type: ClusterType,
+    metric: DistanceMetric = DistanceMetric.euclidean,
+    strict=True,
+    no_visuals=False,
+    working_directory=None,
+    **kwargs,
 ) -> np.ndarray:
     """
-    Adapted from https://github.com/prachiisc/PLDA_scoring/blob/master/PLDA_scoring.py#L177
-    Computes plda affinity matrix using Loglikelihood function
+    Wrapper function for sklearn's clustering methods
+
     Parameters
     ----------
-    train_ivectors : numpy.ndarray
-        Ivectors to compare test ivectors against against 1 X N X D
-    test_ivectors : numpy.ndarray
-        Ivectors to compare against training examples 1 X M X D
+    ivectors: numpy.ndarray
+        Ivectors to cluster
+    cluster_type: :class:`~montreal_forced_aligner.data.ClusterType`
+        Clustering algorithm
+    metric: :class:`~montreal_forced_aligner.data.DistanceMetric`
+        Distance metric to use in clustering
+    strict: bool
+        Flag for whether to raise exceptions when only one cluster is found
+    kwargs
+        Extra keyword arguments to pass to sklearn cluster classes
+
     Returns
     -------
-    np.ndarray
-        Affinity matrix, shape is number of train ivectors by the number of test ivectors (M X N)
+    numpy.ndarray
+        Cluster labels for each utterance
     """
-    if counts is None:
-        counts = np.ones((train_ivectors.shape[0], 1))
-    psi = plda.psi[np.newaxis, :]
-    mean = (counts * psi) / (counts * psi + 1.0)
-    mean = mean * train_ivectors  # N X D , X[0]- Train ivectors
-    # given class computation
-    variance_given = 1.0 + psi / (counts * psi + 1.0)
-    logdet_given = np.sum(np.log(variance_given))
-    variance_given = 1.0 / variance_given
-    # without class computation
-    variance_without = 1.0 + plda.psi
-    logdet_without = np.sum(np.log(variance_without))
-    variance_without = 1.0 / variance_without
-
-    sqdiff = test_ivectors  # ---- Test x-vectors
-    dim = test_ivectors.shape[1]
-
-    # loglikes = np.empty((num_test, num_train))
-    sqdiff_given = sqdiff - mean
-    sqdiff_given = sqdiff_given**2
-
-    loglikes = -0.5 * (logdet_given + M_LOG_2PI * dim + (sqdiff_given @ variance_given.T))
-    sqdiff_without = sqdiff**2
-    loglike_without_class = -0.5 * (
-        logdet_without + M_LOG_2PI * dim + (sqdiff_without @ variance_without)
-    )
-    loglike_without_class = loglike_without_class.reshape(-1, 1)
-    # loglike_given_class - N X N, loglike_without_class - N X1
-    loglikes -= loglike_without_class  # N X N
-    if normalize:
-        # loglike_ratio -= np.min(loglike_ratio)
-        loglikes /= np.max(loglikes)
-    if distance:
-        loglikes = np.max(loglikes) - loglikes
-    return loglikes
-
-
-def cluster_matrix(to_fit, cluster_type, metric="euclidean", **kwargs):
     from montreal_forced_aligner.config import GLOBAL_CONFIG
 
-    os.environ["OMP_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
+    logger.debug(f"Running {cluster_type}...")
+
+    if sys.platform == "win32" and cluster_type is ClusterType.kmeans:
+        os.environ["OMP_NUM_THREADS"] = "1"
+    else:
+        os.environ["OMP_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
     os.environ["OPENBLAS_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
     os.environ["MKL_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
+    distance_threshold = kwargs.pop("distance_threshold", None)
+    plda: PldaModel = kwargs.pop("plda", None)
+    min_cluster_size = kwargs.pop("min_cluster_size", 15)
 
-    if cluster_type == "affinity":
-        c_labels = AffinityPropagation(affinity=metric, **kwargs).fit_predict(to_fit)
-    elif cluster_type == "agglomerative":
-        c_labels = AgglomerativeClustering(affinity=metric, **kwargs).fit_predict(to_fit)
-    elif cluster_type == "spectral":
-        c_labels = SpectralClustering(
-            affinity=metric, n_jobs=GLOBAL_CONFIG.current_profile.num_jobs, **kwargs
+    score_metric = metric.value
+    if score_metric == "plda":
+        score_metric = plda
+    to_fit = ivectors
+    score_metric_params = None
+    if score_metric == "plda" and cluster_type is not ClusterType.affinity:
+        logger.debug("Generating precomputed distance matrix...")
+        begin = time.time()
+
+        to_fit = to_fit.astype("float64")
+        psi = plda.psi.astype("float64")
+        to_fit = pairwise_plda_distance_matrix(to_fit, psi)
+        logger.debug(f"Precomputed distance matrix took {time.time() - begin:.3f} seconds")
+        score_metric = "precomputed"
+    if cluster_type is ClusterType.affinity:
+        affinity = metric
+        if metric is DistanceMetric.cosine:
+            to_fit = preprocessing.normalize(to_fit, norm="l2")
+            score_metric = "euclidean"
+            affinity = "euclidean"
+        elif metric is DistanceMetric.plda:
+            logger.debug("Generating precomputed distance matrix...")
+            to_fit = metrics.pairwise_distances(
+                to_fit,
+                to_fit,
+                metric=plda.log_likelihood,
+                n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
+            )
+
+            score_metric = "precomputed"
+            affinity = "precomputed"
+        c_labels = cluster.AffinityPropagation(
+            affinity=affinity,
+            copy=False,
+            random_state=GLOBAL_CONFIG.current_profile.seed,
+            verbose=GLOBAL_CONFIG.current_profile.verbose,
+            **kwargs,
         ).fit_predict(to_fit)
-    elif cluster_type == "dbscan":
-        c_labels = DBSCAN(
-            metric=metric, n_jobs=GLOBAL_CONFIG.current_profile.num_jobs, **kwargs
+    elif cluster_type is ClusterType.agglomerative:
+        if metric is DistanceMetric.cosine:
+            to_fit = preprocessing.normalize(to_fit, norm="l2")
+            score_metric = "euclidean"
+        if not kwargs["n_clusters"]:
+            if distance_threshold is not None:
+                eps = distance_threshold
+            else:
+                eps = calculate_distance_threshold(
+                    score_metric,
+                    to_fit,
+                    min_cluster_size,
+                    working_directory,
+                    score_metric_params=score_metric_params,
+                    no_visuals=no_visuals,
+                )
+            kwargs["distance_threshold"] = eps
+        c_labels = cluster.AgglomerativeClustering(metric=score_metric, **kwargs).fit_predict(
+            to_fit
+        )
+    elif cluster_type is ClusterType.spectral:
+        affinity = "nearest_neighbors"
+        if metric is DistanceMetric.cosine:
+            to_fit = preprocessing.normalize(to_fit, norm="l2")
+            score_metric = "euclidean"
+        elif metric is DistanceMetric.plda:
+            logger.info("Generating precomputed distance matrix...")
+            affinity = "precomputed_nearest_neighbors"
+            to_fit = metrics.pairwise_distances(
+                to_fit, to_fit, metric=score_metric, n_jobs=GLOBAL_CONFIG.current_profile.num_jobs
+            )
+            np.fill_diagonal(to_fit, 0)
+            score_metric = "precomputed"
+        c_labels = cluster.SpectralClustering(
+            affinity=affinity,
+            n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
+            random_state=GLOBAL_CONFIG.current_profile.seed,
+            verbose=GLOBAL_CONFIG.current_profile.verbose,
+            **kwargs,
         ).fit_predict(to_fit)
-    elif cluster_type == "hdbscan":
+    elif cluster_type is ClusterType.dbscan:
+        if distance_threshold is not None:
+            eps = distance_threshold
+        else:
+            eps = calculate_distance_threshold(
+                score_metric,
+                to_fit,
+                min_cluster_size,
+                working_directory,
+                score_metric_params=score_metric_params,
+                no_visuals=no_visuals,
+            )
+        c_labels = cluster.DBSCAN(
+            min_samples=min_cluster_size,
+            metric=score_metric,
+            eps=eps,
+            n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
+            **kwargs,
+        ).fit_predict(to_fit)
+    elif cluster_type is ClusterType.meanshift:
+        if score_metric == "cosine":
+            to_fit = preprocessing.normalize(to_fit, norm="l2")
+            score_metric = "euclidean"
+        c_labels = cluster.MeanShift(
+            n_jobs=GLOBAL_CONFIG.current_profile.num_jobs, **kwargs
+        ).fit_predict(to_fit)
+    elif cluster_type is ClusterType.hdbscan:
+        if score_metric == "cosine":
+            to_fit = preprocessing.normalize(to_fit, norm="l2")
+            score_metric = "euclidean"
+        min_samples = max(5, int(min_cluster_size / 4))
+        if distance_threshold is not None:
+            eps = distance_threshold
+        else:
+            eps = calculate_distance_threshold(
+                score_metric,
+                to_fit,
+                min_cluster_size,
+                working_directory,
+                score_metric_params=score_metric_params,
+                no_visuals=no_visuals,
+            )
+        if score_metric == "precomputed" or metric is DistanceMetric.plda:
+            algorithm = "best"
+        else:
+            algorithm = "boruvka_balltree"
         c_labels = hdbscan.HDBSCAN(
-            metric=metric, core_dist_n_jobs=GLOBAL_CONFIG.current_profile.num_jobs, **kwargs
+            min_samples=min_samples,
+            min_cluster_size=min_cluster_size,
+            cluster_selection_epsilon=eps,
+            metric=score_metric,
+            algorithm=algorithm,
+            core_dist_n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
+            **kwargs,
         ).fit_predict(to_fit)
-    elif cluster_type == "optics":
-        c_labels = OPTICS(
-            metric=metric, n_jobs=GLOBAL_CONFIG.current_profile.num_jobs, **kwargs
+    elif cluster_type is ClusterType.optics:
+        if distance_threshold is not None:
+            eps = distance_threshold
+        else:
+            eps = calculate_distance_threshold(
+                score_metric,
+                to_fit,
+                min_cluster_size,
+                working_directory,
+                score_metric_params=score_metric_params,
+                no_visuals=no_visuals,
+            )
+        c_labels = cluster.OPTICS(
+            min_samples=min_cluster_size,
+            max_eps=eps,
+            metric=score_metric,
+            n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
+            **kwargs,
         ).fit_predict(to_fit)
-    elif cluster_type == "kmeans":
-        c_labels = MiniBatchKMeans(**kwargs).fit_predict(to_fit)
+    elif cluster_type is ClusterType.kmeans:
+        if score_metric == "cosine":
+            to_fit = preprocessing.normalize(to_fit, norm="l2")
+            score_metric = "euclidean"
+        c_labels = cluster.MiniBatchKMeans(
+            verbose=GLOBAL_CONFIG.current_profile.verbose, n_init="auto", **kwargs
+        ).fit_predict(to_fit)
     else:
         raise NotImplementedError(f"The cluster type '{cluster_type}' is not supported.")
+    num_clusters = np.unique(c_labels).shape[0]
+    logger.debug(f"Found {num_clusters} clusters")
     try:
-        score = metrics.silhouette_score(to_fit, c_labels, metric=metric)
+        if score_metric == "plda":
+            score_metric = plda.distance
+        elif score_metric == "precomputed":
+            if cluster_type is ClusterType.affinity:
+                to_fit = np.max(to_fit) - to_fit
+            np.fill_diagonal(to_fit, 0)
+        score = metrics.silhouette_score(to_fit, c_labels, metric=score_metric)
         logger.debug(f"Silhouette score (-1-1): {score}")
     except ValueError:
-        logger.warning(
-            "Only found one cluster, please adjust cluster parameters to generate more clusters."
-        )
-        raise
-
+        if num_clusters == 1:
+            logger.warning(
+                "Only found one cluster, please adjust cluster parameters to generate more clusters."
+            )
+            if strict:
+                raise
     os.environ["OMP_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
     os.environ["OPENBLAS_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
     os.environ["MKL_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
@@ -267,10 +488,58 @@ class PldaClassificationFunction(KaldiFunction):
     def __init__(self, args: PldaClassificationArguments):
         super().__init__(args)
         self.plda = args.plda
+        self.train_ivector_path = args.train_ivector_path
+        self.num_utts_path = args.num_utts_path
+        self.use_xvector = args.use_xvector
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
         """Run the function"""
+        os.environ["OMP_NUM_THREADS"] = "3"
+        os.environ["OPENBLAS_NUM_THREADS"] = "3"
+        os.environ["MKL_NUM_THREADS"] = "3"
         db_engine = sqlalchemy.create_engine(self.db_string)
+        utterance_counts = {}
+        with open(self.num_utts_path) as f:
+            for line in f:
+                speaker, utt_count = line.strip().split()
+                utterance_counts[int(speaker)] = int(utt_count)
+        input_proc = subprocess.Popen(
+            [
+                thirdparty_binary("ivector-subtract-global-mean"),
+                f"ark:{self.train_ivector_path}",
+                "ark,t:-",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=os.environ,
+        )
+        speaker_ids = []
+        speaker_counts = []
+        if self.use_xvector:
+            dim = XVECTOR_DIMENSION
+        else:
+            dim = IVECTOR_DIMENSION
+        speaker_ivectors = np.empty((len(utterance_counts), dim))
+        for speaker_id, ivector in read_feats(input_proc, raw_id=True):
+            speaker_id = int(speaker_id)
+            if speaker_id not in utterance_counts:
+                continue
+            speaker_ivectors[len(speaker_ids), :] = ivector
+            speaker_ids.append(speaker_id)
+            speaker_counts.append(utterance_counts[speaker_id])
+        speaker_counts = np.array(speaker_counts)
+        speaker_ivectors = speaker_ivectors.astype("float64")
+        self.plda.psi = self.plda.psi.astype("float64")
+        speaker_ivectors = self.plda.process_ivectors(speaker_ivectors, counts=speaker_counts)
+        classification_args = compute_classification_stats(
+            speaker_ivectors, self.plda.psi, counts=speaker_counts
+        )
+        lines = []
+        for line in input_proc.stdout:
+            lines.append(line)
+        input_proc.wait()
+        for line in input_proc.stdout:
+            lines.append(line)
         with Session(db_engine) as session:
 
             job: Job = (
@@ -280,54 +549,128 @@ class PldaClassificationFunction(KaldiFunction):
                 .first()
             )
             utterances = (
-                session.query(
-                    Utterance.id, Utterance.ivector, Utterance.speaker_id, Utterance.file_id
-                )
-                .filter(Utterance.ignored == False)  # noqa
+                session.query(Utterance.id, Utterance.plda_vector)
+                .filter(Utterance.plda_vector != None)  # noqa
                 .filter(Utterance.job_id == job.id)
                 .order_by(Utterance.kaldi_id)
             )
-            speakers = session.query(Speaker.id, Speaker.ivector).filter(
-                Speaker.ivector != None  # noqa
+            for u_id, u_ivector in utterances:
+                ind, score = classify_plda(u_ivector.astype("float64"), *classification_args)
+                speaker = speaker_ids[ind]
+                yield u_id, speaker, score
+        db_engine.dispose()
+
+
+class ComputeEerFunction(KaldiFunction):
+    """
+    Multiprocessing function to compute voice activity detection
+
+    See Also
+    --------
+    :meth:`.AcousticCorpusMixin.compute_vad`
+        Main function that calls this function in parallel
+    :meth:`.AcousticCorpusMixin.compute_vad_arguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`compute-vad`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.corpus.features.VadArguments`
+        Arguments for the function
+    """
+
+    def __init__(self, args: ComputeEerArguments):
+        super().__init__(args)
+        self.plda = args.plda
+        self.metric = args.metric
+        self.use_xvector = args.use_xvector
+        self.limit_within_speaker = args.limit_within_speaker
+        self.limit_per_speaker = args.limit_per_speaker
+
+    # noinspection PyTypeChecker
+    def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
+        """Run the function"""
+        db_engine = sqlalchemy.create_engine(self.db_string)
+        if self.use_xvector:
+            columns = [Utterance.id, Utterance.speaker_id, Utterance.xvector]
+            filter = Utterance.xvector != None  # noqa
+        else:
+            columns = [Utterance.id, Utterance.speaker_id, Utterance.plda_vector]
+            filter = Utterance.plda_vector != None  # noqa
+        with Session(db_engine) as session:
+            speakers = (
+                session.query(Speaker.id)
+                .join(Speaker.utterances)
+                .filter(Utterance.job_id == self.job_name)
+                .order_by(Speaker.id)
+                .distinct(Speaker.id)
             )
-            speaker_count = speakers.count()
-            speaker_ids = []
-            speaker_ivectors = np.empty((speaker_count, PLDA_DIMENSION))
-            for i, (s_id, s_ivector) in enumerate(speakers):
-                speaker_ids.append(s_id)
-                speaker_ivectors[i, :] = s_ivector
-            for u_id, u_ivector, speaker_id, file_id in utterances:
-                affinity_matrix = score_plda(
-                    speaker_ivectors, u_ivector[np.newaxis, :], self.plda.psi
+            for (s_id,) in speakers:
+                match_scores = []
+                mismatch_scores = []
+                random_within_speaker = (
+                    session.query(*columns)
+                    .filter(filter, Utterance.speaker_id == s_id)
+                    .order_by(sqlalchemy.func.random())
+                    .limit(self.limit_within_speaker)
                 )
-                speaker = speaker_ids[affinity_matrix.argmax(axis=1)[0]]
-                yield u_id, file_id, speaker_id, speaker
+                for u_id, s_id, u_ivector in random_within_speaker:
+                    comp_query = (
+                        session.query(columns[2])
+                        .filter(filter, Utterance.speaker_id == s_id, Utterance.id != u_id)
+                        .order_by(sqlalchemy.func.random())
+                        .limit(self.limit_within_speaker)
+                    )
+                    for (u2_ivector,) in comp_query:
+                        if self.metric is DistanceMetric.plda:
+                            score = self.plda.distance(u_ivector, u2_ivector)
+                        elif self.metric is DistanceMetric.cosine:
+                            score = distance.cosine(u_ivector, u2_ivector)
+                        else:
+                            score = distance.euclidean(u_ivector, u2_ivector)
+                        match_scores.append(score)
+                other_speakers = session.query(Speaker.id).filter(Speaker.id != s_id)
+                for (o_s_id,) in other_speakers:
+                    random_out_speaker = (
+                        session.query(columns[2])
+                        .filter(filter, Utterance.speaker_id == s_id)
+                        .order_by(sqlalchemy.func.random())
+                        .limit(self.limit_per_speaker)
+                    )
+                    for (u_ivector,) in random_out_speaker:
+                        comp_query = (
+                            session.query(columns[2])
+                            .filter(filter, Utterance.speaker_id == o_s_id)
+                            .order_by(sqlalchemy.func.random())
+                            .limit(self.limit_per_speaker)
+                        )
+                        for (u2_ivector,) in comp_query:
+                            if self.metric is DistanceMetric.plda:
+                                score = self.plda.distance(u_ivector, u2_ivector)
+                            elif self.metric is DistanceMetric.cosine:
+                                score = distance.cosine(u_ivector, u2_ivector)
+                            else:
+                                score = distance.euclidean(u_ivector, u2_ivector)
+                            mismatch_scores.append(score)
+                yield match_scores, mismatch_scores
         db_engine.dispose()
 
 
 class SpeechbrainClassificationFunction(KaldiFunction):
     """
-    Multiprocessing function to compute voice activity detection
-
-    See Also
-    --------
-    :meth:`.AcousticCorpusMixin.compute_vad`
-        Main function that calls this function in parallel
-    :meth:`.AcousticCorpusMixin.compute_vad_arguments`
-        Job method for generating arguments for this function
-    :kaldi_src:`compute-vad`
-        Relevant Kaldi binary
+    Multiprocessing function to classify speakers based on a speechbrain model
 
     Parameters
     ----------
-    args: :class:`~montreal_forced_aligner.corpus.features.VadArguments`
+    args: :class:`~montreal_forced_aligner.diarization.multiprocessing.SpeechbrainArguments`
         Arguments for the function
     """
 
     def __init__(self, args: SpeechbrainArguments):
         super().__init__(args)
         self.cuda = args.cuda
-        self.cuda_batch_size = args.cuda_batch_size
+        self.cluster = args.cluster
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
         """Run the function"""
@@ -344,6 +687,7 @@ class SpeechbrainClassificationFunction(KaldiFunction):
             ),
             run_opts=run_opts,
         )
+        device = torch.device("cuda" if self.cuda else "cpu")
         with Session(db_engine) as session:
 
             job: Job = (
@@ -352,80 +696,55 @@ class SpeechbrainClassificationFunction(KaldiFunction):
                 .filter(Job.id == self.job_name)
                 .first()
             )
-            utterances = (
-                session.query(
-                    Utterance.id,
-                    Utterance.file_id,
-                    Utterance.begin,
-                    Utterance.duration,
-                    SoundFile.sound_file_path,
-                )
-                .join(Utterance.file)
-                .join(File.sound_file)
-                .filter(Utterance.job_id == job.id)
+            utterances = session.query(Utterance.id, Utterance.xvector).filter(
+                Utterance.xvector != None, Utterance.job_id == job.id  # noqa
             )
-            for u_id, file_id, begin, duration, sound_file_path in utterances:
-                y, sr = librosa.load(
-                    sound_file_path,
-                    sr=16000,
-                    mono=False,
-                    offset=begin,
-                    duration=duration,
-                )
-                y = torch.tensor(y)
-                y = model.audio_normalizer(y, sr)
-                y = y.unsqueeze(0)
-                length = torch.tensor([1.0])
-                (
-                    out_prob,
-                    score,
-                    index,
-                    text_lab,
-                ) = model.classify_batch(y, length)
+            for u_id, ivector in utterances:
+                ivector = torch.tensor(ivector, device=device).unsqueeze(0).unsqueeze(0)
+                out_prob = model.mods.classifier(ivector).squeeze(1)
+                score, index = torch.max(out_prob, dim=-1)
+                text_lab = model.hparams.label_encoder.decode_torch(index)
                 new_speaker = text_lab[0]
                 del out_prob
-                del score
                 del index
+                yield u_id, new_speaker, float(score.cpu().numpy())
                 del text_lab
-                del y
-                del length
+                del new_speaker
+                del score
                 if self.cuda:
                     torch.cuda.empty_cache()
-                yield u_id, file_id, new_speaker
+        del model
+        if self.cuda:
+            torch.cuda.empty_cache()
         db_engine.dispose()
 
 
 class SpeechbrainEmbeddingFunction(KaldiFunction):
     """
-    Multiprocessing function to compute voice activity detection
-
-    See Also
-    --------
-    :meth:`.AcousticCorpusMixin.compute_vad`
-        Main function that calls this function in parallel
-    :meth:`.AcousticCorpusMixin.compute_vad_arguments`
-        Job method for generating arguments for this function
-    :kaldi_src:`compute-vad`
-        Relevant Kaldi binary
+    Multiprocessing function to generating xvector embeddings from a speechbrain model
 
     Parameters
     ----------
-    args: :class:`~montreal_forced_aligner.corpus.features.VadArguments`
+    args: :class:`~montreal_forced_aligner.diarization.multiprocessing.SpeechbrainArguments`
         Arguments for the function
     """
 
     def __init__(self, args: SpeechbrainArguments):
         super().__init__(args)
         self.cuda = args.cuda
-        self.cuda_batch_size = args.cuda_batch_size
+        self.cluster = args.cluster
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
         run_opts = None
         if self.cuda:
             run_opts = {"device": "cuda"}
-        model = EncoderClassifier.from_hparams(
+        if self.cluster:
+            model_class = SpeakerRecognition
+        else:
+            model_class = EncoderClassifier
+
+        model = model_class.from_hparams(
             source="speechbrain/spkrec-ecapa-voxceleb",
             savedir=os.path.join(
                 GLOBAL_CONFIG.current_profile.temporary_directory,
@@ -434,59 +753,76 @@ class SpeechbrainEmbeddingFunction(KaldiFunction):
             ),
             run_opts=run_opts,
         )
-        with Session(db_engine) as session:
 
-            job: Job = (
-                session.query(Job)
-                .options(joinedload(Job.corpus, innerjoin=True))
-                .filter(Job.id == self.job_name)
-                .first()
-            )
-            utterances = (
-                session.query(
-                    Utterance.id,
-                    Utterance.file_id,
-                    Utterance.speaker_id,
-                    Utterance.begin,
-                    Utterance.duration,
-                    SoundFile.sound_file_path,
+        return_q = mp.Queue(2)
+        finished_adding = Stopped()
+        stopped = Stopped()
+        loader = UtteranceFileLoader(
+            self.job_name, self.db_string, return_q, stopped, finished_adding
+        )
+        loader.start()
+        exception = None
+        device = torch.device("cuda" if self.cuda else "cpu")
+        while True:
+            try:
+                result = return_q.get(timeout=1)
+            except queue.Empty:
+                if finished_adding.stop_check():
+                    break
+                continue
+            if stopped.stop_check():
+                continue
+            if isinstance(result, Exception):
+                stopped.stop()
+                continue
+
+            u_id, y = result
+            emb = (
+                model.encode_batch(
+                    torch.tensor(y[np.newaxis, :], device=device), normalize=self.cluster
                 )
-                .join(Utterance.file)
-                .join(File.sound_file)
-                .filter(Utterance.job_id == job.id)
+                .cpu()
+                .numpy()
+                .squeeze(axis=1)
             )
-            for u_id, file_id, speaker_id, begin, duration, sound_file_path in utterances:
-                y, sr = librosa.load(
-                    sound_file_path,
-                    sr=16000,
-                    mono=False,
-                    offset=begin,
-                    duration=duration,
-                )
-                y = torch.tensor(y)
-                y = model.audio_normalizer(y, sr)
-                y = y.unsqueeze(0)
-                length = torch.tensor([1.0])
-                emb = model.encode_batch(y, length).cpu().numpy().squeeze(axis=1)
-                yield u_id, file_id, speaker_id, emb[0]
+            yield u_id, emb[0]
+            del emb
+            if self.cuda:
+                torch.cuda.empty_cache()
 
-                del emb
-                if self.cuda:
-                    gc.collect()
-                    torch.cuda.empty_cache()
-
-        db_engine.dispose()
+        loader.join()
+        if exception:
+            raise Exception
 
 
 class UtteranceFileLoader(mp.Process):
+    """
+    Helper process for loading utterance waveforms in parallel with embedding extraction
+
+    Parameters
+    ----------
+    job_name: int
+        Job identifier
+    db_string: str
+        Connection string for database
+    return_q: multiprocessing.Queue
+        Queue to put waveforms
+    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
+        Check for whether the process to exit gracefully
+    finished_adding: :class:`~montreal_forced_aligner.utils.Stopped`
+        Check for whether the worker has processed all utterances
+    """
+
     def __init__(
         self,
+        job_name: int,
         db_string: str,
         return_q: mp.Queue,
         stopped: Stopped,
         finished_adding: Stopped,
     ):
         super().__init__()
+        self.job_name = job_name
         self.db_string = db_string
         self.return_q = return_q
         self.stopped = stopped
@@ -494,7 +830,7 @@ class UtteranceFileLoader(mp.Process):
 
     def run(self) -> None:
         """
-        Run the corpus loading job
+        Run the waveform loading job
         """
         db_engine = sqlalchemy.create_engine(self.db_string)
         with Session(db_engine) as session:
@@ -502,16 +838,15 @@ class UtteranceFileLoader(mp.Process):
                 utterances = (
                     session.query(
                         Utterance.id,
-                        Utterance.file_id,
-                        Utterance.speaker_id,
                         Utterance.begin,
                         Utterance.duration,
                         SoundFile.sound_file_path,
                     )
                     .join(Utterance.file)
                     .join(File.sound_file)
+                    .filter(Utterance.job_id == self.job_name)
                 )
-                for u_id, file_id, speaker_id, begin, duration, sound_file_path in utterances:
+                for u_id, begin, duration, sound_file_path in utterances:
                     if self.stopped.stop_check():
                         break
                     y, _ = librosa.load(
@@ -521,7 +856,7 @@ class UtteranceFileLoader(mp.Process):
                         offset=begin,
                         duration=duration,
                     )
-                    self.return_q.put((u_id, file_id, speaker_id, y))
+                    self.return_q.put((u_id, y))
             except Exception as e:
                 self.return_q.put(e)
             finally:

@@ -245,6 +245,36 @@ class WordType(enum.Enum):
     disambiguation = 10  #: Disambiguation symbols internal to Kaldi
 
 
+class DistanceMetric(enum.Enum):
+
+    cosine = "cosine"
+    plda = "plda"
+    euclidean = "euclidean"
+
+
+class ClusterType(enum.Enum):
+    """Enum for supported clustering algorithms"""
+
+    mfa = "mfa"
+    affinity = "affinity"
+    agglomerative = "agglomerative"
+    spectral = "spectral"
+    dbscan = "dbscan"
+    hdbscan = "hdbscan"
+    optics = "optics"
+    kmeans = "kmeans"
+    meanshift = "meanshift"
+
+
+class ManifoldAlgorithm(enum.Enum):
+    """Enum for supported manifold visualization algorithms"""
+
+    tsne = "tsne"
+    mds = "mds"
+    spectral = "spectral"
+    isomap = "isomap"
+
+
 class PhoneSetType(enum.Enum):
     """Enum for types of phone sets"""
 
@@ -1711,10 +1741,10 @@ class CtmInterval:
         """
         if self.end < -1 or self.begin == 1000000:
             raise CtmError(self)
-        end = round(self.end, 6)
+        end = round(self.end, 5)
         if file_duration is not None and end > file_duration:
             end = file_duration
-        return Interval(round(self.begin, 6), end, self.label)
+        return Interval(round(self.begin, 5), end, self.label)
 
 
 # noinspection PyUnresolvedReferences

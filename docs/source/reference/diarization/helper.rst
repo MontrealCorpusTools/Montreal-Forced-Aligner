@@ -9,3 +9,9 @@ Helper functions
 
    PldaClassificationFunction
    PldaClassificationArguments
+   ComputeEerFunction
+   ComputeEerArguments
+   SpeechbrainEmbeddingFunction
+   SpeechbrainClassificationFunction
+   SpeechbrainArguments
+   cluster_matrix

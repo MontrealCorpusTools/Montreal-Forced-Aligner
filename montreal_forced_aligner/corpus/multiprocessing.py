@@ -268,6 +268,7 @@ class NormalizeTextArguments(MfaArguments):
     oov_word: str
     bracketed_word: str
     ignore_case: bool
+    use_g2p: bool
 
 
 @dataclass
@@ -301,6 +302,7 @@ class NormalizeTextFunction(KaldiFunction):
         self.compound_markers = args.compound_markers
         self.clitic_markers = args.clitic_markers
         self.ignore_case = args.ignore_case
+        self.use_g2p = args.use_g2p
         self.laughter_word = args.laughter_word
         self.oov_word = args.oov_word
         self.bracketed_word = args.bracketed_word
@@ -418,9 +420,9 @@ class NormalizeTextFunction(KaldiFunction):
                 initial_clitics = sorted(x for x in clitic_set if x.endswith(self.clitic_marker))
                 final_clitics = sorted(x for x in clitic_set if x.startswith(self.clitic_marker))
                 if initial_clitics:
-                    initial_clitic_regex = re.compile(rf"^{'|'.join(initial_clitics)}(?=\w)")
+                    initial_clitic_regex = re.compile(rf"^({'|'.join(initial_clitics)})(?=\w)")
                 if final_clitics:
-                    final_clitic_regex = re.compile(rf"(?<=\w){'|'.join(final_clitics)}$")
+                    final_clitic_regex = re.compile(rf"(?<=\w)({'|'.join(final_clitics)})$")
 
             non_speech_regexes = {}
             if self.laughter_regex is not None:
@@ -452,11 +454,15 @@ class NormalizeTextFunction(KaldiFunction):
                 text = ""
                 for w in words:
                     for new_w in split_function(w):
-                        if new_w in split_function.specials_set or new_w not in words_mapping:
+                        if new_w not in words_mapping:
                             oovs.add(new_w)
                         normalized_text.append(split_function.to_str(new_w))
                         if normalized_character_text:
-                            normalized_character_text.append("<space>")
+                            if not self.clitic_marker or (
+                                not normalized_text[-1].endswith(self.clitic_marker)
+                                and not new_w.startswith(self.clitic_marker)
+                            ):
+                                normalized_character_text.append("<space>")
                         for c in split_function.parse_graphemes(new_w):
                             normalized_character_text.append(c)
                     if text:
@@ -503,7 +509,7 @@ class NormalizeTextFunction(KaldiFunction):
         db_engine = sqlalchemy.create_engine(self.db_string)
         with Session(db_engine) as session:
             dict_count = session.query(Dictionary).join(Dictionary.words).limit(1).count()
-            if dict_count > 0:
+            if self.use_g2p or dict_count > 0:
                 yield from self._dictionary_sanitize(session)
             else:
                 yield from self._no_dictionary_sanitize(session)

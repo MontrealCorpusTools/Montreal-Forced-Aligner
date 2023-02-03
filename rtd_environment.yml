@@ -11,7 +11,7 @@ dependencies:
   - pyyaml
   - praatio
   - dataclassy
-  - sqlalchemy>=1.4
+  - sqlalchemy>=2.0
   - pynini
   - pgvector
   - pgvector-python
@@ -32,6 +32,9 @@ dependencies:
   - mock
   - setuptools-scm
   - numba
+  - kneed
+  - matplotlib
+  - seaborn
   - pip:
       - sphinx-needs
       - sphinxcontrib-plantuml

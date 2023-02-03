@@ -219,6 +219,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         exist_check = retcode != 0
         with self.db_engine.connect() as conn:
             conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS vector"))
+            conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
             conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"))
             conn.commit()
         if exist_check:
@@ -627,7 +628,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
             if self.dirty:
                 logger.error("There was an error in the run, please see the log.")
             else:
-                logger.info(f"Done! Everything took {time.time() - self.start_time} seconds")
+                logger.info(f"Done! Everything took {time.time() - self.start_time:.3f} seconds")
             handlers = logger.handlers[:]
             for handler in handlers:
                 if isinstance(handler, logging.FileHandler):

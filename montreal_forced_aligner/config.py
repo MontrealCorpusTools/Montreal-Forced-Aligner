@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Union
 
 import click
 import dataclassy
+import joblib
 import yaml
 from dataclassy import dataclass
 
@@ -31,7 +32,9 @@ __all__ = [
 MFA_ROOT_ENVIRONMENT_VARIABLE = "MFA_ROOT_DIR"
 MFA_PROFILE_VARIABLE = "MFA_PROFILE"
 
-PLDA_DIMENSION = 100
+IVECTOR_DIMENSION = 192
+XVECTOR_DIMENSION = 192
+PLDA_DIMENSION = 192
 
 
 def get_temporary_directory():
@@ -138,6 +141,8 @@ class MfaProfile:
     detect_phone_set: bool = False
     database_backend: str = "psycopg2"
     database_port: int = 5432
+    bytes_limit: int = 100e6
+    seed: int = 0
     num_jobs: int = 3
     blas_num_threads: int = 1
     use_mp: bool = True
@@ -229,3 +234,8 @@ class MfaConfiguration:
 
 
 GLOBAL_CONFIG = MfaConfiguration()
+MEMORY = joblib.Memory(
+    location=os.path.join(get_temporary_directory(), "joblib_cache"),
+    verbose=4 if GLOBAL_CONFIG.current_profile.verbose else 0,
+    bytes_limit=GLOBAL_CONFIG.current_profile.bytes_limit,
+)

@@ -145,6 +145,7 @@ class TrainLmFunction(KaldiFunction):
                     thirdparty_binary("farcompilestrings"),
                     "--token_type=symbol",
                     "--generate_keys=16",
+                    "--keep_symbols",
                     f"--symbols={self.symbols_path}",
                 ],
                 stderr=log_file,
@@ -155,7 +156,6 @@ class TrainLmFunction(KaldiFunction):
             ngramcount_proc = subprocess.Popen(
                 [
                     thirdparty_binary("ngramcount"),
-                    "--require_symbols=false",
                     "--round_to_int",
                     f"--order={self.order}",
                     "-",

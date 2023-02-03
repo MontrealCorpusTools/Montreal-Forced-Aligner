@@ -447,6 +447,11 @@ class AcousticModel(Archive):
                     self._meta["features"] = default_features
                     if "pitch" in self._meta["features"]:
                         self._meta["features"]["use_pitch"] = self._meta["features"].pop("pitch")
+                if (
+                    self._meta["features"].get("use_pitch", False)
+                    and self._meta["version"] < "2.0.6"
+                ):
+                    self._meta["features"]["use_delta_pitch"] = True
             if "phone_type" not in self._meta:
                 self._meta["phone_type"] = "triphone"
             if "optional_silence_phone" not in self._meta:
@@ -485,8 +490,12 @@ class AcousticModel(Archive):
                 "dictionaries" in self._meta
                 and "position_dependent_phones" not in self._meta["dictionaries"]
             ):
+                if self._meta["version"] < "2.0":
+                    default_value = True
+                else:
+                    default_value = False
                 self._meta["dictionaries"]["position_dependent_phones"] = self._meta.get(
-                    "position_dependent_phones", True
+                    "position_dependent_phones", default_value
                 )
         self.parse_old_features()
         return self._meta
@@ -553,9 +562,9 @@ class AcousticModel(Archive):
             Base names of dictionaries to add pronunciation models
         """
         for base_name in dictionary_base_names:
-            f = f"{base_name}.fst"
-            if os.path.exists(os.path.join(source, f)):
-                copyfile(os.path.join(source, f), os.path.join(self.dirname, f))
+            for f in [f"{base_name}.fst", f"{base_name}_align.fst"]:
+                if os.path.exists(os.path.join(source, f)):
+                    copyfile(os.path.join(source, f), os.path.join(self.dirname, f))
 
     def export_model(self, destination: str) -> None:
         """
@@ -625,9 +634,9 @@ class IvectorExtractorModel(Archive):
         "final.ie",
         "final.ubm",
         "final.dubm",
+        "ivector_lda.mat",
         "plda",
         "num_utts.ark",
-        "speaker_ivectors.scp",
         "speaker_ivectors.ark",
     ]
     extensions = [

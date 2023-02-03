@@ -34,8 +34,6 @@ def test_configure(
     assert os.path.exists(path)
     global_config.load()
 
-    print(os.getenv("MFA_PROFILE"))
-    print(os.environ)
     assert global_config.current_profile_name == "test"
     assert global_config.current_profile.num_jobs == 10
     assert not global_config.current_profile.use_mp

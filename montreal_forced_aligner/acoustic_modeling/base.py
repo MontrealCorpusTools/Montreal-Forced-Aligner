@@ -241,7 +241,9 @@ class AcousticModelTrainingMixin(
         self.compute_calculated_properties()
         self.current_gaussians = self.initial_gaussians
         logger.info("Initialization complete!")
-        logger.debug(f"Initialization for {self.identifier} took {time.time() - begin} seconds")
+        logger.debug(
+            f"Initialization for {self.identifier} took {time.time() - begin:.3f} seconds"
+        )
 
     @abstractmethod
     def _trainer_initialization(self) -> None:
@@ -502,7 +504,7 @@ class AcousticModelTrainingMixin(
                     e.update_log_file()
             raise
         logger.info("Training complete!")
-        logger.debug(f"Training took {time.time() - begin} seconds")
+        logger.debug(f"Training took {time.time() - begin:.3f} seconds")
 
     @property
     def exported_model_path(self) -> str:
@@ -611,13 +613,13 @@ class AcousticModelTrainingMixin(
                 "bracketed_word": self.worker.bracketed_word,
                 "laughter_word": self.worker.laughter_word,
                 "clitic_marker": self.worker.clitic_marker,
+                "position_dependent_phones": self.worker.position_dependent_phones,
             },
             "features": self.feature_options,
             "oov_phone": self.worker.oov_phone,
             "optional_silence_phone": self.worker.optional_silence_phone,
             "phone_set_type": str(self.worker.phone_set_type),
             "silence_probability": self.worker.silence_probability,
-            "position_dependent_phones": self.worker.position_dependent_phones,
             "initial_silence_probability": self.worker.initial_silence_probability,
             "final_silence_correction": self.worker.final_silence_correction,
             "final_non_silence_correction": self.worker.final_non_silence_correction,

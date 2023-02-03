@@ -164,6 +164,17 @@ class ThirdpartyError(MFAError):
                 )
 
 
+# Feature Generation Errors
+
+
+class FeatureGenerationError(MFAError):
+    """
+    Exception class related to generating features
+    """
+
+    pass
+
+
 # Model Errors
 
 

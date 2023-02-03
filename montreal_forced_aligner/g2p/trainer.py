@@ -149,7 +149,7 @@ class RandomStartWorker(mp.Process):
                             with mfa_open(likelihood_path, "w") as f:
                                 f.write(str(likelihood))
                         log_file.write(
-                            f"{args.seed} training took {time.time() - random_end} seconds\n"
+                            f"{args.seed} training took {time.time() - random_end:.3f} seconds\n"
                         )
                     else:
                         with mfa_open(likelihood_path, "r") as f:
@@ -582,7 +582,7 @@ class PyniniTrainerMixin:
             (best_fst, best_likelihood) = min(fst_likelihoods.items(), key=operator.itemgetter(1))
             logger.info(f"Best likelihood: {best_likelihood}")
             logger.debug(
-                f"Ran {self.random_starts} random starts in {time.time() - begin} seconds"
+                f"Ran {self.random_starts} random starts in {time.time() - begin:.3f} seconds"
             )
             # Moves best likelihood solution to the requested location.
             shutil.move(best_fst, self.align_path)
@@ -812,12 +812,12 @@ class PyniniTrainer(
         else:
             self.align_g2p()
             logger.debug(
-                f"Aligning {len(self.g2p_training_dictionary)} words took {time.time() - begin} seconds"
+                f"Aligning {len(self.g2p_training_dictionary)} words took {time.time() - begin:.3f} seconds"
             )
         begin = time.time()
         self.generate_model()
         logger.debug(
-            f"Generating model for {len(self.g2p_training_dictionary)} words took {time.time() - begin} seconds"
+            f"Generating model for {len(self.g2p_training_dictionary)} words took {time.time() - begin:.3f} seconds"
         )
         self.finalize_training()
 

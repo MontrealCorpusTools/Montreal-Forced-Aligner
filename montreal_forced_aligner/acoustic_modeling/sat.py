@@ -418,4 +418,4 @@ class SatTrainer(TriphoneTrainer):
         if not GLOBAL_CONFIG.debug:
             for f in acc_files:
                 os.remove(f)
-        logger.debug(f"Alignment model creation took {time.time() - begin}")
+        logger.debug(f"Alignment model creation took {time.time() - begin:.3f} seconds")

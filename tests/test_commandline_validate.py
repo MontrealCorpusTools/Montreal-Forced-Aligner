@@ -135,7 +135,7 @@ def test_validate_dictionary_train(
         "validate_dictionary",
         basic_dict_path,
         "-t",
-        os.path.join(temp_dir, "dictionary_validation"),
+        os.path.join(temp_dir, "dictionary_validation_train"),
     ]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True

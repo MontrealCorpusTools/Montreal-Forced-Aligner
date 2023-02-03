@@ -189,8 +189,6 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                 for dict_id, utt_id, phones in run_kaldi_function(
                     GeneratePronunciationsFunction, arguments, pbar.update
                 ):
-                    print(utt_id, phones)
-                    print(texts[utt_id])
                     if utt_id not in texts or not texts[utt_id]:
                         continue
 
@@ -228,11 +226,13 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                 else:
                     self.align_g2p()
                     logger.debug(
-                        f"Aligning utterances for {d.name} took {time.time() - begin} seconds"
+                        f"Aligning utterances for {d.name} took {time.time() - begin:.3f} seconds"
                     )
                 begin = time.time()
                 self.generate_model()
-                logger.debug(f"Generating model for {d.name} took {time.time() - begin} seconds")
+                logger.debug(
+                    f"Generating model for {d.name} took {time.time() - begin:.3f} seconds"
+                )
                 os.rename(d.lexicon_fst_path, d.lexicon_fst_path + ".backup")
                 os.rename(self.fst_path, d.lexicon_fst_path)
 
@@ -247,11 +247,13 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                 begin = time.time()
                 self.align_g2p(self.output_alignment_path)
                 logger.debug(
-                    f"Aligning utterances for {d.name} took {time.time() - begin} seconds"
+                    f"Aligning utterances for {d.name} took {time.time() - begin:.3f} seconds"
                 )
                 begin = time.time()
                 self.generate_model()
-                logger.debug(f"Generating model for {d.name} took {time.time() - begin} seconds")
+                logger.debug(
+                    f"Generating model for {d.name} took {time.time() - begin:.3f} seconds"
+                )
                 os.rename(d.align_lexicon_path, d.align_lexicon_path + ".backup")
                 os.rename(self.fst_path, d.align_lexicon_path)
                 if not GLOBAL_CONFIG.current_profile.debug:

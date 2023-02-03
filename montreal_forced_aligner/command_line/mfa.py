@@ -104,7 +104,8 @@ def mfa_cli() -> None:
     GLOBAL_CONFIG.load()
     from montreal_forced_aligner.helper import configure_logger
 
-    warnings.simplefilter("ignore")
+    if not GLOBAL_CONFIG.current_profile.debug:
+        warnings.simplefilter("ignore")
     configure_logger("mfa")
     check_third_party()
 
@@ -125,7 +126,8 @@ mfa_cli.add_command(create_segments_cli)
 mfa_cli.add_command(configure_cli)
 mfa_cli.add_command(history_cli)
 mfa_cli.add_command(g2p_cli)
-mfa_cli.add_command(model_cli)
+mfa_cli.add_command(model_cli, name="model")
+mfa_cli.add_command(model_cli, name="models")
 mfa_cli.add_command(train_acoustic_model_cli)
 mfa_cli.add_command(train_dictionary_cli)
 mfa_cli.add_command(train_g2p_cli)

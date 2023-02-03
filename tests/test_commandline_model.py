@@ -13,7 +13,6 @@ def test_get_available_languages():
     manager.refresh_remote()
     model_type = "acoustic"
     acoustic_models = manager.remote_models[model_type]
-    print(manager.remote_models)
     assert "archive" not in acoustic_models
     assert "english_us_arpa" in acoustic_models
 

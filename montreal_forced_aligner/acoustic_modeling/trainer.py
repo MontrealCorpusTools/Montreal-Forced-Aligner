@@ -326,10 +326,10 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                     self.create_new_current_workflow(WorkflowType.alignment, name=ali_identifier)
                 else:
                     wf = workflows[identifier]
-                    if wf.dirty:
+                    if wf.dirty and not wf.done:
                         shutil.rmtree(wf.working_directory, ignore_errors=True)
                     ali_wf = workflows[ali_identifier]
-                    if ali_wf.dirty:
+                    if ali_wf.dirty and not ali_wf.done:
                         shutil.rmtree(ali_wf.working_directory, ignore_errors=True)
                     if i == 0:
                         wf.current = True
@@ -472,6 +472,13 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                                 self.dictionary_base_names[d.id] + ".fst",
                             ),
                         )
+                        shutil.copyfile(
+                            d.align_lexicon_path,
+                            os.path.join(
+                                self.training_configs[self.final_identifier].working_directory,
+                                self.dictionary_base_names[d.id] + "_align.fst",
+                            ),
+                        )
                     else:
                         output_dictionary_path = os.path.join(
                             export_directory, base_name + ".dict"
@@ -542,7 +549,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
 
         phone_lm_path = os.path.join(self.phones_dir, "phone_lm.fst")
         new_phone_lm_path = os.path.join(previous.working_directory, "phone_lm.fst")
-        if not os.path.exists(new_phone_lm_path):
+        if not os.path.exists(new_phone_lm_path) and os.path.exists(phone_lm_path):
             shutil.copyfile(phone_lm_path, new_phone_lm_path)
         logger.info(f"Completed training in {time.time()-begin} seconds!")
 
@@ -680,7 +687,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                 phone_pdf_mapping[phone][pdf] += transition_counts[transition_id]
             with mfa_open(os.path.join(self.working_directory, "phone_pdf.counts"), "w") as f:
                 json.dump(phone_pdf_mapping, f, ensure_ascii=False)
-            logger.debug(f"Accumulating transition stats took {time.time() - begin}")
+            logger.debug(f"Accumulating transition stats took {time.time() - begin:.3f} seconds")
             logger.info("Finished accumulating transition stats!")
 
         except Exception as e:

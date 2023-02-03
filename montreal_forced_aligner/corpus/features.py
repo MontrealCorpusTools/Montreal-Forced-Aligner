@@ -12,18 +12,20 @@ from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 import dataclassy
+import numba
 import numpy as np
 import sqlalchemy
 from numba import njit
+from scipy.sparse import csr_matrix
 from sqlalchemy.orm import Session, joinedload
 
 from montreal_forced_aligner.abc import KaldiFunction
-from montreal_forced_aligner.config import PLDA_DIMENSION
+from montreal_forced_aligner.config import IVECTOR_DIMENSION, PLDA_DIMENSION
 from montreal_forced_aligner.data import M_LOG_2PI, MfaArguments
-from montreal_forced_aligner.db import CorpusWorkflow, Job, Utterance
+from montreal_forced_aligner.db import Job, Utterance
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.helper import mfa_open
-from montreal_forced_aligner.utils import thirdparty_binary
+from montreal_forced_aligner.utils import read_feats, thirdparty_binary
 
 if TYPE_CHECKING:
     SpeakerCharacterType = Union[str, int]
@@ -32,13 +34,21 @@ if TYPE_CHECKING:
 
 __all__ = [
     "FeatureConfigMixin",
+    "VadConfigMixin",
+    "IvectorConfigMixin",
     "CalcFmllrFunction",
     "ComputeVadFunction",
     "VadArguments",
+    "MfccFunction",
     "MfccArguments",
     "CalcFmllrArguments",
     "ExtractIvectorsFunction",
     "ExtractIvectorsArguments",
+    "PldaModel",
+    "plda_distance",
+    "plda_log_likelihood",
+    "score_plda",
+    "compute_transform_process",
 ]
 
 logger = logging.getLogger("mfa")
@@ -56,16 +66,6 @@ class VadArguments(MfaArguments):
 
 # noinspection PyUnresolvedReferences
 @dataclassy.dataclass(slots=True)
-class RecomputeVadArguments(MfaArguments):
-    """Arguments for :class:`~montreal_forced_aligner.corpus.features.ComputeVadFunction`"""
-
-    dubm_model: str
-    vad_options: MetaDict
-    ivector_options: MetaDict
-
-
-# noinspection PyUnresolvedReferences
-@dataclassy.dataclass(slots=True)
 class MfccArguments(MfaArguments):
     """
     Arguments for :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
@@ -73,6 +73,41 @@ class MfccArguments(MfaArguments):
 
     data_directory: str
     mfcc_options: MetaDict
+    pitch_options: MetaDict
+
+
+# noinspection PyUnresolvedReferences
+@dataclassy.dataclass(slots=True)
+class FinalFeatureArguments(MfaArguments):
+    """
+    Arguments for :class:`~montreal_forced_aligner.corpus.features.FinalFeatureFunction`
+    """
+
+    data_directory: str
+    uses_cmvn: bool
+    voiced_only: bool
+    subsample_feats: int
+
+
+# noinspection PyUnresolvedReferences
+@dataclassy.dataclass(slots=True)
+class PitchArguments(MfaArguments):
+    """
+    Arguments for :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
+    """
+
+    data_directory: str
+    pitch_options: MetaDict
+
+
+# noinspection PyUnresolvedReferences
+@dataclassy.dataclass(slots=True)
+class PitchRangeArguments(MfaArguments):
+    """
+    Arguments for :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
+    """
+
+    data_directory: str
     pitch_options: MetaDict
 
 
@@ -102,6 +137,14 @@ class ExtractIvectorsArguments(MfaArguments):
     dubm_path: str
 
 
+# noinspection PyUnresolvedReferences
+@dataclassy.dataclass(slots=True)
+class ExportIvectorsArguments(MfaArguments):
+    """Arguments for :class:`~montreal_forced_aligner.corpus.features.ExportIvectorsFunction`"""
+
+    use_xvector: bool
+
+
 def feature_make_safe(value: Any) -> str:
     """
     Transform an arbitrary value into a string
@@ -121,15 +164,13 @@ def feature_make_safe(value: Any) -> str:
     return str(value)
 
 
-def compute_feature_process(
+def compute_mfcc_process(
     log_file: io.FileIO,
     wav_path: str,
-    segment_path: str,
+    segments: typing.Union[str, subprocess.Popen, subprocess.PIPE],
     mfcc_options: MetaDict,
-    pitch_options: MetaDict,
     min_length=0.1,
-    no_logging=False,
-) -> typing.Tuple[typing.Optional[subprocess.Popen], subprocess.Popen]:
+) -> subprocess.Popen:
     """
     Construct processes for computing features
 
@@ -139,7 +180,91 @@ def compute_feature_process(
         File for logging stderr
     wav_path: str
         Wav scp to use
-    segment_path: str
+    segments: str
+        Segments scp to use
+    mfcc_options: dict[str, Any]
+        Options for computing MFCC features
+    min_length: float
+        Minimum length of segments in seconds
+    no_logging: bool
+        Flag for logging progress information to log_file rather than a subprocess pipe
+
+    Returns
+    -------
+    subprocess.Popen
+        MFCC process
+    """
+    mfcc_base_command = [thirdparty_binary("compute-mfcc-feats")]
+    for k, v in mfcc_options.items():
+        mfcc_base_command.append(f"--{k.replace('_', '-')}={feature_make_safe(v)}")
+    if isinstance(segments, str) and os.path.exists(segments):
+        mfcc_base_command += ["ark:-", "ark,t:-"]
+        seg_proc = subprocess.Popen(
+            [
+                thirdparty_binary("extract-segments"),
+                f"--min-segment-length={min_length}",
+                f"scp:{wav_path}",
+                segments,
+                "ark:-",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=log_file,
+            env=os.environ,
+        )
+        mfcc_proc = subprocess.Popen(
+            mfcc_base_command,
+            stdout=subprocess.PIPE,
+            stderr=log_file,
+            stdin=seg_proc.stdout,
+            env=os.environ,
+        )
+    elif isinstance(segments, subprocess.Popen):
+        mfcc_base_command += ["ark,s,cs:-", "ark,t:-"]
+        mfcc_proc = subprocess.Popen(
+            mfcc_base_command,
+            stdout=subprocess.PIPE,
+            stderr=log_file,
+            stdin=segments.stdout,
+            env=os.environ,
+        )
+    elif segments == subprocess.PIPE:
+        mfcc_base_command += ["ark,s,cs:-", "ark,t:-"]
+        mfcc_proc = subprocess.Popen(
+            mfcc_base_command,
+            stdout=subprocess.PIPE,
+            stderr=log_file,
+            stdin=segments,
+            env=os.environ,
+        )
+    else:
+        mfcc_base_command += [f"scp,p:{wav_path}", "ark:-"]
+        mfcc_proc = subprocess.Popen(
+            mfcc_base_command,
+            stdout=subprocess.PIPE,
+            stderr=log_file,
+            env=os.environ,
+        )
+
+    return mfcc_proc
+
+
+def compute_pitch_process(
+    log_file: io.FileIO,
+    wav_path: str,
+    segments: typing.Union[str, subprocess.Popen, subprocess.PIPE],
+    pitch_options: MetaDict,
+    min_length=0.1,
+) -> subprocess.Popen:
+    """
+    Construct processes for computing features
+
+    Parameters
+    ----------
+    log_file: io.FileIO
+        File for logging stderr
+    wav_path: str
+        Wav scp to use
+    segments: str
         Segments scp to use
     mfcc_options: dict[str, Any]
         Options for computing MFCC features
@@ -153,96 +278,91 @@ def compute_feature_process(
     Returns
     -------
     subprocess.Popen
-        Feature pasting process
-    subprocess.Popen
-        Computation process for progress information
+        Pitch process
     """
     use_pitch = pitch_options.pop("use-pitch")
     use_voicing = pitch_options.pop("use-voicing")
-    mfcc_base_command = [thirdparty_binary("compute-mfcc-feats")]
-    for k, v in mfcc_options.items():
-        mfcc_base_command.append(f"--{k.replace('_', '-')}={feature_make_safe(v)}")
-    comp_proc_logger = subprocess.PIPE
-    if no_logging:
-        comp_proc_logger = log_file
-    if os.path.exists(segment_path):
-        mfcc_base_command += ["ark:-", "ark:-"]
+    use_delta_pitch = pitch_options.pop("use-delta-pitch")
+    normalize = pitch_options.pop("normalize", True)
+    pitch_command = [
+        thirdparty_binary("compute-and-process-kaldi-pitch-feats"),
+    ]
+    for k, v in pitch_options.items():
+        pitch_command.append(f"--{k.replace('_', '-')}={feature_make_safe(v)}")
+        if k == "delta-pitch":
+            pitch_command.append(f"--delta-pitch-noise-stddev={feature_make_safe(v)}")
+    if use_pitch:
+        if normalize:
+            pitch_command.append("--add-normalized-log-pitch=true")
+        else:
+            pitch_command.append("--add-raw-log-pitch=true")
+    else:
+        pitch_command.append("--add-normalized-log-pitch=false")
+        pitch_command.append("--add-raw-log-pitch=false")
+    if use_delta_pitch:
+        pitch_command.append("--add-delta-pitch=true")
+        pitch_command.append("--add-pov-feature=true")
+    else:
+        pitch_command.append("--add-delta-pitch=false")
+        if use_voicing:
+            pitch_command.append("--add-pov-feature=true")
+        else:
+            pitch_command.append("--add-pov-feature=false")
+
+    if isinstance(segments, str) and os.path.exists(segments):
+        pitch_command += ["ark:-", "ark,t:-"]
         seg_proc = subprocess.Popen(
             [
                 thirdparty_binary("extract-segments"),
                 f"--min-segment-length={min_length}",
                 f"scp:{wav_path}",
-                segment_path,
+                segments,
                 "ark:-",
             ],
             stdout=subprocess.PIPE,
             stderr=log_file,
             env=os.environ,
         )
-        comp_proc = subprocess.Popen(
-            mfcc_base_command,
+        pitch_proc = subprocess.Popen(
+            pitch_command,
             stdout=subprocess.PIPE,
-            stderr=comp_proc_logger,
+            stderr=log_file,
             stdin=seg_proc.stdout,
             env=os.environ,
         )
-    else:
-        mfcc_base_command += [f"scp,p:{wav_path}", "ark:-"]
-        comp_proc = subprocess.Popen(
-            mfcc_base_command,
+    elif isinstance(segments, subprocess.Popen):
+        pitch_command += ["ark:-", "ark,t:-"]
+        pitch_proc = subprocess.Popen(
+            pitch_command,
             stdout=subprocess.PIPE,
-            stderr=comp_proc_logger,
+            stderr=log_file,
+            stdin=segments.stdout,
             env=os.environ,
         )
-    if not use_pitch and not use_voicing:
-        return None, comp_proc
-    pitch_base_command = [
-        thirdparty_binary("compute-and-process-kaldi-pitch-feats"),
-    ]
-    for k, v in pitch_options.items():
-        pitch_base_command.append(f"--{k.replace('_', '-')}={feature_make_safe(v)}")
-        if k == "delta-pitch":
-            pitch_base_command.append(f"--delta-pitch-noise-stddev={feature_make_safe(v)}")
-    if use_pitch:
-        pitch_base_command.append("--add-delta-pitch=true")
-        pitch_base_command.append("--add-normalized-log-pitch=true")
+    elif segments == subprocess.PIPE:
+        pitch_command += ["ark:-", "ark,t:-"]
+        pitch_proc = subprocess.Popen(
+            pitch_command,
+            stdout=subprocess.PIPE,
+            stderr=log_file,
+            stdin=segments,
+            env=os.environ,
+        )
     else:
-        pitch_base_command.append("--add-delta-pitch=false")
-        pitch_base_command.append("--add-normalized-log-pitch=false")
-    if use_voicing:
-        pitch_base_command.append("--add-pov-feature=true")
-    else:
-        pitch_base_command.append("--add-pov-feature=false")
-    pitch_command = " ".join(pitch_base_command)
-    if os.path.exists(segment_path):
-        segment_command = f'extract-segments --min-segment-length={min_length} scp:"{wav_path}" "{segment_path}" ark:- | '
-        pitch_input = "ark:-"
-    else:
-        segment_command = ""
-        pitch_input = f'scp:"{wav_path}"'
-    pitch_feat_string = f"ark,s,cs:{segment_command}{pitch_command} {pitch_input} ark:- |"
-    length_tolerance = 2
-    paste_proc = subprocess.Popen(
-        [
-            thirdparty_binary("paste-feats"),
-            f"--length-tolerance={length_tolerance}",
-            "ark,s,cs:-",
-            pitch_feat_string,
-            "ark:-",
-        ],
-        stdin=comp_proc.stdout,
-        env=os.environ,
-        stdout=subprocess.PIPE,
-        stderr=log_file,
-    )
-    return paste_proc, comp_proc
+        pitch_command += [f"scp,p:{wav_path}", "ark,t:-"]
+        pitch_proc = subprocess.Popen(
+            pitch_command,
+            stdout=subprocess.PIPE,
+            stderr=log_file,
+            env=os.environ,
+        )
+    return pitch_proc
 
 
 def compute_transform_process(
     log_file: io.FileIO,
-    feat_proc: subprocess.Popen,
+    feat_proc: typing.Union[subprocess.Popen, str],
     utt2spk_path: str,
-    cmvn_path: str,
     lda_mat_path: typing.Optional[str],
     fmllr_path: typing.Optional[str],
     lda_options: MetaDict,
@@ -272,24 +392,23 @@ def compute_transform_process(
     subprocess.Popen
         Processing for transforming features
     """
-    cmvn_proc = subprocess.Popen(
-        ["apply-cmvn", f"--utt2spk=ark:{utt2spk_path}", f"scp:{cmvn_path}", "ark:-", "ark:-"],
-        env=os.environ,
-        stdin=feat_proc.stdout,
-        stdout=subprocess.PIPE,
-        stderr=log_file,
-    )
+    if isinstance(feat_proc, str):
+        feat_input = f"ark,s,cs:{feat_proc}"
+        use_stdin = False
+    else:
+        feat_input = "ark,s,cs:-"
+        use_stdin = True
     if lda_mat_path is not None:
         splice_proc = subprocess.Popen(
             [
                 "splice-feats",
                 f'--left-context={lda_options["splice_left_context"]}',
                 f'--right-context={lda_options["splice_right_context"]}',
-                "ark,s,cs:-",
+                feat_input,
                 "ark:-",
             ],
             env=os.environ,
-            stdin=cmvn_proc.stdout,
+            stdin=feat_proc.stdout if use_stdin else None,
             stdout=subprocess.PIPE,
             stderr=log_file,
         )
@@ -302,9 +421,9 @@ def compute_transform_process(
         )
     else:
         delta_proc = subprocess.Popen(
-            ["add-deltas", "ark,s,cs:-", "ark:-"],
+            ["add-deltas", feat_input, "ark:-"],
             env=os.environ,
-            stdin=cmvn_proc.stdout,
+            stdin=feat_proc.stdout if use_stdin else None,
             stdout=subprocess.PIPE,
             stderr=log_file,
         )
@@ -357,48 +476,389 @@ class MfccFunction(KaldiFunction):
     def __init__(self, args: MfccArguments):
         super().__init__(args)
         self.data_directory = args.data_directory
+        self.pitch_options = args.pitch_options
         self.mfcc_options = args.mfcc_options
+
+    def _run(self) -> typing.Generator[int]:
+        """Run the function"""
+        db_engine = sqlalchemy.create_engine(self.db_string)
+        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+            job: Job = session.get(Job, self.job_name)
+            feats_scp_path = job.construct_path(self.data_directory, "feats", "scp")
+            pitch_scp_path = job.construct_path(self.data_directory, "pitch", "scp")
+            segments_scp_path = job.construct_path(self.data_directory, "segments", "scp")
+            wav_path = job.construct_path(self.data_directory, "wav", "scp")
+            raw_ark_path = job.construct_path(self.data_directory, "feats", "ark")
+            raw_pitch_ark_path = job.construct_path(self.data_directory, "pitch", "ark")
+            if os.path.exists(raw_ark_path):
+                return
+            min_length = 0.1
+            seg_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("extract-segments"),
+                    f"--min-segment-length={min_length}",
+                    f"scp:{wav_path}",
+                    segments_scp_path,
+                    "ark:-",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=log_file,
+                env=os.environ,
+            )
+            mfcc_proc = compute_mfcc_process(
+                log_file, wav_path, subprocess.PIPE, self.mfcc_options
+            )
+            mfcc_copy_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("copy-feats"),
+                    "--compress=true",
+                    "ark:-",
+                    f"ark,scp:{raw_ark_path},{feats_scp_path}",
+                ],
+                stdin=mfcc_proc.stdout,
+                stderr=log_file,
+                env=os.environ,
+            )
+            use_pitch = self.pitch_options["use-pitch"] or self.pitch_options["use-voicing"]
+            if use_pitch:
+                pitch_proc = compute_pitch_process(
+                    log_file, wav_path, subprocess.PIPE, self.pitch_options
+                )
+                pitch_copy_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("copy-feats"),
+                        "--compress=true",
+                        "ark:-",
+                        f"ark,scp:{raw_pitch_ark_path},{pitch_scp_path}",
+                    ],
+                    stdin=pitch_proc.stdout,
+                    stderr=log_file,
+                    env=os.environ,
+                )
+            for line in seg_proc.stdout:
+                mfcc_proc.stdin.write(line)
+                mfcc_proc.stdin.flush()
+                if use_pitch:
+                    pitch_proc.stdin.write(line)
+                    pitch_proc.stdin.flush()
+                if re.search(rb"\d+-\d+ ", line):
+                    yield 1
+            mfcc_proc.stdin.close()
+            if use_pitch:
+                pitch_proc.stdin.close()
+            mfcc_proc.wait()
+            if use_pitch:
+                pitch_proc.wait()
+            self.check_call(mfcc_copy_proc)
+            if use_pitch:
+                self.check_call(pitch_copy_proc)
+        db_engine.dispose()
+
+
+class FinalFeatureFunction(KaldiFunction):
+    """
+    Multiprocessing function for generating MFCC features
+
+    See Also
+    --------
+    :meth:`.AcousticCorpusMixin.mfcc`
+        Main function that calls this function in parallel
+    :meth:`.AcousticCorpusMixin.mfcc_arguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`compute-mfcc-feats`
+        Relevant Kaldi binary
+    :kaldi_src:`extract-segments`
+        Relevant Kaldi binary
+    :kaldi_src:`copy-feats`
+        Relevant Kaldi binary
+    :kaldi_src:`feat-to-len`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.corpus.features.MfccArguments`
+        Arguments for the function
+    """
+
+    progress_pattern = re.compile(r"^LOG.* Processed (?P<num_utterances>\d+) utterances")
+
+    def __init__(self, args: FinalFeatureArguments):
+        super().__init__(args)
+        self.data_directory = args.data_directory
+        self.voiced_only = args.voiced_only
+        self.uses_cmvn = args.uses_cmvn
+        self.subsample_feats = args.subsample_feats
+
+    def _run(self) -> typing.Generator[int]:
+        """Run the function"""
+        db_engine = sqlalchemy.create_engine(self.db_string)
+        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+            job: Job = session.get(Job, self.job_name)
+            feats_scp_path = job.construct_path(self.data_directory, "feats", "scp")
+            temp_scp_path = job.construct_path(self.data_directory, "final_features", "scp")
+            utt2spk_path = job.construct_path(self.data_directory, "utt2spk", "scp")
+            cmvn_scp_path = job.construct_path(self.data_directory, "cmvn", "scp")
+            pitch_scp_path = job.construct_path(self.data_directory, "pitch", "scp")
+            pitch_ark_path = job.construct_path(self.data_directory, "pitch", "ark")
+            vad_scp_path = job.construct_path(self.data_directory, "vad", "scp")
+            raw_ark_path = job.construct_path(self.data_directory, "feats", "ark")
+            temp_ark_path = job.construct_path(self.data_directory, "final_features", "ark")
+            if os.path.exists(cmvn_scp_path):
+                cmvn_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("apply-cmvn"),
+                        f"--utt2spk=ark:{utt2spk_path}",
+                        f"scp:{cmvn_scp_path}",
+                        f"scp:{feats_scp_path}",
+                        "ark:-",
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=log_file,
+                    env=os.environ,
+                )
+            else:
+                cmvn_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("apply-cmvn-sliding"),
+                        "--norm-vars=false",
+                        "--center=true",
+                        "--cmn-window=300",
+                        f"scp:{feats_scp_path}",
+                        "ark:-",
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=log_file,
+                    env=os.environ,
+                )
+            if os.path.exists(pitch_scp_path):
+                paste_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("paste-feats"),
+                        "--length-tolerance=2",
+                        "ark:-",
+                        f"scp:{pitch_scp_path}",
+                        "ark:-",
+                    ],
+                    stdin=cmvn_proc.stdout,
+                    stdout=subprocess.PIPE,
+                    stderr=log_file,
+                    env=os.environ,
+                )
+            else:
+                paste_proc = cmvn_proc
+            if self.voiced_only and os.path.exists(vad_scp_path):
+                voiced_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("select-voiced-frames"),
+                        "ark:-",
+                        f"scp:{vad_scp_path}",
+                        "ark:-",
+                    ],
+                    stdin=paste_proc.stdout,
+                    stdout=subprocess.PIPE,
+                    stderr=log_file,
+                    env=os.environ,
+                )
+                if self.subsample_feats:
+                    final_proc = subprocess.Popen(
+                        [
+                            thirdparty_binary("subsample-feats"),
+                            f"--n={self.subsample_feats}",
+                            "ark:-",
+                            "ark:-",
+                        ],
+                        stdin=voiced_proc.stdout,
+                        stdout=subprocess.PIPE,
+                        stderr=log_file,
+                        env=os.environ,
+                    )
+                else:
+                    final_proc = voiced_proc
+            else:
+                final_proc = paste_proc
+            copy_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("copy-feats"),
+                    "--compress=true",
+                    "ark:-",
+                    f"ark,scp:{temp_ark_path},{temp_scp_path}",
+                ],
+                stdin=subprocess.PIPE,
+                stderr=log_file,
+                env=os.environ,
+            )
+
+            for line in final_proc.stdout:
+                copy_proc.stdin.write(line)
+                copy_proc.stdin.flush()
+                if re.search(rb"\d+-\d+ ", line):
+                    yield 1
+            copy_proc.stdin.close()
+            self.check_call(copy_proc)
+            os.remove(raw_ark_path)
+            os.remove(feats_scp_path)
+            os.rename(temp_scp_path, feats_scp_path)
+            if os.path.exists(pitch_scp_path):
+                os.remove(pitch_scp_path)
+                os.remove(pitch_ark_path)
+        db_engine.dispose()
+
+
+class PitchFunction(KaldiFunction):
+    """
+    Multiprocessing function for generating MFCC features
+
+    See Also
+    --------
+    :meth:`.AcousticCorpusMixin.mfcc`
+        Main function that calls this function in parallel
+    :meth:`.AcousticCorpusMixin.mfcc_arguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`compute-mfcc-feats`
+        Relevant Kaldi binary
+    :kaldi_src:`extract-segments`
+        Relevant Kaldi binary
+    :kaldi_src:`copy-feats`
+        Relevant Kaldi binary
+    :kaldi_src:`feat-to-len`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.corpus.features.MfccArguments`
+        Arguments for the function
+    """
+
+    progress_pattern = re.compile(r"^LOG.* Processed (?P<num_utterances>\d+) utterances")
+
+    def __init__(self, args: PitchArguments):
+        super().__init__(args)
+        self.data_directory = args.data_directory
         self.pitch_options = args.pitch_options
 
     def _run(self) -> typing.Generator[int]:
         """Run the function"""
         db_engine = sqlalchemy.create_engine(self.db_string)
         with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
-            processed = 0
             job: Job = session.get(Job, self.job_name)
-            feats_scp_path = job.construct_path(self.data_directory, "feats", "scp")
+
+            feats_scp_path = job.construct_path(self.data_directory, "pitch", "scp")
+            raw_ark_path = job.construct_path(self.data_directory, "pitch", "ark")
             wav_path = job.construct_path(self.data_directory, "wav", "scp")
-            segment_path = job.construct_path(self.data_directory, "segments", "scp")
-            raw_ark_path = job.construct_path(self.data_directory, "feats", "ark")
+            segments_path = job.construct_path(self.data_directory, "segments", "scp")
             if os.path.exists(raw_ark_path):
                 return
-            paste_proc, comp_proc = compute_feature_process(
-                log_file, wav_path, segment_path, self.mfcc_options, self.pitch_options
-            )
             copy_proc = subprocess.Popen(
                 [
                     thirdparty_binary("copy-feats"),
-                    "--verbose=2",
                     "--compress=true",
-                    "ark,s,cs:-",
+                    "ark,t:-",
                     f"ark,scp:{raw_ark_path},{feats_scp_path}",
                 ],
-                stdin=paste_proc.stdout if paste_proc is not None else comp_proc.stdout,
+                stdin=subprocess.PIPE,
                 stderr=log_file,
                 env=os.environ,
-                encoding="utf8",
             )
 
-            for line in comp_proc.stderr:
-                line = line.strip().decode("utf8")
-                log_file.write(line + "\n")
-                m = self.progress_pattern.match(line)
-                if m:
-                    cur = int(m.group("num_utterances"))
-                    increment = cur - processed
-                    processed = cur
-                    yield increment
+            pitch_proc = compute_pitch_process(
+                log_file, wav_path, segments_path, self.pitch_options
+            )
+            for line in pitch_proc.stdout:
+                copy_proc.stdin.write(line)
+                copy_proc.stdin.flush()
+                if re.match(rb"^\d+-", line):
+                    yield 1
+            pitch_proc.wait()
+            copy_proc.stdin.close()
             self.check_call(copy_proc)
+        db_engine.dispose()
+
+
+class PitchRangeFunction(KaldiFunction):
+    """
+    Multiprocessing function for generating MFCC features
+
+    See Also
+    --------
+    :meth:`.AcousticCorpusMixin.mfcc`
+        Main function that calls this function in parallel
+    :meth:`.AcousticCorpusMixin.mfcc_arguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`compute-mfcc-feats`
+        Relevant Kaldi binary
+    :kaldi_src:`extract-segments`
+        Relevant Kaldi binary
+    :kaldi_src:`copy-feats`
+        Relevant Kaldi binary
+    :kaldi_src:`feat-to-len`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.corpus.features.MfccArguments`
+        Arguments for the function
+    """
+
+    progress_pattern = re.compile(r"^LOG.* Processed (?P<num_utterances>\d+) utterances")
+
+    def __init__(self, args: PitchRangeArguments):
+        super().__init__(args)
+        self.data_directory = args.data_directory
+        self.pitch_options = args.pitch_options
+
+    def _run(self) -> typing.Generator[int]:
+        """Run the function"""
+        db_engine = sqlalchemy.create_engine(self.db_string)
+        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+            job: Job = session.get(Job, self.job_name)
+            wav_path = job.construct_path(self.data_directory, "wav", "scp")
+            segment_path = job.construct_path(self.data_directory, "segments", "scp")
+            min_length = 0.1
+            seg_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("extract-segments"),
+                    f"--min-segment-length={min_length}",
+                    f"scp:{wav_path}",
+                    segment_path,
+                    "ark:-",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=log_file,
+                env=os.environ,
+            )
+            pitch_command = [
+                thirdparty_binary("compute-kaldi-pitch-feats"),
+            ]
+            for k, v in self.pitch_options.items():
+                if k in {"use-pitch", "use-voicing", "normalize"}:
+                    continue
+                pitch_command.append(f"--{k.replace('_', '-')}={feature_make_safe(v)}")
+            pitch_command += ["ark:-", "ark,t:-"]
+            pitch_proc = subprocess.Popen(
+                pitch_command,
+                stdout=subprocess.PIPE,
+                stdin=seg_proc.stdout,
+                stderr=log_file,
+                env=os.environ,
+            )
+            current_speaker = None
+            pitch_points = []
+            for ids, pitch_features in read_feats(pitch_proc, raw_id=True):
+                speaker_id, utt_id = ids.split("-")
+                speaker_id = int(speaker_id)
+                if current_speaker is None:
+                    current_speaker = speaker_id
+                if current_speaker != speaker_id:
+                    pitch_points = np.array(pitch_points)
+                    mean_f0 = np.mean(pitch_points)
+                    min_f0 = mean_f0 / 2
+                    max_f0 = mean_f0 * 2
+                    yield current_speaker, max(min_f0, 50), min(max_f0, 1500)
+                    pitch_points = []
+                    current_speaker = speaker_id
+                indices = np.where(pitch_features[:, 0] > 0.5)
+                pitch_points.extend(pitch_features[indices[0], 1])
+            self.check_call(pitch_proc)
         db_engine.dispose()
 
 
@@ -455,124 +915,6 @@ class ComputeVadFunction(KaldiFunction):
                 if m:
                     yield int(m.group("done")), int(m.group("no_feats")), int(m.group("unvoiced"))
             self.check_call(vad_proc)
-
-
-class RecomputeVadFunction(KaldiFunction):
-    """
-    Multiprocessing function to compute voice activity detection
-
-    See Also
-    --------
-    :meth:`.AcousticCorpusMixin.compute_vad`
-        Main function that calls this function in parallel
-    :meth:`.AcousticCorpusMixin.compute_vad_arguments`
-        Job method for generating arguments for this function
-    :kaldi_src:`compute-vad`
-        Relevant Kaldi binary
-
-    Parameters
-    ----------
-    args: :class:`~montreal_forced_aligner.corpus.features.VadArguments`
-        Arguments for the function
-    """
-
-    progress_pattern = re.compile(
-        r"^LOG.*processed (?P<done>\d+) utterances.*(?P<no_feats>\d+) had.*(?P<unvoiced>\d+) were.*"
-    )
-
-    def __init__(self, args: RecomputeVadArguments):
-        super().__init__(args)
-        self.dubm_model = args.dubm_model
-        self.vad_options = args.vad_options
-        self.ivector_options = args.ivector_options
-
-    def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
-        """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
-            job: Job = (
-                session.query(Job)
-                .options(joinedload(Job.corpus, innerjoin=True))
-                .filter(Job.id == self.job_name)
-                .first()
-            )
-            workflow: CorpusWorkflow = (
-                session.query(CorpusWorkflow)
-                .filter(CorpusWorkflow.current == True)  # noqa
-                .first()
-            )
-            feature_string = job.construct_online_feature_proc_string(uses_vad=False)
-            merge_map_path = os.path.join(workflow.working_directory, "merge_vad_map.txt")
-            vad_scp_path = job.construct_path(job.corpus.current_subset_directory, "vad", "scp")
-            vad_ark_path = job.construct_path(job.corpus.current_subset_directory, "vad", "ark")
-            merged_vad_scp_path = job.construct_path(
-                job.corpus.current_subset_directory, "merged_vad", "scp"
-            )
-            merged_vad_ark_path = job.construct_path(
-                job.corpus.current_subset_directory, "merged_vad", "ark"
-            )
-
-            gselect_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("gmm-gselect"),
-                    f"--n={self.ivector_options['num_gselect']}",
-                    self.dubm_model,
-                    feature_string,
-                    "ark:-",
-                ],
-                stderr=log_file,
-                stdout=subprocess.PIPE,
-                env=os.environ,
-            )
-
-            frame_like_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("gmm-global-get-frame-likes"),
-                    "--average=false",
-                    "--gselect=ark,s,cs:-",
-                    self.dubm_model,
-                    feature_string,
-                    "ark:-",
-                ],
-                stderr=log_file,
-                stdout=subprocess.PIPE,
-                stdin=gselect_proc.stdout,
-                env=os.environ,
-            )
-            gmm_vad_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("compute-vad-from-frame-likes"),
-                    "ark,s,cs:-",
-                    "ark:-",
-                ],
-                stderr=log_file,
-                stdout=subprocess.PIPE,
-                stdin=frame_like_proc.stdout,
-                env=os.environ,
-            )
-            merge_vad_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("merge-vads"),
-                    f"--map={merge_map_path}" f"scp,s,cs:{vad_scp_path}",
-                    "ark,s,cs:-",
-                    f"ark,scp:{merged_vad_ark_path},{merged_vad_scp_path}",
-                ],
-                stderr=log_file,
-                stdin=gmm_vad_proc.stdout,
-                env=os.environ,
-            )
-            for line in merge_vad_proc.stderr:
-                log_file.write(line)
-                yield 1
-                # m = self.progress_pattern.match(line.strip())
-                # if m:
-                #    yield int(m.group("done")), int(m.group("no_feats")), int(m.group("unvoiced"))
-            self.check_call(merge_vad_proc)
-            os.remove(vad_scp_path)
-            os.remove(vad_ark_path)
-            os.rename(merged_vad_scp_path, vad_scp_path)
-            os.rename(merged_vad_ark_path, vad_ark_path)
-        db_engine.dispose()
 
 
 class CalcFmllrFunction(KaldiFunction):
@@ -829,6 +1171,7 @@ class FeatureConfigMixin:
         uses_deltas: bool = True,
         uses_splices: bool = False,
         uses_voiced: bool = False,
+        adaptive_pitch_range: bool = False,
         uses_speaker_adaptation: bool = False,
         fmllr_update_type: str = "full",
         silence_weight: float = 0.0,
@@ -836,6 +1179,7 @@ class FeatureConfigMixin:
         splice_right_context: int = 3,
         use_pitch: bool = False,
         use_voicing: bool = False,
+        use_delta_pitch: bool = False,
         min_f0: float = 50,
         max_f0: float = 800,
         delta_pitch: float = 0.005,
@@ -881,12 +1225,18 @@ class FeatureConfigMixin:
         self.splice_right_context = splice_right_context
 
         # Pitch features
+        self.adaptive_pitch_range = adaptive_pitch_range
         self.use_pitch = use_pitch
         self.use_voicing = use_voicing
+        self.use_delta_pitch = use_delta_pitch
         self.min_f0 = min_f0
         self.max_f0 = max_f0
         self.delta_pitch = delta_pitch
         self.penalty_factor = penalty_factor
+        self.normalize_pitch = True
+        if self.adaptive_pitch_range:
+            self.min_f0 = 50
+            self.max_f0 = 1200
 
     @property
     def vad_options(self) -> MetaDict:
@@ -1009,6 +1359,7 @@ class FeatureConfigMixin:
         return {
             "use-pitch": self.use_pitch,
             "use-voicing": self.use_voicing,
+            "use-delta-pitch": self.use_delta_pitch,
             "frame-shift": self.frame_shift,
             "frame-length": self.frame_length,
             "min-f0": self.min_f0,
@@ -1017,6 +1368,7 @@ class FeatureConfigMixin:
             "penalty-factor": self.penalty_factor,
             "delta-pitch": self.delta_pitch,
             "snip-edges": self.snip_edges,
+            "normalize": self.normalize_pitch,
         }
 
 
@@ -1081,7 +1433,6 @@ class IvectorConfigMixin(VadConfigMixin):
 
     def __init__(
         self,
-        ivector_dimension: int = 128,
         num_gselect: int = 20,
         posterior_scale: float = 1.0,
         min_post: float = 0.025,
@@ -1089,11 +1440,12 @@ class IvectorConfigMixin(VadConfigMixin):
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.ivector_dimension = ivector_dimension
+        self.ivector_dimension = IVECTOR_DIMENSION
         self.num_gselect = num_gselect
         self.posterior_scale = posterior_scale
         self.min_post = min_post
         self.max_count = max_count
+        self.normalize_pitch = False
 
     @abstractmethod
     def extract_ivectors(self) -> None:
@@ -1164,7 +1516,7 @@ class ExtractIvectorsFunction(KaldiFunction):
                 .filter(Job.id == self.job_name)
                 .first()
             )
-            feature_string = job.construct_online_feature_proc_string(uses_vad=True)
+            feature_string = job.construct_online_feature_proc_string()
 
             gmm_global_get_post_proc = subprocess.Popen(
                 [
@@ -1206,116 +1558,335 @@ class ExtractIvectorsFunction(KaldiFunction):
         db_engine.dispose()
 
 
-class ExportIvectorsFunction(KaldiFunction):
+@njit
+def plda_distance(train_ivector: np.ndarray, test_ivector: np.ndarray, psi: np.ndarray):
     """
-    Multiprocessing function to compute voice activity detection
-
-    See Also
-    --------
-    :meth:`.AcousticCorpusMixin.compute_vad`
-        Main function that calls this function in parallel
-    :meth:`.AcousticCorpusMixin.compute_vad_arguments`
-        Job method for generating arguments for this function
-    :kaldi_src:`compute-vad`
-        Relevant Kaldi binary
+    Distance formulation of PLDA log likelihoods. Positive log likelihood ratios are transformed
+    into 1 / log likelihood ratio and negative log likelihood ratios are made positive.
 
     Parameters
     ----------
-    args: :class:`~montreal_forced_aligner.corpus.features.VadArguments`
-        Arguments for the function
+    train_ivector: numpy.ndarray
+        Utterance ivector to use as reference
+    test_ivector: numpy.ndarray
+        Utterance ivector to compare
+    psi: numpy.ndarray
+        Input psi from :class:`~montreal_forced_aligner.corpus.features.PldaModel`
+
+    Returns
+    -------
+    float
+        PLDA distance
+    """
+    max_log_likelihood = 40.0
+    loglike = plda_log_likelihood(train_ivector, test_ivector, psi)
+    if loglike >= max_log_likelihood:
+        return 0.0
+    return max_log_likelihood - loglike
+
+
+@njit(cache=True)
+def plda_variance_given(psi: np.ndarray, train_count: int = None):
+    if train_count is not None:
+        variance_given = 1.0 + psi / (train_count * psi + 1.0)
+    else:
+        variance_given = 1.0 + psi / (psi + 1.0)
+    logdet_given = np.sum(np.log(variance_given))
+    variance_given = 1.0 / variance_given
+    return logdet_given, variance_given
+
+
+@njit(cache=True)
+def plda_variance_without(psi: np.ndarray):
+    variance_without = 1.0 + psi
+    logdet_without = np.sum(np.log(variance_without))
+    variance_without = 1.0 / variance_without
+    return logdet_without, variance_without
+
+
+@njit
+def plda_log_likelihood(
+    train_ivector: np.ndarray, test_ivector: np.ndarray, psi: np.ndarray, train_count: int = None
+):
+    """
+    Calculate log likelihood of two ivectors belonging to the same class
+
+    Parameters
+    ----------
+    train_ivector: numpy.ndarray
+        Speaker or utterance ivector to use as reference
+    test_ivector: numpy.ndarray
+        Utterance ivector to compare
+    psi: numpy.ndarray
+        Input psi from :class:`~montreal_forced_aligner.corpus.features.PldaModel`
+    train_count: int, optional
+        Count of training ivector, if it represents a speaker
+
+    Returns
+    -------
+    float
+        Log likelihood ratio of same class hypothesis compared to difference class hypothesis
+    """
+    train_ivector = train_ivector.astype("float64")
+    test_ivector = test_ivector.astype("float64")
+    psi = psi.astype("float64")
+    if train_count is not None:
+        mean = (train_count * psi) / (train_count * psi + 1.0)
+        mean *= train_ivector  # N X D , X[0]- Train ivectors
+    else:
+        mean = (psi) / (psi + 1.0)
+        mean *= train_ivector  # N X D , X[0]- Train ivectors
+    logdet_given, variance_given = plda_variance_given(psi, train_count)
+    # without class computation
+    logdet_without, variance_without = plda_variance_without(psi)
+    sqdiff_given = test_ivector - mean
+    sqdiff_given = sqdiff_given**2
+    loglikes = -0.5 * (
+        logdet_given + M_LOG_2PI * PLDA_DIMENSION + np.dot(sqdiff_given, variance_given)
+    )
+    sqdiff_without = test_ivector**2
+    loglike_without_class = -0.5 * (
+        logdet_without + M_LOG_2PI * PLDA_DIMENSION + np.dot(sqdiff_without, variance_without)
+    )
+    return loglikes - loglike_without_class
+
+
+@njit(parallel=True)
+def plda_distance_matrix(
+    train_ivectors: np.ndarray,
+    test_ivectors: np.ndarray,
+    psi: np.ndarray,
+) -> np.ndarray:
+    """
+    Adapted from https://github.com/prachiisc/PLDA_scoring/blob/master/PLDA_scoring.py#L177
+    Computes plda affinity matrix using Loglikelihood function
+
+    Parameters
+    ----------
+    train_ivectors : numpy.ndarray
+        Ivectors to compare test ivectors against against 1 X N X D
+    test_ivectors : numpy.ndarray
+        Ivectors to compare against training examples 1 X M X D
+    normalize: bool
+        Flag for normalizing matrix by the maximum value
+    distance: bool
+        Flag for converting PLDA log likelihood ratios into a distance metric
+
+    Returns
+    -------
+    np.ndarray
+        Affinity matrix, shape is number of train ivectors by the number of test ivectors (M X N)
+    """
+    num_train = train_ivectors.shape[0]
+    num_test = test_ivectors.shape[0]
+    distance_matrix = np.zeros((num_test, num_train))
+    for i in numba.prange(num_train):
+        for j in numba.prange(num_test):
+            distance_matrix[i, j] = plda_log_likelihood(train_ivectors[i], test_ivectors[j], psi)
+    return distance_matrix
+
+
+def pairwise_plda_distance_matrix(
+    ivectors: np.ndarray,
+    psi: np.ndarray,
+) -> csr_matrix:
+    """
+    Adapted from https://github.com/prachiisc/PLDA_scoring/blob/master/PLDA_scoring.py#L177
+    Computes plda affinity matrix using Loglikelihood function
+
+    Parameters
+    ----------
+    train_ivectors : numpy.ndarray
+        Ivectors to compare test ivectors against against 1 X N X D
+    test_ivectors : numpy.ndarray
+        Ivectors to compare against training examples 1 X M X D
+    normalize: bool
+        Flag for normalizing matrix by the maximum value
+    distance: bool
+        Flag for converting PLDA log likelihood ratios into a distance metric
+
+    Returns
+    -------
+    np.ndarray
+        Affinity matrix, shape is number of train ivectors by the number of test ivectors (M X N)
+    """
+    full = plda_distance_matrix(ivectors, ivectors, psi)
+    return csr_matrix(full[np.where(full > 5)])
+
+
+@njit(parallel=True)
+def score_plda(
+    train_ivectors: np.ndarray,
+    test_ivectors: np.ndarray,
+    psi: np.ndarray,
+    normalize=False,
+    distance=False,
+) -> np.ndarray:
+    """
+    Adapted from https://github.com/prachiisc/PLDA_scoring/blob/master/PLDA_scoring.py#L177
+    Computes plda affinity matrix using Loglikelihood function
+
+    Parameters
+    ----------
+    train_ivectors : numpy.ndarray
+        Ivectors to compare test ivectors against against 1 X N X D
+    test_ivectors : numpy.ndarray
+        Ivectors to compare against training examples 1 X M X D
+    normalize: bool
+        Flag for normalizing matrix by the maximum value
+    distance: bool
+        Flag for converting PLDA log likelihood ratios into a distance metric
+
+    Returns
+    -------
+    np.ndarray
+        Affinity matrix, shape is number of train ivectors by the number of test ivectors (M X N)
+    """
+    mean = (psi) / (psi + 1.0)
+    mean = mean.reshape(1, -1) * train_ivectors
+
+    # given class computation
+    variance_given = 1.0 + psi / (psi + 1.0)
+    logdet_given = np.sum(np.log(variance_given))
+    variance_given = 1.0 / variance_given
+
+    # without class computation
+    variance_without = 1.0 + psi
+    logdet_without = np.sum(np.log(variance_without))
+    variance_without = 1.0 / variance_without
+
+    sqdiff = test_ivectors  # ---- Test x-vectors
+    num_train = train_ivectors.shape[0]
+    num_test = test_ivectors.shape[0]
+    dim = test_ivectors.shape[1]
+    loglikes = np.zeros((num_test, num_train))
+    sqdiff_without = sqdiff**2
+    loglike_without_class = -0.5 * (
+        logdet_without + M_LOG_2PI * dim + (sqdiff_without @ variance_without)
+    )
+    for i in numba.prange(num_train):
+        sqdiff_given = sqdiff - mean[i]
+        sqdiff_given = sqdiff_given**2
+        loglikes[:, i] = (
+            -0.5 * (logdet_given + M_LOG_2PI * dim + (sqdiff_given @ variance_given))
+        ) - loglike_without_class
+
+    if distance:
+        threshold = np.max(loglikes)
+        loglikes -= threshold
+        loglikes *= -1
+    if normalize:
+        # loglike_ratio -= np.min(loglike_ratio)
+        loglikes /= threshold
+    return loglikes
+
+
+@njit
+def compute_classification_stats(
+    speaker_ivectors: np.ndarray, psi: np.ndarray, counts: np.ndarray
+):
+    mean = (counts.reshape(-1, 1) * psi.reshape(1, -1)) / (
+        counts.reshape(-1, 1) * psi.reshape(1, -1) + 1.0
+    )
+    mean = mean * speaker_ivectors  # N X D , X[0]- Train ivectors
+    # given class computation
+    variance_given = 1.0 + psi / (counts.reshape(-1, 1) * psi.reshape(1, -1) + 1.0)
+    logdet_given = np.sum(np.log(variance_given), axis=1)
+    variance_given = 1.0 / variance_given
+
+    # without class computation
+    variance_without = 1.0 + psi
+    logdet_without = np.sum(np.log(variance_without))
+    variance_without = 1.0 / variance_without
+    return mean, variance_given, logdet_given, variance_without, logdet_without
+
+
+@njit(parallel=True)
+def classify_plda(
+    utterance_ivector: np.ndarray,
+    mean,
+    variance_given,
+    logdet_given,
+    variance_without,
+    logdet_without,
+) -> typing.Tuple[int, float]:
+    """
+    Adapted from https://github.com/prachiisc/PLDA_scoring/blob/master/PLDA_scoring.py#L177
+    Computes plda affinity matrix using Loglikelihood function
+
+    Parameters
+    ----------
+    utterance_ivector : numpy.ndarray
+        Utterance ivector to compare against
+
+    Returns
+    -------
+    int
+        Best speaker index
+    float
+        Best speaker PLDA score
     """
 
-    def __init__(self, args: MfaArguments):
-        super().__init__(args)
+    num_speakers = mean.shape[0]
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
-        """Run the function"""
-        engine = sqlalchemy.create_engine(self.db_string)
-        with sqlalchemy.orm.Session(engine) as session, mfa_open(self.log_path, "w") as log_file:
-
-            job: Job = (
-                session.query(Job)
-                .options(joinedload(Job.corpus, innerjoin=True))
-                .filter(Job.id == self.job_name)
-                .first()
-            )
-
-            query = (
-                session.query(Utterance.kaldi_id, Utterance.ivector)
-                .filter(Utterance.ignored == False, Utterance.job_id == job.id)  # noqa
-                .order_by(Utterance.kaldi_id)
-            )
-
-            ivector_scp_path = job.construct_path(job.corpus.split_directory, "ivectors", "scp")
-            ivector_ark_path = job.construct_path(job.corpus.split_directory, "ivectors", "ark")
-            input_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("copy-vector"),
-                    "--binary=true",
-                    "ark,t:-",
-                    f"ark,scp:{ivector_ark_path},{ivector_scp_path}",
-                ],
-                stdin=subprocess.PIPE,
-                stderr=log_file,
-                env=os.environ,
-            )
-            for utt_id, ivector in query:
-                if ivector is None:
-                    continue
-                ivector = " ".join([format(x, ".12g") for x in ivector])
-                in_line = f"{utt_id}  [ {ivector} ]\n".encode("utf8")
-                input_proc.stdin.write(in_line)
-                input_proc.stdin.flush()
-                yield 1
-            input_proc.stdin.close()
-            self.check_call(input_proc)
-        engine.dispose()
-
-
-@njit
-def plda_distance(train_ivector: np.ndarray, test_ivector: np.ndarray, psi: np.ndarray):
-    mean = (psi) / (psi + 1.0)
-    mean *= train_ivector  # N X D , X[0]- Train ivectors
-    variance_given = 1.0 + psi / (psi + 1.0)
-    logdet_given = np.sum(np.log(variance_given))
-    variance_given = 1.0 / variance_given
-    # without class computation
-    variance_without = 1.0 + psi
-    logdet_without = np.sum(np.log(variance_without))
-    variance_without = 1.0 / variance_without
-    sqdiff_given = test_ivector - mean
-    sqdiff_given = sqdiff_given**2
-    loglikes = -0.5 * (logdet_given + M_LOG_2PI * PLDA_DIMENSION + (sqdiff_given @ variance_given))
-    sqdiff_without = test_ivector**2
+    sqdiff_without = utterance_ivector**2
     loglike_without_class = -0.5 * (
         logdet_without + M_LOG_2PI * PLDA_DIMENSION + (sqdiff_without @ variance_without)
     )
-    return -1 * (loglikes - loglike_without_class)  # Negative for distance
+    loglikes = np.zeros((num_speakers,))
+    for i in numba.prange(num_speakers):
+        sqdiff_given = utterance_ivector - mean[i]
+        sqdiff_given = sqdiff_given**2
+        logdet = logdet_given[i]
+        variance = variance_given[i]
+
+        loglikes[i] = (
+            -0.5 * (logdet + M_LOG_2PI * PLDA_DIMENSION + (sqdiff_given @ variance))
+        ) - loglike_without_class
+
+    ind = loglikes.argmax()
+    return ind, loglikes[ind]
 
 
-@njit
-def plda_log_likelihood(train_ivector: np.ndarray, test_ivector: np.ndarray, psi: np.ndarray):
-    mean = (psi) / (psi + 1.0)
-    mean *= train_ivector  # N X D , X[0]- Train ivectors
-    variance_given = 1.0 + psi / (psi + 1.0)
-    logdet_given = np.sum(np.log(variance_given))
-    variance_given = 1.0 / variance_given
-    # without class computation
-    variance_without = 1.0 + psi
-    logdet_without = np.sum(np.log(variance_without))
-    variance_without = 1.0 / variance_without
-    sqdiff_given = test_ivector - mean
-    sqdiff_given = sqdiff_given**2
-    loglikes = -0.5 * (logdet_given + M_LOG_2PI * PLDA_DIMENSION + (sqdiff_given @ variance_given))
-    sqdiff_without = test_ivector**2
-    loglike_without_class = -0.5 * (
-        logdet_without + M_LOG_2PI * PLDA_DIMENSION + (sqdiff_without @ variance_without)
-    )
-    return loglikes - loglike_without_class  # Negative for distance
+@njit(parallel=True)
+def score_plda_train_counts(
+    train_ivectors: np.ndarray, test_ivectors: np.ndarray, psi: np.ndarray, counts: np.ndarray
+) -> np.ndarray:
+    """
+    Adapted from https://github.com/prachiisc/PLDA_scoring/blob/master/PLDA_scoring.py#L177
+    Computes plda affinity matrix using Loglikelihood function
+
+    Parameters
+    ----------
+    train_ivectors : numpy.ndarray
+        Ivectors to compare test ivectors against against 1 X N X D
+    test_ivectors : numpy.ndarray
+        Ivectors to compare against training examples 1 X M X D
+    normalize: bool
+        Flag for normalizing matrix by the maximum value
+    distance: bool
+        Flag for converting PLDA log likelihood ratios into a distance metric
+
+    Returns
+    -------
+    np.ndarray
+        Affinity matrix, shape is number of train ivectors by the number of test ivectors (M X N)
+    """
+    num_train = train_ivectors.shape[0]
+    num_test = test_ivectors.shape[0]
+    loglikes = np.zeros((num_test, num_train))
+    for i in numba.prange(num_train):
+        for j in numba.prange(num_test):
+            loglikes[j, i] = plda_log_likelihood(
+                train_ivectors[i], test_ivectors[j], psi, counts[i]
+            )
+    return loglikes
 
 
 @dataclassy.dataclass(slots=True)
 class PldaModel:
+    """PLDA model for transforming and scoring ivectors based on log likelihood ratios"""
+
     mean: np.ndarray
     diagonalizing_transform: np.ndarray
     psi: np.ndarray
@@ -1326,6 +1897,19 @@ class PldaModel:
 
     @classmethod
     def load(cls, plda_path):
+        """
+        Instantiate a PLDA model from a trained model file
+
+        Parameters
+        ----------
+        plda_path: str
+            Path to trained PLDA model
+
+        Returns
+        -------
+        :class:`~montreal_forced_aligner.corpus.features.PldaModel`
+            Instantiated object
+        """
         mean = None
         diagonalizing_transform = None
         diagonalizing_transform_lines = []
@@ -1340,34 +1924,81 @@ class PldaModel:
         for line in copy_proc.stdout:
             if mean is None:
                 line = line.replace("<Plda>", "").strip()[2:-2]
-                mean = np.fromstring(line, dtype="float32", sep=" ")
+                mean = np.fromstring(line, sep=" ")
             elif diagonalizing_transform is None:
                 if "[" in line:
                     continue
                 end_mat = "]" in line
                 line = line.replace("[", "").replace("]", "").strip()
-                row = np.fromstring(line, dtype="float32", sep=" ")
+                row = np.fromstring(line, sep=" ")
                 diagonalizing_transform_lines.append(row)
                 if end_mat:
-                    diagonalizing_transform = np.array(
-                        diagonalizing_transform_lines, dtype="float32"
-                    )
+                    diagonalizing_transform = np.array(diagonalizing_transform_lines)
             elif psi is None:
                 line = line.strip()[2:-2]
-                psi = np.fromstring(line, dtype="float32", sep=" ")
+                psi = np.fromstring(line, sep=" ")
         copy_proc.wait()
-        return PldaModel(mean, diagonalizing_transform, psi)
+        offset = -diagonalizing_transform @ mean.reshape(-1, 1)
+        return PldaModel(mean, diagonalizing_transform, psi, offset)
 
     def distance(self, train_ivector: np.ndarray, test_ivector: np.ndarray):
+        """
+        Distance formulation of PLDA log likelihoods. Positive log likelihood ratios are transformed
+        into 1 / log likelihood ratio and negative log likelihood ratios are made positive.
+
+        Parameters
+        ----------
+        train_ivector: numpy.ndarray
+            Utterance ivector to use as reference
+        test_ivector: numpy.ndarray
+            Utterance ivector to compare
+
+        Returns
+        -------
+        float
+            PLDA distance
+        """
         return plda_distance(train_ivector, test_ivector, self.psi)
 
-    def log_likelihood(self, train_ivector: np.ndarray, test_ivector: np.ndarray):
-        return plda_log_likelihood(train_ivector, test_ivector, self.psi)
+    def log_likelihood(self, train_ivector: np.ndarray, test_ivector: np.ndarray, count: int = 1):
+        """
+        Calculate log likelihood of two ivectors belonging to the same class
 
-    def process_ivectors(self, ivectors: np.ndarray) -> np.ndarray:
-        ivectors = self.preprocess_ivectors(ivectors)
-        ivectors = self.compute_pca_transform(ivectors)
-        ivectors = self.transform_ivectors(ivectors)
+        Parameters
+        ----------
+        train_ivector: numpy.ndarray
+            Speaker or utterance ivector to use as reference
+        test_ivector: numpy.ndarray
+            Utterance ivector to compare
+        count: int, optional
+            Count of training ivector, if it represents a speaker
+
+        Returns
+        -------
+        float
+            Log likelihood ratio of same class hypothesis compared to difference class hypothesis
+        """
+        return plda_log_likelihood(train_ivector, test_ivector, self.psi, count)
+
+    def process_ivectors(self, ivectors: np.ndarray, counts: np.ndarray = None) -> np.ndarray:
+        """
+        Transform ivectors to PLDA space
+
+        Parameters
+        ----------
+        ivectors: numpy.ndarray
+            Ivectors to process
+        counts: numpy.ndarray, optional
+            Number of utterances if ivectors are per-speaker
+
+        Returns
+        -------
+        numpy.ndarray
+            Transformed ivectors
+        """
+        # ivectors = self.preprocess_ivectors(ivectors)
+        # ivectors = self.compute_pca_transform(ivectors)
+        ivectors = self.transform_ivectors(ivectors, counts=counts)
         return ivectors
 
     def preprocess_ivectors(self, ivectors: np.ndarray) -> np.ndarray:
@@ -1388,9 +2019,9 @@ class PldaModel:
         dim = ivectors.shape[1]
         # preprocessing
         # mean subtraction
-        ivectors = ivectors - self.mean[:, np.newaxis]
+        # ivectors = ivectors - self.mean[:, np.newaxis]
         # PCA transform
-        ivectors = self.diagonalizing_transform @ ivectors
+        # ivectors = self.diagonalizing_transform @ ivectors
         l2_norm = np.linalg.norm(ivectors, axis=0, keepdims=True)
         l2_norm = l2_norm / math.sqrt(dim)
 
@@ -1413,9 +2044,9 @@ class PldaModel:
         ----------
         numpy.ndarray
             Transformed ivectors
-        numpy.ndarray
-            Transform
         """
+        if PLDA_DIMENSION == IVECTOR_DIMENSION:
+            return ivectors
         if self.pca_transform is not None:
             return ivectors @ self.pca_transform
         num_rows = ivectors.shape[0]
@@ -1469,10 +2100,10 @@ class PldaModel:
         Dnew = ev_b.T @ Dnew
         self.transformed_mean = new_mean
         self.transformed_diagonalizing_transform = Dnew
-        self.psi = psi_new.astype("float32")
+        self.psi = psi_new
         self.offset = -Dnew @ new_mean.reshape(-1, 1)
 
-    def transform_ivectors(self, ivectors: np.ndarray) -> np.ndarray:
+    def transform_ivectors(self, ivectors: np.ndarray, counts: np.ndarray = None) -> np.ndarray:
         """
         Adapted from https://github.com/prachiisc/PLDA_scoring/blob/master/PLDA_scoring.py#L142
         Apply plda mean and diagonalizing transform to ivectors for scoring
@@ -1490,19 +2121,101 @@ class PldaModel:
 
         offset = self.offset
         offset = offset.T
-
-        D = self.transformed_diagonalizing_transform
+        if PLDA_DIMENSION == IVECTOR_DIMENSION:
+            D = self.diagonalizing_transform
+        else:
+            D = self.transformed_diagonalizing_transform
         Dnew = D.T
         X_new = ivectors @ Dnew
         X_new = X_new + offset
         # Get normalizing factor
         # Defaults : normalize_length(true), simple_length_norm(false)
         X_new_sq = X_new**2
-        psi = self.psi
-        inv_covar = (1.0 / (1.0 + psi)).reshape(-1, 1)
-        dot_prod = X_new_sq @ inv_covar  # N X 1
+
+        if counts is not None:
+            dot_prod = np.zeros((X_new.shape[0], 1))
+            for i in range(dot_prod.shape[0]):
+                inv_covar = self.psi + (1.0 / counts[i])
+                inv_covar = 1.0 / inv_covar
+                dot_prod[i] = np.dot(X_new_sq[i], inv_covar)
+        else:
+            inv_covar = (1.0 / (1.0 + self.psi)).reshape(-1, 1)
+            dot_prod = X_new_sq @ inv_covar  # N X 1
         Dim = D.shape[0]
         normfactor = np.sqrt(Dim / dot_prod)
         X_new = X_new * normfactor
 
         return X_new
+
+
+class ExportIvectorsFunction(KaldiFunction):
+    """
+    Multiprocessing function to compute voice activity detection
+    See Also
+    --------
+    :meth:`.AcousticCorpusMixin.compute_vad`
+        Main function that calls this function in parallel
+    :meth:`.AcousticCorpusMixin.compute_vad_arguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`compute-vad`
+        Relevant Kaldi binary
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.corpus.features.VadArguments`
+        Arguments for the function
+    """
+
+    def __init__(self, args: ExportIvectorsArguments):
+        super().__init__(args)
+        self.use_xvector = args.use_xvector
+
+    def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
+        """Run the function"""
+        engine = sqlalchemy.create_engine(self.db_string)
+        with sqlalchemy.orm.Session(engine) as session, mfa_open(self.log_path, "w") as log_file:
+
+            job: Job = (
+                session.query(Job)
+                .options(joinedload(Job.corpus, innerjoin=True))
+                .filter(Job.id == self.job_name)
+                .first()
+            )
+            if self.use_xvector:
+                ivector_column = Utterance.xvector
+            else:
+                ivector_column = Utterance.ivector
+            query = (
+                session.query(Utterance.kaldi_id, ivector_column)
+                .filter(ivector_column != None, Utterance.job_id == job.id)  # noqa
+                .order_by(Utterance.kaldi_id)
+            )
+
+            ivector_scp_path = job.construct_path(job.corpus.split_directory, "ivectors", "scp")
+            ivector_ark_path = job.construct_path(job.corpus.split_directory, "ivectors", "ark")
+            input_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("copy-vector"),
+                    "--binary=true",
+                    "ark,t:-",
+                    f"ark,scp:{ivector_ark_path},{ivector_scp_path}",
+                ],
+                stdin=subprocess.PIPE,
+                stderr=log_file,
+                env=os.environ,
+            )
+            for utt_id, ivector in query:
+                if ivector is None:
+                    continue
+                ivector = " ".join([format(x, ".12g") for x in ivector])
+                in_line = f"{utt_id}  [ {ivector} ]\n".encode("utf8")
+                input_proc.stdin.write(in_line)
+                input_proc.stdin.flush()
+            input_proc.stdin.close()
+            self.check_call(input_proc)
+            with mfa_open(ivector_scp_path) as f:
+                for line in f:
+                    line = line.strip()
+                    utt_id, ark_path = line.split(maxsplit=1)
+                    utt_id = int(utt_id.split("-")[1])
+                    yield utt_id, ark_path
+        engine.dispose()

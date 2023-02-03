@@ -342,7 +342,7 @@ class AlignMixin(DictionaryMixin):
                         error_sum += errors
         if error_sum:
             logger.warning(f"Compilation of training graphs failed for {error_sum} utterances.")
-        logger.debug(f"Compiling training graphs took {time.time() - begin}")
+        logger.debug(f"Compiling training graphs took {time.time() - begin:.3f} seconds")
 
     def get_phone_confidences(self):
         if not os.path.exists(self.phone_pdf_counts_path):
@@ -398,7 +398,7 @@ class AlignMixin(DictionaryMixin):
                             pbar.update(1)
                 bulk_update(session, PhoneInterval, interval_update_mappings)
                 session.commit()
-            logger.debug(f"Calculating phone confidences took {time.time() - begin}")
+            logger.debug(f"Calculating phone confidences took {time.time() - begin:.3f} seconds")
 
     def align_utterances(self, training=False) -> None:
         """
@@ -510,7 +510,11 @@ class AlignMixin(DictionaryMixin):
                         workflow.time_stamp = datetime.datetime.now()
                         workflow.score = log_like_sum / log_like_count
                 session.commit()
-            logger.debug(f"Alignment round took {time.time() - begin}")
+            if not GLOBAL_CONFIG.debug:
+                for file in os.listdir(self.working_directory):
+                    if any(file.startswith(x) for x in ["fsts."]):
+                        os.remove(os.path.join(self.working_directory, file))
+            logger.debug(f"Alignment round took {time.time() - begin:.3f} seconds")
 
     def compile_information(self) -> None:
         """
@@ -594,7 +598,7 @@ class AlignMixin(DictionaryMixin):
             if average_logdet_sum:
                 average_log_like += average_logdet_sum / average_logdet_frames
             logger.debug(f"Average per frame likelihood for alignment: {average_log_like}")
-        logger.debug(f"Compiling information took {time.time() - compile_info_begin}")
+        logger.debug(f"Compiling information took {time.time() - compile_info_begin:.3f} seconds")
 
     @property
     @abstractmethod

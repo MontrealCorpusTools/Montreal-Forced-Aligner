@@ -19,9 +19,7 @@ def test_training_validator_arpa(
     assert validator.phone_set_type.name == "ARPA"
     assert validator.extra_questions_mapping
     assert validator.phone_set_type.name == "ARPA"
-    for k, v in validator.extra_questions_mapping.items():
-        print(k)
-        print(v)
+    for v in validator.extra_questions_mapping.values():
         assert len(v) == len(set(v))
     assert all("0" in x for x in validator.extra_questions_mapping["stress_0"])
     assert all("1" in x for x in validator.extra_questions_mapping["stress_1"])
@@ -72,9 +70,7 @@ def test_training_validator_ipa(
     assert validator.phone_set_type.name == "IPA"
     assert validator.extra_questions_mapping
     assert validator.phone_set_type.name == "IPA"
-    for k, v in validator.extra_questions_mapping.items():
-        print(k)
-        print(v)
+    for v in validator.extra_questions_mapping.values():
         assert len(v) == len(set(v))
     assert "dental" in validator.extra_questions_mapping
     dental = {

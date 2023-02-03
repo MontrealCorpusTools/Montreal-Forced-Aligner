@@ -114,7 +114,7 @@ def test_pitch_feature_training(
     )
     assert a.use_pitch
     a.train()
-    assert a.get_feat_dim() == 48
+    assert a.get_feat_dim() == 45
     a.clean_working_directory()
     a.remove_database()
 

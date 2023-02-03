@@ -222,6 +222,13 @@ def english_ivector_model(model_manager):
 
 
 @pytest.fixture(scope="session")
+def multilingual_ivector_model(model_manager):
+    if not model_manager.has_local_model("ivector", "multilingual_mfa"):
+        model_manager.download_model("ivector", "multilingual_mfa")
+    return "multilingual_mfa"
+
+
+@pytest.fixture(scope="session")
 def english_g2p_model(model_manager):
     if not model_manager.has_local_model("g2p", "english_us_arpa"):
         model_manager.download_model("g2p", "english_us_arpa")
@@ -542,6 +549,33 @@ def punctuated_dir(corpus_root_dir, wav_dir, lab_dir):
 
 
 @pytest.fixture()
+def japanese_dir(corpus_root_dir, wav_dir, lab_dir):
+    path = os.path.join(corpus_root_dir, "test_japanese")
+    os.makedirs(path, exist_ok=True)
+    name = "japanese"
+    shutil.copyfile(os.path.join(lab_dir, name + ".lab"), os.path.join(path, name + ".lab"))
+    return path
+
+
+@pytest.fixture()
+def devanagari_dir(corpus_root_dir, wav_dir, lab_dir):
+    path = os.path.join(corpus_root_dir, "test_devanagari")
+    os.makedirs(path, exist_ok=True)
+    name = "devanagari"
+    shutil.copyfile(os.path.join(lab_dir, name + ".lab"), os.path.join(path, name + ".lab"))
+    return path
+
+
+@pytest.fixture()
+def french_clitics_dir(corpus_root_dir, wav_dir, lab_dir):
+    path = os.path.join(corpus_root_dir, "test_french_clitics")
+    os.makedirs(path, exist_ok=True)
+    name = "french_clitics"
+    shutil.copyfile(os.path.join(lab_dir, name + ".lab"), os.path.join(path, name + ".lab"))
+    return path
+
+
+@pytest.fixture()
 def swedish_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, "test_swedish")
     os.makedirs(path, exist_ok=True)
@@ -717,6 +751,16 @@ def extra_annotations_path(dict_dir):
 @pytest.fixture(scope="session")
 def frclitics_dict_path(dict_dir):
     return os.path.join(dict_dir, "test_frclitics.txt")
+
+
+@pytest.fixture(scope="session")
+def japanese_dict_path(dict_dir):
+    return os.path.join(dict_dir, "test_japanese.txt")
+
+
+@pytest.fixture(scope="session")
+def hindi_dict_path(dict_dir):
+    return os.path.join(dict_dir, "test_hindi.txt")
 
 
 @pytest.fixture(scope="session")

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import collections
 import json
+import logging
 import multiprocessing as mp
 import os
 import re
@@ -25,7 +26,8 @@ import sqlalchemy.engine
 from sqlalchemy.orm import Session, joinedload, selectinload, subqueryload
 
 from montreal_forced_aligner.corpus.features import (
-    compute_feature_process,
+    compute_mfcc_process,
+    compute_pitch_process,
     compute_transform_process,
 )
 from montreal_forced_aligner.data import (
@@ -51,7 +53,7 @@ from montreal_forced_aligner.db import (
     Word,
     WordInterval,
 )
-from montreal_forced_aligner.exceptions import AlignmentExportError
+from montreal_forced_aligner.exceptions import AlignmentExportError, FeatureGenerationError
 from montreal_forced_aligner.helper import mfa_open, split_phone_position
 from montreal_forced_aligner.textgrid import export_textgrid
 from montreal_forced_aligner.utils import (
@@ -96,6 +98,8 @@ def phones_to_prons(
     word_symbol_table: pywrapfst.SymbolTableView,
     phone_symbol_table: pywrapfst.SymbolTableView,
     optional_silence_phone: str,
+    transcription: bool = False,
+    clitic_marker=None,
 ):
     if "<space>" in text:
         words = [x.replace(" ", "") for x in text.split("<space>")]
@@ -120,6 +124,36 @@ def phones_to_prons(
             ),
         )
         current_state = next_state
+    if transcription:
+        if intervals[-1].label == optional_silence_phone:
+            state = current_state - 1
+        else:
+            state = current_state
+        phone_to_word_state = phone_to_word.num_states() - 1
+        for i in range(phone_symbol_table.num_symbols()):
+            if phone_symbol_table.find(i) == "<eps>":
+                continue
+            if phone_symbol_table.find(i).startswith("#"):
+                continue
+            phone_fst.add_arc(
+                state,
+                pywrapfst.Arc(
+                    phone_symbol_table.find("<eps>"),
+                    i,
+                    pywrapfst.Weight.one(phone_fst.weight_type()),
+                    state,
+                ),
+            )
+
+            phone_to_word.add_arc(
+                phone_to_word_state,
+                pywrapfst.Arc(
+                    i,
+                    phone_symbol_table.find("<eps>"),
+                    pywrapfst.Weight.one(phone_fst.weight_type()),
+                    phone_to_word_state,
+                ),
+            )
     for s in range(current_state + 1):
         phone_fst.add_arc(
             s,
@@ -141,7 +175,22 @@ def phones_to_prons(
     phone_fst.arcsort("olabel")
 
     lattice = pynini.compose(phone_fst, phone_to_word)
-    path_string = pynini.shortestpath(lattice).project("input").string(phone_symbol_table)
+    try:
+        path_string = pynini.shortestpath(lattice).project("input").string(phone_symbol_table)
+    except Exception:
+        logging.debug("For the text and intervals:")
+        logging.debug(text)
+        logging.debug([x.label for x in intervals])
+        logging.debug("There was an issue composing word and phone FSTs")
+        logging.debug("PHONE FST:")
+        phone_fst.set_input_symbols(phone_symbol_table)
+        phone_fst.set_output_symbols(phone_symbol_table)
+        logging.debug(phone_fst)
+        logging.debug("PHONE_TO_WORD FST:")
+        phone_to_word.set_input_symbols(phone_symbol_table)
+        phone_to_word.set_output_symbols(word_symbol_table)
+        logging.debug(phone_to_word)
+        raise
     path_string = path_string.replace(f"{word_end} {word_begin}", word_begin)
     path_string = path_string.replace(f"{word_end}", word_begin)
     word_splits = re.split(rf" ?{word_begin} ?", path_string)
@@ -829,9 +878,7 @@ class AlignFunction(KaldiFunction):
                         f"ark:{ali_path}",
                     ]
                     align_proc = subprocess.Popen(
-                        com,
-                        stderr=subprocess.PIPE,
-                        env=os.environ,
+                        com, stderr=subprocess.PIPE, env=os.environ, encoding="utf8"
                     )
                     process_stream = align_proc.stderr
                 else:
@@ -871,14 +918,17 @@ class AlignFunction(KaldiFunction):
                         env=os.environ,
                     )
                     process_stream = align_proc.stdout
+                no_feature_count = 0
                 for line in process_stream:
+                    if re.search("No features for utterance", line):
+                        no_feature_count += 1
                     line = line.strip()
                     if (
                         self.confidence
                         and self.feature_options["uses_speaker_adaptation"]
                         and os.path.exists(fmllr_path)
                     ):
-                        m = self.progress_pattern.match(line.decode("utf8"))
+                        m = self.progress_pattern.match(line)
                         if m:
                             utterance = m.group("utterance")
                             u_id = int(utterance.split("-")[-1])
@@ -887,6 +937,14 @@ class AlignFunction(KaldiFunction):
                         utterance, log_likelihood = line.split()
                         u_id = int(utterance.split("-")[-1])
                         yield u_id, float(log_likelihood)
+                if no_feature_count:
+                    align_proc.wait()
+                    raise FeatureGenerationError(
+                        f"There was an issue in feature generation for {no_feature_count} utterances. "
+                        f"This can be caused by version incompatibilities between MFA and the model, "
+                        f"in which case you should re-download or re-train your model, "
+                        f"or downgrade MFA to the version that the model was trained on."
+                    )
                 self.check_call(align_proc)
         db_engine.dispose()
 
@@ -1138,6 +1196,15 @@ class FineTuneFunction(KaldiFunction):
                 text_path = job.construct_path(
                     workflow.working_directory, "fine_tune_text", "scp", d_id
                 )
+                pitch_ark_path = job.construct_path(
+                    workflow.working_directory, "fine_tune_pitch", "ark", d_id
+                )
+                mfcc_ark_path = job.construct_path(
+                    workflow.working_directory, "fine_tune_mfcc", "ark", d_id
+                )
+                feats_ark_path = job.construct_path(
+                    workflow.working_directory, "fine_tune_feats", "ark", d_id
+                )
 
                 fmllr_path = job.construct_path(workflow.working_directory, "trans", "ark", d_id)
 
@@ -1160,27 +1227,89 @@ class FineTuneFunction(KaldiFunction):
                 )
                 proc.communicate()
 
-                paste_proc, comp_proc = compute_feature_process(
-                    log_file,
-                    wav_path,
-                    segment_path,
-                    self.mfcc_options,
-                    self.pitch_options,
-                    min_length=min_length,
-                    no_logging=True,
+                seg_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("extract-segments"),
+                        f"--min-segment-length={min_length}",
+                        f"scp:{wav_path}",
+                        segment_path,
+                        "ark:-",
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=log_file,
+                    env=os.environ,
                 )
-                feature_proc = paste_proc if paste_proc is not None else comp_proc
+                mfcc_proc = compute_mfcc_process(
+                    log_file, wav_path, subprocess.PIPE, self.mfcc_options
+                )
+                cmvn_proc = subprocess.Popen(
+                    [
+                        "apply-cmvn",
+                        f"--utt2spk=ark:{utt2spk_path}",
+                        f"scp:{cmvn_path}",
+                        "ark:-",
+                        f"ark:{mfcc_ark_path}",
+                    ],
+                    env=os.environ,
+                    stdin=mfcc_proc.stdout,
+                    stderr=log_file,
+                )
+
+                use_pitch = self.pitch_options["use-pitch"] or self.pitch_options["use-voicing"]
+                if use_pitch:
+                    pitch_proc = compute_pitch_process(
+                        log_file, wav_path, subprocess.PIPE, self.pitch_options
+                    )
+                    pitch_copy_proc = subprocess.Popen(
+                        [
+                            thirdparty_binary("copy-feats"),
+                            "--compress=true",
+                            "ark:-",
+                            f"ark:{pitch_ark_path}",
+                        ],
+                        stdin=pitch_proc.stdout,
+                        stderr=log_file,
+                        env=os.environ,
+                    )
+                for line in seg_proc.stdout:
+                    mfcc_proc.stdin.write(line)
+                    mfcc_proc.stdin.flush()
+                    if use_pitch:
+                        pitch_proc.stdin.write(line)
+                        pitch_proc.stdin.flush()
+                mfcc_proc.stdin.close()
+                if use_pitch:
+                    pitch_proc.stdin.close()
+                cmvn_proc.wait()
+                if use_pitch:
+                    pitch_copy_proc.wait()
+                if use_pitch:
+                    paste_proc = subprocess.Popen(
+                        [
+                            thirdparty_binary("paste-feats"),
+                            "--length-tolerance=2",
+                            f"ark:{mfcc_ark_path}",
+                            f"ark:{pitch_ark_path}",
+                            f"ark:{feats_ark_path}",
+                        ],
+                        stderr=log_file,
+                        env=os.environ,
+                    )
+                    paste_proc.wait()
+                else:
+                    feats_ark_path = mfcc_ark_path
+
                 extract_proc = subprocess.Popen(
                     [
                         thirdparty_binary("extract-feature-segments"),
                         f"--min-segment-length={min_length}",
                         f"--frame-shift={self.new_frame_shift}",
                         f'--snip-edges={self.mfcc_options["snip-edges"]}',
-                        "ark,s,cs:-",
+                        f"ark,s,cs:{feats_ark_path}",
                         feature_segment_path,
                         "ark:-",
                     ],
-                    stdin=feature_proc.stdout,
+                    stdin=paste_proc.stdout,
                     stderr=log_file,
                     stdout=subprocess.PIPE,
                     env=os.environ,
@@ -1189,7 +1318,6 @@ class FineTuneFunction(KaldiFunction):
                     log_file,
                     extract_proc,
                     utt2spk_path,
-                    cmvn_path,
                     workflow.lda_mat_path,
                     fmllr_path,
                     self.lda_options,
@@ -1515,6 +1643,7 @@ class GeneratePronunciationsFunction(KaldiFunction):
                 self.silence_words.add(d.silence_word)
                 self.oov_word = d.oov_word
                 self.optional_silence_phone = d.optional_silence_phone
+                self.oov_phone = d.oov_phone
 
                 silence_words = (
                     session.query(Word.word)
@@ -1557,10 +1686,20 @@ class GeneratePronunciationsFunction(KaldiFunction):
                             for x in word_pronunciations
                         ]
                     word_pronunciations = [(x[0], " ".join(x[1])) for x in word_pronunciations]
+                    word_pronunciations = [
+                        x if x[1] != self.oov_phone else (self.oov_word, self.oov_phone)
+                        for x in word_pronunciations
+                    ]
                     if self.for_g2p:
                         phones = []
-                        for x in word_pronunciations:
-                            phones.append("#1")
+                        for i, x in enumerate(word_pronunciations):
+                            if i > 0 and (
+                                x[0].startswith(self.clitic_marker)
+                                or word_pronunciations[i - 1][0].endswith(self.clitic_marker)
+                            ):
+                                phones.pop(-1)
+                            else:
+                                phones.append("#1")
                             phones.extend(x[1].split())
                             phones.append("#2")
                         yield d.id, utterance, " ".join(phones)
@@ -1696,6 +1835,7 @@ class AlignmentExtractionFunction(KaldiFunction):
             self.word_symbol_table,
             self.phone_symbol_table,
             self.optional_silence_phone,
+            self.transcription,
         )
         actual_phone_intervals = []
         actual_word_intervals = []
@@ -1727,7 +1867,13 @@ class AlignmentExtractionFunction(KaldiFunction):
             if current_word_begin is None:
                 current_word_begin = interval.begin
             current_phones.append(interval.label)
-            cur_word = word_pronunciations[words_index]
+            try:
+                cur_word = word_pronunciations[words_index]
+            except IndexError:
+                if self.transcription:
+                    break
+                else:
+                    raise
             pronunciation = " ".join(cur_word[1])
             if self.position_dependent_phones:
                 pronunciation = re.sub(r"_[BIES]\b", "", pronunciation)
@@ -1738,7 +1884,7 @@ class AlignmentExtractionFunction(KaldiFunction):
                 ):
                     pron_id = self.pronunciation_mapping[(self.oov_word, pronunciation)]
                 else:
-                    pron_id = self.pronunciation_mapping[(cur_word[0], pronunciation)]
+                    pron_id = self.pronunciation_mapping.get((cur_word[0], pronunciation), None)
                 actual_word_intervals.append(
                     WordCtmInterval(
                         current_word_begin,
@@ -1774,7 +1920,6 @@ class AlignmentExtractionFunction(KaldiFunction):
         list[:class:`~montreal_forced_aligner.data.CtmInterval`]
             Cleaned up intervals
         """
-        self.align_lexicon_fst.invert()
         word_pronunciations = phones_to_prons(
             self.utterance_texts[utterance_name],
             intervals,
@@ -1782,8 +1927,8 @@ class AlignmentExtractionFunction(KaldiFunction):
             self.word_symbol_table,
             self.phone_symbol_table,
             self.optional_silence_phone,
+            clitic_marker=self.clitic_marker,
         )
-        print(word_pronunciations)
         actual_phone_intervals = []
         actual_word_intervals = []
         phone_word_mapping = []
@@ -1802,9 +1947,7 @@ class AlignmentExtractionFunction(KaldiFunction):
                         interval.begin,
                         interval.end,
                         self.word_mapping[self.silence_word],
-                        self.pronunciation_mapping[
-                            (self.silence_word, self.optional_silence_phone)
-                        ],
+                        None,
                     )
                 )
                 phone_word_mapping.append(len(actual_word_intervals) - 1)
@@ -1829,11 +1972,15 @@ class AlignmentExtractionFunction(KaldiFunction):
                         pron_id = self.pronunciation_mapping[(cur_word[0], pronunciation)]
                 except KeyError:
                     pron_id = None
+                try:
+                    word_id = self.word_mapping[cur_word[0]]
+                except KeyError:
+                    word_id = cur_word[0]
                 actual_word_intervals.append(
                     WordCtmInterval(
                         current_word_begin,
                         interval.end,
-                        self.word_mapping[cur_word[0]],
+                        word_id,
                         pron_id,
                     )
                 )
@@ -1892,20 +2039,21 @@ class AlignmentExtractionFunction(KaldiFunction):
                     self.phone_symbol_table = pywrapfst.SymbolTable.read_text(
                         d.phone_symbol_table_path
                     )
+                self.align_lexicon_fst = pynini.Fst.read(d.align_lexicon_path)
                 if d.use_g2p:
                     self.word_symbol_table = pywrapfst.SymbolTable.read_text(
                         d.grapheme_symbol_table_path
                     )
+                    self.align_lexicon_fst.invert()
                 else:
                     self.word_symbol_table = pywrapfst.SymbolTable.read_text(d.words_symbol_path)
-                self.align_lexicon_fst = pynini.Fst.read(d.align_lexicon_path)
                 self.clitic_marker = d.clitic_marker
                 self.silence_word = d.silence_word
                 self.oov_word = d.oov_word
                 self.oov_phone = "spn"
                 self.position_dependent_phones = d.position_dependent_phones
                 self.optional_silence_phone = d.optional_silence_phone
-                if self.confidence:
+                if self.transcription or self.confidence:
                     align_lexicon_paths[d.id] = d.align_lexicon_int_path
                 else:
                     align_lexicon_paths[d.id] = d.align_lexicon_path
@@ -1933,7 +2081,11 @@ class AlignmentExtractionFunction(KaldiFunction):
                 for w, pron, p_id in pronunciations:
                     self.pronunciation_mapping[(w, pron)] = p_id
 
-                lat_path = job.construct_path(workflow.working_directory, "lat", "ark", d.id)
+                lat_path = job.construct_path(
+                    workflow.working_directory, "lat.carpa.rescored", "ark", d.id
+                )
+                if not os.path.exists(lat_path):
+                    lat_path = job.construct_path(workflow.working_directory, "lat", "ark", d.id)
                 ali_path = job.construct_path(workflow.working_directory, "ali", "ark", d.id)
                 if self.transcription:
                     self.utterance_texts = {}
@@ -2300,6 +2452,5 @@ class ExportTextGridProcessWorker(mp.Process):
                         )
                     )
                     self.stopped.stop()
-                    raise
             log_file.write("Done!\n")
         db_engine.dispose()

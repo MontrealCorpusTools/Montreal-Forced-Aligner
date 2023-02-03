@@ -307,7 +307,6 @@ class AlignmentInitWorker(mp.Process):
                         del fst
                         count += 1
                     except Exception as e:  # noqa
-                        print(e)
                         self.stopped.stop()
                         self.return_queue.put(e)
             if data:
@@ -316,7 +315,6 @@ class AlignmentInitWorker(mp.Process):
             symbol_table.write_text(self.far_path.replace(".far", ".syms"))
             return
         except Exception as e:
-            print(e)
             self.stopped.stop()
             self.return_queue.put(e)
         finally:
@@ -758,7 +756,7 @@ class PhonetisaurusTrainerMixin:
         procs = []
         for i in range(GLOBAL_CONFIG.num_jobs):
             args = AlignmentInitArguments(
-                self.read_only_db_string,
+                self.db_string,
                 os.path.join(self.working_log_directory, f"alignment_init.{i}.log"),
                 os.path.join(self.working_directory, f"{i}.far"),
                 self.deletions,
@@ -887,7 +885,7 @@ class PhonetisaurusTrainerMixin:
         procs = []
         for i in range(GLOBAL_CONFIG.num_jobs):
             args = MaximizationArguments(
-                self.read_only_db_string,
+                self.db_string,
                 os.path.join(self.working_directory, f"{i}.far"),
                 self.penalize_em,
                 self.batch_size,
@@ -941,7 +939,7 @@ class PhonetisaurusTrainerMixin:
         procs = []
         for i in range(GLOBAL_CONFIG.num_jobs):
             args = ExpectationArguments(
-                self.read_only_db_string,
+                self.db_string,
                 os.path.join(self.working_directory, f"{i}.far"),
                 self.batch_size,
             )
@@ -1142,7 +1140,6 @@ class PhonetisaurusTrainerMixin:
                             arc = pywrapfst.Arc(0, 0, arc.weight, arc.nextstate)
                             maiter.set_value(arc)
                         else:
-                            print(symbol)
                             raise
                     finally:
                         next(maiter)
@@ -1282,7 +1279,7 @@ class PhonetisaurusTrainerMixin:
         count_paths = []
         for i in range(GLOBAL_CONFIG.num_jobs):
             args = AlignmentExportArguments(
-                self.read_only_db_string,
+                self.db_string,
                 os.path.join(self.working_log_directory, f"ngram_count.{i}.log"),
                 os.path.join(self.working_directory, f"{i}.far"),
                 self.penalize,
@@ -1390,13 +1387,13 @@ class PhonetisaurusTrainer(
         begin = time.time()
         self.train_alignments()
         logger.debug(
-            f"Aligning {len(self.g2p_training_dictionary)} words took {time.time() - begin} seconds"
+            f"Aligning {len(self.g2p_training_dictionary)} words took {time.time() - begin:.3f} seconds"
         )
         self.export_alignments()
         begin = time.time()
         self.train_ngram_model()
         logger.debug(
-            f"Generating model for {len(self.g2p_training_dictionary)} words took {time.time() - begin} seconds"
+            f"Generating model for {len(self.g2p_training_dictionary)} words took {time.time() - begin:.3f} seconds"
         )
         self.finalize_training()
 
@@ -1632,7 +1629,7 @@ class PhonetisaurusTrainer(
             session.query(Job).delete()
             session.commit()
 
-            job_objs = [{"id": j, "corpus_id": 1} for j in range(GLOBAL_CONFIG.num_jobs)]
+            job_objs = [{"id": j} for j in range(GLOBAL_CONFIG.num_jobs)]
             self.g2p_num_training_pronunciations = 0
             self.g2p_num_validation_pronunciations = 0
             self.g2p_num_training_words = 0

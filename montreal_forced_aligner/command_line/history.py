@@ -31,7 +31,7 @@ def history_cli(depth: int, verbose: bool) -> None:
             execution_time = time.strftime("%H:%M:%S", time.gmtime(h["execution_time"]))
             d = h["date"].isoformat()
             print(
-                f"{h['command']}\t{d}\t{execution_time}\t{h['version']}\t{h['exit_code']}\t{h['exception']}"
+                f"{h['command']}\t{d}\t{execution_time}\t{h.get('version', 'unknown')}\t{h['exit_code']}\t{h['exception']}"
             )
         pass
     else:

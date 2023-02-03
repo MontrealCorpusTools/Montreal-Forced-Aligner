@@ -17,7 +17,7 @@ from pynini import Fst, TokenType
 from pynini.lib import rewrite
 from pywrapfst import SymbolTable
 
-from montreal_forced_aligner.abc import TopLevelMfaWorker
+from montreal_forced_aligner.abc import DatabaseMixin, TopLevelMfaWorker
 from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.text_corpus import TextCorpusMixin
 from montreal_forced_aligner.exceptions import PyniniGenerationError
@@ -482,7 +482,7 @@ class PyniniGenerator(G2PTopLevelMixin):
                 p.join()
             if error_dict:
                 raise PyniniGenerationError(error_dict)
-        logger.debug(f"Processed {num_words} in {time.time() - begin} seconds")
+        logger.debug(f"Processed {num_words} in {time.time() - begin:.3f} seconds")
         return to_return
 
 
@@ -654,7 +654,7 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
         logger.info(f"WER:\t{self.wer:.2f}")
         logger.info(f"LER:\t{self.ler:.2f}")
         logger.debug(
-            f"Computation of errors for {len(gold_values)} words took {time.time() - begin} seconds"
+            f"Computation of errors for {len(gold_values)} words took {time.time() - begin:.3f} seconds"
         )
 
     def evaluate_g2p_model(self, gold_pronunciations: Dict[str, Set[str]]) -> None:
@@ -670,7 +670,7 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
         self.compute_validation_errors(gold_pronunciations, output)
 
 
-class PyniniWordListGenerator(PyniniValidator):
+class PyniniWordListGenerator(PyniniValidator, DatabaseMixin):
     """
     Top-level worker for generating pronunciations from a word list and a Pynini G2P model
 

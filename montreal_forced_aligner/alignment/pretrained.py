@@ -77,6 +77,13 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
 
     def setup_acoustic_model(self) -> None:
         """Set up the acoustic model"""
+        if self.acoustic_model.meta["version"] < "2.1":
+            logger.warning(
+                "The acoustic model was trained in an earlier version of MFA. "
+                "There may be incompatibilities in feature generation that cause errors. "
+                "Please download the latest version of the model via `mfa model download`, "
+                "use a different acoustic model, or use version 2.0.6 of MFA."
+            )
         self.acoustic_model.export_model(self.working_directory)
         os.makedirs(self.phones_dir, exist_ok=True)
         for f in ["phones.txt", "graphemes.txt"]:
@@ -124,8 +131,6 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
                     root_temp_directory=self.dictionary_output_directory,
                     position_dependent_phones=self.position_dependent_phones,
                     clitic_marker=self.clitic_marker,
-                    bracket_regex=self.bracket_regex.pattern,
-                    laughter_regex=self.laughter_regex.pattern,
                     default=dict_name == dict_info["default"],
                     use_g2p=self.use_g2p,
                     max_disambiguation_symbol=0,
@@ -143,7 +148,11 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
                 fst_path = os.path.join(self.acoustic_model.dirname, dict_name + ".fst")
                 if os.path.exists(fst_path):
                     os.makedirs(dictionary.temp_directory, exist_ok=True)
-                    shutil.copyfile(fst_path, os.path.join(dictionary.temp_directory, "L.fst"))
+                    shutil.copyfile(fst_path, dictionary.lexicon_fst_path)
+                fst_path = os.path.join(self.acoustic_model.dirname, dict_name + "_align.fst")
+                if os.path.exists(fst_path):
+                    os.makedirs(dictionary.temp_directory, exist_ok=True)
+                    shutil.copyfile(fst_path, dictionary.align_lexicon_path)
             phone_objs = []
             with mfa_open(self.phone_symbol_table_path, "r") as f:
                 for line in f:
@@ -203,7 +212,7 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
             if self.excluded_pronunciation_count:
                 logger.warning(
                     f"There were {self.excluded_pronunciation_count} pronunciations in the dictionary that "
-                    f"were ignored for containing one of {len(self.excluded_phones)} phones not present in the"
+                    f"were ignored for containing one of {len(self.excluded_phones)} phones not present in the "
                     f"trained acoustic model.  Please run `mfa validate` to get more details."
                 )
             self.acoustic_model.validate(self)
@@ -215,7 +224,7 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
                 e.update_log_file()
             raise
         self.initialized = True
-        logger.debug(f"Setup for alignment in {time.time() - begin} seconds")
+        logger.debug(f"Setup for alignment in {time.time() - begin:.3f} seconds")
 
     @classmethod
     def parse_parameters(
@@ -314,10 +323,6 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
                 f.write(
                     f"{utterance.kaldi_id} {utterance.file_id} {utterance.begin} {utterance.end} {utterance.channel}\n"
                 )
-        if utterance.speaker.cmvn:
-            cmvn_path = os.path.join(self.working_directory, "cmvn.scp")
-            with mfa_open(cmvn_path, "w") as f:
-                f.write(f"{utterance.speaker.id} {utterance.speaker.cmvn}\n")
         spk2utt_path = os.path.join(self.working_directory, "spk2utt.scp")
         utt2spk_path = os.path.join(self.working_directory, "utt2spk.scp")
         with mfa_open(spk2utt_path, "w") as f:
@@ -335,6 +340,7 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
             self.mfcc_options,
             self.pitch_options,
             self.feature_options,
+            self.lda_options,
             self.align_options,
             self.alignment_model_path,
             self.tree_path,

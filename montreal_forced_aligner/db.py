@@ -1,6 +1,7 @@
 """Database classes"""
 from __future__ import annotations
 
+import logging
 import os
 import re
 import typing
@@ -15,7 +16,7 @@ from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integ
 from sqlalchemy.ext.orderinglist import ordering_list
 from sqlalchemy.orm import Bundle, declarative_base, relationship
 
-from montreal_forced_aligner.config import PLDA_DIMENSION
+from montreal_forced_aligner.config import IVECTOR_DIMENSION, PLDA_DIMENSION, XVECTOR_DIMENSION
 from montreal_forced_aligner.data import (
     CtmInterval,
     PhoneSetType,
@@ -28,6 +29,8 @@ from montreal_forced_aligner.helper import mfa_open
 
 if typing.TYPE_CHECKING:
     from montreal_forced_aligner.corpus.classes import UtteranceData
+
+logger = logging.getLogger("mfa")
 
 __all__ = [
     "Corpus",
@@ -84,9 +87,9 @@ def bulk_update(
     if id_field is None:
         id_field = "id"
 
-    column_names = [x for x in values[0].keys() if x != id_field]
-    columns = [getattr(table, x)._copy() for x in column_names]
-    column_names = [f'"{x}"' for x in column_names]
+    column_names = [x for x in values[0].keys()]
+    columns = [getattr(table, x)._copy() for x in column_names if x != id_field]
+    sql_column_names = [f'"{x}"' for x in column_names if x != id_field]
     with session.begin_nested():
         temp_table = sqlalchemy.Table(
             f"temp_{table.__tablename__}",
@@ -101,25 +104,19 @@ def bulk_update(
         )
         session.execute(sqlalchemy.text(create_statement))
         session.execute(temp_table.insert(), values)
+
         set_statements = []
-        for c in column_names:
-            set_statements.append(
-                f""" {c} = (SELECT {c}
-                                          FROM temp_{table.__tablename__}
-                                          WHERE temp_{table.__tablename__}.{id_field} = {table.__tablename__}.{id_field})"""
-            )
-        exist_statement = f"""EXISTS (SELECT {', '.join(column_names)}
-              FROM temp_{table.__tablename__}
-              WHERE temp_{table.__tablename__}.{id_field} = {table.__tablename__}.{id_field})"""
+        for c in sql_column_names:
+            set_statements.append(f""" {c} = b.{c}""")
         set_statements = ",\n".join(set_statements)
-        session.execute(
-            sqlalchemy.text(
-                f"""UPDATE
-                              {table.__tablename__}
-                        SET {set_statements}
-                        WHERE {exist_statement}"""
-            )
-        )
+        sql = f"""
+        UPDATE {table.__tablename__}
+        SET
+            {set_statements}
+        FROM temp_{table.__tablename__} AS b
+        WHERE {table.__tablename__}.{id_field}=b.{id_field};
+        """
+        session.execute(sqlalchemy.text(sql))
 
         # drop temp table
         session.execute(sqlalchemy.text(f"DROP TABLE temp_{table.__tablename__}"))
@@ -191,6 +188,8 @@ class Corpus(MfaSqlBase):
     features_generated = Column(Boolean, default=False)
     vad_calculated = Column(Boolean, default=False)
     ivectors_calculated = Column(Boolean, default=False)
+    plda_calculated = Column(Boolean, default=False)
+    xvectors_loaded = Column(Boolean, default=False)
     alignment_done = Column(Boolean, default=False)
     transcription_done = Column(Boolean, default=False)
     alignment_evaluation_done = Column(Boolean, default=False)
@@ -213,6 +212,22 @@ class Corpus(MfaSqlBase):
         if not self.current_subset:
             return self.split_directory
         return os.path.join(self.data_directory, f"subset_{self.current_subset}")
+
+    @property
+    def speaker_ivector_column(self):
+        if self.plda_calculated:
+            return Speaker.plda_vector
+        elif self.xvectors_loaded:
+            return Speaker.xvector
+        return Speaker.ivector
+
+    @property
+    def utterance_ivector_column(self):
+        if self.plda_calculated:
+            return Utterance.plda_vector
+        elif self.xvectors_loaded:
+            return Utterance.xvector
+        return Utterance.ivector
 
 
 class Dialect(MfaSqlBase):
@@ -300,6 +315,7 @@ class Dictionary(MfaSqlBase):
     silence_word = Column(String, nullable=True)
     optional_silence_phone = Column(String, nullable=True)
     oov_word = Column(String, nullable=True)
+    oov_phone = Column(String, nullable=True)
     bracketed_word = Column(String, nullable=True)
     laughter_word = Column(String, nullable=True)
 
@@ -331,6 +347,17 @@ class Dictionary(MfaSqlBase):
         secondary=Dictionary2Job,
         back_populates="dictionaries",
     )
+
+    @property
+    def special_set(self) -> typing.Set[str]:
+        return {
+            "<s>",
+            "</s>",
+            self.silence_word,
+            self.oov_word,
+            self.bracketed_word,
+            self.laughter_word,
+        }
 
     @property
     def clitic_set(self) -> typing.Set[str]:
@@ -525,7 +552,9 @@ class Word(MfaSqlBase):
     word_type = Column(Enum(WordType), nullable=False, index=True)
     dictionary_id = Column(Integer, ForeignKey("dictionary.id"), nullable=False, index=True)
     dictionary: Dictionary = relationship("Dictionary", back_populates="words")
-    pronunciations = relationship("Pronunciation", back_populates="word", cascade="all, delete")
+    pronunciations = relationship(
+        "Pronunciation", back_populates="word", cascade="all, delete", passive_deletes=True
+    )
 
     job = relationship(
         "Word2Job",
@@ -585,7 +614,9 @@ class Pronunciation(MfaSqlBase):
     silence_following_count = Column(Integer, nullable=True)
     non_silence_following_count = Column(Integer, nullable=True)
 
-    word_id = Column(Integer, ForeignKey("word.id"), nullable=False, index=True)
+    word_id = Column(
+        Integer, ForeignKey("word.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     word: Word = relationship("Word", back_populates="pronunciations")
 
     base_pronunciation_id = Column(
@@ -806,20 +837,6 @@ class RuleApplication(MfaSqlBase):
     rule: PhonologicalRule = relationship("PhonologicalRule", back_populates="pronunciations")
 
 
-class SpeakerCluster(MfaSqlBase):
-
-    __tablename__ = "speaker_cluster"
-    id = Column(Integer, primary_key=True)
-    name = Column(String, unique=True, nullable=False)
-    score = Column(Float)
-
-    speakers = relationship(
-        "Speaker",
-        back_populates="cluster",
-        cascade="all, delete-orphan",
-    )
-
-
 class Speaker(MfaSqlBase):
     """
     Database class for storing information about speakers
@@ -847,15 +864,17 @@ class Speaker(MfaSqlBase):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, unique=True, nullable=False)
     cmvn = Column(String)
-    ivector = Column(Vector(PLDA_DIMENSION), nullable=True)
+    min_f0 = Column(Float, nullable=True)
+    max_f0 = Column(Float, nullable=True)
+    ivector = Column(Vector(IVECTOR_DIMENSION), nullable=True)
+    plda_vector = Column(Vector(PLDA_DIMENSION), nullable=True)
+    xvector = Column(Vector(XVECTOR_DIMENSION), nullable=True)
     dictionary_id = Column(Integer, ForeignKey("dictionary.id"), nullable=True, index=True)
     dictionary: Dictionary = relationship("Dictionary", back_populates="speakers")
     utterances: typing.List[Utterance] = relationship("Utterance", back_populates="speaker")
     files: typing.List[File] = relationship(
         "File", secondary=SpeakerOrdering, back_populates="speakers"
     )
-    cluster_id = Column(Integer, ForeignKey("speaker_cluster.id"), nullable=True, index=True)
-    cluster: SpeakerCluster = relationship("SpeakerCluster", back_populates="speakers")
 
 
 class File(MfaSqlBase):
@@ -1051,11 +1070,7 @@ class File(MfaSqlBase):
         """
         data = {}
         for u in self.utterances:
-            speaker_name = ""
-            for speaker in self.speakers:
-                if u.speaker_id == speaker.id:
-                    speaker_name = speaker.name
-                    break
+            speaker_name = u.speaker_name
             if speaker_name not in data:
                 data[speaker_name] = {}
             if original_text:
@@ -1239,8 +1254,8 @@ class Utterance(MfaSqlBase):
     duration = Column(Float, sqlalchemy.Computed('"end" - "begin"'), index=True)
     channel = Column(Integer, nullable=False)
     num_frames = Column(Integer)
-    text = Column(String, index=True)
-    oovs = Column(String, index=True)
+    text = Column(String)
+    oovs = Column(String)
     normalized_text = Column(String)
     normalized_character_text = Column(String)
     transcription_text = Column(String)
@@ -1254,7 +1269,9 @@ class Utterance(MfaSqlBase):
     alignment_score = Column(Float)
     word_error_rate = Column(Float)
     character_error_rate = Column(Float)
-    ivector = Column(Vector(PLDA_DIMENSION), nullable=True)
+    ivector = Column(Vector(IVECTOR_DIMENSION), nullable=True)
+    plda_vector = Column(Vector(PLDA_DIMENSION), nullable=True)
+    xvector = Column(Vector(XVECTOR_DIMENSION), nullable=True)
     file_id = Column(Integer, ForeignKey("file.id"), index=True, nullable=False)
     speaker_id = Column(Integer, ForeignKey("speaker.id"), index=True, nullable=False)
     kaldi_id = Column(
@@ -1285,6 +1302,12 @@ class Utterance(MfaSqlBase):
     __table_args__ = (
         sqlalchemy.Index(
             "utterance_position_index", "file_id", "speaker_id", "begin", "end", "channel"
+        ),
+        sqlalchemy.Index(
+            "utterance_text_idx",
+            "text",
+            postgresql_ops={"text": "gin_trgm_ops"},
+            postgresql_using="gin",
         ),
     )
 
@@ -1769,7 +1792,7 @@ class Job(MfaSqlBase):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
-    corpus_id = Column(Integer, ForeignKey("corpus.id"), index=True, nullable=False)
+    corpus_id = Column(Integer, ForeignKey("corpus.id"), index=True, nullable=True)
     corpus: Corpus = relationship("Corpus", back_populates="jobs")
     utterances = relationship("Utterance", back_populates="job")
 
@@ -1915,22 +1938,9 @@ class Job(MfaSqlBase):
             output[dict_id] = os.path.join(directory, f"{identifier}.{dict_id}.{extension}")
         return output
 
-    def construct_online_feature_proc_string(
-        self,
-        uses_vad=True,
-        subsample_feats: int = None,
-    ):
+    def construct_online_feature_proc_string(self):
         feat_path = self.construct_path(self.corpus.current_subset_directory, "feats", "scp")
-        vad_path = self.construct_path(self.corpus.current_subset_directory, "vad", "scp")
-        parts = [
-            f'ark,s,cs:apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 scp,s,cs:"{feat_path}" ark:- |',
-            "add-deltas ark,s,cs:-  ark:- |",
-        ]
-        if os.path.exists(vad_path) and uses_vad:
-            parts.append(f'select-voiced-frames ark,s,cs:- scp,s,cs:"{vad_path}" ark:- |')
-        if subsample_feats:
-            parts.append(f"subsample-feats --n={subsample_feats} ark,s,cs:- ark:- |")
-        return " ".join(parts)
+        return f'ark,s,cs:add-deltas scp,s,cs:"{feat_path}" ark:- |'
 
     def construct_feature_proc_string(
         self,
@@ -1957,6 +1967,9 @@ class Job(MfaSqlBase):
         """
         lda_mat_path = None
         fmllr_trans_path = None
+        feat_path = self.construct_path(
+            self.corpus.current_subset_directory, "feats", "scp", dictionary_id=dictionary_id
+        )
         if working_directory is not None:
             lda_mat_path = os.path.join(working_directory, "lda.mat")
             if not os.path.exists(lda_mat_path):
@@ -1967,24 +1980,18 @@ class Job(MfaSqlBase):
 
             if not os.path.exists(fmllr_trans_path):
                 fmllr_trans_path = None
-        feat_path = self.construct_path(
-            self.corpus.current_subset_directory, "feats", "scp", dictionary_id
-        )
-        cmvn_path = self.construct_path(
-            self.corpus.current_subset_directory, "cmvn", "scp", dictionary_id
-        )
         utt2spk_path = self.construct_path(
             self.corpus.current_subset_directory, "utt2spk", "scp", dictionary_id
         )
+        feats = "ark,s,cs:"
 
-        feats = f'ark,s,cs:apply-cmvn --utt2spk=ark:"{utt2spk_path}" scp:"{cmvn_path}" scp:"{feat_path}" ark:- |'
         if lda_mat_path is not None:
-            feats += f" splice-feats --left-context={splice_left_context} --right-context={splice_right_context} ark:- ark:- |"
+            feats += f'splice-feats --left-context={splice_left_context} --right-context={splice_right_context} scp,s,cs:"{feat_path}" ark:- |'
             feats += f' transform-feats "{lda_mat_path}" ark:- ark:- |'
         elif uses_splices:
-            feats += f" splice-feats --left-context={splice_left_context} --right-context={splice_right_context} ark:- ark:- |"
+            feats += f'splice-feats --left-context={splice_left_context} --right-context={splice_right_context} scp,s,cs:"{feat_path}" ark:- |'
         else:
-            feats += " add-deltas ark:- ark:- |"
+            feats += f'add-deltas scp,s,cs:"{feat_path}" ark:- |'
         if fmllr_trans_path is not None and uses_speaker_adaptation:
             feats += f' transform-feats --utt2spk=ark:"{utt2spk_path}" ark:"{fmllr_trans_path}" ark:- ark:- |'
 

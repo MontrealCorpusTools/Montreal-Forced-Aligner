@@ -7,7 +7,7 @@ from montreal_forced_aligner.corpus.acoustic_corpus import (
 )
 from montreal_forced_aligner.corpus.classes import FileData, UtteranceData
 from montreal_forced_aligner.corpus.helper import get_wav_info
-from montreal_forced_aligner.corpus.text_corpus import TextCorpus
+from montreal_forced_aligner.corpus.text_corpus import DictionaryTextCorpus, TextCorpus
 from montreal_forced_aligner.data import TextFileType, WordType
 from montreal_forced_aligner.db import Word
 
@@ -54,7 +54,6 @@ def test_add(basic_corpus_dir, generated_dir, global_config, db_setup):
     utts = corpus.get_utterances(file=new_file_name, speaker=new_speaker)
     assert len(utts) == 1
     assert utts[0].text == "blah blah"
-    print(utts[0].id)
     corpus.delete_utterance(utts[0].id)
     assert len(corpus.get_utterances(file=new_file_name, speaker=new_speaker)) == 0
 
@@ -68,9 +67,8 @@ def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir, db_setu
     )
     corpus.load_corpus()
 
-    print(corpus.no_transcription_files)
     assert len(corpus.no_transcription_files) == 0
-    assert corpus.get_feat_dim() == 48
+    assert corpus.get_feat_dim() == 45
 
 
 def test_acoustic_from_temp(
@@ -434,7 +432,7 @@ def test_weird_words(weird_words_dir, generated_dir, basic_dict_path, global_con
                 "[me_really]",
                 "[me____really]",
                 "[me_really]",
-                "<s>",
+                "<unk>",
                 "<_s>",
             }
         )
@@ -463,7 +461,9 @@ def test_weird_words(weird_words_dir, generated_dir, basic_dict_path, global_con
     corpus.remove_database()
 
 
-def test_punctuated(punctuated_dir, generated_dir, basic_dict_path, global_config, db_setup):
+def test_punctuated(
+    punctuated_dir, generated_dir, english_us_mfa_dictionary, global_config, db_setup
+):
     output_directory = os.path.join(generated_dir, "corpus_tests", "punctuated")
     global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
@@ -471,7 +471,7 @@ def test_punctuated(punctuated_dir, generated_dir, basic_dict_path, global_confi
 
     corpus = AcousticCorpusWithPronunciations(
         corpus_directory=punctuated_dir,
-        dictionary_path=basic_dict_path,
+        dictionary_path=english_us_mfa_dictionary,
     )
     corpus.load_corpus()
     print(corpus.files())
@@ -479,10 +479,12 @@ def test_punctuated(punctuated_dir, generated_dir, basic_dict_path, global_confi
 
     punctuated = corpus.get_utterances(file="punctuated")[0]
     assert (
-        punctuated.text == "oh yes, they - they, you know, they love her' and so' 'i mean... ‘you"
+        punctuated.text
+        == "oh yes, they - they, you know, they love her' and so' 'something 'i mean... ‘you The village name is Anglo Saxon in origin, and means 'Myrsa's woodland'."
     )
     assert (
-        punctuated.normalized_text == "oh yes they they you know they love her' and so i mean 'you"
+        punctuated.normalized_text
+        == "oh yes they they you know they love her and so something i mean you the village name is anglo saxon in origin and means myrsa 's woodland"
     )
     corpus.remove_database()
 
@@ -512,7 +514,8 @@ def test_alternate_punctuation(
     corpus.load_corpus()
     punctuated = corpus.get_utterances(file="punctuated")[0]
     assert (
-        punctuated.text == "oh yes, they - they, you know, they love her' and so' 'i mean... ‘you"
+        punctuated.text
+        == "oh yes, they - they, you know, they love her' and so' 'something 'i mean... ‘you The village name is Anglo Saxon in origin, and means 'Myrsa's woodland'."
     )
     corpus.remove_database()
 
@@ -547,25 +550,13 @@ def test_no_punctuation(
     print(corpus.punctuation)
     print(corpus.word_break_markers)
     assert (
-        punctuated.text == "oh yes, they - they, you know, they love her' and so' 'i mean... ‘you"
+        punctuated.text
+        == "oh yes, they - they, you know, they love her' and so' 'something 'i mean... ‘you The village name is Anglo Saxon in origin, and means 'Myrsa's woodland'."
     )
-    assert punctuated.normalized_text.split() == [
-        "oh",
-        "yes,",
-        "they",
-        "-",
-        "they,",
-        "you",
-        "know,",
-        "they",
-        "love",
-        "her'",
-        "and",
-        "so'",
-        "'i",
-        "mean...",
-        "‘you",
-    ]
+    assert (
+        punctuated.normalized_text
+        == "oh yes, they - they, you know, they love her' and so' 'something 'i mean... ‘you the village name is anglo saxon in origin, and means 'myrsa's woodland'."
+    )
     weird_words = corpus.get_utterances(file="weird_words")[0]
     assert (
         weird_words.text
@@ -615,5 +606,68 @@ def test_xsampa_corpus(
     assert (
         xsampa.text
         == r"@bUr\tOU {bstr\{kt {bSaIr\ Abr\utseIzi {br\@geItIN @bor\n {b3kr\Ambi {bI5s@`n Ar\g thr\Ip@5eI Ar\dvAr\k"
+    )
+    corpus.remove_database()
+
+
+def test_japanese(japanese_dir, japanese_dict_path, generated_dir, global_config, db_setup):
+    output_directory = os.path.join(generated_dir, "corpus_tests", "japanese")
+    global_config.temporary_directory = output_directory
+    if os.path.exists(output_directory):
+        shutil.rmtree(output_directory, ignore_errors=True)
+
+    corpus = DictionaryTextCorpus(
+        corpus_directory=japanese_dir, dictionary_path=japanese_dict_path
+    )
+    corpus.load_corpus()
+    print(corpus.files())
+    print(corpus.utterances())
+
+    punctuated = corpus.get_utterances(file="japanese")[0]
+    assert punctuated.text == "「はい」、。！ 『何 でしょう』"
+    assert punctuated.normalized_text == "はい 何 でしょう"
+    corpus.remove_database()
+
+
+def test_devanagari(devanagari_dir, hindi_dict_path, generated_dir, global_config, db_setup):
+    output_directory = os.path.join(generated_dir, "corpus_tests", "devanagari")
+    global_config.temporary_directory = output_directory
+    if os.path.exists(output_directory):
+        shutil.rmtree(output_directory, ignore_errors=True)
+
+    corpus = DictionaryTextCorpus(corpus_directory=devanagari_dir, dictionary_path=hindi_dict_path)
+    corpus.load_corpus()
+    print(corpus.files())
+    print(corpus.utterances())
+
+    punctuated = corpus.get_utterances(file="devanagari")[0]
+    assert punctuated.text == "हैंः हूं हौंसला"
+    assert punctuated.normalized_text == "हैंः हूं हौंसला"
+    corpus.remove_database()
+
+
+def test_french_clitics(
+    french_clitics_dir, frclitics_dict_path, generated_dir, global_config, db_setup
+):
+    output_directory = os.path.join(generated_dir, "corpus_tests", "french_clitics")
+    global_config.temporary_directory = output_directory
+    if os.path.exists(output_directory):
+        shutil.rmtree(output_directory, ignore_errors=True)
+
+    corpus = DictionaryTextCorpus(
+        corpus_directory=french_clitics_dir, dictionary_path=frclitics_dict_path
+    )
+    corpus.load_corpus()
+    print(corpus.files())
+    print(corpus.utterances())
+
+    punctuated = corpus.get_utterances(file="french_clitics")[0]
+    assert (
+        punctuated.text
+        == "aujourd aujourd'hui m'appelle purple-people-eater vingt-six m'm'appelle c'est m'c'est m'appele m'ving-sic flying'purple-people-eater"
+    )
+    assert (
+        punctuated.normalized_text
+        == "aujourd aujourd'hui m' appelle purple-people-eater vingt six m' m' appelle c'est m' c'est m' appele m' ving sic flying'purple-people-eater"
     )
     corpus.remove_database()

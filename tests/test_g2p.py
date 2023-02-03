@@ -85,6 +85,5 @@ def test_generator_pretrained(english_g2p_model, temp_dir, global_config, db_set
     )
     gen.setup()
     results = gen.generate_pronunciations()
-    print(results)
     assert len(results["petted"]) == 3
     gen.cleanup()

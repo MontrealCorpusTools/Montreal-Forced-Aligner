@@ -12,11 +12,11 @@ from queue import Empty
 import sqlalchemy
 import tqdm
 
-from montreal_forced_aligner.abc import TopLevelMfaWorker, TrainerMixin
+from montreal_forced_aligner.abc import DatabaseMixin, TopLevelMfaWorker, TrainerMixin
 from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.text_corpus import MfaWorker, TextCorpusMixin
 from montreal_forced_aligner.data import WordType, WorkflowType
-from montreal_forced_aligner.db import Dictionary, Word
+from montreal_forced_aligner.db import Dictionary, Utterance, Word
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
 from montreal_forced_aligner.helper import mfa_open
@@ -291,10 +291,39 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
 
         small_mod_path = self.mod_path.replace(".mod", "_small.mod")
         med_mod_path = self.mod_path.replace(".mod", "_med.mod")
-        with mfa_open(log_path, "w") as log_file:
+        with self.session() as session, mfa_open(log_path, "w") as log_file:
+            word_query = session.query(Word.word).filter(Word.word_type == WordType.speech)
+            included_words = set(x[0] for x in word_query)
+            utterance_query = session.query(Utterance.normalized_text, Utterance.text)
+
+            with open(self.far_path, "wb") as f:
+                farcompile_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("farcompilestrings"),
+                        "--token_type=symbol",
+                        "--generate_keys=16",
+                        f"--symbols={self.sym_path}",
+                        "--keep_symbols",
+                    ],
+                    stderr=log_file,
+                    stdin=subprocess.PIPE,
+                    stdout=f,
+                    env=os.environ,
+                )
+                for (normalized_text, text) in utterance_query:
+                    if not normalized_text:
+                        normalized_text = text
+                    text = " ".join(
+                        x if x in included_words else self.oov_word
+                        for x in normalized_text.split()
+                    )
+                    farcompile_proc.stdin.write(f"{text}\n".encode("utf8"))
+                    farcompile_proc.stdin.flush()
+                farcompile_proc.stdin.close()
+                farcompile_proc.wait()
             perplexity_proc = subprocess.Popen(
                 [
-                    "ngramperplexity",
+                    thirdparty_binary("ngramperplexity"),
                     f"--OOV_symbol={self.oov_word}",
                     self.mod_path,
                     self.far_path,
@@ -330,7 +359,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
 
             perplexity_proc = subprocess.Popen(
                 [
-                    "ngramperplexity",
+                    thirdparty_binary("ngramperplexity"),
                     f"--OOV_symbol={self.oov_word}",
                     med_mod_path,
                     self.far_path,
@@ -350,7 +379,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
             logger.info(f"Perplexity of medium model: {perplexity}")
             perplexity_proc = subprocess.Popen(
                 [
-                    "ngramperplexity",
+                    thirdparty_binary("ngramperplexity"),
                     f"--OOV_symbol={self.oov_word}",
                     small_mod_path,
                     self.far_path,
@@ -484,7 +513,7 @@ class LmDictionaryCorpusTrainerMixin(MultispeakerDictionaryMixin, LmCorpusTraine
         return words_path
 
 
-class MfaLmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
+class MfaLmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker, DatabaseMixin):
     """
     Top-level worker to convert an existing ARPA-format language model to MFA format
 

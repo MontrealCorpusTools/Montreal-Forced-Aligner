@@ -98,13 +98,13 @@ class ValidationMixin:
             total_duration = session.query(sqlalchemy.func.sum(Utterance.duration)).scalar()
 
         total_duration = Decimal(str(total_duration)).quantize(Decimal("0.001"))
-        logger.debug(f"Duration calculation took {time.time() - begin}")
+        logger.debug(f"Duration calculation took {time.time() - begin:.3f} seconds")
 
         begin = time.time()
         ignored_count = len(self.no_transcription_files)
         ignored_count += len(self.textgrid_read_errors)
         ignored_count += len(self.decode_error_files)
-        logger.debug(f"Ignored count calculation took {time.time() - begin}")
+        logger.debug(f"Ignored count calculation took {time.time() - begin:.3f} seconds")
 
         self.printer.print_header("Corpus")
         self.printer.print_green_stat(sound_file_count, "sound files")
@@ -449,7 +449,7 @@ class ValidationMixin:
             if average_logdet_sum:
                 average_log_like += average_logdet_sum / average_logdet_frames
             logger.debug(f"Average per frame likelihood for alignment: {average_log_like}")
-        logger.debug(f"Compiling information took {time.time() - compile_info_begin}")
+        logger.debug(f"Compiling information took {time.time() - compile_info_begin:.3f} seconds")
 
     def test_utterance_transcriptions(self) -> None:
         """
@@ -603,15 +603,15 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
         try:
             all_begin = time.time()
             self.dictionary_setup()
-            logger.debug(f"Loaded dictionary in {time.time() - all_begin}")
+            logger.debug(f"Loaded dictionary in {time.time() - all_begin:.3f} seconds")
 
             begin = time.time()
             self._load_corpus()
-            logger.debug(f"Loaded corpus in {time.time() - begin}")
+            logger.debug(f"Loaded corpus in {time.time() - begin:.3f} seconds")
 
             begin = time.time()
             self.initialize_jobs()
-            logger.debug(f"Initialized jobs in {time.time() - begin}")
+            logger.debug(f"Initialized jobs in {time.time() - begin:.3f} seconds")
 
             self.normalize_text()
 
@@ -622,20 +622,22 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
             self.write_training_information()
             if self.test_transcriptions:
                 self.write_lexicon_information(write_disambiguation=True)
-            logger.debug(f"Wrote lexicon information in {time.time() - begin}")
+            logger.debug(f"Wrote lexicon information in {time.time() - begin:.3f} seconds")
 
             if self.ignore_acoustics:
                 logger.info("Skipping acoustic feature generation")
             else:
                 begin = time.time()
                 self.create_corpus_split()
-                logger.debug(f"Created corpus split directory in {time.time() - begin}")
+                logger.debug(
+                    f"Created corpus split directory in {time.time() - begin:.3f} seconds"
+                )
                 begin = time.time()
                 self.generate_features()
-                logger.debug(f"Generated features in {time.time() - begin}")
+                logger.debug(f"Generated features in {time.time() - begin:.3f} seconds")
                 begin = time.time()
                 self.save_oovs_found(self.output_directory)
-                logger.debug(f"Calculated OOVs in {time.time() - begin}")
+                logger.debug(f"Calculated OOVs in {time.time() - begin:.3f} seconds")
                 self.setup_trainers()
 
             self.initialized = True
@@ -650,10 +652,10 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
         Performs validation of the corpus
         """
         begin = time.time()
-        logger.debug(f"Setup took {time.time() - begin}")
+        logger.debug(f"Setup took {time.time() - begin:.3f} seconds")
         self.setup()
         self.analyze_setup()
-        logger.debug(f"Setup took {time.time() - begin}")
+        logger.debug(f"Setup took {time.time() - begin:.3f} seconds")
         if self.ignore_acoustics:
             self.printer.print_info_lines("Skipping test alignments.")
             return

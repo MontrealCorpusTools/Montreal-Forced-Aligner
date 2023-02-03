@@ -212,6 +212,8 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
     def dictionary_setup(self) -> Tuple[typing.Set[str], collections.Counter]:
         """Set up the dictionary for processing"""
         self.initialize_database()
+        if self.use_g2p:
+            return
         auto_set = {PhoneSetType.AUTO, PhoneSetType.UNKNOWN, "AUTO", "UNKNOWN"}
         if not isinstance(self.phone_set_type, PhoneSetType):
             self.phone_set_type = PhoneSetType[self.phone_set_type]
@@ -319,6 +321,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         bracketed_word=self.bracketed_word,
                         laughter_word=self.laughter_word,
                         optional_silence_phone=self.optional_silence_phone,
+                        oov_phone=self.oov_phone,
                     )
                     session.add(dictionary)
                     session.flush()
@@ -707,25 +710,28 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
     def calculate_phone_mapping(self) -> None:
         """Calculate the necessary phones and add phone objects to the database"""
         with self.session() as session:
-            i = self.get_next_primary_key(Phone)
-            existing_phones = {x for x, in session.query(Phone.kaldi_label)}
+            try:
+                session.query(Phone).delete()
+            except Exception:
+                return
+            i = 1
             for r in session.query(PhonologicalRule):
                 if not r.replacement:
                     continue
                 self.non_silence_phones.update(r.replacement.split())
             phone_objs = []
-            if "<eps>" not in existing_phones:
-                phone_objs.append(
-                    {
-                        "id": i,
-                        "mapping_id": i - 1,
-                        "phone": "<eps>",
-                        "kaldi_label": "<eps>",
-                        "phone_type": PhoneType.silence,
-                        "count": 0,
-                    }
-                )
-                i += 1
+            phone_objs.append(
+                {
+                    "id": i,
+                    "mapping_id": i - 1,
+                    "phone": "<eps>",
+                    "kaldi_label": "<eps>",
+                    "phone_type": PhoneType.silence,
+                    "count": 0,
+                }
+            )
+            existing_phones = {"<eps>"}
+            i += 1
             for p in self.kaldi_silence_phones:
                 if p in existing_phones:
                     continue
@@ -745,6 +751,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     }
                 )
                 i += 1
+                existing_phones.add(p)
             for p in self.kaldi_non_silence_phones:
                 if p in existing_phones:
                     continue
@@ -764,6 +771,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     }
                 )
                 i += 1
+                existing_phones.add(p)
             for x in range(self.max_disambiguation_symbol + 3):
                 p = f"#{x}"
                 if p in existing_phones:
@@ -780,6 +788,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     }
                 )
                 i += 1
+                existing_phones.add(p)
             if phone_objs:
                 session.execute(sqlalchemy.insert(Phone.__table__), phone_objs)
                 session.commit()
@@ -832,7 +841,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         else:
             final_silence_cost = str(-math.log(self.final_silence_correction))
             final_non_silence_cost = str(-math.log(self.final_non_silence_correction))
-        print(self.silence_probability)
         base_silence_following_cost = -math.log(self.silence_probability)
         base_non_silence_following_cost = -math.log(1 - self.silence_probability)
         with mfa_open(path, "w") as outf:
@@ -936,63 +944,66 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 outf.write(
                     f"{current_state}\t{silence_state}\t{self.optional_silence_phone}\t<eps>\t{silence_following_cost}\n"
                 )
+            oov_pron = (
+                session.query(Pronunciation)
+                .join(Pronunciation.word)
+                .filter(Word.word == self.oov_word)
+                .first()
+            )
             if not disambiguation:
-                oov_pron = (
-                    session.query(Pronunciation)
-                    .join(Pronunciation.word)
-                    .filter(Word.word == self.oov_word)
-                    .first()
-                )
                 oovs = (
                     session.query(Word.word)
                     .filter(Word.word_type == WordType.oov, Word.dictionary_id == dictionary.id)
-                    .filter(Word.count > 0)
+                    .filter(sqlalchemy.or_(Word.count > 0, Word.word.in_(self.specials_set)))
                 )
-                phones = [self.oov_phone]
-                if self.position_dependent_phones:
-                    phones[0] += "_S"
-                if alignment:
-                    phones = ["#1"] + phones + ["#2"]
-                for (w,) in oovs:
-                    silence_before_cost = 0.0
-                    non_silence_before_cost = 0.0
-                    silence_following_cost = base_silence_following_cost
-                    non_silence_following_cost = base_non_silence_following_cost
+            else:
+                oovs = session.query(Word.word).filter(Word.word == self.oov_word)
 
-                    silence_after_probability = oov_pron.silence_after_probability
-                    if silence_after_probability is not None:
-                        silence_following_cost = -math.log(silence_after_probability)
-                        non_silence_following_cost = -math.log(1 - (silence_after_probability))
+            phones = [self.oov_phone]
+            if self.position_dependent_phones:
+                phones[0] += "_S"
+            if alignment:
+                phones = ["#1"] + phones + ["#2"]
+            for (w,) in oovs:
+                silence_before_cost = 0.0
+                non_silence_before_cost = 0.0
+                silence_following_cost = base_silence_following_cost
+                non_silence_following_cost = base_non_silence_following_cost
 
-                    silence_before_correction = oov_pron.silence_before_correction
-                    if silence_before_correction is not None:
-                        silence_before_cost = -math.log(silence_before_correction)
+                silence_after_probability = oov_pron.silence_after_probability
+                if silence_after_probability is not None:
+                    silence_following_cost = -math.log(silence_after_probability)
+                    non_silence_following_cost = -math.log(1 - (silence_after_probability))
 
-                    non_silence_before_correction = oov_pron.non_silence_before_correction
-                    if non_silence_before_correction is not None:
-                        non_silence_before_cost = -math.log(non_silence_before_correction)
-                    pron_cost = 0.0
+                silence_before_correction = oov_pron.silence_before_correction
+                if silence_before_correction is not None:
+                    silence_before_cost = -math.log(silence_before_correction)
+
+                non_silence_before_correction = oov_pron.non_silence_before_correction
+                if non_silence_before_correction is not None:
+                    non_silence_before_cost = -math.log(non_silence_before_correction)
+                pron_cost = 0.0
+                new_state = next_state
+                outf.write(
+                    f"{non_silence_state}\t{new_state}\t{phones[0]}\t{w}\t{pron_cost+non_silence_before_cost}\n"
+                )
+                outf.write(
+                    f"{silence_state}\t{new_state}\t{phones[0]}\t{w}\t{pron_cost+silence_before_cost}\n"
+                )
+
+                next_state += 1
+                current_state = new_state
+                for i in range(1, len(phones)):
                     new_state = next_state
-                    outf.write(
-                        f"{non_silence_state}\t{new_state}\t{phones[0]}\t{w}\t{pron_cost+non_silence_before_cost}\n"
-                    )
-                    outf.write(
-                        f"{silence_state}\t{new_state}\t{phones[0]}\t{w}\t{pron_cost+silence_before_cost}\n"
-                    )
-
                     next_state += 1
+                    outf.write(f"{current_state}\t{new_state}\t{phones[i]}\t<eps>\n")
                     current_state = new_state
-                    for i in range(1, len(phones)):
-                        new_state = next_state
-                        next_state += 1
-                        outf.write(f"{current_state}\t{new_state}\t{phones[i]}\t<eps>\n")
-                        current_state = new_state
-                    outf.write(
-                        f"{current_state}\t{non_silence_state}\t{silence_disambiguation_symbol}\t<eps>\t{non_silence_following_cost}\n"
-                    )
-                    outf.write(
-                        f"{current_state}\t{silence_state}\t{self.optional_silence_phone}\t<eps>\t{silence_following_cost}\n"
-                    )
+                outf.write(
+                    f"{current_state}\t{non_silence_state}\t{silence_disambiguation_symbol}\t<eps>\t{non_silence_following_cost}\n"
+                )
+                outf.write(
+                    f"{current_state}\t{silence_state}\t{self.optional_silence_phone}\t<eps>\t{silence_following_cost}\n"
+                )
 
             outf.write(f"{silence_state}\t{final_silence_cost}\n")
             outf.write(f"{non_silence_state}\t{final_non_silence_cost}\n")
@@ -1063,7 +1074,10 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 ),
             )
 
-        oovs = session.query(Word.word).filter(Word.word_type == WordType.oov, Word.count > 0)
+        oovs = session.query(Word.word).filter(
+            Word.word_type == WordType.oov,
+            sqlalchemy.or_(Word.count > 0, Word.word.in_(self.specials_set)),
+        )
         for (w,) in oovs:
             pron = [self.oov_phone]
             if self.position_dependent_phones:
@@ -1250,9 +1264,9 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 .join(Pronunciation.word)
                 .filter(
                     Word.dictionary_id == dictionary_id,
-                    # Pronunciation.id == Pronunciation.base_pronunciation_id,
                     Word.word_type.in_([WordType.speech, WordType.clitic]),
                 )
+                .order_by(Word.word)
             )
             for row in pronunciations:
                 data = row.pronunciation_data

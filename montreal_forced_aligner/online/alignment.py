@@ -10,7 +10,11 @@ from sqlalchemy.orm import Session
 
 from montreal_forced_aligner.abc import KaldiFunction, MetaDict
 from montreal_forced_aligner.corpus.classes import UtteranceData
-from montreal_forced_aligner.corpus.features import compute_feature_process
+from montreal_forced_aligner.corpus.features import (
+    compute_mfcc_process,
+    compute_pitch_process,
+    compute_transform_process,
+)
 from montreal_forced_aligner.data import CtmInterval, MfaArguments, WordCtmInterval, WordType
 from montreal_forced_aligner.db import Dictionary, Phone, Pronunciation, Word
 from montreal_forced_aligner.helper import mfa_open
@@ -35,6 +39,7 @@ class OnlineAlignmentArguments(MfaArguments):
     mfcc_options: MetaDict
     pitch_options: MetaDict
     feature_options: MetaDict
+    lda_options: MetaDict
     align_options: MetaDict
     model_path: str
     tree_path: str
@@ -64,6 +69,7 @@ class OnlineAlignmentFunction(KaldiFunction):
         self.mfcc_options = args.mfcc_options
         self.pitch_options = args.pitch_options
         self.feature_options = args.feature_options
+        self.lda_options = args.lda_options
         self.align_options = args.align_options
         self.model_path = args.model_path
         self.tree_path = args.tree_path
@@ -185,13 +191,16 @@ class OnlineAlignmentFunction(KaldiFunction):
         wav_path = os.path.join(self.working_directory, "wav.scp")
         likelihood_path = os.path.join(self.working_directory, "likelihoods.scp")
         feat_path = os.path.join(self.working_directory, "feats.scp")
-        cmvn_path = os.path.join(self.working_directory, "cmvn.scp")
         utt2spk_path = os.path.join(self.working_directory, "utt2spk.scp")
         segment_path = os.path.join(self.working_directory, "segments.scp")
         text_int_path = os.path.join(self.working_directory, "text.int")
         lda_mat_path = os.path.join(self.working_directory, "lda.mat")
         fst_path = os.path.join(self.working_directory, "fsts.ark")
+        mfcc_ark_path = os.path.join(self.working_directory, "mfcc.ark")
+        pitch_ark_path = os.path.join(self.working_directory, "pitch.ark")
+        feats_ark_path = os.path.join(self.working_directory, "feats.ark")
         ali_path = os.path.join(self.working_directory, "ali.ark")
+        min_length = 0.1
         if self.align_options["boost_silence"] != 1.0:
             mdl_string = f"gmm-boost-silence --boost={self.align_options['boost_silence']} {self.align_options['optional_silence_csl']} {self.model_path} - |"
 
@@ -216,46 +225,88 @@ class OnlineAlignmentFunction(KaldiFunction):
             )
             proc.communicate()
             if not os.path.exists(feat_path):
-                paste_proc, comp_proc = compute_feature_process(
-                    log_file, wav_path, segment_path, self.mfcc_options, self.pitch_options
-                )
-
-                cvmn_proc = subprocess.Popen(
-                    [thirdparty_binary("apply-cmvn-sliding"), "--center", "ark:-", "ark:-"],
-                    stdin=paste_proc.stdout if paste_proc is not None else comp_proc.stdout,
-                    env=os.environ,
+                seg_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("extract-segments"),
+                        f"--min-segment-length={min_length}",
+                        f"scp:{wav_path}",
+                        segment_path,
+                        "ark:-",
+                    ],
                     stdout=subprocess.PIPE,
                     stderr=log_file,
+                    env=os.environ,
                 )
-                if lda_mat_path is not None:
-                    splice_proc = subprocess.Popen(
+                mfcc_proc = compute_mfcc_process(
+                    log_file, wav_path, subprocess.PIPE, self.mfcc_options
+                )
+                cmvn_proc = subprocess.Popen(
+                    [
+                        "apply-cmvn-sliding",
+                        "--norm-vars=false",
+                        "--center=true",
+                        "--cmn-window=300",
+                        "ark:-",
+                        f"ark:{mfcc_ark_path}",
+                    ],
+                    env=os.environ,
+                    stdin=mfcc_proc.stdout,
+                    stderr=log_file,
+                )
+
+                use_pitch = self.pitch_options["use-pitch"] or self.pitch_options["use-voicing"]
+                if use_pitch:
+                    pitch_proc = compute_pitch_process(
+                        log_file, wav_path, subprocess.PIPE, self.pitch_options
+                    )
+                    pitch_copy_proc = subprocess.Popen(
                         [
-                            thirdparty_binary("splice-feats"),
-                            f'--left-context={self.feature_options["splice_left_context"]}',
-                            f'--right-context={self.feature_options["splice_right_context"]}',
+                            thirdparty_binary("copy-feats"),
+                            "--compress=true",
                             "ark:-",
-                            "ark:-",
+                            f"ark:{pitch_ark_path}",
                         ],
-                        stdin=cvmn_proc.stdout,
-                        env=os.environ,
-                        stdout=subprocess.PIPE,
+                        stdin=pitch_proc.stdout,
                         stderr=log_file,
-                    )
-                    transform_proc = subprocess.Popen(
-                        [thirdparty_binary("transform-feats"), lda_mat_path, "ark:-", "ark:-"],
-                        stdin=splice_proc.stdout,
                         env=os.environ,
-                        stdout=subprocess.PIPE,
-                        stderr=log_file,
                     )
-                elif self.feature_options["uses_deltas"]:
-                    transform_proc = subprocess.Popen(
-                        [thirdparty_binary("add-deltas"), "ark:-", "ark:-"],
-                        stdin=cvmn_proc.stdout,
+                for line in seg_proc.stdout:
+                    mfcc_proc.stdin.write(line)
+                    mfcc_proc.stdin.flush()
+                    if use_pitch:
+                        pitch_proc.stdin.write(line)
+                        pitch_proc.stdin.flush()
+                mfcc_proc.stdin.close()
+                if use_pitch:
+                    pitch_proc.stdin.close()
+                cmvn_proc.wait()
+                if use_pitch:
+                    pitch_copy_proc.wait()
+                if use_pitch:
+                    paste_proc = subprocess.Popen(
+                        [
+                            thirdparty_binary("paste-feats"),
+                            "--length-tolerance=2",
+                            f"ark:{mfcc_ark_path}",
+                            f"ark:{pitch_ark_path}",
+                            f"ark:{feats_ark_path}",
+                        ],
+                        stderr=log_file,
                         env=os.environ,
-                        stdout=subprocess.PIPE,
-                        stderr=log_file,
                     )
+                    paste_proc.wait()
+                else:
+                    feats_ark_path = mfcc_ark_path
+
+                trans_proc = compute_transform_process(
+                    log_file,
+                    feats_ark_path,
+                    utt2spk_path,
+                    lda_mat_path,
+                    None,
+                    self.lda_options,
+                )
+
                 # Features done, alignment
                 align_proc = subprocess.Popen(
                     [
@@ -275,34 +326,32 @@ class OnlineAlignmentFunction(KaldiFunction):
                     stdout=subprocess.PIPE,
                     stderr=log_file,
                     encoding="utf8",
-                    stdin=transform_proc.stdout,
+                    stdin=trans_proc.stdout,
                     env=os.environ,
                 )
             else:
-                feat_string = f'ark,s,cs:apply-cmvn --utt2spk=ark:"{utt2spk_path}" scp:"{cmvn_path}" scp:"{feat_path}" ark:- |'
-                if lda_mat_path is not None:
-                    feat_string += f" splice-feats --left-context={self.feature_options['splice_left_context']} --right-context={self.feature_options['splice_right_context']} ark:- ark:- |"
-                    feat_string += f' transform-feats "{lda_mat_path}" ark:- ark:- |'
-                    align_proc = subprocess.Popen(
-                        [
-                            thirdparty_binary("gmm-align-compiled"),
-                            f"--transition-scale={self.align_options['transition_scale']}",
-                            f"--acoustic-scale={self.align_options['acoustic_scale']}",
-                            f"--self-loop-scale={self.align_options['self_loop_scale']}",
-                            f"--beam={self.align_options['beam']}",
-                            f"--retry-beam={self.align_options['retry_beam']}",
-                            "--careful=false",
-                            mdl_string,
-                            f"ark:{fst_path}",
-                            feat_string,
-                            f"ark:{ali_path}",
-                            f"ark,t:{likelihood_path}",
-                        ],
-                        stdout=subprocess.PIPE,
-                        stderr=log_file,
-                        encoding="utf8",
-                        env=os.environ,
-                    )
+                feat_string = f"ark,s,cs:splice-feats --left-context={self.lda_options['splice_left_context']} --right-context={self.lda_options['splice_right_context']} scp,s,cs:\"{feat_path}\" ark:- |"
+                feat_string += f' transform-feats "{lda_mat_path}" ark:- ark:- |'
+                align_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("gmm-align-compiled"),
+                        f"--transition-scale={self.align_options['transition_scale']}",
+                        f"--acoustic-scale={self.align_options['acoustic_scale']}",
+                        f"--self-loop-scale={self.align_options['self_loop_scale']}",
+                        f"--beam={self.align_options['beam']}",
+                        f"--retry-beam={self.align_options['retry_beam']}",
+                        "--careful=false",
+                        mdl_string,
+                        f"ark:{fst_path}",
+                        feat_string,
+                        f"ark:{ali_path}",
+                        f"ark,t:{likelihood_path}",
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=log_file,
+                    encoding="utf8",
+                    env=os.environ,
+                )
             align_proc.communicate()
             ctm_proc = subprocess.Popen(
                 [

@@ -14,7 +14,7 @@ import tqdm
 
 from montreal_forced_aligner.abc import MetaDict, ModelExporterMixin, TopLevelMfaWorker
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
-from montreal_forced_aligner.config import GLOBAL_CONFIG
+from montreal_forced_aligner.config import GLOBAL_CONFIG, PLDA_DIMENSION
 from montreal_forced_aligner.corpus.features import IvectorConfigMixin
 from montreal_forced_aligner.corpus.ivector_corpus import IvectorCorpusMixin
 from montreal_forced_aligner.data import WorkflowType
@@ -73,6 +73,10 @@ class IvectorModelTrainingMixin(AcousticModelTrainingMixin):
             "features": self.feature_options,
         }
         return data
+
+    def compute_calculated_properties(self) -> None:
+        """Not implemented"""
+        pass
 
     def export_model(self, output_model_path: str) -> None:
         """
@@ -150,10 +154,6 @@ class DubmTrainer(IvectorModelTrainingMixin):
         self.min_gaussian_weight = min_gaussian_weight
         self.remove_low_count_gaussians = remove_low_count_gaussians
         self.use_alignment_features = False
-
-    def compute_calculated_properties(self) -> None:
-        """Not implemented"""
-        pass
 
     @property
     def train_type(self) -> str:
@@ -243,7 +243,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
             for _ in run_kaldi_function(GmmGselectFunction, arguments, pbar.update):
                 pass
 
-        logger.debug(f"Gaussian selection took {time.time() - begin}")
+        logger.debug(f"Gaussian selection took {time.time() - begin:.3f} seconds")
 
     def _trainer_initialization(self, initial_alignment_directory: Optional[str] = None) -> None:
         """DUBM training initialization"""
@@ -324,7 +324,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
             for _ in run_kaldi_function(AccGlobalStatsFunction, arguments, pbar.update):
                 pass
 
-        logger.debug(f"Accumulating stats took {time.time() - begin}")
+        logger.debug(f"Accumulating stats took {time.time() - begin:.3f} seconds")
 
         # Don't remove low-count Gaussians till the last tier,
         # or gselect info won't be valid anymore
@@ -433,10 +433,6 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         self.num_iterations = num_iterations
         self.gaussian_min_count = gaussian_min_count
 
-    def compute_calculated_properties(self) -> None:
-        """Not implemented"""
-        pass
-
     @property
     def exported_model_path(self) -> str:
         """Temporary directory path that trainer will save ivector extractor model"""
@@ -544,7 +540,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
             for _ in run_kaldi_function(GaussToPostFunction, arguments, pbar.update):
                 pass
 
-        logger.debug(f"Extracting posteriors took {time.time() - begin}")
+        logger.debug(f"Extracting posteriors took {time.time() - begin:.3f} seconds")
 
     @property
     def train_type(self) -> str:
@@ -617,7 +613,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
             for _ in run_kaldi_function(AccIvectorStatsFunction, arguments, pbar.update):
                 pass
 
-        logger.debug(f"Accumulating stats took {time.time() - begin}")
+        logger.debug(f"Accumulating stats took {time.time() - begin:.3f} seconds")
 
         log_path = os.path.join(self.working_log_directory, f"sum_acc.{self.iteration}.log")
         acc_path = os.path.join(self.working_directory, f"acc.{self.iteration}")
@@ -702,22 +698,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
 
 class PldaTrainer(IvectorTrainer):
     """
-    Trainer for a block of ivector extractor training
-
-    Parameters
-    ----------
-    num_iterations: int
-        Number of iterations, defaults to 10
-    subsample: int
-        Subsample factor for feature frames, defaults to 5
-    gaussian_min_count: int
-
-    See Also
-    --------
-    :class:`~montreal_forced_aligner.ivector.trainer.IvectorModelTrainingMixin`
-        For base parameters for ivector training
-    :class:`~montreal_forced_aligner.corpus.features.IvectorConfigMixin`
-        For parameters for ivector feature generation
+    Trainer for a PLDA models
 
     """
 
@@ -727,14 +708,62 @@ class PldaTrainer(IvectorTrainer):
         super().__init__(**kwargs)
 
     def _trainer_initialization(self) -> None:
+        """No initialization"""
         pass
 
-    def compute_calculated_properties(self) -> None:
-        pass
+    def compute_lda(self):
+
+        lda_path = os.path.join(self.working_directory, "ivector_lda.mat")
+        log_path = os.path.join(self.working_log_directory, "lda.log")
+        utt2spk_path = os.path.join(self.corpus_output_directory, "utt2spk.scp")
+        with tqdm.tqdm(
+            total=self.worker.num_utterances, disable=GLOBAL_CONFIG.quiet
+        ) as pbar, mfa_open(log_path, "w") as log_file:
+            normalize_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("ivector-normalize-length"),
+                    f"scp:{self.worker.utterance_ivector_path}",
+                    "ark:-",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=log_file,
+                env=os.environ,
+            )
+            lda_compute_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("ivector-compute-lda"),
+                    f"--dim={PLDA_DIMENSION}",
+                    "--total-covariance-factor=0.1",
+                    "ark:-",
+                    f"ark:{utt2spk_path}",
+                    lda_path,
+                ],
+                stdin=subprocess.PIPE,
+                stderr=log_file,
+                env=os.environ,
+            )
+            for line in normalize_proc.stdout:
+                lda_compute_proc.stdin.write(line)
+                lda_compute_proc.stdin.flush()
+                pbar.update(1)
+
+            lda_compute_proc.stdin.close()
+            lda_compute_proc.wait()
+        assert os.path.exists(lda_path)
 
     def train(self):
+        """Train PLDA"""
+        self.compute_lda()
         self.worker.compute_plda()
         self.worker.compute_speaker_ivectors()
+        os.rename(
+            os.path.join(self.working_directory, "current_speaker_ivectors.ark"),
+            os.path.join(self.working_directory, "speaker_ivectors.ark"),
+        )
+        os.rename(
+            os.path.join(self.working_directory, "current_num_utts.ark"),
+            os.path.join(self.working_directory, "num_utts.ark"),
+        )
 
 
 class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExporterMixin):
@@ -773,6 +802,7 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
             training_configuration = [("dubm", {}), ("ivector", {})]
         for k, v in training_configuration:
             self.add_config(k, v)
+        self.uses_voiced = True
 
     def setup(self) -> None:
         """Setup ivector extractor training"""
@@ -781,7 +811,6 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
             return
         try:
             super().load_corpus()
-            self.compute_vad()
             with self.session() as session:
                 workflows: typing.Dict[str, CorpusWorkflow] = {
                     x.name: x for x in session.query(CorpusWorkflow)
@@ -795,7 +824,7 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
                         )
                     else:
                         wf = workflows[identifier]
-                        if wf.dirty:
+                        if wf.dirty and not wf.done:
                             shutil.rmtree(wf.working_directory, ignore_errors=True)
                         if i == 0:
                             wf.current = True
@@ -814,7 +843,7 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
         Parameters
         ----------
         train_type: str
-            Type of trainer to add, one of "dubm" or "ivector"
+            Type of trainer to add, one of "dubm", "ivector", or "plda"
         params: dict[str, Any]
             Parameters to initialize trainer
 
@@ -850,6 +879,7 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
 
     @property
     def model_path(self) -> str:
+        """Current model path"""
         return self.training_configs[self.current_workflow.name].model_path
 
     def train(self) -> None:
