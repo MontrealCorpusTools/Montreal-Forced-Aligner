@@ -1228,7 +1228,7 @@ class ModelManager:
             k: {} for k in MODEL_TYPES.keys()
         }
         self.token = token
-        environment_token = os.environ.get("MFA_GITHUB_TOKEN", None)
+        environment_token = os.environ.get("GITHUB_TOKEN", None)
         if self.token is not None:
             self.token = environment_token
         self.synced_remote = False
@@ -1272,6 +1272,8 @@ class ModelManager:
         headers = {"Accept": "application/vnd.github.v3+json"}
         if self.token:
             headers["Authorization"] = f"token {self.token}"
+        else:
+            logger.debug("No Github Token supplied")
         page = 1
         etags = {}
         if "list_etags" in self._cache_info:

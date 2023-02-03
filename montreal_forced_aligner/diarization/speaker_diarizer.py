@@ -136,7 +136,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         manifold_algorithm: typing.Union[str, ManifoldAlgorithm] = "tsne",
         distance_threshold: float = None,
         score_threshold: float = None,
-        min_cluster_size: int = 15,
+        min_cluster_size: int = 60,
         max_iterations: int = 10,
         linkage: str = "average",
         **kwargs,
@@ -174,8 +174,8 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         self.max_iterations = max_iterations
         self.current_labels = []
         self.classification_score = None
-        self.initial_plda_score_threshold = -20
-        self.plda_score_threshold = 0
+        self.initial_plda_score_threshold = 0
+        self.plda_score_threshold = 20
         self.initial_sb_score_threshold = 0.25
 
         self.ground_truth_utt2spk = {}

@@ -112,7 +112,7 @@ def db_setup(temp_dir, global_config, request):
 def model_manager():
     from montreal_forced_aligner.models import ModelManager
 
-    github_token = os.getenv("MFA_GITHUB_TOKEN", None)
+    github_token = os.getenv("GITHUB_TOKEN", None)
     return ModelManager(github_token)
 
 

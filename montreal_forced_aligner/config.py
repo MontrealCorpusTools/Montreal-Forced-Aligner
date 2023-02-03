@@ -219,16 +219,11 @@ class MfaConfiguration:
 
     def load(self) -> None:
         """Load MFA configuration"""
-        github_token = os.getenv("MFA_GITHUB_TOKEN", None)
         with mfa_open(self.config_path, "r") as f:
             data = yaml.safe_load(f)
-        if github_token is not None:
-            data["github_token"] = github_token
         for name, p in data.pop("profiles", {}).items():
             self.profiles[name] = MfaProfile()
             self.profiles[name].update(p)
-            if github_token is not None:
-                self.profiles[name].github_token = github_token
         self.global_profile.update(data)
         if (
             self.current_profile_name not in self.profiles
