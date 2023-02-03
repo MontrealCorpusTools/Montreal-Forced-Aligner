@@ -1033,7 +1033,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
     def visualize_current_clusters(self):
         with self.session() as session:
             query = (
-                session.query(Utterance.id, Speaker.name, Utterance.plda_vector)
+                session.query(Speaker.name, Utterance.plda_vector)
                 .join(Utterance.speaker)
                 .filter(Utterance.plda_vector is not None)
             )
