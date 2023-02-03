@@ -330,7 +330,9 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             writer = csv.DictWriter(f, ["utt_id", "file", "begin", "end", "speaker", "score"])
 
             writer.writeheader()
-            file_names = {k: v for k, v in session.query(File.id, File.name)}
+            file_names = {
+                k: v for k, v in session.query(Utterance.id, File.name).join(Utterance.file)
+            }
             utterance_times = {
                 k: (b, e)
                 for k, b, e in session.query(Utterance.id, Utterance.begin, Utterance.end)
@@ -362,7 +364,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                     self.plda: PldaModel = pickle.load(f)
                 arguments = self.plda_classification_arguments()
                 func = PldaClassificationFunction
-            for utt_id, file_id, classified_speaker, score in run_kaldi_function(
+            for utt_id, classified_speaker, score in run_kaldi_function(
                 func, arguments, pbar.update
             ):
                 classified_speaker = str(classified_speaker)
@@ -382,7 +384,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 utterance_mapping.append({"id": utt_id, "speaker_id": speaker_id})
                 line = {
                     "utt_id": utt_id,
-                    "file": file_names[file_id],
+                    "file": file_names[utt_id],
                     "begin": utterance_times[utt_id][0],
                     "end": utterance_times[utt_id][1],
                     "speaker": classified_speaker,
