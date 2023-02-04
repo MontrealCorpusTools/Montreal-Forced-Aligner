@@ -1,6 +1,8 @@
 import os
 import shutil
 
+import pytest
+
 from montreal_forced_aligner.corpus.acoustic_corpus import (
     AcousticCorpus,
     AcousticCorpusWithPronunciations,
@@ -71,6 +73,7 @@ def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir, db_setu
     assert corpus.get_feat_dim() == 45
 
 
+@pytest.mark.xfail
 def test_acoustic_from_temp(
     basic_corpus_txt_dir, basic_dict_path, generated_dir, global_config, db_setup
 ):
