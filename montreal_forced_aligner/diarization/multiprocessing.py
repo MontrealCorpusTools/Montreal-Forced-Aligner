@@ -494,7 +494,6 @@ class PldaClassificationFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
         utterance_counts = {}
         with open(self.num_utts_path) as f:
             for line in f:
@@ -538,7 +537,7 @@ class PldaClassificationFunction(KaldiFunction):
         input_proc.wait()
         for line in input_proc.stdout:
             lines.append(line)
-        with Session(db_engine) as session:
+        with Session(self.db_engine) as session:
 
             job: Job = (
                 session.query(Job)
@@ -556,7 +555,6 @@ class PldaClassificationFunction(KaldiFunction):
                 ind, score = classify_plda(u_ivector.astype("float64"), *classification_args)
                 speaker = speaker_ids[ind]
                 yield u_id, speaker, score
-        db_engine.dispose()
 
 
 class ComputeEerFunction(KaldiFunction):
@@ -589,14 +587,13 @@ class ComputeEerFunction(KaldiFunction):
     # noinspection PyTypeChecker
     def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
         if self.use_xvector:
             columns = [Utterance.id, Utterance.speaker_id, Utterance.xvector]
             filter = Utterance.xvector != None  # noqa
         else:
             columns = [Utterance.id, Utterance.speaker_id, Utterance.plda_vector]
             filter = Utterance.plda_vector != None  # noqa
-        with Session(db_engine) as session:
+        with Session(self.db_engine) as session:
             speakers = (
                 session.query(Speaker.id)
                 .join(Speaker.utterances)
@@ -652,7 +649,6 @@ class ComputeEerFunction(KaldiFunction):
                                 score = distance.euclidean(u_ivector, u2_ivector)
                             mismatch_scores.append(score)
                 yield match_scores, mismatch_scores
-        db_engine.dispose()
 
 
 class SpeechbrainClassificationFunction(KaldiFunction):
@@ -672,7 +668,6 @@ class SpeechbrainClassificationFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
         run_opts = None
         if self.cuda:
             run_opts = {"device": "cuda"}
@@ -686,7 +681,7 @@ class SpeechbrainClassificationFunction(KaldiFunction):
             run_opts=run_opts,
         )
         device = torch.device("cuda" if self.cuda else "cpu")
-        with Session(db_engine) as session:
+        with Session(self.db_engine) as session:
 
             job: Job = (
                 session.query(Job)
@@ -714,7 +709,6 @@ class SpeechbrainClassificationFunction(KaldiFunction):
         del model
         if self.cuda:
             torch.cuda.empty_cache()
-        db_engine.dispose()
 
 
 class SpeechbrainEmbeddingFunction(KaldiFunction):
@@ -830,8 +824,7 @@ class UtteranceFileLoader(mp.Process):
         """
         Run the waveform loading job
         """
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session:
+        with Session(self.db_engine) as session:
             try:
                 utterances = (
                     session.query(
@@ -859,4 +852,3 @@ class UtteranceFileLoader(mp.Process):
                 self.return_q.put(e)
             finally:
                 self.finished_adding.stop()
-        db_engine.dispose()

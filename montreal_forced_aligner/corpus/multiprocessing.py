@@ -506,14 +506,12 @@ class NormalizeTextFunction(KaldiFunction):
     def _run(self) -> typing.Generator[typing.Tuple[int, float]]:
         """Run the function"""
         self.compile_regexes()
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session:
+        with Session(self.db_engine) as session:
             dict_count = session.query(Dictionary).join(Dictionary.words).limit(1).count()
             if self.use_g2p or dict_count > 0:
                 yield from self._dictionary_sanitize(session)
             else:
                 yield from self._no_dictionary_sanitize(session)
-        db_engine.dispose()
 
 
 class ExportKaldiFilesFunction(KaldiFunction):
@@ -773,10 +771,8 @@ class ExportKaldiFilesFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, float]]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session:
+        with Session(self.db_engine) as session:
             if self.for_features:
                 yield from self.output_for_features(session)
             else:
                 yield from self.output_to_directory(session)
-        db_engine.dispose()

@@ -481,8 +481,7 @@ class MfccFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[int]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
             job: Job = session.get(Job, self.job_name)
             feats_scp_path = job.construct_path(self.data_directory, "feats", "scp")
             pitch_scp_path = job.construct_path(self.data_directory, "pitch", "scp")
@@ -552,7 +551,6 @@ class MfccFunction(KaldiFunction):
             self.check_call(mfcc_copy_proc)
             if use_pitch:
                 self.check_call(pitch_copy_proc)
-        db_engine.dispose()
 
 
 class FinalFeatureFunction(KaldiFunction):
@@ -591,8 +589,7 @@ class FinalFeatureFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[int]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
             job: Job = session.get(Job, self.job_name)
             feats_scp_path = job.construct_path(self.data_directory, "feats", "scp")
             temp_scp_path = job.construct_path(self.data_directory, "final_features", "scp")
@@ -701,7 +698,6 @@ class FinalFeatureFunction(KaldiFunction):
             if os.path.exists(pitch_scp_path):
                 os.remove(pitch_scp_path)
                 os.remove(pitch_ark_path)
-        db_engine.dispose()
 
 
 class PitchFunction(KaldiFunction):
@@ -738,8 +734,7 @@ class PitchFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[int]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
             job: Job = session.get(Job, self.job_name)
 
             feats_scp_path = job.construct_path(self.data_directory, "pitch", "scp")
@@ -771,7 +766,6 @@ class PitchFunction(KaldiFunction):
             pitch_proc.wait()
             copy_proc.stdin.close()
             self.check_call(copy_proc)
-        db_engine.dispose()
 
 
 class PitchRangeFunction(KaldiFunction):
@@ -808,8 +802,7 @@ class PitchRangeFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[int]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
             job: Job = session.get(Job, self.job_name)
             wav_path = job.construct_path(self.data_directory, "wav", "scp")
             segment_path = job.construct_path(self.data_directory, "segments", "scp")
@@ -859,7 +852,6 @@ class PitchRangeFunction(KaldiFunction):
                 indices = np.where(pitch_features[:, 0] > 0.5)
                 pitch_points.extend(pitch_features[indices[0], 1])
             self.check_call(pitch_proc)
-        db_engine.dispose()
 
 
 class ComputeVadFunction(KaldiFunction):
@@ -1508,8 +1500,7 @@ class ExtractIvectorsFunction(KaldiFunction):
         """Run the function"""
         if os.path.exists(self.ivectors_scp_path):
             return
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
@@ -1555,7 +1546,6 @@ class ExtractIvectorsFunction(KaldiFunction):
                 m = self.progress_pattern.match(line.strip())
                 if m:
                     yield m.group("utterance")
-        db_engine.dispose()
 
 
 @njit

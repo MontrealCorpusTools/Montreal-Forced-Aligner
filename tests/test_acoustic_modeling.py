@@ -1,5 +1,6 @@
 import os
 import shutil
+import time
 
 import pytest
 
@@ -38,6 +39,7 @@ def test_basic_mono(
     assert os.path.exists(mono_align_model_path)
     a.clean_working_directory()
     a.remove_database()
+    time.sleep(3)
     a = PretrainedAligner(
         corpus_directory=basic_corpus_dir,
         dictionary_path=mixed_dict_path,

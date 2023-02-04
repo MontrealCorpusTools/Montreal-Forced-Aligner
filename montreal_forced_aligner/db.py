@@ -497,6 +497,7 @@ class Phone(MfaSqlBase):
         order_by="PhoneInterval.begin",
         collection_class=ordering_list("begin"),
         cascade="all, delete",
+        passive_deletes=True,
     )
 
 
@@ -1600,16 +1601,24 @@ class PhoneInterval(MfaSqlBase):
     end = Column(Float, nullable=False)
     phone_goodness = Column(Float, nullable=True)
 
-    phone_id = Column(Integer, ForeignKey("phone.id"), index=True, nullable=False)
+    phone_id = Column(
+        Integer, ForeignKey("phone.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     phone = relationship("Phone", back_populates="phone_intervals")
 
-    word_interval_id = Column(Integer, ForeignKey("word_interval.id"), index=True, nullable=True)
+    word_interval_id = Column(
+        Integer, ForeignKey("word_interval.id", ondelete="CASCADE"), index=True, nullable=True
+    )
     word_interval = relationship("WordInterval", back_populates="phone_intervals")
 
-    utterance_id = Column(Integer, ForeignKey("utterance.id"), index=True, nullable=False)
+    utterance_id = Column(
+        Integer, ForeignKey("utterance.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     utterance = relationship("Utterance", back_populates="phone_intervals")
 
-    workflow_id = Column(Integer, ForeignKey("corpus_workflow.id"), index=True, nullable=False)
+    workflow_id = Column(
+        Integer, ForeignKey("corpus_workflow.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     workflow = relationship("CorpusWorkflow", back_populates="phone_intervals")
 
     __table_args__ = (
@@ -1699,16 +1708,22 @@ class WordInterval(MfaSqlBase):
     begin = Column(Float, nullable=False, index=True)
     end = Column(Float, nullable=False)
 
-    utterance_id = Column(Integer, ForeignKey("utterance.id"), index=True, nullable=False)
+    utterance_id = Column(
+        Integer, ForeignKey("utterance.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     utterance = relationship("Utterance", back_populates="word_intervals")
 
-    word_id = Column(Integer, ForeignKey("word.id"), index=True, nullable=False)
+    word_id = Column(
+        Integer, ForeignKey("word.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     word = relationship("Word", back_populates="word_intervals")
 
     pronunciation_id = Column(Integer, ForeignKey("pronunciation.id"), index=True, nullable=True)
     pronunciation = relationship("Pronunciation", back_populates="word_intervals")
 
-    workflow_id = Column(Integer, ForeignKey("corpus_workflow.id"), index=True, nullable=False)
+    workflow_id = Column(
+        Integer, ForeignKey("corpus_workflow.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     workflow = relationship("CorpusWorkflow", back_populates="word_intervals")
 
     phone_intervals = relationship(

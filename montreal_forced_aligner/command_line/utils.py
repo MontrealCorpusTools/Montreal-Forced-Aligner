@@ -216,11 +216,6 @@ def configure_pg(directory):
         "#enable_partitionwise_aggregate = off": "enable_partitionwise_aggregate = on",
         "#maintenance_work_mem = 64MB": "maintenance_work_mem = 500MB",
         "#work_mem = 4MB": "work_mem = 128MB",
-        "#max_wal_senders = 10": "max_wal_senders = 0",
-        "max_wal_size = 1GB": "max_wal_size = 150GB",
-        "#wal_log_hints = off": "wal_log_hints = off",
-        "#synchronous_commit = on": "synchronous_commit = off",
-        "#wal_level = replica": "wal_level = minimal",
         "shared_buffers = 128MB": "shared_buffers = 256MB",
     }
     with mfa_open(os.path.join(directory, "postgresql.conf"), "r") as f:
@@ -254,6 +249,7 @@ def check_databases(db_name=None) -> None:
             )
             conn = engine.connect()
             conn.close()
+            engine.dispose()
             return
         except Exception:
             pass

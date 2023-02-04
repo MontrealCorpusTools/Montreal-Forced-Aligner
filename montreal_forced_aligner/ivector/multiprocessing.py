@@ -6,7 +6,6 @@ import re
 import subprocess
 import typing
 
-import sqlalchemy.engine
 from sqlalchemy.orm import Session, joinedload
 
 from montreal_forced_aligner.abc import MetaDict
@@ -99,8 +98,7 @@ class GmmGselectFunction(KaldiFunction):
         """Run the function"""
         if os.path.exists(self.gselect_path):
             return
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
@@ -130,7 +128,6 @@ class GmmGselectFunction(KaldiFunction):
                     yield new_done_count - current_done_count
                     current_done_count = new_done_count
             self.check_call(gselect_proc)
-        db_engine.dispose()
 
 
 class GaussToPostFunction(KaldiFunction):
@@ -174,8 +171,7 @@ class GaussToPostFunction(KaldiFunction):
         modified_posterior_scale = (
             self.ivector_options["posterior_scale"] * self.ivector_options["subsample"]
         )
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
@@ -217,7 +213,6 @@ class GaussToPostFunction(KaldiFunction):
                     utterance = int(m.group("utterance").split("-")[-1])
                     yield utterance
             self.check_call(scale_post_proc)
-        db_engine.dispose()
 
 
 class AccGlobalStatsFunction(KaldiFunction):
@@ -253,8 +248,7 @@ class AccGlobalStatsFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[None]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
@@ -284,7 +278,6 @@ class AccGlobalStatsFunction(KaldiFunction):
                     utt_id = int(m.group("file").split("-")[-1])
                     yield utt_id
             self.check_call(gmm_global_acc_proc)
-        db_engine.dispose()
 
 
 class AccIvectorStatsFunction(KaldiFunction):
@@ -320,8 +313,7 @@ class AccIvectorStatsFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[None]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
@@ -352,4 +344,3 @@ class AccIvectorStatsFunction(KaldiFunction):
                 log_file.write(line)
                 log_file.flush()
             self.check_call(acc_stats_proc)
-        db_engine.dispose()

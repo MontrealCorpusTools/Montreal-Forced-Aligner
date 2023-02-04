@@ -12,7 +12,6 @@ import typing
 from typing import TYPE_CHECKING, Dict, List, TextIO
 
 import pynini
-import sqlalchemy
 from sqlalchemy.orm import Session, joinedload, subqueryload
 
 from montreal_forced_aligner.abc import KaldiFunction, MetaDict
@@ -1578,8 +1577,7 @@ class PerSpeakerDecodeFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, str]]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:
+        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine) as session:
 
             job: Job = (
                 session.query(Job)
@@ -1640,7 +1638,6 @@ class PerSpeakerDecodeFunction(KaldiFunction):
                             break
                 latgen_proc.stdin.close()
                 self.check_call(latgen_proc)
-        db_engine.dispose()
 
 
 class DecodePhoneFunction(KaldiFunction):
@@ -1678,8 +1675,7 @@ class DecodePhoneFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[str, float, int]]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
             phones = session.query(Phone.mapping_id, Phone.phone)
             reversed_phone_mapping = {}
             for p_id, phone in phones:
@@ -1729,4 +1725,3 @@ class DecodePhoneFunction(KaldiFunction):
                             m.group("num_frames")
                         )
             self.check_call(decode_proc)
-        db_engine.dispose()

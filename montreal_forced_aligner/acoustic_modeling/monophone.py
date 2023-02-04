@@ -9,7 +9,6 @@ import subprocess
 import typing
 from queue import Empty
 
-import sqlalchemy
 import tqdm
 from sqlalchemy.orm import Session, joinedload, subqueryload
 
@@ -69,9 +68,8 @@ class MonoAlignEqualFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
 
-        with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:
+        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine) as session:
             job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -129,7 +127,6 @@ class MonoAlignEqualFunction(KaldiFunction):
                     if m:
                         yield int(m.group("utterances")), int(m.group("errors"))
                 self.check_call(acc_proc)
-        db_engine.dispose()
 
 
 class MonophoneTrainer(AcousticModelTrainingMixin):

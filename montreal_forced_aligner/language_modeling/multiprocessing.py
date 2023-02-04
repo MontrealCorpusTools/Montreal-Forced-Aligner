@@ -132,8 +132,7 @@ class TrainLmFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[bool]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
             word_query = session.query(Word.word).filter(Word.word_type == WordType.speech)
             included_words = set(x[0] for x in word_query)
             utterance_query = session.query(Utterance.normalized_text, Utterance.text).filter(
@@ -176,7 +175,6 @@ class TrainLmFunction(KaldiFunction):
                 yield 1
             farcompile_proc.stdin.close()
             self.check_call(ngramcount_proc)
-        db_engine.dispose()
 
 
 class TrainPhoneLmFunction(KaldiFunction):
@@ -208,8 +206,7 @@ class TrainPhoneLmFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[bool]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
             pronunciation_query = (
                 sqlalchemy.select(Utterance.id, sqlalchemy.func.string_agg(Phone.kaldi_label, " "))
                 .select_from(Utterance)
@@ -249,7 +246,6 @@ class TrainPhoneLmFunction(KaldiFunction):
                 yield utt_id, phones
             farcompile_proc.stdin.close()
             self.check_call(ngramcount_proc)
-        db_engine.dispose()
 
 
 class TrainSpeakerLmFunction(KaldiFunction):
@@ -283,8 +279,7 @@ class TrainSpeakerLmFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[bool]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
 
             job: Job = (
                 session.query(Job)
@@ -430,4 +425,3 @@ class TrainSpeakerLmFunction(KaldiFunction):
                     os.remove(ilabels_temp)
                     os.remove(out_disambig)
                     yield os.path.exists(hclg_path)
-        db_engine.dispose()

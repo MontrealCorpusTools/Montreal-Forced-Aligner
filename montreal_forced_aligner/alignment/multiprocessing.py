@@ -22,7 +22,6 @@ from typing import TYPE_CHECKING, Dict, List, Union
 import numpy as np
 import pynini
 import pywrapfst
-import sqlalchemy.engine
 from sqlalchemy.orm import Session, joinedload, selectinload, subqueryload
 
 from montreal_forced_aligner.corpus.features import (
@@ -524,9 +523,8 @@ class CompileTrainGraphsFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
 
-        with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:
+        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine) as session:
             job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -720,7 +718,6 @@ class CompileTrainGraphsFunction(KaldiFunction):
                         if m:
                             yield int(m.group("succeeded")), int(m.group("failed"))
                     self.check_call(proc)
-        db_engine.dispose()
 
 
 class AccStatsFunction(KaldiFunction):
@@ -826,9 +823,8 @@ class AlignFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, float]]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
 
-        with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:
+        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine) as session:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -946,7 +942,6 @@ class AlignFunction(KaldiFunction):
                         f"or downgrade MFA to the version that the model was trained on."
                     )
                 self.check_call(align_proc)
-        db_engine.dispose()
 
 
 class FineTuneFunction(KaldiFunction):
@@ -1123,8 +1118,7 @@ class FineTuneFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, float]]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
             job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -1424,7 +1418,6 @@ class FineTuneFunction(KaldiFunction):
                             break
                     yield interval_mapping, deletions
                 self.check_call(ctm_proc)
-        db_engine.dispose()
 
 
 class PhoneConfidenceFunction(KaldiFunction):
@@ -1452,8 +1445,7 @@ class PhoneConfidenceFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, str]]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with Session(db_engine) as session:
+        with Session(self.db_engine) as session:
             utterances = (
                 session.query(Utterance)
                 .filter(Utterance.job_id == self.job_name)
@@ -1539,7 +1531,6 @@ class PhoneConfidenceFunction(KaldiFunction):
                     yield interval_mappings
                     interval_mappings = []
                 self.check_call(output_proc)
-        db_engine.dispose()
 
 
 class GeneratePronunciationsFunction(KaldiFunction):
@@ -1606,9 +1597,8 @@ class GeneratePronunciationsFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int, str]]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
         self.phone_symbol_table = None
-        with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:
+        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine) as session:
             job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -1706,7 +1696,6 @@ class GeneratePronunciationsFunction(KaldiFunction):
                     else:
                         yield d.id, self._process_pronunciations(word_pronunciations)
                 self.check_call(ctm_proc)
-        db_engine.dispose()
 
 
 def compile_information_func(
@@ -1995,10 +1984,9 @@ class AlignmentExtractionFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, List[CtmInterval], List[CtmInterval]]]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
         align_lexicon_paths = {}
         self.phone_symbol_table = None
-        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -2213,7 +2201,6 @@ class AlignmentExtractionFunction(KaldiFunction):
                                 continue
                         yield utterance, word_intervals, phone_intervals, phone_word_mapping
                     self.check_call(ctm_proc)
-        db_engine.dispose()
 
 
 def construct_output_tiers(
@@ -2393,8 +2380,7 @@ class ExportTextGridProcessWorker(mp.Process):
 
     def run(self) -> None:
         """Run the exporter function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
-        with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:
+        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine) as session:
             workflow: CorpusWorkflow = (
                 session.query(CorpusWorkflow)
                 .filter(CorpusWorkflow.current == True)  # noqa
@@ -2453,4 +2439,3 @@ class ExportTextGridProcessWorker(mp.Process):
                     )
                     self.stopped.stop()
             log_file.write("Done!\n")
-        db_engine.dispose()

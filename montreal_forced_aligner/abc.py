@@ -71,12 +71,15 @@ class KaldiFunction(metaclass=abc.ABCMeta):
 
     def run(self) -> typing.Generator:
         """Run the function, calls subclassed object's ``_run`` with error handling"""
+        self.db_engine = sqlalchemy.create_engine(self.db_string)
         try:
             yield from self._run()
         except Exception:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             error_text = "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
             raise MultiprocessingError(self.job_name, error_text)
+        finally:
+            self.db_engine.dispose()
 
     def _run(self) -> None:
         """Internal logic for running the worker"""
@@ -242,15 +245,17 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         if getattr(self, "_db_engine", None) is not None:
             self._db_engine.dispose()
             self._db_engine = None
+        time.sleep(1)
         try:
             subprocess.call(
                 [
                     "dropdb",
                     f"--port={GLOBAL_CONFIG.current_profile.database_port}",
+                    "-f",
                     self.identifier,
                 ],
-                stderr=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
+                stderr=None if GLOBAL_CONFIG.current_profile.verbose else subprocess.DEVNULL,
+                stdout=None if GLOBAL_CONFIG.current_profile.verbose else subprocess.DEVNULL,
             )
         except Exception:
             pass

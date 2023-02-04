@@ -149,10 +149,10 @@ class AlignmentInitWorker(mp.Process):
 
     def run(self) -> None:
         """Run the function"""
+        engine = sqlalchemy.create_engine(self.db_string)
         try:
             symbol_table = pynini.SymbolTable()
             symbol_table.add_symbol(self.eps)
-            engine = sqlalchemy.create_engine(self.db_string)
             Session = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
             valid_phone_ngrams = set()
             base_dir = os.path.dirname(self.far_path)
@@ -318,6 +318,7 @@ class AlignmentInitWorker(mp.Process):
             self.stopped.stop()
             self.return_queue.put(e)
         finally:
+            engine.dispose()
             self.finished.stop()
             del far_writer
 
@@ -367,6 +368,7 @@ class ExpectationWorker(mp.Process):
             )
             for symbol, sym_id in query:
                 symbol_mapper[symbol_table.find(symbol)] = sym_id
+        engine.dispose()
         while not far_reader.done():
             if self.stopped.stop_check():
                 break
@@ -444,8 +446,8 @@ class MaximizationWorker(mp.Process):
         """Run the function"""
         symbol_table = pynini.SymbolTable.read_text(self.far_path.replace(".far", ".syms"))
         count = 0
+        engine = sqlalchemy.create_engine(self.db_string)
         try:
-            engine = sqlalchemy.create_engine(self.db_string)
             Session = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
             alignment_model = {}
             with Session() as session:
@@ -494,6 +496,7 @@ class MaximizationWorker(mp.Process):
             self.return_queue.put(e)
             raise
         finally:
+            engine.dispose()
             if count >= 1:
                 self.return_queue.put(count)
             self.finished.stop()

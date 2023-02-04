@@ -14,7 +14,6 @@ import typing
 from queue import Empty
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-import sqlalchemy
 import tqdm
 from sqlalchemy.orm import Session, joinedload, subqueryload
 
@@ -84,9 +83,8 @@ class TransitionAccFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, str]]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(self.db_string)
 
-        with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:
+        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine) as session:
             job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -133,7 +131,6 @@ class TransitionAccFunction(KaldiFunction):
                         progress_update = int(m.group("utterances"))
                         yield progress_update
                 self.check_call(tacc_proc)
-        db_engine.dispose()
 
 
 class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
