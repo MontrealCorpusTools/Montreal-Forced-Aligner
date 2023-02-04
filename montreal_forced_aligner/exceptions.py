@@ -878,12 +878,18 @@ class KaldiProcessingError(MFAError):
 
     def refresh_message(self) -> None:
         """Regenerate the exceptions message"""
+        from montreal_forced_aligner.config import GLOBAL_CONFIG
+
         self.message_lines = [
             f"There were {len(self.error_logs)} job(s) with errors when running Kaldi binaries.",
             "See the log files below for more information.",
         ]
         for error_log in self.error_logs:
             self.message_lines.append(error_log)
+            if GLOBAL_CONFIG.current_profile.verbose:
+                with open(error_log, "r", encoding="utf8") as f:
+                    for line in f:
+                        self.message_lines.append(line.strip())
         if self.log_file:
             self.message_lines.append(
                 f" For more details, please check {self.printer.error_text(self.log_file)}"
