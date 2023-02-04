@@ -34,6 +34,8 @@ def test_add(basic_corpus_dir, generated_dir, global_config, db_setup):
     corpus = AcousticCorpus(
         corpus_directory=basic_corpus_dir,
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     with corpus.session() as session:
         new_speaker = "new_speaker"
@@ -67,6 +69,8 @@ def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir, db_setu
     corpus = AcousticCorpus(
         corpus_directory=basic_corpus_txt_dir, use_pitch=True, use_voicing=True
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
 
     assert len(corpus.no_transcription_files) == 0
@@ -85,6 +89,8 @@ def test_acoustic_from_temp(
     corpus = AcousticCorpus(
         corpus_directory=basic_corpus_txt_dir,
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
@@ -93,6 +99,8 @@ def test_acoustic_from_temp(
     new_corpus = AcousticCorpus(
         corpus_directory=basic_corpus_txt_dir,
     )
+    new_corpus.clean_working_directory()
+    new_corpus.remove_database()
     new_corpus.load_corpus()
     assert len(new_corpus.no_transcription_files) == 0
     assert new_corpus.get_feat_dim() == 39
@@ -111,6 +119,8 @@ def test_text_corpus_from_temp(
     corpus = TextCorpus(
         corpus_directory=basic_corpus_txt_dir,
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     assert corpus.num_utterances > 0
     corpus.remove_database()
@@ -118,6 +128,8 @@ def test_text_corpus_from_temp(
     new_corpus = TextCorpus(
         corpus_directory=basic_corpus_txt_dir,
     )
+    new_corpus.clean_working_directory()
+    new_corpus.remove_database()
     new_corpus.load_corpus()
     assert new_corpus.num_utterances > 0
     global_config.clean = True
@@ -133,6 +145,8 @@ def test_extra(basic_dict_path, extra_corpus_dir, generated_dir, global_config, 
         corpus_directory=extra_corpus_dir,
         dictionary_path=basic_dict_path,
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
@@ -148,6 +162,8 @@ def test_stereo(basic_dict_path, stereo_corpus_dir, generated_dir, global_config
     corpus = AcousticCorpus(
         corpus_directory=stereo_corpus_dir,
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
@@ -165,6 +181,8 @@ def test_stereo_short_tg(
     corpus = AcousticCorpus(
         corpus_directory=stereo_corpus_short_tg_dir,
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
@@ -183,24 +201,13 @@ def test_audio_directory(basic_dict_path, basic_split_dir, generated_dir, global
         corpus_directory=text_dir,
         audio_directory=audio_dir,
     )
-    corpus.load_corpus()
-    assert len(corpus.no_transcription_files) == 0
-    assert corpus.get_feat_dim() == 39
-    assert corpus.num_files > 0
-
+    corpus.clean_working_directory()
     corpus.remove_database()
-
-    if os.path.exists(output_directory):
-        shutil.rmtree(output_directory, ignore_errors=True)
-
-    corpus = AcousticCorpus(
-        corpus_directory=text_dir,
-        audio_directory=audio_dir,
-    )
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
     assert corpus.num_files > 0
+
     corpus.remove_database()
 
 
@@ -214,6 +221,8 @@ def test_flac(basic_dict_path, flac_corpus_dir, generated_dir, global_config, db
     corpus = AcousticCorpus(
         corpus_directory=flac_corpus_dir,
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
@@ -230,6 +239,8 @@ def test_flac_mp(basic_dict_path, flac_corpus_dir, generated_dir, global_config,
     corpus = AcousticCorpus(
         corpus_directory=flac_corpus_dir,
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
@@ -247,6 +258,8 @@ def test_flac_tg(basic_dict_path, flac_tg_corpus_dir, generated_dir, global_conf
     corpus = AcousticCorpus(
         corpus_directory=flac_tg_corpus_dir,
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
@@ -264,6 +277,8 @@ def test_flac_tg_mp(basic_dict_path, flac_tg_corpus_dir, generated_dir, global_c
     corpus = AcousticCorpus(
         corpus_directory=flac_tg_corpus_dir,
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
@@ -282,6 +297,8 @@ def test_24bit_wav(
     corpus = AcousticCorpus(
         corpus_directory=transcribe_corpus_24bit_dir,
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 2
     assert corpus.get_feat_dim() == 39
@@ -298,6 +315,8 @@ def test_short_segments(shortsegments_corpus_dir, generated_dir, global_config, 
     corpus = AcousticCorpus(
         corpus_directory=shortsegments_corpus_dir,
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     assert corpus.num_utterances == 3
     assert len([x for x in corpus.utterances() if not x.ignored]) == 2
@@ -319,6 +338,8 @@ def test_speaker_groupings(
         corpus_directory=multilingual_ipa_corpus_dir,
         dictionary_path=english_us_mfa_dictionary,
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     with corpus.session() as session:
         files = corpus.files(session)
@@ -363,6 +384,8 @@ def test_subset(multilingual_ipa_corpus_dir, generated_dir, global_config, db_se
     corpus = AcousticCorpus(
         corpus_directory=multilingual_ipa_corpus_dir,
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     sd = corpus.split_directory
 
@@ -382,6 +405,8 @@ def test_weird_words(weird_words_dir, generated_dir, basic_dict_path, global_con
         corpus_directory=weird_words_dir,
         dictionary_path=basic_dict_path,
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     with corpus.session() as session:
         w = (
@@ -476,6 +501,8 @@ def test_punctuated(
         corpus_directory=punctuated_dir,
         dictionary_path=english_us_mfa_dictionary,
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     print(corpus.files())
     print(corpus.utterances())
@@ -545,6 +572,8 @@ def test_no_punctuation(
         dictionary_path=basic_dict_path,
         **params,
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     assert not corpus.punctuation
     assert not corpus.compound_markers
     assert not corpus.clitic_markers
@@ -603,7 +632,8 @@ def test_xsampa_corpus(
         dictionary_path=xsampa_dict_path,
         **params,
     )
-    print(corpus.quote_markers)
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     xsampa = corpus.get_utterances(file="xsampa")[0]
     assert (
@@ -622,6 +652,8 @@ def test_japanese(japanese_dir, japanese_dict_path, generated_dir, global_config
     corpus = DictionaryTextCorpus(
         corpus_directory=japanese_dir, dictionary_path=japanese_dict_path
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     print(corpus.files())
     print(corpus.utterances())
@@ -639,6 +671,8 @@ def test_devanagari(devanagari_dir, hindi_dict_path, generated_dir, global_confi
         shutil.rmtree(output_directory, ignore_errors=True)
 
     corpus = DictionaryTextCorpus(corpus_directory=devanagari_dir, dictionary_path=hindi_dict_path)
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
     print(corpus.files())
     print(corpus.utterances())
@@ -660,9 +694,9 @@ def test_french_clitics(
     corpus = DictionaryTextCorpus(
         corpus_directory=french_clitics_dir, dictionary_path=frclitics_dict_path
     )
+    corpus.clean_working_directory()
+    corpus.remove_database()
     corpus.load_corpus()
-    print(corpus.files())
-    print(corpus.utterances())
 
     punctuated = corpus.get_utterances(file="french_clitics")[0]
     assert (

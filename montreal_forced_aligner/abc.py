@@ -141,6 +141,10 @@ class TemporaryDirectoryMixin(metaclass=abc.ABCMeta):
         """Root temporary directory"""
         ...
 
+    def clean_working_directory(self) -> None:
+        """Clean up previous runs"""
+        shutil.rmtree(self.output_directory, ignore_errors=True)
+
     @property
     def corpus_output_directory(self) -> str:
         """Temporary directory containing all corpus information"""
@@ -722,10 +726,6 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
     def log_file(self) -> str:
         """Path to the worker's log file"""
         return os.path.join(self.output_directory, f"{self.data_source_identifier}.log")
-
-    def clean_working_directory(self) -> None:
-        """Clean up previous runs"""
-        shutil.rmtree(self.output_directory, ignore_errors=True)
 
     def setup_logger(self) -> None:
         """
