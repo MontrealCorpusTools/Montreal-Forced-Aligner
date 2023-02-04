@@ -744,7 +744,8 @@ class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker)
         self._load_corpus()
         self.initialize_jobs()
         super().setup()
-        self.count_word_tokens()
+        self._create_dummy_dictionary()
+        self.normalize_text()
         self.g2p_model.validate(self.words_to_g2p)
         self.initialized = True
 

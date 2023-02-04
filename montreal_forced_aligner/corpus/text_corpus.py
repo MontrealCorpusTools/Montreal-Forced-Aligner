@@ -16,8 +16,7 @@ from montreal_forced_aligner.corpus.base import CorpusMixin
 from montreal_forced_aligner.corpus.classes import FileData
 from montreal_forced_aligner.corpus.helper import find_exts
 from montreal_forced_aligner.corpus.multiprocessing import CorpusProcessWorker
-from montreal_forced_aligner.data import DatabaseImportData, WordType
-from montreal_forced_aligner.db import Dialect, Dictionary, Utterance, Word
+from montreal_forced_aligner.data import DatabaseImportData
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
 from montreal_forced_aligner.exceptions import TextGridParseError, TextParseError
 from montreal_forced_aligner.utils import Stopped
@@ -37,40 +36,6 @@ class TextCorpusMixin(CorpusMixin):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-
-    def count_word_tokens(self):
-        word_objs = {}
-        word_id = 1
-        with self.session() as session:
-            session.query(Word).delete()
-            session.query(Dictionary).delete()
-            session.query(Dialect).delete()
-            session.flush()
-
-            dialect = Dialect(name="unspecified")
-            d = Dictionary(name="corpus", default=True, dialect=dialect)
-            session.add(dialect)
-            session.add(d)
-            session.flush()
-            utt_query = session.query(Utterance.text)
-            for text in utt_query:
-                words = text[0].split()
-                for w in words:
-                    if w not in word_objs:
-                        word_objs[w] = {
-                            "id": word_id,
-                            "word": w,
-                            "mapping_id": word_id,
-                            "count": 0,
-                            "dictionary_id": d.id,
-                            "word_type": WordType.speech,
-                        }
-                        word_id += 1
-                    word_objs[w]["count"] += 1
-            session.bulk_insert_mappings(
-                Word, word_objs.values(), return_defaults=False, render_nulls=True
-            )
-            session.commit()
 
     def _load_corpus_from_source_mp(self) -> None:
         """
@@ -331,7 +296,6 @@ class TextCorpus(TextCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
 
         self._load_corpus()
         self.initialize_jobs()
-        self.count_word_tokens()
         self.create_corpus_split()
 
     @property
