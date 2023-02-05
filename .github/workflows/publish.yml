@@ -43,15 +43,6 @@ jobs:
         run: mamba env update -n my-env -f environment.yml
         if: steps.cache.outputs.cache-hit != 'true'
 
-      - name: Conda Info
-        run: |
-          conda info -a
-          conda list
-          PYVER=`python -c "import sys; print('{:d}.{:d}'.format(sys.version_info.major, sys.version_info.minor))"`
-          if [[ $PYVER != ${{ env.PYTHON }} ]]; then
-            exit 1;
-          fi
-
       - name: Create environment variable
         if: startsWith(github.ref, 'refs/tags/') != true
         run: |
