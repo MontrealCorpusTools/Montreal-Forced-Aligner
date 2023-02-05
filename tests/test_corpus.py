@@ -60,6 +60,7 @@ def test_add(basic_corpus_dir, generated_dir, global_config, db_setup):
     assert utts[0].text == "blah blah"
     corpus.delete_utterance(utts[0].id)
     assert len(corpus.get_utterances(file=new_file_name, speaker=new_speaker)) == 0
+    corpus.remove_database()
 
 
 def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir, db_setup):
@@ -75,6 +76,7 @@ def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir, db_setu
 
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 45
+    corpus.remove_database()
 
 
 @pytest.mark.xfail
@@ -133,6 +135,7 @@ def test_text_corpus_from_temp(
     new_corpus.load_corpus()
     assert new_corpus.num_utterances > 0
     global_config.clean = True
+    new_corpus.remove_database()
 
 
 def test_extra(basic_dict_path, extra_corpus_dir, generated_dir, global_config, db_setup):
@@ -150,6 +153,7 @@ def test_extra(basic_dict_path, extra_corpus_dir, generated_dir, global_config, 
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
+    corpus.remove_database()
 
 
 def test_stereo(basic_dict_path, stereo_corpus_dir, generated_dir, global_config, db_setup):
@@ -168,6 +172,7 @@ def test_stereo(basic_dict_path, stereo_corpus_dir, generated_dir, global_config
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
     assert corpus.get_file(name="michaelandsickmichael").num_channels == 2
+    corpus.remove_database()
 
 
 def test_stereo_short_tg(
@@ -208,6 +213,7 @@ def test_audio_directory(basic_dict_path, basic_split_dir, generated_dir, global
     assert corpus.get_feat_dim() == 39
     assert corpus.num_files > 0
 
+    corpus.clean_working_directory()
     corpus.remove_database()
 
 
@@ -226,6 +232,7 @@ def test_flac(basic_dict_path, flac_corpus_dir, generated_dir, global_config, db
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
+    corpus.clean_working_directory()
     corpus.remove_database()
 
 
@@ -245,6 +252,7 @@ def test_flac_mp(basic_dict_path, flac_corpus_dir, generated_dir, global_config,
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
     assert corpus.num_files > 0
+    corpus.clean_working_directory()
     corpus.remove_database()
 
 
@@ -264,6 +272,7 @@ def test_flac_tg(basic_dict_path, flac_tg_corpus_dir, generated_dir, global_conf
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
     assert corpus.num_files > 0
+    corpus.clean_working_directory()
     corpus.remove_database()
 
 
@@ -283,6 +292,7 @@ def test_flac_tg_mp(basic_dict_path, flac_tg_corpus_dir, generated_dir, global_c
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
     assert corpus.num_files > 0
+    corpus.clean_working_directory()
     corpus.remove_database()
 
 
@@ -303,6 +313,7 @@ def test_24bit_wav(
     assert len(corpus.no_transcription_files) == 2
     assert corpus.get_feat_dim() == 39
     assert corpus.num_files > 0
+    corpus.clean_working_directory()
     corpus.remove_database()
 
 
@@ -323,6 +334,7 @@ def test_short_segments(shortsegments_corpus_dir, generated_dir, global_config, 
     assert len([x for x in corpus.utterances() if x.features is not None]) == 2
     assert len([x for x in corpus.utterances() if x.ignored]) == 1
     assert len([x for x in corpus.utterances() if x.features is None]) == 1
+    corpus.clean_working_directory()
     corpus.remove_database()
 
 
@@ -353,9 +365,9 @@ def test_speaker_groupings(
                         break
                 else:
                     raise Exception(f"File {name} not loaded")
+    corpus.clean_working_directory()
     corpus.remove_database()
     del corpus
-    shutil.rmtree(output_directory)
     new_corpus = AcousticCorpusWithPronunciations(
         corpus_directory=multilingual_ipa_corpus_dir,
         dictionary_path=english_us_mfa_dictionary,
@@ -372,6 +384,7 @@ def test_speaker_groupings(
                     break
             else:
                 raise Exception(f"File {name} not loaded")
+    new_corpus.clean_working_directory()
     new_corpus.remove_database()
 
 
@@ -392,6 +405,7 @@ def test_subset(multilingual_ipa_corpus_dir, generated_dir, global_config, db_se
     s = corpus.subset_directory(5)
     assert os.path.exists(sd)
     assert os.path.exists(s)
+    corpus.clean_working_directory()
     corpus.remove_database()
 
 
@@ -486,6 +500,7 @@ def test_weird_words(weird_words_dir, generated_dir, basic_dict_path, global_con
     ]
     print(oovs)
     assert "'m" not in oovs
+    corpus.clean_working_directory()
     corpus.remove_database()
 
 
@@ -516,6 +531,7 @@ def test_punctuated(
         punctuated.normalized_text
         == "oh yes they they you know they love her and so something i mean you the village name is anglo saxon in origin and means myrsa 's woodland"
     )
+    corpus.clean_working_directory()
     corpus.remove_database()
 
 
@@ -547,6 +563,7 @@ def test_alternate_punctuation(
         punctuated.text
         == "oh yes, they - they, you know, they love her' and so' 'something 'i mean... ‘you The village name is Anglo Saxon in origin, and means 'Myrsa's woodland'."
     )
+    corpus.clean_working_directory()
     corpus.remove_database()
 
 
@@ -607,6 +624,7 @@ def test_no_punctuation(
         "<unk>",
         "<unk>",
     ]
+    corpus.clean_working_directory()
     corpus.remove_database()
 
 
@@ -640,6 +658,7 @@ def test_xsampa_corpus(
         xsampa.text
         == r"@bUr\tOU {bstr\{kt {bSaIr\ Abr\utseIzi {br\@geItIN @bor\n {b3kr\Ambi {bI5s@`n Ar\g thr\Ip@5eI Ar\dvAr\k"
     )
+    corpus.clean_working_directory()
     corpus.remove_database()
 
 
@@ -661,6 +680,7 @@ def test_japanese(japanese_dir, japanese_dict_path, generated_dir, global_config
     punctuated = corpus.get_utterances(file="japanese")[0]
     assert punctuated.text == "「はい」、。！ 『何 でしょう』"
     assert punctuated.normalized_text == "はい 何 でしょう"
+    corpus.clean_working_directory()
     corpus.remove_database()
 
 
@@ -680,6 +700,7 @@ def test_devanagari(devanagari_dir, hindi_dict_path, generated_dir, global_confi
     punctuated = corpus.get_utterances(file="devanagari")[0]
     assert punctuated.text == "हैंः हूं हौंसला"
     assert punctuated.normalized_text == "हैंः हूं हौंसला"
+    corpus.clean_working_directory()
     corpus.remove_database()
 
 
@@ -707,4 +728,5 @@ def test_french_clitics(
         punctuated.normalized_text
         == "aujourd aujourd'hui m' appelle purple-people-eater vingt six m' m' appelle c'est m' c'est m' appele m' ving sic flying'purple-people-eater"
     )
+    corpus.clean_working_directory()
     corpus.remove_database()

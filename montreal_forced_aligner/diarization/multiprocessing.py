@@ -272,10 +272,12 @@ def cluster_matrix(
 
     if sys.platform == "win32" and cluster_type is ClusterType.kmeans:
         os.environ["OMP_NUM_THREADS"] = "1"
+        os.environ["OPENBLAS_NUM_THREADS"] = "1"
+        os.environ["MKL_NUM_THREADS"] = "1"
     else:
         os.environ["OMP_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
-    os.environ["OPENBLAS_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
-    os.environ["MKL_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
+        os.environ["OPENBLAS_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
+        os.environ["MKL_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
     distance_threshold = kwargs.pop("distance_threshold", None)
     plda: PldaModel = kwargs.pop("plda", None)
     min_cluster_size = kwargs.pop("min_cluster_size", 15)
@@ -824,7 +826,8 @@ class UtteranceFileLoader(mp.Process):
         """
         Run the waveform loading job
         """
-        with Session(self.db_engine) as session:
+        db_engine = sqlalchemy.create_engine(self.db_string)
+        with Session(db_engine) as session:
             try:
                 utterances = (
                     session.query(
@@ -851,4 +854,5 @@ class UtteranceFileLoader(mp.Process):
             except Exception as e:
                 self.return_q.put(e)
             finally:
+                db_engine.dispose()
                 self.finished_adding.stop()
