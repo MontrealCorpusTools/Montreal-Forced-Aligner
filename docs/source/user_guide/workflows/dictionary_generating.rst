@@ -33,9 +33,9 @@ See :ref:`dict_generating_example` for an example of how to use G2P functionalit
 Command reference
 -----------------
 
-.. autoprogram:: montreal_forced_aligner.command_line.mfa:create_parser()
-   :prog: mfa
-   :start_command: g2p
+.. click:: montreal_forced_aligner.command_line.g2p:g2p_cli
+   :prog: mfa g2p
+   :nested: full
 
 Configuration reference
 -----------------------

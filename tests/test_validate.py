@@ -4,21 +4,24 @@ import os
 from montreal_forced_aligner.validation.corpus_validator import TrainingValidator
 
 
-def test_training_validator_arpa(multilingual_ipa_tg_corpus_dir, english_dictionary, temp_dir):
-    temp_dir = os.path.join(temp_dir, "training_validator")
+def test_training_validator_arpa(
+    multilingual_ipa_tg_corpus_dir, english_dictionary, temp_dir, global_config, db_setup
+):
+    output_directory = os.path.join(temp_dir, "training_validator")
+    global_config.temporary_directory = output_directory
     validator = TrainingValidator(
         corpus_directory=multilingual_ipa_tg_corpus_dir,
         dictionary_path=english_dictionary,
-        temporary_directory=temp_dir,
         phone_set_type="ARPA",
+        position_dependent_phones=True,
     )
+    validator.clean_working_directory()
+    validator.remove_database()
     validator.setup()
     assert validator.phone_set_type.name == "ARPA"
     assert validator.extra_questions_mapping
     assert validator.phone_set_type.name == "ARPA"
-    for k, v in validator.extra_questions_mapping.items():
-        print(k)
-        print(v)
+    for v in validator.extra_questions_mapping.values():
         assert len(v) == len(set(v))
     assert all("0" in x for x in validator.extra_questions_mapping["stress_0"])
     assert all("1" in x for x in validator.extra_questions_mapping["stress_1"])
@@ -52,25 +55,28 @@ def test_training_validator_arpa(multilingual_ipa_tg_corpus_dir, english_diction
             validator.positions,
         )
     }
+    validator.clean_working_directory()
+    validator.remove_database()
 
 
 def test_training_validator_ipa(
-    multilingual_ipa_tg_corpus_dir, english_us_mfa_dictionary, temp_dir
+    multilingual_ipa_tg_corpus_dir, english_us_mfa_dictionary, temp_dir, global_config, db_setup
 ):
-    temp_dir = os.path.join(temp_dir, "training_validator_ipa")
+    output_directory = os.path.join(temp_dir, "training_validator_ipa")
+    global_config.temporary_directory = output_directory
     validator = TrainingValidator(
         corpus_directory=multilingual_ipa_tg_corpus_dir,
         dictionary_path=english_us_mfa_dictionary,
-        temporary_directory=temp_dir,
         phone_set_type="IPA",
+        position_dependent_phones=True,
     )
+    validator.clean_working_directory()
+    validator.remove_database()
     validator.setup()
     assert validator.phone_set_type.name == "IPA"
     assert validator.extra_questions_mapping
     assert validator.phone_set_type.name == "IPA"
-    for k, v in validator.extra_questions_mapping.items():
-        print(k)
-        print(v)
+    for v in validator.extra_questions_mapping.values():
         assert len(v) == len(set(v))
     assert "dental" in validator.extra_questions_mapping
     dental = {
@@ -81,3 +87,5 @@ def test_training_validator_ipa(
         )
     }
     assert all(x in validator.extra_questions_mapping["dental"] for x in dental)
+    validator.clean_working_directory()
+    validator.remove_database()

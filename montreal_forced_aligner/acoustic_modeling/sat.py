@@ -1,6 +1,7 @@
 """Class definitions for Speaker Adapted Triphone trainer"""
 from __future__ import annotations
 
+import logging
 import multiprocessing as mp
 import os
 import re
@@ -14,6 +15,7 @@ from typing import Dict, List
 import tqdm
 
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.helper import mfa_open
@@ -27,6 +29,9 @@ from montreal_forced_aligner.utils import (
 )
 
 __all__ = ["SatTrainer", "AccStatsTwoFeatsFunction", "AccStatsTwoFeatsArguments"]
+
+
+logger = logging.getLogger("mfa")
 
 
 class AccStatsTwoFeatsArguments(MfaArguments):
@@ -163,23 +168,41 @@ class SatTrainer(TriphoneTrainer):
         list[:class:`~montreal_forced_aligner.acoustic_modeling.sat.AccStatsTwoFeatsArguments`]
             Arguments for processing
         """
-        feat_strings = self.worker.construct_feature_proc_strings()
-        si_feat_strings = self.worker.construct_feature_proc_strings(speaker_independent=True)
-        return [
-            AccStatsTwoFeatsArguments(
-                j.name,
-                getattr(self, "db_path", ""),
-                os.path.join(self.working_log_directory, f"acc_stats_two_feats.{j.name}.log"),
-                j.dictionary_ids,
-                j.construct_path_dictionary(self.working_directory, "ali", "ark"),
-                j.construct_path_dictionary(self.working_directory, "two_feat_acc", "ark"),
-                self.model_path,
-                feat_strings[j.name],
-                si_feat_strings[j.name],
+        arguments = []
+        for j in self.jobs:
+            feat_strings = {}
+            si_feat_strings = {}
+            for d_id in j.dictionary_ids:
+                feat_strings[d_id] = j.construct_feature_proc_string(
+                    self.working_directory,
+                    d_id,
+                    self.feature_options["uses_splices"],
+                    self.feature_options["splice_left_context"],
+                    self.feature_options["splice_right_context"],
+                    self.feature_options["uses_speaker_adaptation"],
+                )
+                si_feat_strings[d_id] = j.construct_feature_proc_string(
+                    self.working_directory,
+                    d_id,
+                    self.feature_options["uses_splices"],
+                    self.feature_options["splice_left_context"],
+                    self.feature_options["splice_right_context"],
+                    False,
+                )
+            arguments.append(
+                AccStatsTwoFeatsArguments(
+                    j.id,
+                    getattr(self, "db_string", ""),
+                    os.path.join(self.working_log_directory, f"acc_stats_two_feats.{j.id}.log"),
+                    j.dictionary_ids,
+                    j.construct_path_dictionary(self.working_directory, "ali", "ark"),
+                    j.construct_path_dictionary(self.working_directory, "two_feat_acc", "ark"),
+                    self.model_path,
+                    feat_strings,
+                    si_feat_strings,
+                )
             )
-            for j in self.jobs
-            if j.has_data
-        ]
+        return arguments
 
     def calc_fmllr(self) -> None:
         """Calculate fMLLR transforms for the current iteration"""
@@ -204,8 +227,8 @@ class SatTrainer(TriphoneTrainer):
     def _trainer_initialization(self) -> None:
         """Speaker adapted training initialization"""
         if self.initialized:
-            self.speaker_independent = False
-            self.worker.speaker_independent = False
+            self.uses_speaker_adaptation = True
+            self.worker.uses_speaker_adaptation = True
             return
         if os.path.exists(os.path.join(self.previous_aligner.working_directory, "lda.mat")):
             shutil.copyfile(
@@ -213,8 +236,6 @@ class SatTrainer(TriphoneTrainer):
                 os.path.join(self.working_directory, "lda.mat"),
             )
         for j in self.jobs:
-            if not j.has_data:
-                continue
             for path in j.construct_path_dictionary(
                 self.previous_aligner.working_directory, "trans", "ark"
             ).values():
@@ -224,14 +245,12 @@ class SatTrainer(TriphoneTrainer):
                 continue
             break
         else:
-            self.speaker_independent = True
-            self.worker.speaker_independent = True
+            self.uses_speaker_adaptation = False
+            self.worker.uses_speaker_adaptation = False
             self.calc_fmllr()
-        self.speaker_independent = False
-        self.worker.speaker_independent = False
+        self.uses_speaker_adaptation = True
+        self.worker.uses_speaker_adaptation = True
         for j in self.jobs:
-            if not j.has_data:
-                continue
             transform_paths = j.construct_path_dictionary(
                 self.previous_aligner.working_directory, "trans", "ark"
             )
@@ -266,11 +285,8 @@ class SatTrainer(TriphoneTrainer):
             assert os.path.exists(self.alignment_model_path)
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
-                import logging
-
-                logger = logging.getLogger(self.identifier)
-                log_kaldi_errors(e.error_logs, logger)
-                e.update_log_file(logger)
+                log_kaldi_errors(e.error_logs)
+                e.update_log_file()
             raise
 
     def train_iteration(self) -> None:
@@ -278,6 +294,8 @@ class SatTrainer(TriphoneTrainer):
         Run a single training iteration
         """
         if os.path.exists(self.next_model_path):
+            if self.iteration <= self.final_gaussian_iteration:
+                self.increment_gaussians()
             self.iteration += 1
             return
         if self.iteration in self.realignment_iterations:
@@ -318,14 +336,12 @@ class SatTrainer(TriphoneTrainer):
         :kaldi_steps:`train_sat`
             Reference Kaldi script
         """
-        self.log_info("Creating alignment model for speaker-independent features...")
+        logger.info("Creating alignment model for speaker-independent features...")
         begin = time.time()
 
         arguments = self.acc_stats_two_feats_arguments()
-        with tqdm.tqdm(
-            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
-        ) as pbar:
-            if self.use_mp:
+        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
                 stopped = Stopped()
@@ -399,7 +415,7 @@ class SatTrainer(TriphoneTrainer):
             )
             est_proc.communicate()
         parse_logs(self.working_log_directory)
-        if not self.debug:
+        if not GLOBAL_CONFIG.debug:
             for f in acc_files:
                 os.remove(f)
-        self.log_debug(f"Alignment model creation took {time.time() - begin}")
+        logger.debug(f"Alignment model creation took {time.time() - begin:.3f} seconds")

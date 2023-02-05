@@ -2,7 +2,6 @@ punctuation: "、。।，@<>\"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝
 clitic_markers: "'’"
 compound_markers: "-"
 num_pronunciations: 1  # Used if running in validation mode
-use_mp: True
 order: 7
 random_starts: 25
 seed: 1917

@@ -1,9 +1,8 @@
 import os
 
-from montreal_forced_aligner.command_line.mfa import parser
-from montreal_forced_aligner.command_line.train_ivector_extractor import (
-    run_train_ivector_extractor,
-)
+import click.testing
+
+from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
 def test_basic_ivector(
@@ -18,13 +17,20 @@ def test_basic_ivector(
         basic_corpus_dir,
         ivector_output_model_path,
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "train_ivector_cli"),
         "--config_path",
         train_ivector_config_path,
         "-q",
         "--clean",
         "--debug",
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_train_ivector_extractor(args)
-    assert os.path.exists(args.output_model_path)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+    assert os.path.exists(ivector_output_model_path)

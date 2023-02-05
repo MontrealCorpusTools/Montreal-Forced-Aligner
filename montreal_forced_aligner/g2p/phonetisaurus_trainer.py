@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import collections
+import logging
 import multiprocessing as mp
 import os
 import queue
@@ -17,8 +18,17 @@ from pynini.lib import rewrite
 from sqlalchemy.orm import scoped_session, sessionmaker
 
 from montreal_forced_aligner.abc import MetaDict, TopLevelMfaWorker
-from montreal_forced_aligner.data import WordType
-from montreal_forced_aligner.db import Job, M2M2Job, M2MSymbol, Pronunciation, Word, Word2Job
+from montreal_forced_aligner.config import GLOBAL_CONFIG
+from montreal_forced_aligner.data import WordType, WorkflowType
+from montreal_forced_aligner.db import (
+    Job,
+    M2M2Job,
+    M2MSymbol,
+    Pronunciation,
+    Word,
+    Word2Job,
+    bulk_update,
+)
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
 from montreal_forced_aligner.exceptions import PhonetisaurusSymbolError
 from montreal_forced_aligner.g2p.generator import PyniniValidator
@@ -29,12 +39,14 @@ from montreal_forced_aligner.utils import Stopped, thirdparty_binary
 
 __all__ = ["PhonetisaurusTrainerMixin", "PhonetisaurusTrainer"]
 
+logger = logging.getLogger("mfa")
+
 
 @dataclassy.dataclass(slots=True)
 class MaximizationArguments:
     """Arguments for the MaximizationWorker"""
 
-    db_path: str
+    db_string: str
     far_path: str
     penalize_em: bool
     batch_size: int
@@ -44,16 +56,16 @@ class MaximizationArguments:
 class ExpectationArguments:
     """Arguments for the ExpectationWorker"""
 
-    db_path: str
+    db_string: str
     far_path: str
     batch_size: int
 
 
 @dataclassy.dataclass(slots=True)
 class AlignmentExportArguments:
-    """Arguments for the NgramCountWorker"""
+    """Arguments for the AlignmentExportWorker"""
 
-    db_path: str
+    db_string: str
     log_path: str
     far_path: str
     penalize: bool
@@ -73,7 +85,7 @@ class NgramCountArguments:
 class AlignmentInitArguments:
     """Arguments for the alignment initialization worker"""
 
-    db_path: str
+    db_string: str
     log_path: str
     far_path: str
     deletions: bool
@@ -132,17 +144,15 @@ class AlignmentInitWorker(mp.Process):
         self.far_path = args.far_path
         self.sym_path = self.far_path.replace(".far", ".syms")
         self.log_path = args.log_path
-        self.db_path = args.db_path
+        self.db_string = args.db_string
         self.batch_size = args.batch_size
 
     def run(self) -> None:
         """Run the function"""
+        engine = sqlalchemy.create_engine(self.db_string)
         try:
             symbol_table = pynini.SymbolTable()
             symbol_table.add_symbol(self.eps)
-            engine = sqlalchemy.create_engine(
-                f"sqlite:///file:{self.db_path}?mode=ro&nolock=1&uri=true"
-            )
             Session = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
             valid_phone_ngrams = set()
             base_dir = os.path.dirname(self.far_path)
@@ -297,7 +307,6 @@ class AlignmentInitWorker(mp.Process):
                         del fst
                         count += 1
                     except Exception as e:  # noqa
-                        print(e)
                         self.stopped.stop()
                         self.return_queue.put(e)
             if data:
@@ -306,10 +315,10 @@ class AlignmentInitWorker(mp.Process):
             symbol_table.write_text(self.far_path.replace(".far", ".syms"))
             return
         except Exception as e:
-            print(e)
             self.stopped.stop()
             self.return_queue.put(e)
         finally:
+            engine.dispose()
             self.finished.stop()
             del far_writer
 
@@ -335,7 +344,7 @@ class ExpectationWorker(mp.Process):
     ):
         mp.Process.__init__(self)
         self.job_name = job_name
-        self.db_path = args.db_path
+        self.db_string = args.db_string
         self.far_path = args.far_path
         self.batch_size = args.batch_size
         self.return_queue = return_queue
@@ -344,9 +353,7 @@ class ExpectationWorker(mp.Process):
 
     def run(self) -> None:
         """Run the function"""
-        engine = sqlalchemy.create_engine(
-            f"sqlite:///file:{self.db_path}?mode=ro&nolock=1&uri=true"
-        )
+        engine = sqlalchemy.create_engine(self.db_string)
         Session = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
         far_reader = pywrapfst.FarReader.open(self.far_path)
         symbol_table = pynini.SymbolTable.read_text(self.far_path.replace(".far", ".syms"))
@@ -361,6 +368,7 @@ class ExpectationWorker(mp.Process):
             )
             for symbol, sym_id in query:
                 symbol_mapper[symbol_table.find(symbol)] = sym_id
+        engine.dispose()
         while not far_reader.done():
             if self.stopped.stop_check():
                 break
@@ -429,7 +437,7 @@ class MaximizationWorker(mp.Process):
         self.return_queue = return_queue
         self.stopped = stopped
         self.finished = Stopped()
-        self.db_path = args.db_path
+        self.db_string = args.db_string
         self.penalize_em = args.penalize_em
         self.far_path = args.far_path
         self.batch_size = args.batch_size
@@ -438,10 +446,8 @@ class MaximizationWorker(mp.Process):
         """Run the function"""
         symbol_table = pynini.SymbolTable.read_text(self.far_path.replace(".far", ".syms"))
         count = 0
+        engine = sqlalchemy.create_engine(self.db_string)
         try:
-            engine = sqlalchemy.create_engine(
-                f"sqlite:///file:{self.db_path}?mode=ro&nolock=1&uri=true"
-            )
             Session = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
             alignment_model = {}
             with Session() as session:
@@ -490,6 +496,7 @@ class MaximizationWorker(mp.Process):
             self.return_queue.put(e)
             raise
         finally:
+            engine.dispose()
             if count >= 1:
                 self.return_queue.put(count)
             self.finished.stop()
@@ -517,7 +524,7 @@ class AlignmentExporter(mp.Process):
         self.penalize = args.penalize
         self.far_path = args.far_path
         self.log_path = args.log_path
-        self.db_path = args.db_path
+        self.db_string = args.db_string
 
     def run(self) -> None:
         """Run the function"""
@@ -743,14 +750,16 @@ class PhonetisaurusTrainerMixin:
 
         """
 
-        self.log_info("Creating alignment FSTs...")
+        logger.info("Creating alignment FSTs...")
+        from montreal_forced_aligner.config import GLOBAL_CONFIG
+
         return_queue = mp.Queue()
         stopped = Stopped()
         finished_adding = Stopped()
         procs = []
-        for i in range(self.num_jobs):
+        for i in range(GLOBAL_CONFIG.num_jobs):
             args = AlignmentInitArguments(
-                self.db_path,
+                self.db_string,
                 os.path.join(self.working_log_directory, f"alignment_init.{i}.log"),
                 os.path.join(self.working_directory, f"{i}.far"),
                 self.deletions,
@@ -781,7 +790,7 @@ class PhonetisaurusTrainerMixin:
         job_symbols = {}
         symbol_id = 1
         with tqdm.tqdm(
-            total=self.g2p_num_training_pronunciations, disable=getattr(self, "quiet", False)
+            total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet
         ) as pbar, self.session(autoflush=False, autocommit=False) as session:
             while True:
                 try:
@@ -835,14 +844,21 @@ class PhonetisaurusTrainerMixin:
             if error_list:
                 for v in error_list:
                     raise v
-            self.log_debug(f"Total of {len(symbols)} symbols, initial total: {self.total}")
-            session.bulk_insert_mappings(M2MSymbol, [x for x in symbols.values()])
+            logger.debug(f"Total of {len(symbols)} symbols, initial total: {self.total}")
+            symbols = [x for x in symbols.values()]
+            for data in symbols:
+                data["weight"] = float(data["weight"])
+            session.bulk_insert_mappings(
+                M2MSymbol, symbols, return_defaults=False, render_nulls=True
+            )
             session.flush()
             del symbols
             mappings = []
             for j, sym_ids in job_symbols.items():
                 mappings.extend({"m2m_id": x, "job_id": j} for x in sym_ids)
-            session.bulk_insert_mappings(M2M2Job, mappings)
+            session.bulk_insert_mappings(
+                M2M2Job, mappings, return_defaults=False, render_nulls=True
+            )
 
             session.commit()
 
@@ -855,11 +871,11 @@ class PhonetisaurusTrainerMixin:
         float
             Current iteration's score
         """
-        self.log_info("Performing maximization step...")
+        logger.info("Performing maximization step...")
         change = abs(float(self.total) - float(self.prev_total))
-        self.log_debug(f"Previous total: {float(self.prev_total)}")
-        self.log_debug(f"Current total: {float(self.total)}")
-        self.log_debug(f"Change: {change}")
+        logger.debug(f"Previous total: {float(self.prev_total)}")
+        logger.debug(f"Current total: {float(self.total)}")
+        logger.debug(f"Change: {change}")
 
         self.prev_total = self.total
         with self.session(autoflush=False, autocommit=False) as session:
@@ -870,9 +886,9 @@ class PhonetisaurusTrainerMixin:
         return_queue = mp.Queue()
         stopped = Stopped()
         procs = []
-        for i in range(self.num_jobs):
+        for i in range(GLOBAL_CONFIG.num_jobs):
             args = MaximizationArguments(
-                self.db_path,
+                self.db_string,
                 os.path.join(self.working_directory, f"{i}.far"),
                 self.penalize_em,
                 self.batch_size,
@@ -882,7 +898,7 @@ class PhonetisaurusTrainerMixin:
 
         error_list = []
         with tqdm.tqdm(
-            total=self.g2p_num_training_pronunciations, disable=getattr(self, "quiet", False)
+            total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet
         ) as pbar:
             while True:
                 try:
@@ -912,28 +928,30 @@ class PhonetisaurusTrainerMixin:
             with self.session(autoflush=False, autocommit=False) as session:
                 session.query(M2MSymbol).update({"weight": 0.0})
                 session.commit()
-        self.log_info(f"Maximization done! Change from last iteration was {change:.3f}")
+        logger.info(f"Maximization done! Change from last iteration was {change:.3f}")
         return change
 
     def expectation(self) -> None:
         """
         Run the expectation step for training
         """
-        self.log_info("Performing expectation step...")
+        logger.info("Performing expectation step...")
         return_queue = mp.Queue()
         stopped = Stopped()
         error_list = []
         procs = []
-        for i in range(self.num_jobs):
+        for i in range(GLOBAL_CONFIG.num_jobs):
             args = ExpectationArguments(
-                self.db_path, os.path.join(self.working_directory, f"{i}.far"), self.batch_size
+                self.db_string,
+                os.path.join(self.working_directory, f"{i}.far"),
+                self.batch_size,
             )
             procs.append(ExpectationWorker(i, return_queue, stopped, args))
             procs[i].start()
         mappings = {}
         zero = pynini.Weight.zero("log")
         with tqdm.tqdm(
-            total=self.g2p_num_training_pronunciations, disable=getattr(self, "quiet", False)
+            total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet
         ) as pbar:
             while True:
                 try:
@@ -965,26 +983,26 @@ class PhonetisaurusTrainerMixin:
             for v in error_list:
                 raise v
         with self.session() as session:
-            session.bulk_update_mappings(
-                M2MSymbol, [{"id": k, "weight": v} for k, v in mappings.items()]
+            bulk_update(
+                session, M2MSymbol, [{"id": k, "weight": float(v)} for k, v in mappings.items()]
             )
             session.commit()
-        self.log_info("Expectation done!")
+        logger.info("Expectation done!")
 
     def train_ngram_model(self) -> None:
         """
         Train an ngram model on the aligned FSTs
         """
         if os.path.exists(self.fst_path):
-            self.log_info("Ngram model already exists.")
+            logger.info("Ngram model already exists.")
             return
-        self.log_info("Generating ngram counts...")
+        logger.info("Generating ngram counts...")
         return_queue = mp.Queue()
         stopped = Stopped()
         error_list = []
         procs = []
         count_paths = []
-        for i in range(self.num_jobs):
+        for i in range(GLOBAL_CONFIG.num_jobs):
             args = NgramCountArguments(
                 os.path.join(self.working_log_directory, f"ngram_count.{i}.log"),
                 os.path.join(self.working_directory, f"{i}.far"),
@@ -996,7 +1014,7 @@ class PhonetisaurusTrainerMixin:
             procs[i].start()
 
         with tqdm.tqdm(
-            total=self.g2p_num_training_pronunciations, disable=getattr(self, "quiet", False)
+            total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet
         ) as pbar:
             while True:
                 try:
@@ -1020,9 +1038,9 @@ class PhonetisaurusTrainerMixin:
         if error_list:
             for v in error_list:
                 raise v
-        self.log_info("Done counting ngrams!")
+        logger.info("Done counting ngrams!")
 
-        self.log_info("Training ngram model...")
+        logger.info("Training ngram model...")
         with mfa_open(os.path.join(self.working_log_directory, "model.log"), "w") as logf:
             ngrammerge_proc = subprocess.Popen(
                 [
@@ -1125,7 +1143,6 @@ class PhonetisaurusTrainerMixin:
                             arc = pywrapfst.Arc(0, 0, arc.weight, arc.nextstate)
                             maiter.set_value(arc)
                         else:
-                            print(symbol)
                             raise
                     finally:
                         next(maiter)
@@ -1166,15 +1183,15 @@ class PhonetisaurusTrainerMixin:
         Run an Expectation-Maximization (EM) training on alignment FSTs to generate well-aligned FSTs for ngram modeling
         """
         if os.path.exists(self.alignment_model_path):
-            self.log_info("Using existing alignments.")
+            logger.info("Using existing alignments.")
             self.symbol_table = pynini.SymbolTable.read_text(self.alignment_symbols_path)
             return
         self.initialize_alignments()
 
         self.maximization()
-        self.log_info("Training alignments...")
+        logger.info("Training alignments...")
         for i in range(self.num_iterations):
-            self.log_info(f"Iteration {i}")
+            logger.info(f"Iteration {i}")
             self.expectation()
             change = self.maximization(last_iteration=i == self.num_iterations - 1)
             if change < self.em_threshold:
@@ -1188,11 +1205,6 @@ class PhonetisaurusTrainerMixin:
     def train_iteration(self) -> None:
         """Train iteration, not used"""
         pass
-
-    @property
-    def workflow_identifier(self) -> str:
-        """Identifier for Phonetisaurus G2P trainer"""
-        return "phonetisaurus_train_g2p"
 
     @property
     def data_source_identifier(self) -> str:
@@ -1220,7 +1232,7 @@ class PhonetisaurusTrainerMixin:
         basename, _ = os.path.splitext(output_model_path)
         model.dump(basename)
         model.clean_up()
-        self.log_info(f"Saved model to {output_model_path}")
+        logger.info(f"Saved model to {output_model_path}")
 
     @property
     def alignment_model_path(self) -> str:
@@ -1261,16 +1273,16 @@ class PhonetisaurusTrainerMixin:
         """
         Combine alignment training archives to a final combined FST archive to train the ngram model
         """
-        self.log_info("Exporting final alignments...")
+        logger.info("Exporting final alignments...")
 
         return_queue = mp.Queue()
         stopped = Stopped()
         error_list = []
         procs = []
         count_paths = []
-        for i in range(self.num_jobs):
+        for i in range(GLOBAL_CONFIG.num_jobs):
             args = AlignmentExportArguments(
-                self.db_path,
+                self.db_string,
                 os.path.join(self.working_log_directory, f"ngram_count.{i}.log"),
                 os.path.join(self.working_directory, f"{i}.far"),
                 self.penalize,
@@ -1280,7 +1292,7 @@ class PhonetisaurusTrainerMixin:
             procs[i].start()
 
         with tqdm.tqdm(
-            total=self.g2p_num_training_pronunciations, disable=getattr(self, "quiet", False)
+            total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet
         ) as pbar:
             while True:
                 try:
@@ -1317,7 +1329,7 @@ class PhonetisaurusTrainerMixin:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
         )
-        for j in range(self.num_jobs):
+        for j in range(GLOBAL_CONFIG.num_jobs):
             text_path = os.path.join(self.working_directory, f"{j}.far.strings")
             with mfa_open(text_path, "r") as f:
                 for line in f:
@@ -1326,7 +1338,7 @@ class PhonetisaurusTrainerMixin:
         symbols_proc.stdin.close()
         symbols_proc.wait()
         self.symbol_table = pynini.SymbolTable.read_text(self.alignment_symbols_path)
-        self.log_info("Done exporting alignments!")
+        logger.info("Done exporting alignments!")
 
 
 class PhonetisaurusTrainer(
@@ -1351,11 +1363,6 @@ class PhonetisaurusTrainer(
         return self.working_directory
 
     @property
-    def workflow_identifier(self) -> str:
-        """Identifier for Phonetisaurus G2P trainer"""
-        return "phonetisaurus_train_g2p"
-
-    @property
     def configuration(self) -> MetaDict:
         """Configuration for G2P trainer"""
         config = super().configuration
@@ -1364,9 +1371,12 @@ class PhonetisaurusTrainer(
 
     def setup(self) -> None:
         """Setup for G2P training"""
-        if self.initialized:
+        super().setup()
+        self.create_new_current_workflow(WorkflowType.train_g2p)
+        wf = self.current_workflow
+        if wf.done:
+            logger.info("G2P training already done, skipping.")
             return
-        self.initialize_database()
         self.dictionary_setup()
         os.makedirs(self.phones_dir, exist_ok=True)
         self.initialize_training()
@@ -1379,14 +1389,14 @@ class PhonetisaurusTrainer(
         os.makedirs(self.working_log_directory, exist_ok=True)
         begin = time.time()
         self.train_alignments()
-        self.log_debug(
-            f"Aligning {len(self.g2p_training_dictionary)} words took {time.time() - begin} seconds"
+        logger.debug(
+            f"Aligning {len(self.g2p_training_dictionary)} words took {time.time() - begin:.3f} seconds"
         )
         self.export_alignments()
         begin = time.time()
         self.train_ngram_model()
-        self.log_debug(
-            f"Generating model for {len(self.g2p_training_dictionary)} words took {time.time() - begin} seconds"
+        logger.debug(
+            f"Generating model for {len(self.g2p_training_dictionary)} words took {time.time() - begin:.3f} seconds"
         )
         self.finalize_training()
 
@@ -1432,6 +1442,7 @@ class PhonetisaurusTrainer(
         temp_model_path = os.path.join(self.working_log_directory, "g2p_model.zip")
         self.export_model(temp_model_path)
         temp_dir = os.path.join(self.working_directory, "validation")
+        os.makedirs(temp_dir, exist_ok=True)
         with self.session() as session:
             validation_set = collections.defaultdict(set)
             query = (
@@ -1445,8 +1456,6 @@ class PhonetisaurusTrainer(
         gen = PyniniValidator(
             g2p_model_path=temp_model_path,
             word_list=list(validation_set.keys()),
-            temporary_directory=temp_dir,
-            num_jobs=self.num_jobs,
             num_pronunciations=self.num_pronunciations,
         )
         output = gen.generate_pronunciations()
@@ -1617,10 +1626,13 @@ class PhonetisaurusTrainer(
     def initialize_training(self) -> None:
         """Initialize training G2P model"""
         with self.session() as session:
+            session.query(Word2Job).delete()
+            session.query(M2M2Job).delete()
+            session.query(M2MSymbol).delete()
             session.query(Job).delete()
             session.commit()
 
-            job_objs = [{"id": j} for j in range(self.num_jobs)]
+            job_objs = [{"id": j} for j in range(GLOBAL_CONFIG.num_jobs)]
             self.g2p_num_training_pronunciations = 0
             self.g2p_num_validation_pronunciations = 0
             self.g2p_num_training_words = 0
@@ -1628,21 +1640,25 @@ class PhonetisaurusTrainer(
             # Below we partition sorted list of words to try to have each process handling different symbol tables
             # so they're not completely overlapping and using more memory
             num_words = session.query(Word.id).count()
-            words_per_job = int(num_words / self.num_jobs)
+            words_per_job = int(num_words / GLOBAL_CONFIG.num_jobs)
             current_job = 0
             words = session.query(Word.id).filter(
                 Word.word_type.in_([WordType.speech, WordType.clitic])
             )
             mappings = []
             for i, (w,) in enumerate(words):
-                if i >= (current_job + 1) * words_per_job and current_job != self.num_jobs:
+                if (
+                    i >= (current_job + 1) * words_per_job
+                    and current_job != GLOBAL_CONFIG.num_jobs
+                ):
                     current_job += 1
                 mappings.append({"word_id": w, "job_id": current_job, "training": 1})
-            with session.bind.begin() as conn:
-                conn.execute(sqlalchemy.insert(Job.__table__), job_objs)
-                conn.execute(sqlalchemy.insert(Word2Job.__table__), mappings)
+            with session.begin_nested():
+                session.execute(sqlalchemy.insert(Job.__table__), job_objs)
+                session.execute(sqlalchemy.insert(Word2Job.__table__), mappings)
+                session.flush()
+            session.commit()
 
-                session.commit()
             if self.evaluation_mode:
                 validation_items = int(num_words * self.validation_proportion)
                 validation_words = (
@@ -1657,7 +1673,9 @@ class PhonetisaurusTrainer(
                     .values(training=False)
                     .where(Word2Job.word_id.in_(validation_words))
                 )
-                session.execute(query)
+                with session.begin_nested():
+                    session.execute(query)
+                    session.flush()
                 session.commit()
                 query = (
                     session.query(Word.word, Pronunciation.pronunciation)
@@ -1701,9 +1719,9 @@ class PhonetisaurusTrainer(
             self.g2p_num_training_words = (
                 session.query(Word2Job.word_id).filter(Word2Job.training == True).count()  # noqa
             )
-            self.log_debug(f"Graphemes in training data: {sorted(self.g2p_training_graphemes)}")
-            self.log_debug(f"Phones in training data: {sorted(self.g2p_training_phones)}")
-            self.log_debug(f"Averages phones per grapheme: {phone_count / grapheme_count}")
+            logger.debug(f"Graphemes in training data: {sorted(self.g2p_training_graphemes)}")
+            logger.debug(f"Phones in training data: {sorted(self.g2p_training_phones)}")
+            logger.debug(f"Averages phones per grapheme: {phone_count / grapheme_count}")
 
             if self.sequence_separator in self.g2p_training_phones | self.g2p_training_graphemes:
                 raise PhonetisaurusSymbolError(self.sequence_separator, "sequence_separator")
@@ -1713,18 +1731,18 @@ class PhonetisaurusTrainer(
                 raise PhonetisaurusSymbolError(self.alignment_separator, "alignment_separator")
 
             if self.evaluation_mode:
-                self.log_debug(
+                logger.debug(
                     f"Graphemes in validation data: {sorted(self.g2p_validation_graphemes)}"
                 )
-                self.log_debug(f"Phones in validation data: {sorted(self.g2p_validation_phones)}")
+                logger.debug(f"Phones in validation data: {sorted(self.g2p_validation_phones)}")
                 grapheme_diff = sorted(self.g2p_validation_graphemes - self.g2p_training_graphemes)
                 phone_diff = sorted(self.g2p_validation_phones - self.g2p_training_phones)
                 if grapheme_diff:
-                    self.log_warning(
+                    logger.debug(
                         f"The following graphemes appear only in the validation set: {', '.join(grapheme_diff)}"
                     )
                 if phone_diff:
-                    self.log_warning(
+                    logger.debug(
                         f"The following phones appear only in the validation set: {', '.join(phone_diff)}"
                     )
             self.compute_initial_ngrams()

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import datetime
 import subprocess
-import sys
 import typing
 
 import soundfile
@@ -115,7 +114,7 @@ def get_wav_info(
     duration = 0
     sox_string = ""
     if format in {"mp3", "opus"}:
-        if sys.platform != "win32" and format == "mp3":
+        if format == "mp3":
             sox_proc = subprocess.Popen(
                 ["soxi", f"{file_path}"], stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True
             )

@@ -31,13 +31,14 @@ import sqlalchemy
 import yaml
 from sqlalchemy.orm import Session
 
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.exceptions import KaldiProcessingError, MultiprocessingError
 from montreal_forced_aligner.helper import comma_join, load_configuration, mfa_open
 
 if TYPE_CHECKING:
-    from argparse import Namespace
 
-    from montreal_forced_aligner.data import MfaArguments
+    from montreal_forced_aligner.data import MfaArguments, WorkflowType
+    from montreal_forced_aligner.db import CorpusWorkflow, MfaSqlBase
 
 __all__ = [
     "MfaModel",
@@ -54,6 +55,7 @@ __all__ = [
 
 # Configuration types
 MetaDict = Dict[str, Any]
+logger = logging.getLogger("mfa")
 
 
 class KaldiFunction(metaclass=abc.ABCMeta):
@@ -63,18 +65,21 @@ class KaldiFunction(metaclass=abc.ABCMeta):
 
     def __init__(self, args: MfaArguments):
         self.args = args
-        self.db_path = self.args.db_path
+        self.db_string = self.args.db_string
         self.job_name = self.args.job_name
         self.log_path = self.args.log_path
 
     def run(self) -> typing.Generator:
-        """Run the function, calls :meth:`~KaldiFunction._run` with error handling"""
+        """Run the function, calls subclassed object's ``_run`` with error handling"""
+        self.db_engine = sqlalchemy.create_engine(self.db_string)
         try:
             yield from self._run()
         except Exception:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             error_text = "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
             raise MultiprocessingError(self.job_name, error_text)
+        finally:
+            self.db_engine.dispose()
 
     def _run(self) -> None:
         """Internal logic for running the worker"""
@@ -103,27 +108,20 @@ class KaldiFunction(metaclass=abc.ABCMeta):
 class TemporaryDirectoryMixin(metaclass=abc.ABCMeta):
     """
     Abstract mixin class for MFA temporary directories
-
-    Parameters
-    ----------
-    temporary_directory: str, optional
-        Path to store temporary files
     """
 
     def __init__(
         self,
-        temporary_directory: str = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
-        if not temporary_directory:
-            from .config import get_temporary_directory
-
-            temporary_directory = get_temporary_directory()
-        self.temporary_directory = temporary_directory
         self._corpus_output_directory = None
         self._dictionary_output_directory = None
         self._language_model_output_directory = None
+        self._acoustic_model_output_directory = None
+        self._g2p_model_output_directory = None
+        self._ivector_extractor_output_directory = None
+        self._current_workflow = None
 
     @property
     @abc.abstractmethod
@@ -143,6 +141,10 @@ class TemporaryDirectoryMixin(metaclass=abc.ABCMeta):
         """Root temporary directory"""
         ...
 
+    def clean_working_directory(self) -> None:
+        """Clean up previous runs"""
+        shutil.rmtree(self.output_directory, ignore_errors=True)
+
     @property
     def corpus_output_directory(self) -> str:
         """Temporary directory containing all corpus information"""
@@ -161,6 +163,11 @@ class TemporaryDirectoryMixin(metaclass=abc.ABCMeta):
             return self._dictionary_output_directory
         return os.path.join(self.output_directory, "dictionary")
 
+    @property
+    def model_output_directory(self) -> str:
+        """Temporary directory containing all dictionary information"""
+        return os.path.join(self.output_directory, "models")
+
     @dictionary_output_directory.setter
     def dictionary_output_directory(self, directory: str) -> None:
         self._dictionary_output_directory = directory
@@ -170,11 +177,22 @@ class TemporaryDirectoryMixin(metaclass=abc.ABCMeta):
         """Temporary directory containing all dictionary information"""
         if self._language_model_output_directory:
             return self._language_model_output_directory
-        return os.path.join(self.output_directory, "language_model")
+        return os.path.join(self.model_output_directory, "language_model")
 
     @language_model_output_directory.setter
     def language_model_output_directory(self, directory: str) -> None:
         self._language_model_output_directory = directory
+
+    @property
+    def acoustic_model_output_directory(self) -> str:
+        """Temporary directory containing all dictionary information"""
+        if self._acoustic_model_output_directory:
+            return self._acoustic_model_output_directory
+        return os.path.join(self.model_output_directory, "acoustic_model")
+
+    @acoustic_model_output_directory.setter
+    def acoustic_model_output_directory(self, directory: str) -> None:
+        self._acoustic_model_output_directory = directory
 
 
 class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
@@ -187,6 +205,8 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         **kwargs,
     ):
         super().__init__(**kwargs)
+        self.db_backend = GLOBAL_CONFIG.database_backend
+
         self._db_engine = None
         self._db_path = None
 
@@ -194,10 +214,55 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         """
         Initialize the database with database schema
         """
+        retcode = subprocess.call(
+            [
+                "createdb",
+                f"--port={GLOBAL_CONFIG.current_profile.database_port}",
+                self.identifier,
+            ],
+            stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+        )
+        exist_check = retcode != 0
+        with self.db_engine.connect() as conn:
+            conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS vector"))
+            conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+            conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"))
+            conn.commit()
+        if exist_check:
+            return
         from montreal_forced_aligner.db import MfaSqlBase
 
         os.makedirs(self.output_directory, exist_ok=True)
+
         MfaSqlBase.metadata.create_all(self.db_engine)
+
+    def remove_database(self):
+        if getattr(self, "_session", None) is not None:
+            try:
+                self._session.commit()
+            except Exception:
+                self._session.rollback()
+            finally:
+                self._session.close()
+            self._session = None
+        if getattr(self, "_db_engine", None) is not None:
+            self._db_engine.dispose()
+            self._db_engine = None
+        time.sleep(1)
+        try:
+            subprocess.call(
+                [
+                    "dropdb",
+                    f"--port={GLOBAL_CONFIG.current_profile.database_port}",
+                    "-f",
+                    self.identifier,
+                ],
+                stderr=None if GLOBAL_CONFIG.current_profile.verbose else subprocess.DEVNULL,
+                stdout=None if GLOBAL_CONFIG.current_profile.verbose else subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
 
     @property
     def db_engine(self) -> sqlalchemy.engine.Engine:
@@ -206,14 +271,67 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
             self._db_engine = self.construct_engine()
         return self._db_engine
 
-    @property
-    def db_path(self) -> str:
-        """Path to SQLite database file"""
-        if self._db_path is not None:
-            return self._db_path
-        return os.path.join(self.output_directory, f"{self.identifier}.db")
+    def get_next_primary_key(self, database_table: MfaSqlBase):
+        with self.session() as session:
+            pk = session.query(sqlalchemy.func.max(database_table.id)).scalar()
+            if not pk:
+                pk = 0
+        return pk + 1
 
-    def construct_engine(self, same_thread=True, read_only=False) -> sqlalchemy.engine.Engine:
+    def create_new_current_workflow(self, workflow_type: WorkflowType, name: str = None):
+        from montreal_forced_aligner.db import CorpusWorkflow
+
+        with self.session() as session:
+            if not name:
+                name = workflow_type.name
+            self._current_workflow = name
+
+            session.query(CorpusWorkflow).update({"current": False})
+            new_workflow = (
+                session.query(CorpusWorkflow).filter(CorpusWorkflow.name == name).first()
+            )
+            if not new_workflow:
+                new_workflow = CorpusWorkflow(
+                    name=name,
+                    workflow_type=workflow_type,
+                    working_directory=os.path.join(self.output_directory, name),
+                    current=True,
+                )
+                log_dir = os.path.join(new_workflow.working_directory, "log")
+                os.makedirs(log_dir, exist_ok=True)
+                session.add(new_workflow)
+            else:
+                new_workflow.current = True
+            session.commit()
+
+    def set_current_workflow(self, identifier):
+        from montreal_forced_aligner.db import CorpusWorkflow
+
+        with self.session() as session:
+            session.query(CorpusWorkflow).update({CorpusWorkflow.current: False})
+            wf = session.query(CorpusWorkflow).filter(CorpusWorkflow.name == identifier).first()
+            wf.current = True
+            self._current_workflow = identifier
+            session.commit()
+
+    @property
+    def current_workflow(self) -> CorpusWorkflow:
+        from montreal_forced_aligner.db import CorpusWorkflow
+
+        with self.session() as session:
+            wf = (
+                session.query(CorpusWorkflow)
+                .filter(CorpusWorkflow.current == True)  # noqa
+                .first()
+            )
+        return wf
+
+    @property
+    def db_string(self):
+        """Connection string for the database"""
+        return f"postgresql+psycopg2://localhost:{GLOBAL_CONFIG.current_profile.database_port}/{self.identifier}"
+
+    def construct_engine(self, read_only=False, **kwargs) -> sqlalchemy.engine.Engine:
         """
         Construct a database engine
 
@@ -229,13 +347,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         :class:`~sqlalchemy.engine.Engine`
             SqlAlchemy engine
         """
-        connect_args = {}
-        if not same_thread:
-            connect_args["check_same_thread"] = False
-        string = f"sqlite:///{self.db_path}"
-        if read_only:
-            string = f"sqlite:///file:{self.db_path}?mode=ro&nolock=1&uri=true"
-        return sqlalchemy.create_engine(string, connect_args=connect_args)
+        return sqlalchemy.create_engine(self.db_string, future=True, **kwargs)
 
     def session(self, **kwargs) -> Session:
         """
@@ -259,17 +371,6 @@ class MfaWorker(metaclass=abc.ABCMeta):
     """
     Abstract class for MFA workers
 
-    Parameters
-    ----------
-    use_mp: bool
-        Flag to run in multiprocessing mode, defaults to True
-    debug: bool
-        Flag to run in debug mode, defaults to False
-    verbose: bool
-        Flag to run in verbose mode, defaults to False
-    quiet: bool
-        Flag for whether to suppress printing to the terminal
-
     Attributes
     ----------
     dirty: bool
@@ -278,66 +379,10 @@ class MfaWorker(metaclass=abc.ABCMeta):
 
     def __init__(
         self,
-        use_mp: bool = True,
-        debug: bool = False,
-        verbose: bool = False,
-        quiet: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.debug = debug
-        self.verbose = verbose
-        self.use_mp = use_mp
         self.dirty = False
-        self.quiet = quiet
-
-    def log_debug(self, message: str = "") -> None:
-        """
-        Print a debug message
-
-        Parameters
-        ----------
-        message: str
-            Debug message to log
-        """
-        if not self.quiet and self.verbose:
-            print(message)
-
-    def log_error(self, message: str = "") -> None:
-        """
-        Print an error message
-
-        Parameters
-        ----------
-        message: str
-            Error message to log
-        """
-        if not self.quiet:
-            print(message)
-
-    def log_info(self, message: str = "") -> None:
-        """
-        Print an info message
-
-        Parameters
-        ----------
-        message: str
-            Info message to log
-        """
-        if not self.quiet:
-            print(message)
-
-    def log_warning(self, message: str = "") -> None:
-        """
-        Print a warning message
-
-        Parameters
-        ----------
-        message: str
-            Warning message to log
-        """
-        if not self.quiet:
-            print(message)
 
     @classmethod
     def extract_relevant_parameters(cls, config: MetaDict) -> Tuple[MetaDict, List[str]]:
@@ -410,10 +455,6 @@ class MfaWorker(metaclass=abc.ABCMeta):
     def configuration(self) -> MetaDict:
         """Configuration parameters"""
         return {
-            "debug": self.debug,
-            "verbose": self.verbose,
-            "quiet": self.quiet,
-            "use_mp": self.use_mp,
             "dirty": self.dirty,
         }
 
@@ -457,49 +498,52 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
 
     def __init__(
         self,
-        num_jobs: int = 3,
-        clean: bool = False,
         **kwargs,
     ):
         kwargs, skipped = type(self).extract_relevant_parameters(kwargs)
         super().__init__(**kwargs)
-        self.num_jobs = num_jobs
-        self.clean = clean
         self.initialized = False
         self.start_time = time.time()
         self.setup_logger()
         if skipped:
-            self.log_warning(f"Skipped the following configuration keys: {comma_join(skipped)}")
+            logger.warning(f"Skipped the following configuration keys: {comma_join(skipped)}")
 
     def __del__(self):
         """Ensure that loggers are cleaned up on delete"""
-        logger = logging.getLogger(self.identifier)
+        logger = logging.getLogger("mfa")
         handlers = logger.handlers[:]
         for handler in handlers:
             handler.close()
             logger.removeHandler(handler)
 
-    @abc.abstractmethod
     def setup(self) -> None:
-        """Abstract method for setting up a top-level worker"""
-        ...
+        """Setup for worker"""
+        self.check_previous_run()
+        if GLOBAL_CONFIG.clean:
+            self.clean_working_directory()
+            if hasattr(self, "remove_database"):
+                self.remove_database()
+        if hasattr(self, "initialize_database"):
+            self.initialize_database()
 
     @property
     def working_directory(self) -> str:
         """Alias for a folder that contains worker information, separate from the data directory"""
-        return self.workflow_directory
+        return os.path.join(self.output_directory, self._current_workflow)
 
     @classmethod
-    def parse_args(cls, args: Optional[Namespace], unknown_args: Optional[List[str]]) -> MetaDict:
+    def parse_args(
+        cls, args: Optional[Dict[str, Any]], unknown_args: Optional[List[str]]
+    ) -> MetaDict:
         """
         Class method for parsing configuration parameters from command line arguments
 
         Parameters
         ----------
-        args: :class:`~argparse.Namespace`
-            Arguments parsed by argparse
+        args: dict[str, Any]
+            Parsed arguments
         unknown_args: list[str]
-            Optional list of arguments that were not parsed by argparse
+            Optional list of arguments that were not parsed
 
         Returns
         -------
@@ -522,29 +566,25 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
                     val = unknown_args[i + 1]
                 unknown_dict[name] = val
         for name, param_type in param_types.items():
-            if (name.endswith("_directory") and name != "audio_directory") or name.endswith(
-                "_path"
+            if (name.endswith("_directory") and name != "audio_directory") or (
+                name.endswith("_path") and name not in {"rules_path", "groups_path"}
             ):
                 continue
-            if args is not None and hasattr(args, name) and getattr(args, name) is not None:
-                params[name] = param_type(getattr(args, name))
+            if args is not None and name in args and args[name] is not None:
+                params[name] = param_type(args[name])
             elif name in unknown_dict:
                 params[name] = param_type(unknown_dict[name])
-                if param_type == bool:
+                if param_type == bool and not isinstance(unknown_dict[name], bool):
                     if unknown_dict[name].lower() == "false":
                         params[name] = False
-        if getattr(args, "disable_mp", False):
-            params["use_mp"] = False
-        elif getattr(args, "disable_textgrid_cleanup", False):
-            params["cleanup_textgrids"] = False
         return params
 
     @classmethod
     def parse_parameters(
         cls,
         config_path: Optional[str] = None,
-        args: Optional[Namespace] = None,
-        unknown_args: Optional[List[str]] = None,
+        args: Optional[Dict[str, Any]] = None,
+        unknown_args: Optional[typing.Iterable[str]] = None,
     ) -> MetaDict:
         """
         Parse configuration parameters from a config file and command line arguments
@@ -553,10 +593,10 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         ----------
         config_path: str, optional
             Path to yaml configuration file
-        args: :class:`~argparse.Namespace`, optional
-            Arguments parsed by argparse
-        unknown_args: list[str], optional
-            List of unknown arguments from argparse
+        args: dict[str, Any]
+            Parsed arguments
+        unknown_args: list[str]
+            Optional list of arguments that were not parsed
 
         Returns
         -------
@@ -574,15 +614,9 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         return global_params
 
     @property
-    @abc.abstractmethod
-    def workflow_identifier(self) -> str:
-        """Identifier of the worker's workflow"""
-        ...
-
-    @property
     def worker_config_path(self) -> str:
         """Path to worker's configuration in the working directory"""
-        return os.path.join(self.output_directory, f"{self.workflow_identifier}.yaml")
+        return os.path.join(self.output_directory, f"{self.data_source_identifier}.yaml")
 
     def cleanup(self) -> None:
         """
@@ -601,14 +635,14 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
                 self._db_engine.dispose()
                 self._db_engine = None
             if self.dirty:
-                self.log_error("There was an error in the run, please see the log.")
+                logger.error("There was an error in the run, please see the log.")
             else:
-                self.log_info(f"Done! Everything took {time.time() - self.start_time} seconds")
-            logger = logging.getLogger(self.identifier)
+                logger.info(f"Done! Everything took {time.time() - self.start_time:.3f} seconds")
             handlers = logger.handlers[:]
             for handler in handlers:
-                handler.close()
-                logger.removeHandler(handler)
+                if isinstance(handler, logging.FileHandler):
+                    handler.close()
+                    logger.removeHandler(handler)
             self.save_worker_config()
         except (NameError, ValueError):  # already cleaned up
             pass
@@ -637,21 +671,10 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         clean = True
         current_version = get_mfa_version()
         if conf["dirty"]:
-            self.log_debug("Previous run ended in an error (maybe ctrl-c?)")
-            clean = False
-        if "type" in conf:
-            command = conf["type"]
-        elif "command" in conf:
-            command = conf["command"]
-        else:
-            command = self.workflow_identifier
-        if command != self.workflow_identifier:
-            self.log_debug(
-                f"Previous run was a different subcommand than {self.workflow_identifier} (was {command})"
-            )
+            logger.debug("Previous run ended in an error (maybe ctrl-c?)")
             clean = False
         if conf.get("version", current_version) != current_version:
-            self.log_debug(
+            logger.debug(
                 f"Previous run was on {conf['version']} version (new run: {current_version})"
             )
             clean = False
@@ -663,7 +686,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
             "language_model_path",
         ]:
             if conf.get(key, None) != getattr(self, key, None):
-                self.log_debug(
+                logger.debug(
                     f"Previous run used a different {key.replace('_', ' ')} than {getattr(self, key, None)} (was {conf.get(key, None)})"
                 )
                 clean = False
@@ -683,7 +706,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         conf = load_configuration(self.worker_config_path)
         clean = self._validate_previous_configuration(conf)
         if not clean:
-            self.log_warning(
+            logger.warning(
                 "The previous run had a different configuration than the current, which may cause issues."
                 " Please see the log for details or use --clean flag if issues are encountered."
             )
@@ -692,99 +715,45 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
     @property
     def identifier(self) -> str:
         """Combined identifier of the data source and workflow"""
-        return f"{self.data_source_identifier}_{self.workflow_identifier}"
+        return self.data_source_identifier
 
     @property
     def output_directory(self) -> str:
         """Root temporary directory to store all of this worker's files"""
-        return os.path.join(self.temporary_directory, self.identifier)
-
-    @property
-    def workflow_directory(self) -> str:
-        """Temporary directory to save work specific to the worker (i.e., not data)"""
-        return os.path.join(self.output_directory, self.workflow_identifier)
+        return os.path.join(GLOBAL_CONFIG.temporary_directory, self.identifier)
 
     @property
     def log_file(self) -> str:
         """Path to the worker's log file"""
-        return os.path.join(self.output_directory, f"{self.workflow_identifier}.log")
+        return os.path.join(self.output_directory, f"{self.data_source_identifier}.log")
 
     def setup_logger(self) -> None:
         """
         Construct a logger for a command line run
         """
-        from .utils import configure_logger, get_mfa_version
+        from montreal_forced_aligner.config import GLOBAL_CONFIG
+        from montreal_forced_aligner.helper import configure_logger
+        from montreal_forced_aligner.utils import get_mfa_version
 
         current_version = get_mfa_version()
         # Remove previous directory if versions are different
+        clean = False
         if os.path.exists(self.worker_config_path):
             conf = load_configuration(self.worker_config_path)
             if conf.get("version", current_version) != current_version:
-                self.clean = True
-        if self.clean:
-            shutil.rmtree(self.output_directory, ignore_errors=True)
-        os.makedirs(self.workflow_directory, exist_ok=True)
-        logger = configure_logger(
-            self.identifier, log_file=self.log_file, quiet=self.quiet, verbose=self.verbose
-        )
-        logger.debug(
-            f"Beginning run for {self.workflow_identifier} on {self.data_source_identifier}"
-        )
-        if self.use_mp:
-            logger.debug(f"Using multiprocessing with {self.num_jobs}")
+                clean = True
+        os.makedirs(self.output_directory, exist_ok=True)
+        configure_logger("mfa", log_file=self.log_file)
+        logger = logging.getLogger("mfa")
+        logger.debug(f"Beginning run for {self.data_source_identifier}")
+        logger.debug(f'Using "{GLOBAL_CONFIG.current_profile_name}" profile')
+        if GLOBAL_CONFIG.use_mp:
+            logger.debug(f"Using multiprocessing with {GLOBAL_CONFIG.num_jobs}")
         else:
-            logger.debug(f"NOT using multiprocessing with {self.num_jobs}")
+            logger.debug(f"NOT using multiprocessing with {GLOBAL_CONFIG.num_jobs}")
         logger.debug(f"Set up logger for MFA version: {current_version}")
-        if self.clean:
+        if clean or GLOBAL_CONFIG.clean:
             logger.debug("Cleaned previous run")
-
-    def log_debug(self, message: str = "") -> None:
-        """
-        Log a debug message. This function is a wrapper around the :meth:`logging.Logger.debug`
-
-        Parameters
-        ----------
-        message: str
-            Debug message to log
-        """
-        logger = logging.getLogger(self.identifier)
-        logger.debug(message)
-
-    def log_info(self, message: str = "") -> None:
-        """
-        Log an info message. This function is a wrapper around the :meth:`logging.Logger.info`
-
-        Parameters
-        ----------
-        message: str
-            Info message to log
-        """
-        logger = logging.getLogger(self.identifier)
-        logger.info(message)
-
-    def log_warning(self, message: str = "") -> None:
-        """
-        Log a warning message. This function is a wrapper around the :meth:`logging.Logger.warning`
-
-        Parameters
-        ----------
-        message: str
-            Warning message to log
-        """
-        logger = logging.getLogger(self.identifier)
-        logger.warning(message)
-
-    def log_error(self, message: str = "") -> None:
-        """
-        Log an error message. This function is a wrapper around the :meth:`logging.Logger.error`
-
-        Parameters
-        ----------
-        message: str
-            Error message to log
-        """
-        logger = logging.getLogger(self.identifier)
-        logger.error(message)
 
 
 class ExporterMixin(metaclass=abc.ABCMeta):
@@ -835,10 +804,6 @@ class FileExporterMixin(ExporterMixin, metaclass=abc.ABCMeta):
     cleanup_textgrids: bool
         Flag for whether to clean up exported TextGrids
     """
-
-    def __init__(self, cleanup_textgrids: bool = True, **kwargs):
-        self.cleanup_textgrids = cleanup_textgrids
-        super().__init__(**kwargs)
 
     @abc.abstractmethod
     def export_files(self, output_directory: str) -> None:
@@ -983,3 +948,4 @@ class MfaModel(abc.ABC):
     @abc.abstractmethod
     def add_meta_file(self, trainer: TrainerMixin) -> None:
         """Add metadata to the model"""
+        ...

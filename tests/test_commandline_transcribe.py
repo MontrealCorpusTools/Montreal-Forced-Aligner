@@ -1,7 +1,8 @@
 import os
 
-from montreal_forced_aligner.command_line.mfa import parser
-from montreal_forced_aligner.command_line.transcribe import run_transcribe_corpus
+import click.testing
+
+from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
 def test_transcribe(
@@ -23,7 +24,7 @@ def test_transcribe(
         transcription_language_model,
         output_path,
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "transcribe_cli"),
         "-q",
         "--clean",
         "--debug",
@@ -31,8 +32,15 @@ def test_transcribe(
         "--config_path",
         transcribe_config_path,
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_transcribe_corpus(args)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
 
     assert os.path.exists(os.path.join(output_path, "michael", "acoustic_corpus.lab"))
 
@@ -56,7 +64,7 @@ def test_transcribe_arpa(
         transcription_language_model_arpa,
         output_path,
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "transcribe_cli"),
         "-q",
         "--clean",
         "--debug",
@@ -66,8 +74,15 @@ def test_transcribe_arpa(
         "--config_path",
         transcribe_config_path,
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_transcribe_corpus(args)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
     assert os.path.exists(os.path.join(output_path, "michael", "acoustic_corpus.lab"))
 
 
@@ -89,15 +104,24 @@ def test_transcribe_speaker_dictionaries(
         transcription_language_model,
         output_path,
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "transcribe_cli"),
         "-q",
         "--clean",
         "--debug",
         "--config_path",
         transcribe_config_path,
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_transcribe_corpus(args, unknown)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+
+    assert os.path.exists(output_path)
 
 
 def test_transcribe_speaker_dictionaries_evaluate(
@@ -118,10 +142,11 @@ def test_transcribe_speaker_dictionaries_evaluate(
         transcription_language_model,
         output_path,
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "transcribe_cli"),
         "-q",
         "--clean",
         "--debug",
+        "--no_use_mp",
         "--language_model_weight",
         "16",
         "--word_insertion_penalty",
@@ -130,5 +155,14 @@ def test_transcribe_speaker_dictionaries_evaluate(
         transcribe_config_path,
         "--evaluate",
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_transcribe_corpus(args, unknown)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+
+    assert os.path.exists(output_path)

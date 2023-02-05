@@ -1,4 +1,5 @@
 import os
+import shutil
 
 from montreal_forced_aligner.dictionary import MultispeakerDictionary
 from montreal_forced_aligner.g2p.generator import (
@@ -19,7 +20,7 @@ def test_clean_up_word():
     assert m == {"+"}
 
 
-def test_check_bracketed(basic_dict_path):
+def test_check_bracketed(basic_dict_path, db_setup):
     """Checks if the brackets are removed correctly and handling an empty string works"""
     word_set = ["uh", "(the)", "sick", "<corpus>", "[a]", "{cold}", ""]
     expected_result = ["uh", "sick", ""]
@@ -27,14 +28,17 @@ def test_check_bracketed(basic_dict_path):
     assert [x for x in word_set if not dictionary_config.check_bracketed(x)] == expected_result
 
 
-def test_training(basic_dict_path, basic_g2p_model_path, temp_dir):
+def test_training(basic_dict_path, basic_g2p_model_path, temp_dir, global_config, db_setup):
+    output_directory = os.path.join(temp_dir, "g2p_tests", "train")
+    global_config.temporary_directory = output_directory
     trainer = PyniniTrainer(
         dictionary_path=basic_dict_path,
-        temporary_directory=temp_dir,
         random_starts=1,
         num_iterations=5,
         evaluate=True,
     )
+    trainer.clean_working_directory()
+    trainer.remove_database()
     trainer.setup()
 
     trainer.train()
@@ -45,28 +49,41 @@ def test_training(basic_dict_path, basic_g2p_model_path, temp_dir):
     assert model.meta["phones"] == trainer.non_silence_phones
     assert model.meta["graphemes"] == trainer.g2p_training_graphemes
     trainer.cleanup()
+    trainer.clean_working_directory()
+    trainer.remove_database()
 
 
-def test_generator(basic_g2p_model_path, basic_corpus_dir, g2p_basic_output, temp_dir):
-    output_directory = os.path.join(temp_dir, "g2p_tests")
+def test_generator(
+    basic_g2p_model_path, basic_corpus_dir, g2p_basic_output, temp_dir, global_config, db_setup
+):
+    output_directory = os.path.join(temp_dir, "g2p_tests", "gen")
+    global_config.temporary_directory = output_directory
+    if os.path.exists(output_directory):
+        shutil.rmtree(output_directory, ignore_errors=True)
+    global_config.clean = True
     gen = PyniniCorpusGenerator(
         g2p_model_path=basic_g2p_model_path,
         corpus_directory=basic_corpus_dir,
-        temporary_directory=output_directory,
     )
+    gen.clean_working_directory()
+    gen.remove_database()
 
     gen.setup()
+    print(gen.corpus_word_set)
     assert not gen.g2p_model.validate(gen.corpus_word_set)
     assert gen.g2p_model.validate([x for x in gen.corpus_word_set if not gen.check_bracketed(x)])
 
     gen.export_pronunciations(g2p_basic_output)
     assert os.path.exists(g2p_basic_output)
     gen.cleanup()
+    gen.clean_working_directory()
+    gen.remove_database()
 
 
-def test_generator_pretrained(english_g2p_model, temp_dir):
+def test_generator_pretrained(english_g2p_model, temp_dir, global_config, db_setup):
     words = ["petted", "petted-patted", "pedal"]
     output_directory = os.path.join(temp_dir, "g2p_tests")
+    global_config.temporary_directory = output_directory
     word_list_path = os.path.join(output_directory, "word_list.txt")
     os.makedirs(output_directory, exist_ok=True)
     with mfa_open(word_list_path, "w") as f:
@@ -75,8 +92,11 @@ def test_generator_pretrained(english_g2p_model, temp_dir):
     gen = PyniniWordListGenerator(
         g2p_model_path=english_g2p_model, word_list_path=word_list_path, num_pronunciations=3
     )
+    gen.clean_working_directory()
+    gen.remove_database()
     gen.setup()
     results = gen.generate_pronunciations()
-    print(results)
     assert len(results["petted"]) == 3
     gen.cleanup()
+    gen.clean_working_directory()
+    gen.remove_database()

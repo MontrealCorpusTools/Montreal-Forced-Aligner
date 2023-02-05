@@ -1,7 +1,8 @@
 import os
 
-from montreal_forced_aligner.command_line.adapt import run_adapt_model
-from montreal_forced_aligner.command_line.mfa import parser
+import click.testing
+
+from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
 def test_adapt_basic(
@@ -20,18 +21,23 @@ def test_adapt_basic(
         english_acoustic_model,
         adapted_model_path,
         "--beam",
-        "100",
+        "15",
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "adapt_cli"),
         "--clean",
-        "--debug",
+        "--no-debug",
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_adapt_model(args, unknown)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
     assert os.path.exists(adapted_model_path)
 
 
-# @pytest.mark.skip(reason='Optimization')
 def test_adapt_multilingual(
     multilingual_ipa_corpus_dir,
     mfa_speaker_dict_path,
@@ -58,6 +64,12 @@ def test_adapt_multilingual(
         "--clean",
         "--debug",
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_adapt_model(args, unknown)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
     assert os.path.exists(adapted_model_path)

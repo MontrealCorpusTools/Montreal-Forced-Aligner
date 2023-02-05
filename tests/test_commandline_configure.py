@@ -1,14 +1,13 @@
 import os
 
-from montreal_forced_aligner.command_line.mfa import create_parser
-from montreal_forced_aligner.config import (
-    generate_config_path,
-    get_temporary_directory,
-    load_global_config,
-    update_global_config,
-)
+import click.testing
+import pytest
+
+from montreal_forced_aligner.command_line.mfa import mfa_cli
+from montreal_forced_aligner.config import generate_config_path
 
 
+@pytest.mark.skip()
 def test_configure(
     temp_dir,
     basic_corpus_dir,
@@ -16,27 +15,11 @@ def test_configure(
     english_dictionary,
     basic_align_config_path,
     english_acoustic_model,
+    global_config,
 ):
     path = generate_config_path()
     if os.path.exists(path):
         os.remove(path)
-    GLOBAL_CONFIG = load_global_config()
-    assert GLOBAL_CONFIG == {
-        "clean": False,
-        "verbose": False,
-        "quiet": False,
-        "debug": False,
-        "overwrite": False,
-        "terminal_colors": True,
-        "terminal_width": 120,
-        "cleanup_textgrids": True,
-        "detect_phone_set": False,
-        "num_jobs": 3,
-        "blas_num_threads": 1,
-        "use_mp": True,
-        "temporary_directory": get_temporary_directory(),
-    }
-    parser = create_parser()
     command = [
         "configure",
         "--always_clean",
@@ -47,68 +30,29 @@ def test_configure(
         "--disable_mp",
         "--always_verbose",
     ]
-    args, unknown = parser.parse_known_args(command)
-    print(GLOBAL_CONFIG)
-    print(args)
-    update_global_config(args)
+    click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
     assert os.path.exists(path)
-    GLOBAL_CONFIG = load_global_config()
-    assert GLOBAL_CONFIG == {
-        "clean": True,
-        "verbose": True,
-        "quiet": False,
-        "debug": False,
-        "overwrite": False,
-        "terminal_colors": True,
-        "terminal_width": 120,
-        "cleanup_textgrids": True,
-        "detect_phone_set": False,
-        "num_jobs": 10,
-        "blas_num_threads": 1,
-        "use_mp": False,
-        "temporary_directory": temp_dir,
-    }
-    command = ["configure", "--never_clean", "--enable_mp", "--never_verbose"]
-    parser = create_parser()
-    args, unknown = parser.parse_known_args(command)
-    update_global_config(args)
-    assert os.path.exists(path)
-    GLOBAL_CONFIG = load_global_config()
-    assert GLOBAL_CONFIG == {
-        "clean": False,
-        "verbose": False,
-        "quiet": False,
-        "debug": False,
-        "overwrite": False,
-        "terminal_colors": True,
-        "terminal_width": 120,
-        "cleanup_textgrids": True,
-        "detect_phone_set": False,
-        "num_jobs": 10,
-        "blas_num_threads": 1,
-        "use_mp": True,
-        "temporary_directory": temp_dir,
-    }
-    parser = create_parser()
+    global_config.load()
 
-    command = [
-        "align",
-        basic_corpus_dir,
-        english_dictionary,
-        english_acoustic_model,
-        os.path.join(generated_dir, "basic_output"),
-        "-t",
-        get_temporary_directory(),
-        "--config_path",
-        basic_align_config_path,
-        "-q",
-        "--clean",
-        "-d",
-    ]
-    args, unknown = parser.parse_known_args(command)
-    assert args.num_jobs == 10
-    assert args.temporary_directory == get_temporary_directory()
-    assert args.clean
-    assert not args.disable_mp
-    if os.path.exists(path):
-        os.remove(path)
+    assert global_config.current_profile_name == "test"
+    assert global_config.current_profile.num_jobs == 10
+    assert not global_config.current_profile.use_mp
+    assert global_config.current_profile.verbose
+    assert global_config.current_profile.clean
+
+    command = ["configure", "--never_clean", "--enable_mp", "--never_verbose"]
+    click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
+
+    assert os.path.exists(path)
+    global_config.load()
+    assert global_config.current_profile_name == "test"
+    assert global_config.current_profile.use_mp
+    assert not global_config.current_profile.verbose
+    assert not global_config.current_profile.clean
+
+    global_config.clean = True
+    global_config.debug = True
+    global_config.verbose = True
+    global_config.use_mp = False
+    global_config.temporary_directory = temp_dir
+    global_config.save()

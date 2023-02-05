@@ -35,9 +35,9 @@ The original Pynini implementation of pair ngram models for G2P was motivated pr
 Command reference
 -----------------
 
-.. autoprogram:: montreal_forced_aligner.command_line.mfa:create_parser()
-   :prog: mfa
-   :start_command: train_g2p
+.. click:: montreal_forced_aligner.command_line.train_g2p:train_g2p_cli
+   :prog: mfa train_g2p
+   :nested: full
 
 Configuration reference
 -----------------------

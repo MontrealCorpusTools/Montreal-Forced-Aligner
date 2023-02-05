@@ -9,9 +9,9 @@ A recent 2.0 functionality for MFA is to adapt pretrained :term:`acoustic models
 Command reference
 -----------------
 
-.. autoprogram:: montreal_forced_aligner.command_line.mfa:create_parser()
-   :prog: mfa
-   :start_command: adapt
+.. click:: montreal_forced_aligner.command_line.adapt:adapt_model_cli
+   :prog: mfa adapt
+   :nested: full
 
 Configuration reference
 -----------------------

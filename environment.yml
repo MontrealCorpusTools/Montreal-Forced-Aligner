@@ -1,8 +1,10 @@
 channels:
   - conda-forge
-  - defaults
+  - pytorch
+  - nvidia
 dependencies:
   - python>=3.8
+  - numpy
   - librosa
   - tqdm
   - requests
@@ -10,14 +12,37 @@ dependencies:
   - ansiwrap
   - pyyaml
   - dataclassy
-  - kaldi
+  - kaldi=*=*cpu*
   - sox
   - ffmpeg
   - pynini
   - openfst
+  - hdbscan
   - baumwelch
-  - setuptools_scm
   - ngram
   - praatio
-  - biopython
-  - sqlalchemy>=1.4
+  - biopython=1.79
+  - sqlalchemy>=2.0
+  - pgvector
+  - pgvector-python
+  - postgresql
+  - psycopg2
+  - click
+  - pytorch
+  - torchaudio
+  - setuptools_scm
+  - pytest
+  - pytest-mypy
+  - mock
+  - coverage
+  - coveralls
+  - interrogate
+  - numba
+  - kneed
+  - matplotlib
+  - seaborn
+  - pip
+  - pip:
+      - build
+      - twine
+      - speechbrain

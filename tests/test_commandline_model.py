@@ -1,23 +1,11 @@
 import os
-from argparse import Namespace
 
+import click.testing
 import pytest
 
-from montreal_forced_aligner.command_line.model import (
-    ModelTypeNotSupportedError,
-    RemoteModelNotFoundError,
-    run_model,
-)
+from montreal_forced_aligner.command_line.mfa import mfa_cli
+from montreal_forced_aligner.exceptions import RemoteModelNotFoundError
 from montreal_forced_aligner.models import AcousticModel, DictionaryModel, G2PModel, ModelManager
-
-
-class DummyArgs(Namespace):
-    def __init__(self):
-        self.action = ""
-        self.model_type = ""
-        self.name = ""
-        self.github_token = ""
-        self.ignore_cache = False
 
 
 def test_get_available_languages():
@@ -25,7 +13,6 @@ def test_get_available_languages():
     manager.refresh_remote()
     model_type = "acoustic"
     acoustic_models = manager.remote_models[model_type]
-    print(manager.remote_models)
     assert "archive" not in acoustic_models
     assert "english_us_arpa" in acoustic_models
 
@@ -41,96 +28,178 @@ def test_get_available_languages():
 
 
 def test_download():
-    args = DummyArgs()
-    args.action = "download"
-    args.name = "sdsdsadad"
-    args.model_type = "acoustic"
+    command = [
+        "model",
+        "download",
+        "acoustic",
+        "sdsdsadad",
+    ]
     with pytest.raises(RemoteModelNotFoundError):
-        run_model(args)
+        click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
 
-    args = DummyArgs()
-    args.action = "download"
-    args.name = "english_us_arpa"
-    args.model_type = "acoustic"
+    command = [
+        "model",
+        "download",
+        "acoustic",
+        "english_us_arpa",
+    ]
 
-    run_model(args)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
 
-    assert os.path.exists(AcousticModel.get_pretrained_path(args.name))
+    assert os.path.exists(AcousticModel.get_pretrained_path("english_us_arpa"))
 
-    args = DummyArgs()
-    args.action = "download"
-    args.name = "english_us_arpa"
-    args.model_type = "g2p"
+    command = [
+        "model",
+        "download",
+        "g2p",
+        "english_us_arpa",
+    ]
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
 
-    run_model(args)
+    assert os.path.exists(G2PModel.get_pretrained_path("english_us_arpa"))
 
-    assert os.path.exists(G2PModel.get_pretrained_path(args.name))
+    command = [
+        "model",
+        "download",
+        "dictionary",
+        "english_us_arpa",
+    ]
 
-    args = DummyArgs()
-    args.action = "download"
-    args.name = "english_us_arpa"
-    args.model_type = "dictionary"
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
 
-    run_model(args)
+    assert os.path.exists(DictionaryModel.get_pretrained_path("english_us_arpa"))
 
-    assert os.path.exists(DictionaryModel.get_pretrained_path(args.name))
+    command = ["model", "download", "acoustic", "--ignore_cache"]
 
-    args = DummyArgs()
-    args.action = "download"
-    args.name = ""
-    args.ignore_cache = True
-    args.model_type = "dictionary"
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
 
-    run_model(args)
+    command = [
+        "model",
+        "download",
+        "dictionary",
+    ]
 
-    args = DummyArgs()
-    args.action = "download"
-    args.name = ""
-    args.model_type = "dictionary"
-
-    run_model(args)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
 
 
 def test_inspect_model():
-    args = DummyArgs()
-    args.action = "inspect"
-    args.name = "english_us_arpa"
-    args.model_type = "acoustic"
-    run_model(args)
+    command = [
+        "model",
+        "inspect",
+        "acoustic",
+        "english_us_arpa",
+    ]
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
 
 
 def test_list_model():
-    args = DummyArgs()
-    args.action = "list"
-    args.model_type = "acoustic"
-    run_model(args)
+    command = [
+        "model",
+        "list",
+        "acoustic",
+    ]
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
 
 
 def test_save_model(transcription_acoustic_model):
-    args = DummyArgs()
-    args.action = "save"
-    args.model_type = "acoustic"
-    args.path = transcription_acoustic_model
-    run_model(args)
+    command = [
+        "model",
+        "save",
+        "acoustic",
+        transcription_acoustic_model,
+        "--name",
+        "test_acoustic",
+        "--overwrite",
+    ]
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+    assert os.path.exists(AcousticModel.get_pretrained_path("test_acoustic"))
 
-    args = DummyArgs()
-    args.action = "inspect"
-    args.name = "mono_model"
-    args.model_type = "acoustic"
-    run_model(args)
+    command = ["model", "inspect", "acoustic", "test_acoustic"]
+
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
 
 
 def test_expected_errors():
-    args = DummyArgs()
-    args.action = "download"
-    args.name = "bulgarian"
-    args.model_type = "not_acoustic"
-    with pytest.raises(ModelTypeNotSupportedError):
-        run_model(args)
+    command = ["model", "download", "not_acoustic", "bulgarian"]
 
-    args = DummyArgs()
-    args.action = "download"
-    args.name = "not_bulgarian"
-    args.model_type = "acoustic"
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    assert isinstance(result.exception, SystemExit)
+
+    command = ["model", "download", "acoustic", "not_bulgarian"]
+
     with pytest.raises(RemoteModelNotFoundError):
-        run_model(args)
+        click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)

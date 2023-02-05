@@ -130,9 +130,12 @@ We acknowledge funding from Social Sciences and Humanities Research Council (SSH
    corpus_structure
    dictionary
    data_validation
+   performance
    dictionary_validation
    workflows/index
    corpus_creation/index
    configuration/index
    models/index
+   implementations/index
+   concepts/index
    glossary

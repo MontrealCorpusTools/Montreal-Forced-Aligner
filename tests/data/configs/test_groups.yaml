@@ -1,0 +1,59 @@
+bilabial_stops:
+  - p
+  - b
+labiodental_obstruents:
+  - f
+  - v
+dental_obstruents:
+  - th
+  - dh
+coronal_stops:
+  - t
+  - d
+coronal_affricates:
+  - ch
+  - jh
+coronal_fricatives:
+  - sh
+  - zh
+  - s
+  - z
+rhotics:
+  - r
+nasals:
+  - m
+  - n
+  - ng
+laterals:
+  - l
+dorsal_obstruents:
+  - g
+  - k
+voiceless_glottals:
+  - hh
+central_vowels:
+  - ah
+  - er
+  - uh
+  - ih
+front_diphthongs:
+  - ay
+  - oy
+back_diphthongs:
+  - ow
+  - aw
+low_vowels:
+  - aa
+  - ao
+high_front_vowels:
+  - iy
+front_glides:
+  - y
+mid_front_vowels:
+  - ae
+  - eh
+  - ey
+high_back_vowels:
+  - uw
+back_glides:
+  - W

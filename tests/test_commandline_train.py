@@ -1,11 +1,12 @@
 import os
 
-from montreal_forced_aligner.command_line.mfa import parser
-from montreal_forced_aligner.command_line.train_acoustic_model import run_train_acoustic_model
+import click.testing
+
+from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
 def test_train_acoustic_with_g2p(
-    basic_corpus_dir,
+    combined_corpus_dir,
     english_us_mfa_dictionary,
     generated_dir,
     temp_dir,
@@ -14,25 +15,34 @@ def test_train_acoustic_with_g2p(
 ):
     if os.path.exists(acoustic_g2p_model_path):
         os.remove(acoustic_g2p_model_path)
+    output_directory = os.path.join(generated_dir, "train_g2p_textgrids")
     command = [
         "train",
-        basic_corpus_dir,
+        combined_corpus_dir,
         english_us_mfa_dictionary,
-        os.path.join(generated_dir, "basic_output"),
+        acoustic_g2p_model_path,
+        "--output_directory",
+        output_directory,
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "train_cli"),
         "-q",
         "--clean",
         "--quiet",
         "--debug",
         "--config_path",
         train_g2p_acoustic_config_path,
-        "-o",
-        acoustic_g2p_model_path,
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_train_acoustic_model(args, unknown)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
     assert os.path.exists(acoustic_g2p_model_path)
+    assert os.path.exists(output_directory)
 
 
 def test_train_and_align_basic_speaker_dict(
@@ -45,11 +55,12 @@ def test_train_and_align_basic_speaker_dict(
 ):
     if os.path.exists(textgrid_output_model_path):
         os.remove(textgrid_output_model_path)
+    output_directory = os.path.join(generated_dir, "ipa speaker output")
     command = [
         "train",
         multilingual_ipa_tg_corpus_dir,
         mfa_speaker_dict_path,
-        os.path.join(generated_dir, "ipa speaker output"),
+        textgrid_output_model_path,
         "-t",
         os.path.join(temp_dir, "temp dir with spaces"),
         "--config_path",
@@ -57,9 +68,18 @@ def test_train_and_align_basic_speaker_dict(
         "-q",
         "--clean",
         "--debug",
-        "-o",
-        textgrid_output_model_path,
+        "--output_directory",
+        output_directory,
+        "--single_speaker",
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_train_acoustic_model(args, unknown)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
     assert os.path.exists(textgrid_output_model_path)
+    assert os.path.exists(output_directory)

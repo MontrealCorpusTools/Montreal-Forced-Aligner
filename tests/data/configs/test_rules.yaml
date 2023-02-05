@@ -1,0 +1,5 @@
+rules:
+  - following_context: ''
+    preceding_context: ''
+    replacement: ih
+    segment: iy

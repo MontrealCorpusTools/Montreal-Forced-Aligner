@@ -2,89 +2,83 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, List, Optional
 
-from montreal_forced_aligner.exceptions import ArgumentError
+import click
+
+from montreal_forced_aligner.command_line.utils import (
+    check_databases,
+    cleanup_databases,
+    common_options,
+)
+from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.ivector.trainer import TrainableIvectorExtractor
 
-if TYPE_CHECKING:
-    from argparse import Namespace
-
-__all__ = ["train_ivector", "validate_args", "run_train_ivector_extractor"]
+__all__ = ["train_ivector_cli"]
 
 
-def train_ivector(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
+@click.command(
+    name="train_ivector",
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+        allow_interspersed_args=True,
+    ),
+    short_help="Train an ivector extractor",
+)
+@click.argument("corpus_directory", type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.argument("output_model_path", type=click.Path(file_okay=True, dir_okay=False))
+@click.option(
+    "--config_path",
+    "-c",
+    help="Path to config file to use for training.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+)
+@click.option(
+    "--speaker_characters",
+    "-s",
+    help="Number of characters of file names to use for determining speaker, "
+    "default is to use directory names.",
+    type=str,
+    default="0",
+)
+@click.option(
+    "--audio_directory",
+    "-a",
+    help="Audio directory root to use for finding audio files.",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+)
+@common_options
+@click.help_option("-h", "--help")
+@click.pass_context
+def train_ivector_cli(context, **kwargs) -> None:
     """
-    Run the ivector extractor training
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Command line arguments
-    unknown_args: list[str]
-        Optional arguments that will be passed to configuration objects
+    Train an ivector extractor from a corpus and pretrained acoustic model.
     """
+    if kwargs.get("profile", None) is not None:
+        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+    GLOBAL_CONFIG.current_profile.update(kwargs)
+    GLOBAL_CONFIG.save()
+    check_databases()
+    config_path = kwargs.get("config_path", None)
+    corpus_directory = kwargs["corpus_directory"]
+    output_model_path = kwargs["output_model_path"]
 
     trainer = TrainableIvectorExtractor(
-        corpus_directory=args.corpus_directory,
-        temporary_directory=args.temporary_directory,
-        **TrainableIvectorExtractor.parse_parameters(args.config_path, args, unknown_args),
+        corpus_directory=corpus_directory,
+        **TrainableIvectorExtractor.parse_parameters(config_path, context.params, context.args),
     )
+    if kwargs.get("clean", False):
+        trainer.clean_working_directory()
+        trainer.remove_database()
 
     try:
 
         trainer.train()
-        trainer.export_model(args.output_model_path)
+        trainer.export_model(output_model_path)
 
     except Exception:
         trainer.dirty = True
         raise
     finally:
         trainer.cleanup()
-
-
-def validate_args(args: Namespace) -> None:
-    """
-    Validate the command line arguments
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Parsed command line arguments
-
-    Raises
-    ------
-    :class:`~montreal_forced_aligner.exceptions.ArgumentError`
-        If there is a problem with any arguments
-    """
-    try:
-        args.speaker_characters = int(args.speaker_characters)
-    except ValueError:
-        pass
-    args.corpus_directory = args.corpus_directory.rstrip("/").rstrip("\\")
-    if args.config_path and not os.path.exists(args.config_path):
-        raise (ArgumentError(f"Could not find the config file {args.config_path}."))
-
-    if not os.path.exists(args.corpus_directory):
-        raise (ArgumentError(f"Could not find the corpus directory {args.corpus_directory}."))
-    if not os.path.isdir(args.corpus_directory):
-        raise (
-            ArgumentError(
-                f"The specified corpus directory ({args.corpus_directory}) is not a directory."
-            )
-        )
-
-
-def run_train_ivector_extractor(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
-    """
-    Wrapper function for running ivector extraction training
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Parsed command line arguments
-    unknown_args: list[str]
-        Parsed command line arguments to be passed to the configuration objects
-    """
-    validate_args(args)
-    train_ivector(args, unknown_args)
+        cleanup_databases()

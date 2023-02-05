@@ -2,49 +2,114 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, List, Optional
 
-from montreal_forced_aligner.command_line.utils import validate_model_arg
-from montreal_forced_aligner.exceptions import ArgumentError
+import click
+
+from montreal_forced_aligner.command_line.utils import (
+    check_databases,
+    cleanup_databases,
+    common_options,
+    validate_acoustic_model,
+    validate_dictionary,
+)
+from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.validation.corpus_validator import (
     PretrainedValidator,
     TrainingValidator,
 )
 from montreal_forced_aligner.validation.dictionary_validator import DictionaryValidator
 
-if TYPE_CHECKING:
-    from argparse import Namespace
+__all__ = ["validate_corpus_cli", "validate_dictionary_cli"]
 
 
-__all__ = ["validate_corpus", "validate_args", "run_validate_corpus"]
-
-
-def validate_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
+@click.command(
+    name="validate",
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+        allow_interspersed_args=True,
+    ),
+    short_help="Validate corpus",
+)
+@click.argument("corpus_directory", type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
+@click.option(
+    "--acoustic_model_path",
+    help="Acoustic model to use in testing alignments.",
+    type=click.UNPROCESSED,
+    callback=validate_acoustic_model,
+)
+@click.option(
+    "--config_path",
+    "-c",
+    help="Path to config file to use for training.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+)
+@click.option(
+    "--speaker_characters",
+    "-s",
+    help="Number of characters of file names to use for determining speaker, "
+    "default is to use directory names.",
+    type=str,
+    default="0",
+)
+@click.option(
+    "--audio_directory",
+    "-a",
+    help="Audio directory root to use for finding audio files.",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+)
+@click.option(
+    "--phone_set",
+    help="Enable extra decision tree modeling based on the phone set.",
+    default="UNKNOWN",
+    type=click.Choice(["UNKNOWN", "AUTO", "IPA", "ARPA", "PINYIN"]),
+)
+@click.option(
+    "--ignore_acoustics",
+    "--skip_acoustics",
+    "ignore_acoustics",
+    is_flag=True,
+    help="Skip acoustic feature generation and associated validation.",
+    default=False,
+)
+@click.option(
+    "--test_transcriptions",
+    is_flag=True,
+    help="Use per-speaker language models to test accuracy of transcriptions.",
+    default=False,
+)
+@common_options
+@click.help_option("-h", "--help")
+@click.pass_context
+def validate_corpus_cli(context, **kwargs) -> None:
     """
-    Run the validation command
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Command line arguments
-    unknown_args: list[str]
-        Optional arguments that will be passed to configuration objects
+    Validate a corpus for use in MFA.
     """
-    if args.acoustic_model_path:
+    if kwargs.get("profile", None) is not None:
+        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+    GLOBAL_CONFIG.current_profile.update(kwargs)
+    GLOBAL_CONFIG.save()
+    check_databases()
+    config_path = kwargs.get("config_path", None)
+    corpus_directory = kwargs["corpus_directory"]
+    dictionary_path = kwargs["dictionary_path"]
+    acoustic_model_path = kwargs.get("acoustic_model_path", None)
+    if acoustic_model_path:
         validator = PretrainedValidator(
-            acoustic_model_path=args.acoustic_model_path,
-            corpus_directory=args.corpus_directory,
-            dictionary_path=args.dictionary_path,
-            temporary_directory=args.temporary_directory,
-            **PretrainedValidator.parse_parameters(args.config_path, args, unknown_args),
+            corpus_directory=corpus_directory,
+            dictionary_path=dictionary_path,
+            acoustic_model_path=acoustic_model_path,
+            **PretrainedValidator.parse_parameters(config_path, context.params, context.args),
         )
     else:
         validator = TrainingValidator(
-            corpus_directory=args.corpus_directory,
-            dictionary_path=args.dictionary_path,
-            temporary_directory=args.temporary_directory,
-            **TrainingValidator.parse_parameters(args.config_path, args, unknown_args),
+            corpus_directory=corpus_directory,
+            dictionary_path=dictionary_path,
+            **TrainingValidator.parse_parameters(config_path, context.params, context.args),
         )
+    validator.clean_working_directory()
+    validator.remove_database()
     try:
         validator.validate()
     except Exception:
@@ -52,113 +117,65 @@ def validate_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -
         raise
     finally:
         validator.cleanup()
+        cleanup_databases()
 
 
-def validate_dictionary(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
+@click.command(
+    name="validate_dictionary",
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+        allow_interspersed_args=True,
+    ),
+    short_help="Validate dictionary",
+)
+@click.argument("dictionary_path", type=str)
+@click.option(
+    "--output_path",
+    help="Path to save the CSV file with the scored pronunciations.",
+    type=click.Path(file_okay=False, dir_okay=True),
+)
+@click.option("--g2p_model_path", help="Pretrained G2P model path.", type=str)
+@click.option(
+    "--config_path",
+    "-c",
+    help="Path to config file to use for training.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+)
+@click.option(
+    "--g2p_threshold",
+    help="Threshold to use when running G2P. "
+    "Paths with costs less than the best path times the threshold value will be included.",
+    type=float,
+    default=1.5,
+)
+@common_options
+@click.help_option("-h", "--help")
+def validate_dictionary_cli(*args, **kwargs) -> None:
     """
-    Run the validation command
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Command line arguments
-    unknown_args: list[str]
-        Optional arguments that will be passed to configuration objects
+    Validate a dictionary using a G2P model to detect unlikely pronunciations.
     """
+    if kwargs.get("profile", None) is not None:
+        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        GLOBAL_CONFIG.current_profile.update(kwargs)
+        GLOBAL_CONFIG.save()
+    check_databases()
+    config_path = kwargs.get("config_path", None)
+    g2p_model_path = kwargs["g2p_model_path"]
+    dictionary_path = kwargs["dictionary_path"]
+    output_path = kwargs["output_path"]
     validator = DictionaryValidator(
-        g2p_model_path=args.g2p_model_path,
-        dictionary_path=args.dictionary_path,
-        temporary_directory=args.temporary_directory,
-        **DictionaryValidator.parse_parameters(args.config_path, args, unknown_args),
+        g2p_model_path=g2p_model_path,
+        dictionary_path=dictionary_path,
+        **DictionaryValidator.parse_parameters(config_path, kwargs, args),
     )
+    validator.clean_working_directory()
+    validator.remove_database()
     try:
-        validator.validate(output_path=args.output_path)
+        validator.validate(output_path=output_path)
     except Exception:
         validator.dirty = True
         raise
     finally:
         validator.cleanup()
-
-
-def validate_args(args: Namespace) -> None:
-    """
-    Validate the command line arguments
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Parsed command line arguments
-
-    Raises
-    ------
-    :class:`~montreal_forced_aligner.exceptions.ArgumentError`
-        If there is a problem with any arguments
-    """
-    try:
-        args.speaker_characters = int(args.speaker_characters)
-    except ValueError:
-        pass
-    if args.test_transcriptions and args.ignore_acoustics:
-        raise ArgumentError("Cannot test transcriptions without acoustic feature generation.")
-    if not os.path.exists(args.corpus_directory):
-        raise (ArgumentError(f"Could not find the corpus directory {args.corpus_directory}."))
-    if not os.path.isdir(args.corpus_directory):
-        raise (
-            ArgumentError(
-                f"The specified corpus directory ({args.corpus_directory}) is not a directory."
-            )
-        )
-
-    args.dictionary_path = validate_model_arg(args.dictionary_path, "dictionary")
-    if args.acoustic_model_path:
-        args.acoustic_model_path = validate_model_arg(args.acoustic_model_path, "acoustic")
-
-
-def validate_dictionary_args(args: Namespace) -> None:
-    """
-    Validate the command line arguments
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Parsed command line arguments
-
-    Raises
-    ------
-    :class:`~montreal_forced_aligner.exceptions.ArgumentError`
-        If there is a problem with any arguments
-    """
-
-    args.dictionary_path = validate_model_arg(args.dictionary_path, "dictionary")
-    if args.g2p_model_path:
-        args.g2p_model_path = validate_model_arg(args.g2p_model_path, "g2p")
-
-
-def run_validate_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
-    """
-    Wrapper function for running corpus validation
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Parsed command line arguments
-    unknown_args: list[str]
-        Parsed command line arguments to be passed to the configuration objects
-    """
-    validate_args(args)
-    validate_corpus(args, unknown_args)
-
-
-def run_validate_dictionary(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
-    """
-    Wrapper function for running dictionary validation
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Parsed command line arguments
-    unknown_args: list[str]
-        Parsed command line arguments to be passed to the configuration objects
-    """
-    validate_dictionary_args(args)
-    validate_dictionary(args, unknown_args)
+        cleanup_databases()

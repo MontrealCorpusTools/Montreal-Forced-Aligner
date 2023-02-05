@@ -15,3 +15,4 @@
        compare_labels
        overlap_scoring
        align_phones
+       CustomFormatter

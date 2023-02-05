@@ -5,7 +5,7 @@ this	1.0   0.43   1.23   0.85 dh	ih	s
 is	1.0   0.5   1.0   1.0	ih	z
 the	1.0   0.5   1.0   1.0	dh	ah
 acoustic	ah	k	uw	s	t	ih	k
-corpus	k	ao	r	p	us
+corpus	k	ao	r	p ah s
 i'm	ay	m
 talking	t	aa	k	ih	ng
 pretty	p	r	eh	t	iy

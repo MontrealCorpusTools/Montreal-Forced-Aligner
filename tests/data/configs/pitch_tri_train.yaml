@@ -1,12 +1,12 @@
 beam: 10
 retry_beam: 400
-use_mp: false
 
 features:
   type: "mfcc"
   use_energy: false
   frame_shift: 10
   use_pitch: true
+  use_voicing: true
 
 training:
   - monophone:

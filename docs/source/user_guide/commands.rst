@@ -38,7 +38,7 @@ Corpus creation
 
    "``mfa create_segments``", "Use voice activity detection to create segments", :ref:`create_segments`
    "``mfa train_ivector``", "Train an ivector extractor for speaker classification", :ref:`train_ivector`
-   "``mfa classify_speakers``", "Use ivector extractor to classify files or cluster them", :ref:`classify_speakers`
+   "``mfa diarize_speakers``", "Use ivector extractor to classify files or cluster them", :ref:`diarize_speakers`
    "``mfa transcribe``", "Generate transcriptions using an acoustic model, dictionary, and language model", :ref:`transcribing`
    "``mfa train_lm``", "Train a language model from a text corpus or from an existing language model", :ref:`training_lm`
    "``mfa anchor``", "Run the Anchor annotator utility (if installed) for editing and managing corpora", :ref:`anchor`

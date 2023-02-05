@@ -1,4 +1,3 @@
-use_mp: false
 
 features:
   type: "mfcc"

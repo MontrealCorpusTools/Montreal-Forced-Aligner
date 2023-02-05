@@ -214,9 +214,9 @@ Command reference
 =================
 
 
-.. autoprogram:: montreal_forced_aligner.command_line.mfa:create_parser()
-   :prog: mfa
-   :start_command: train
+.. click:: montreal_forced_aligner.command_line.train_acoustic_model:train_acoustic_model_cli
+   :prog: mfa train
+   :nested: full
 
 Configuration reference
 =======================

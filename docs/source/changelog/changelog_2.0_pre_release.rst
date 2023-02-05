@@ -178,7 +178,7 @@ Beta releases
   - Added :class:`~montreal_forced_aligner.corpus.multiprocessing.Job` class as well to make it easier to generate and keep track of information about different processes
 - Updated installation style to be more dependent on conda-forge packages
 
-  - Kaldi and MFA are now on conda-forge! |:tada:|
+  - Kaldi and MFA are now on conda-forge! :fas:`party-horn`
 
 - Added a :code:`mfa model` command for inspecting, listing, downloading, and saving pretrained models, see :ref:`pretrained_models` for more information.
 - Fixed a bug where saving command history with errors would throw an error of its own

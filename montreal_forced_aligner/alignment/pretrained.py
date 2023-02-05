@@ -1,17 +1,21 @@
 """Class definitions for aligning with pretrained acoustic models"""
 from __future__ import annotations
 
+import datetime
+import logging
 import os
 import shutil
 import time
-from typing import TYPE_CHECKING, List, Optional
+import typing
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
+import sqlalchemy
 from sqlalchemy.orm import Session
 
 from montreal_forced_aligner.abc import TopLevelMfaWorker
-from montreal_forced_aligner.alignment.base import CorpusAligner
-from montreal_forced_aligner.data import PhoneType
+from montreal_forced_aligner.data import PhoneType, WorkflowType
 from montreal_forced_aligner.db import (
+    CorpusWorkflow,
     Dictionary,
     Grapheme,
     Phone,
@@ -20,24 +24,31 @@ from montreal_forced_aligner.db import (
     Utterance,
     WordInterval,
 )
-from montreal_forced_aligner.exceptions import AlignerError, KaldiProcessingError
-from montreal_forced_aligner.helper import load_configuration, mfa_open, parse_old_features
+from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.helper import (
+    load_configuration,
+    mfa_open,
+    parse_old_features,
+    split_phone_position,
+)
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.online.alignment import (
     OnlineAlignmentArguments,
     OnlineAlignmentFunction,
 )
+from montreal_forced_aligner.transcription.transcriber import TranscriberMixin
 from montreal_forced_aligner.utils import log_kaldi_errors
 
 if TYPE_CHECKING:
-    from argparse import Namespace
 
     from montreal_forced_aligner.abc import MetaDict
 
 __all__ = ["PretrainedAligner"]
 
+logger = logging.getLogger("mfa")
 
-class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
+
+class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
     """
     Class for aligning a dataset using a pretrained acoustic model
 
@@ -56,7 +67,7 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
 
     def __init__(
         self,
-        acoustic_model_path: str,
+        acoustic_model_path: str = None,
         **kwargs,
     ):
         self.acoustic_model = AcousticModel(acoustic_model_path)
@@ -64,18 +75,17 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
         kw.update(kwargs)
         super().__init__(**kw)
 
-    @property
-    def working_directory(self) -> str:
-        """Working directory"""
-        return self.workflow_directory
-
     def setup_acoustic_model(self) -> None:
         """Set up the acoustic model"""
+        if self.acoustic_model.meta["version"] < "2.1":
+            logger.warning(
+                "The acoustic model was trained in an earlier version of MFA. "
+                "There may be incompatibilities in feature generation that cause errors. "
+                "Please download the latest version of the model via `mfa model download`, "
+                "use a different acoustic model, or use version 2.0.6 of MFA."
+            )
         self.acoustic_model.export_model(self.working_directory)
         os.makedirs(self.phones_dir, exist_ok=True)
-        exist_check = os.path.exists(self.db_path)
-        if not exist_check:
-            self.initialize_database()
         for f in ["phones.txt", "graphemes.txt"]:
             path = os.path.join(self.working_directory, f)
             if os.path.exists(path):
@@ -91,7 +101,6 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
         self.laughter_word = dict_info["laughter_word"]
         self.clitic_marker = dict_info["clitic_marker"]
         self.position_dependent_phones = dict_info["position_dependent_phones"]
-        self.compile_regexes()
         if not self.use_g2p:
             return
         dictionary_id_cache = {}
@@ -122,9 +131,6 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
                     root_temp_directory=self.dictionary_output_directory,
                     position_dependent_phones=self.position_dependent_phones,
                     clitic_marker=self.clitic_marker,
-                    bracket_regex=self.bracket_regex.pattern,
-                    clitic_cleanup_regex=self.clitic_cleanup_regex.pattern,
-                    laughter_regex=self.laughter_regex.pattern,
                     default=dict_name == dict_info["default"],
                     use_g2p=self.use_g2p,
                     max_disambiguation_symbol=0,
@@ -142,23 +148,30 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
                 fst_path = os.path.join(self.acoustic_model.dirname, dict_name + ".fst")
                 if os.path.exists(fst_path):
                     os.makedirs(dictionary.temp_directory, exist_ok=True)
-                    shutil.copyfile(fst_path, os.path.join(dictionary.temp_directory, "L.fst"))
+                    shutil.copyfile(fst_path, dictionary.lexicon_fst_path)
+                fst_path = os.path.join(self.acoustic_model.dirname, dict_name + "_align.fst")
+                if os.path.exists(fst_path):
+                    os.makedirs(dictionary.temp_directory, exist_ok=True)
+                    shutil.copyfile(fst_path, dictionary.align_lexicon_path)
             phone_objs = []
             with mfa_open(self.phone_symbol_table_path, "r") as f:
                 for line in f:
                     line = line.strip()
-                    phone, mapping_id = line.split()
+                    phone_label, mapping_id = line.split()
                     mapping_id = int(mapping_id)
                     phone_type = PhoneType.non_silence
-                    if phone.startswith("#"):
+                    if phone_label.startswith("#"):
                         phone_type = PhoneType.disambiguation
-                    elif phone in self.kaldi_silence_phones:
+                    elif phone_label in self.kaldi_silence_phones:
                         phone_type = PhoneType.silence
+                    phone, pos = split_phone_position(phone_label)
                     phone_objs.append(
                         {
                             "id": mapping_id + 1,
                             "mapping_id": mapping_id,
                             "phone": phone,
+                            "position": pos,
+                            "kaldi_label": phone_label,
                             "phone_type": phone_type,
                         }
                     )
@@ -171,12 +184,18 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
                     grapheme_objs.append(
                         {"id": mapping_id + 1, "mapping_id": mapping_id, "grapheme": grapheme}
                     )
-            session.bulk_insert_mappings(Grapheme, grapheme_objs)
-            session.bulk_insert_mappings(Phone, phone_objs)
+            session.bulk_insert_mappings(
+                Grapheme, grapheme_objs, return_defaults=False, render_nulls=True
+            )
+            session.bulk_insert_mappings(
+                Phone, phone_objs, return_defaults=False, render_nulls=True
+            )
             session.commit()
 
     def setup(self) -> None:
         """Setup for alignment"""
+        self.ignore_empty_utterances = True
+        super(PretrainedAligner, self).setup()
         if self.initialized:
             return
         begin = time.time()
@@ -184,41 +203,35 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
             os.makedirs(self.working_log_directory, exist_ok=True)
             check = self.check_previous_run()
             if check:
-                self.log_debug(
+                logger.debug(
                     "There were some differences in the current run compared to the last one. "
                     "This may cause issues, run with --clean, if you hit an error."
                 )
             self.setup_acoustic_model()
             self.load_corpus()
             if self.excluded_pronunciation_count:
-                self.log_warning(
+                logger.warning(
                     f"There were {self.excluded_pronunciation_count} pronunciations in the dictionary that "
-                    f"were ignored for containing one of {len(self.excluded_phones)} phones not present in the"
+                    f"were ignored for containing one of {len(self.excluded_phones)} phones not present in the "
                     f"trained acoustic model.  Please run `mfa validate` to get more details."
                 )
             self.acoustic_model.validate(self)
-            import logging
-
-            logger = logging.getLogger(self.identifier)
-            self.acoustic_model.log_details(logger)
+            self.acoustic_model.log_details()
 
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
-                import logging
-
-                logger = logging.getLogger(self.identifier)
-                log_kaldi_errors(e.error_logs, logger)
-                e.update_log_file(logger)
+                log_kaldi_errors(e.error_logs)
+                e.update_log_file()
             raise
         self.initialized = True
-        self.log_debug(f"Setup for alignment in {time.time() - begin} seconds")
+        logger.debug(f"Setup for alignment in {time.time() - begin:.3f} seconds")
 
     @classmethod
     def parse_parameters(
         cls,
         config_path: Optional[str] = None,
-        args: Optional[Namespace] = None,
-        unknown_args: Optional[List[str]] = None,
+        args: Optional[Dict[str, Any]] = None,
+        unknown_args: Optional[typing.Iterable[str]] = None,
     ) -> MetaDict:
         """
         Parse parameters from a config path or command-line arguments
@@ -227,8 +240,8 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
         ----------
         config_path: str
             Config path
-        args: :class:`~argparse.Namespace`
-            Command-line arguments from argparse
+        args: dict[str, Any]
+            Parsed arguments
         unknown_args: list[str], optional
             Extra command-line arguments
 
@@ -262,11 +275,6 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
         )
         return config
 
-    @property
-    def workflow_identifier(self) -> str:
-        """Aligner identifier"""
-        return "pretrained_aligner"
-
     def align_one_utterance(self, utterance: Utterance, session: Session) -> None:
         """
         Align a single utterance
@@ -278,14 +286,30 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
         session: :class:`~sqlalchemy.orm.session.Session`
             Session to use
         """
-        dictionary = utterance.speaker.dictionary
+        dictionary_id = utterance.speaker.dictionary_id
         self.acoustic_model.export_model(self.working_directory)
         sox_string = utterance.file.sound_file.sox_string
+        workflow = self.get_latest_workflow_run(WorkflowType.online_alignment, session)
+        if workflow is None:
+            workflow = CorpusWorkflow(
+                name=f"{utterance.id}_ali",
+                workflow_type=WorkflowType.online_alignment,
+                time_stamp=datetime.datetime.now(),
+                working_directory=self.working_directory,
+            )
+            session.add(workflow)
+            session.flush()
         if not sox_string:
             sox_string = utterance.file.sound_file.sound_file_path
         text_int_path = os.path.join(self.working_directory, "text.int")
         with mfa_open(text_int_path, "w") as f:
-            f.write(f"{utterance.kaldi_id} {utterance.normalized_text_int}\n")
+            normalized_text_int = " ".join(
+                [
+                    str(self.word_mapping(utterance.speaker.dictionary_id)[x])
+                    for x in utterance.normalized_text.split()
+                ]
+            )
+            f.write(f"{utterance.kaldi_id} {normalized_text_int}\n")
         if utterance.features:
             feats_path = os.path.join(self.working_directory, "feats.scp")
             with mfa_open(feats_path, "w") as f:
@@ -299,10 +323,6 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
                 f.write(
                     f"{utterance.kaldi_id} {utterance.file_id} {utterance.begin} {utterance.end} {utterance.channel}\n"
                 )
-        if utterance.speaker.cmvn:
-            cmvn_path = os.path.join(self.working_directory, "cmvn.scp")
-            with mfa_open(cmvn_path, "w") as f:
-                f.write(f"{utterance.speaker.id} {utterance.speaker.cmvn}\n")
         spk2utt_path = os.path.join(self.working_directory, "spk2utt.scp")
         utt2spk_path = os.path.join(self.working_directory, "utt2spk.scp")
         with mfa_open(spk2utt_path, "w") as f:
@@ -312,7 +332,7 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
 
         args = OnlineAlignmentArguments(
             0,
-            self.db_path,
+            self.db_string,
             os.path.join(self.working_directory, "align.log"),
             self.working_directory,
             sox_string,
@@ -320,71 +340,82 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
             self.mfcc_options,
             self.pitch_options,
             self.feature_options,
+            self.lda_options,
             self.align_options,
             self.alignment_model_path,
             self.tree_path,
-            self.disambiguation_symbols_int_path,
-            dictionary.lexicon_fst_path,
-            dictionary.word_boundary_int_path,
-            self.reversed_phone_mapping,
-            self.optional_silence_phone,
-            {self.silence_word},
+            dictionary_id,
         )
+
+        max_phone_interval_id = session.query(sqlalchemy.func.max(PhoneInterval.id)).scalar()
+        if max_phone_interval_id is None:
+            max_phone_interval_id = 0
+        max_word_interval_id = session.query(sqlalchemy.func.max(WordInterval.id)).scalar()
+        if max_word_interval_id is None:
+            max_word_interval_id = 0
+        phone_interval_mappings = []
+        word_interval_mappings = []
         func = OnlineAlignmentFunction(args)
-        word_intervals, phone_intervals, log_likelihood = func.run()
-        session.query(PhoneInterval).filter(PhoneInterval.utterance_id == utterance.id).delete()
-        session.query(WordInterval).filter(WordInterval.utterance_id == utterance.id).delete()
+        for result in func.run():
+            if isinstance(result, Exception):
+                raise result
+            _, word_intervals, phone_intervals, phone_word_mapping, log_likelihood = result
+            for interval in phone_intervals:
+                max_phone_interval_id += 1
+                phone_interval_mappings.append(
+                    {
+                        "id": max_phone_interval_id,
+                        "begin": interval.begin,
+                        "end": interval.end,
+                        "phone_id": interval.label,
+                        "utterance_id": utterance.id,
+                        "workflow_id": workflow.id,
+                        "phone_goodness": interval.confidence,
+                    }
+                )
+            for interval in word_intervals:
+                max_word_interval_id += 1
+                word_interval_mappings.append(
+                    {
+                        "id": max_word_interval_id,
+                        "begin": interval.begin,
+                        "end": interval.end,
+                        "word_id": interval.word_id,
+                        "pronunciation_id": interval.pronunciation_id,
+                        "utterance_id": utterance.id,
+                        "workflow_id": workflow.id,
+                    }
+                )
+            for i, index in enumerate(phone_word_mapping):
+                phone_interval_mappings[i]["word_interval_id"] = word_interval_mappings[index][
+                    "id"
+                ]
+            utterance.alignment_log_likelihood = log_likelihood
+        session.query(PhoneInterval).filter(PhoneInterval.utterance_id == utterance.id).filter(
+            PhoneInterval.workflow_id == workflow.id
+        ).delete()
+        session.query(WordInterval).filter(WordInterval.utterance_id == utterance.id).filter(
+            WordInterval.workflow_id == workflow.id
+        ).delete()
         session.flush()
-        for wi in word_intervals:
-            session.add(WordInterval.from_ctm(wi, utterance))
-        for pi in phone_intervals:
-            session.add(PhoneInterval.from_ctm(pi, utterance))
-        utterance.alignment_log_likelihood = log_likelihood
+        session.bulk_insert_mappings(
+            WordInterval, word_interval_mappings, return_defaults=False, render_nulls=True
+        )
+        session.bulk_insert_mappings(
+            PhoneInterval, phone_interval_mappings, return_defaults=False, render_nulls=True
+        )
         session.commit()
 
-    def align(self) -> None:
+    def align(self, workflow_name=None) -> None:
         """Run the aligner"""
-        self.setup()
-        done_path = os.path.join(self.working_directory, "done")
-        dirty_path = os.path.join(self.working_directory, "dirty")
-        if os.path.exists(done_path):
-            self.log_info("Alignment already done, skipping.")
+        self.initialize_database()
+        self.create_new_current_workflow(WorkflowType.alignment, workflow_name)
+        wf = self.current_workflow
+        if wf.done:
+            logger.info("Alignment already done, skipping.")
             return
-        try:
-            log_dir = os.path.join(self.working_directory, "log")
-            os.makedirs(log_dir, exist_ok=True)
-            self.compile_train_graphs()
-
-            self.log_info("Performing first-pass alignment...")
-            self.speaker_independent = True
-            self.align_utterances()
-            self.compile_information()
-            if self.uses_speaker_adaptation:
-                if self.alignment_model_path.endswith(".mdl"):
-                    if os.path.exists(self.alignment_model_path.replace(".mdl", ".alimdl")):
-                        raise AlignerError(
-                            "Not using speaker independent model when it is available"
-                        )
-                self.calc_fmllr()
-
-                self.speaker_independent = False
-                assert self.alignment_model_path.endswith(".mdl")
-                self.log_info("Performing second-pass alignment...")
-                self.align_utterances()
-
-                self.compile_information()
-        except Exception as e:
-            with mfa_open(dirty_path, "w"):
-                pass
-            if isinstance(e, KaldiProcessingError):
-                import logging
-
-                logger = logging.getLogger(self.identifier)
-                log_kaldi_errors(e.error_logs, logger)
-                e.update_log_file(logger)
-            raise
-        with mfa_open(done_path, "w"):
-            pass
+        self.setup()
+        super().align()
 
 
 class DictionaryTrainer(PretrainedAligner):
@@ -415,9 +446,7 @@ class DictionaryTrainer(PretrainedAligner):
         self.calculate_silence_probs = calculate_silence_probs
         self.min_count = min_count
 
-    def export_lexicons(
-        self, output_directory: str, silence_probabilities: Optional[bool] = False
-    ) -> None:
+    def export_lexicons(self, output_directory: str) -> None:
         """
         Generate pronunciation probabilities for the dictionary
 
@@ -444,5 +473,4 @@ class DictionaryTrainer(PretrainedAligner):
                     dictionary.id,
                     os.path.join(output_directory, dictionary.name + ".dict"),
                     probability=True,
-                    silence_probabilities=silence_probabilities,
                 )

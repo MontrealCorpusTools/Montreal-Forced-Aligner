@@ -4,33 +4,39 @@ from __future__ import annotations
 
 import abc
 import collections
+import logging
 import math
 import os
 import re
 import subprocess
 import typing
-from typing import TYPE_CHECKING, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
+import pynini
+import pywrapfst
 import sqlalchemy.orm.session
+import tqdm
+import yaml
 from sqlalchemy.orm import selectinload
 
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import PhoneType, WordType
 from montreal_forced_aligner.db import (
+    Corpus,
+    Dialect,
     DictBundle,
     Dictionary,
     Grapheme,
-    OovWord,
     Phone,
+    PhonologicalRule,
     Pronunciation,
+    RuleApplication,
     Speaker,
     Utterance,
     Word,
+    bulk_update,
 )
-from montreal_forced_aligner.dictionary.mixins import (
-    SanitizeFunction,
-    SplitWordsFunction,
-    TemporaryDictionaryMixin,
-)
+from montreal_forced_aligner.dictionary.mixins import TemporaryDictionaryMixin
 from montreal_forced_aligner.exceptions import (
     DictionaryError,
     DictionaryFileError,
@@ -38,81 +44,14 @@ from montreal_forced_aligner.exceptions import (
 )
 from montreal_forced_aligner.helper import mfa_open, split_phone_position
 from montreal_forced_aligner.models import DictionaryModel, PhoneSetType
-from montreal_forced_aligner.utils import thirdparty_binary
-
-if TYPE_CHECKING:
-    from dataclasses import dataclass
-else:
-    from dataclassy import dataclass
+from montreal_forced_aligner.utils import parse_dictionary_file, thirdparty_binary
 
 __all__ = [
     "MultispeakerDictionaryMixin",
     "MultispeakerDictionary",
-    "MultispeakerSanitizationFunction",
 ]
 
-
-@dataclass
-class MultispeakerSanitizationFunction:
-    """
-    Function for sanitizing text based on a multispeaker dictionary
-
-    Parameters
-    ----------
-    speaker_mapping: dict[str, str]
-        Mapping of speakers to dictionary names
-    sanitize_function: :class:`~montreal_forced_aligner.dictionary.mixins.SanitizeFunction`
-        Function to use for stripping punctuation
-    split_functions: dict[str, :class:`~montreal_forced_aligner.dictionary.mixins.SplitWordsFunction`]
-        Mapping of dictionary ids to functions for splitting compounds and clitics into separate words
-    """
-
-    speaker_mapping: Dict[str, int]
-    sanitize_function: SanitizeFunction
-    split_functions: Dict[int, SplitWordsFunction]
-
-    def get_dict_id_for_speaker(self, speaker_name: str) -> int:
-        """
-        Get the dictionary id of the speaker
-
-        Parameters
-        ----------
-        speaker_name: str
-            Speaker to look up
-
-        Returns
-        -------
-        int
-            Dictionary id
-        """
-        if speaker_name not in self.speaker_mapping:
-            speaker_name = "default"
-        return self.speaker_mapping[speaker_name]
-
-    def get_functions_for_speaker(
-        self, speaker_name: str
-    ) -> Tuple[SanitizeFunction, SplitWordsFunction]:
-        """
-        Look up functions based on speaker name
-
-        Parameters
-        ----------
-        speaker_name
-            Speaker to get functions for
-
-        Returns
-        -------
-        :class:`~montreal_forced_aligner.dictionary.mixins.SanitizeFunction`
-            Function for sanitizing text
-        :class:`~montreal_forced_aligner.dictionary.mixins.SplitWordsFunction`
-            Function for splitting up words
-        """
-        try:
-            dict_id = self.get_dict_id_for_speaker(speaker_name)
-            split_function = self.split_functions[dict_id]
-        except KeyError:
-            split_function = None
-        return self.sanitize_function, split_function
+logger = logging.getLogger("mfa")
 
 
 class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMeta):
@@ -142,25 +81,71 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         Mapping of dictionary names to ids
     """
 
-    def __init__(self, dictionary_path: str = None, **kwargs):
+    def __init__(
+        self,
+        dictionary_path: str = None,
+        rules_path: str = None,
+        groups_path: str = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
-        self.dictionary_model = DictionaryModel(
-            dictionary_path, phone_set_type=self.phone_set_type
-        )
+        self.dictionary_model = None
+        if dictionary_path is not None:
+            self.dictionary_model = DictionaryModel(
+                dictionary_path, phone_set_type=self.phone_set_type
+            )
         self._num_dictionaries = None
         self.dictionary_lookup = {}
         self._phone_mapping = None
         self._grapheme_mapping = None
         self._words_mappings = {}
+        self._speaker_mapping = {}
         self._default_dictionary_id = None
         self._dictionary_base_names = None
-        self.bracket_regex = None
-        self.laughter_regex = None
-        self.compound_regex = None
-        self.clitic_cleanup_regex = None
-        self.clitic_quote_regex = None
         self.clitic_marker = None
         self.use_g2p = False
+        self.rules_path = rules_path
+        self.groups_path = groups_path
+
+    def load_phone_groups(self) -> None:
+        """
+        Load phone groups from the dictionary's groups file path
+        """
+        if self.groups_path is not None and os.path.exists(self.groups_path):
+            with mfa_open(self.groups_path) as f:
+                self._phone_groups = yaml.safe_load(f)
+                if isinstance(self._phone_groups, list):
+                    self._phone_groups = {k: v for k, v in enumerate(self._phone_groups)}
+                for k, v in self._phone_groups.items():
+                    self._phone_groups[k] = [x for x in v if x in self.non_silence_phones]
+
+    @property
+    def speaker_mapping(self) -> typing.Dict[str, int]:
+        """Mapping of speakers to dictionaries"""
+        if not self._speaker_mapping:
+            with self.session() as session:
+                self._speaker_mapping = {
+                    x[0]: x[1] for x in session.query(Speaker.name, Speaker.dictionary_id)
+                }
+        return self._speaker_mapping
+
+    def get_dict_id_for_speaker(self, speaker_name: str) -> int:
+        """
+        Get the dictionary id of the speaker
+
+        Parameters
+        ----------
+        speaker_name: str
+            Speaker to look up
+
+        Returns
+        -------
+        int
+            Dictionary id
+        """
+        if speaker_name not in self.speaker_mapping:
+            return self._default_dictionary_id
+        return self.speaker_mapping[speaker_name]
 
     @property
     def dictionary_base_names(self) -> Dict[int, str]:
@@ -192,18 +177,12 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         """
         if dictionary_id not in self._words_mappings:
             self._words_mappings[dictionary_id] = {}
-            index = 0
             with self.session() as session:
                 words = session.query(Word.word, Word.mapping_id).filter(
                     Word.dictionary_id == dictionary_id
                 )
                 for w, index in words:
                     self._words_mappings[dictionary_id][w] = index
-                if index == 0:
-                    return self._words_mappings[dictionary_id]
-                self._words_mappings[dictionary_id]["#0"] = index + 1
-                self._words_mappings[dictionary_id]["<s>"] = index + 2
-                self._words_mappings[dictionary_id]["</s>"] = index + 3
         return self._words_mappings[dictionary_id]
 
     def reversed_word_mapping(self, dictionary_id: int = 1) -> Dict[int, str]:
@@ -230,74 +209,11 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         """Number of pronunciation dictionaries"""
         return len(self.dictionary_lookup)
 
-    @property
-    def sanitize_function(self) -> MultispeakerSanitizationFunction:
-        """Sanitization function for the dictionary"""
-        sanitize_function = SanitizeFunction(
-            self.clitic_marker,
-            self.clitic_cleanup_regex,
-            self.clitic_quote_regex,
-            self.punctuation_regex,
-            self.word_break_regex,
-            self.bracket_regex,
-            self.bracket_sanitize_regex,
-            self.ignore_case,
-        )
-        split_functions = {}
-        non_speech_regexes = {}
-        if self.laughter_regex is not None:
-            non_speech_regexes[self.laughter_word] = self.laughter_regex
-        if self.bracket_regex is not None:
-            non_speech_regexes[self.bracketed_word] = self.bracket_regex
-        with self.session() as session:
-            dictionaries = session.query(Dictionary.id, Dictionary.default)
-            speaker_mapping = {
-                x[0]: x[1] for x in session.query(Speaker.name, Speaker.dictionary_id)
-            }
-            for dict_id, default in dictionaries:
-                if default:
-                    speaker_mapping["default"] = dict_id
-
-                clitic_set = set(
-                    x[0]
-                    for x in session.query(Word.word)
-                    .filter(Word.word_type == WordType.clitic)
-                    .filter(Word.dictionary_id == dict_id)
-                )
-                initial_clitic_regex = None
-                final_clitic_regex = None
-                if self.clitic_marker is not None:
-                    initial_clitics = sorted(
-                        x for x in clitic_set if x.endswith(self.clitic_marker)
-                    )
-                    final_clitics = sorted(
-                        x for x in clitic_set if x.startswith(self.clitic_marker)
-                    )
-                    if initial_clitics:
-                        initial_clitic_regex = re.compile(rf"^{'|'.join(initial_clitics)}(?=\w)")
-                    if final_clitics:
-                        final_clitic_regex = re.compile(rf"(?<=\w){'|'.join(final_clitics)}$")
-                split_functions[dict_id] = SplitWordsFunction(
-                    self.clitic_marker,
-                    initial_clitic_regex,
-                    final_clitic_regex,
-                    self.compound_regex,
-                    non_speech_regexes,
-                    self.oov_word,
-                    self.word_mapping(dict_id),
-                    self.grapheme_mapping,
-                    self.specials_set,
-                )
-        return MultispeakerSanitizationFunction(
-            speaker_mapping, sanitize_function, split_functions
-        )
-
     def dictionary_setup(self) -> Tuple[typing.Set[str], collections.Counter]:
         """Set up the dictionary for processing"""
-        self.compile_regexes()
-        exist_check = os.path.exists(self.db_path)
-        if not exist_check:
-            self.initialize_database()
+        self.initialize_database()
+        if self.use_g2p:
+            return
         auto_set = {PhoneSetType.AUTO, PhoneSetType.UNKNOWN, "AUTO", "UNKNOWN"}
         if not isinstance(self.phone_set_type, PhoneSetType):
             self.phone_set_type = PhoneSetType[self.phone_set_type]
@@ -310,7 +226,14 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         self._speaker_ids = getattr(self, "_speaker_ids", {})
         self._current_speaker_index = getattr(self, "_current_speaker_index", 1)
         dictionary_id_cache = {}
+        dialect_id_cache = {}
         with self.session() as session:
+            self.non_silence_phones.update(
+                x
+                for x, in session.query(Phone.phone).filter(
+                    Phone.phone_type == PhoneType.non_silence
+                )
+            )
             for speaker_id, speaker_name in session.query(Speaker.id, Speaker.name):
                 self._speaker_ids[speaker_name] = speaker_id
                 if speaker_id >= self._current_speaker_index:
@@ -341,7 +264,17 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             pron_objs = []
             speaker_objs = []
             phone_counts = collections.Counter()
-            graphemes = set()
+            graphemes = set(self.clitic_markers + self.compound_markers)
+            clitic_cleanup_regex = None
+            if len(self.clitic_markers) >= 1:
+                other_clitic_markers = self.clitic_markers[1:]
+                if other_clitic_markers:
+                    extra = ""
+                    if "-" in other_clitic_markers:
+                        extra = "-"
+                        other_clitic_markers = [x for x in other_clitic_markers if x != "-"]
+                    clitic_cleanup_regex = re.compile(rf'[{extra}{"".join(other_clitic_markers)}]')
+                self.clitic_marker = self.clitic_markers[0]
             for (
                 dictionary_model,
                 speakers,
@@ -350,7 +283,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     word_cache = {}
                     pronunciation_cache = set()
                     subsequences = set()
-                    pronunciation_counts = collections.defaultdict(int)
                     if self.phone_set_type not in auto_set:
                         if (
                             self.phone_set_type != dictionary_model.phone_set_type
@@ -361,23 +293,26 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             )
                     else:
                         self.phone_set_type = dictionary_model.phone_set_type
-
+                    dialect = None
+                    if "_mfa" in dictionary_model.name:
+                        name_parts = dictionary_model.name.split("_")
+                        dialect = "_".join(name_parts[1:-1])
+                    if not dialect:
+                        dialect = "us"
+                    if dialect not in dialect_id_cache:
+                        dialect_obj = Dialect(name=dialect)
+                        session.add(dialect_obj)
+                        session.flush()
+                        dialect_id_cache[dialect] = dialect_obj.id
+                    dialect_id = dialect_id_cache[dialect]
                     dictionary = Dictionary(
                         name=dictionary_model.name,
+                        dialect_id=dialect_id,
                         path=dictionary_model.path,
                         phone_set_type=self.phone_set_type,
                         root_temp_directory=self.dictionary_output_directory,
                         position_dependent_phones=self.position_dependent_phones,
                         clitic_marker=self.clitic_marker if self.clitic_marker is not None else "",
-                        bracket_regex=self.bracket_regex.pattern
-                        if self.bracket_regex is not None
-                        else "",
-                        clitic_cleanup_regex=self.clitic_cleanup_regex.pattern
-                        if self.clitic_cleanup_regex is not None
-                        else "",
-                        laughter_regex=self.laughter_regex.pattern
-                        if self.laughter_regex is not None
-                        else "",
                         default="default" in speakers,
                         use_g2p=False,
                         max_disambiguation_symbol=0,
@@ -386,6 +321,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         bracketed_word=self.bracketed_word,
                         laughter_word=self.laughter_word,
                         optional_silence_phone=self.optional_silence_phone,
+                        oov_phone=self.oov_phone,
                     )
                     session.add(dictionary)
                     session.flush()
@@ -416,147 +352,105 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             "silence_before_correction": None,
                             "non_silence_before_correction": None,
                             "word_id": word_primary_key,
+                            "base_pronunciation_id": pronunciation_primary_key,
                         }
                     )
                     word_primary_key += 1
                     pronunciation_primary_key += 1
 
                     special_words = {self.oov_word: WordType.oov}
-                    if self.bracket_regex is not None:
-                        special_words[self.bracketed_word] = WordType.bracketed
-                    if self.laughter_regex is not None:
-                        special_words[self.laughter_word] = WordType.laughter
+                    special_words[self.bracketed_word] = WordType.bracketed
+                    special_words[self.laughter_word] = WordType.laughter
                     specials_found = set()
                     if not os.path.exists(dictionary_model.path):
                         raise DictionaryFileError(dictionary_model.path)
-                    with mfa_open(dictionary_model.path, "r") as inf:
-                        for i, line in enumerate(inf):
-                            line = line.strip()
-                            if not line:
+                    for (
+                        word,
+                        pron,
+                        prob,
+                        silence_after_prob,
+                        silence_before_correct,
+                        non_silence_before_correct,
+                    ) in parse_dictionary_file(dictionary_model.path):
+                        if self.ignore_case:
+                            word = word.lower()
+                        if " " in word:
+                            logger.debug(f'Skipping "{word}" for containing whitespace.')
+                            continue
+                        if clitic_cleanup_regex is not None:
+                            word = clitic_cleanup_regex.sub(self.clitic_marker, word)
+                        if word in self.specials_set:
+                            continue
+                        characters = list(word)
+                        if word not in special_words:
+                            graphemes.update(characters)
+                        if pretrained:
+                            difference = set(pron) - self.non_silence_phones - self.silence_phones
+                            if difference:
+                                self.excluded_phones.update(difference)
+                                self.excluded_pronunciation_count += 1
                                 continue
-                            if "\t" not in line:
-                                raise DictionaryError(
-                                    f"Error parsing line {i} of {dictionary_model.path}: Did not find any tabs, "
-                                    f"please ensure that your dictionary has tabs between words and their pronunciations."
-                                )
-                            line = line.split("\t")
-                            if len(line) <= 1:
-                                raise DictionaryError(
-                                    f'Error parsing line {i} of {dictionary_model.path}: "{line}" did not have a pronunciation'
-                                )
-                            word = line.pop(0)
-                            pron = tuple(line.pop(-1).split())
-                            if self.ignore_case:
-                                word = word.lower()
-                            if " " in word:
-                                if hasattr(self, "log_debug"):
-                                    self.log_debug(f'Skipping "{word}" for containing whitespace.')
-                                continue
-                            if self.clitic_cleanup_regex is not None:
-                                word = self.clitic_cleanup_regex.sub(self.clitic_marker, word)
-                            if word in self.specials_set:
-                                continue
-                            characters = list(word)
-                            if word not in special_words:
-                                graphemes.update(characters)
-                            prob = None
-                            try:
-                                if len(line) < 1:
-                                    raise ValueError
-                                prob = float(line[0])
-                                if prob > 1 or prob < 0.01:
-                                    raise ValueError
-                                line.pop(0)
-                            except ValueError:
-                                pass
-                            silence_after_prob = None
-                            silence_before_correct = None
-                            non_silence_before_correct = None
-                            try:
-                                if len(line) < 3:
-                                    raise ValueError
-                                silence_after_prob = float(line[0])
-                                if (
-                                    silence_after_prob == dictionary.silence_probability
-                                    or silence_after_prob == 0
-                                ):
-                                    silence_after_prob = None
-                                silence_before_correct = float(line[1])
-                                if silence_before_correct == 1.0 or silence_before_correct == 0:
-                                    silence_before_correct = None
-                                non_silence_before_correct = float(line[2])
-                                if (
-                                    non_silence_before_correct == 1.0
-                                    or non_silence_before_correct == 0
-                                ):
-                                    non_silence_before_correct = None
-                            except ValueError:
-                                pass
-                            if pretrained:
-                                difference = (
-                                    set(pron) - self.non_silence_phones - self.silence_phones
-                                )
-                                if difference:
-                                    self.excluded_phones.update(difference)
-                                    self.excluded_pronunciation_count += 1
-                                    continue
-                            if word not in word_cache:
-                                if pron == (self.optional_silence_phone,):
-                                    wt = WordType.silence
-                                elif dictionary.clitic_marker is not None and (
-                                    word.startswith(dictionary.clitic_marker)
-                                    or word.endswith(dictionary.clitic_marker)
-                                ):
-                                    wt = WordType.clitic
-                                else:
-                                    wt = WordType.speech
-                                    for special_w, special_wt in special_words.items():
-                                        if word == special_w:
-                                            wt = special_wt
-                                            specials_found.add(special_w)
-                                            break
-                                word_objs.append(
-                                    {
-                                        "id": word_primary_key,
-                                        "mapping_id": current_index,
-                                        "word": word,
-                                        "word_type": wt,
-                                        "dictionary_id": dictionary.id,
-                                    }
-                                )
-                                self._words_mappings[dictionary.id][word] = current_index
-                                current_index += 1
-                                word_cache[word] = word_primary_key
-                                word_primary_key += 1
-                            pron_string = " ".join(pron)
-                            if (word, pron_string) in pronunciation_cache:
-                                continue
-
-                            if not pretrained and word_objs[word_cache[word] - 1]["word_type"] in {
-                                WordType.speech,
-                                WordType.clitic,
-                            }:
-                                self.non_silence_phones.update(pron)
-                            pron_objs.append(
+                        if word not in word_cache:
+                            if pron == (self.optional_silence_phone,):
+                                wt = WordType.silence
+                            elif dictionary.clitic_marker is not None and (
+                                word.startswith(dictionary.clitic_marker)
+                                or word.endswith(dictionary.clitic_marker)
+                            ):
+                                wt = WordType.clitic
+                            else:
+                                wt = WordType.speech
+                                for special_w, special_wt in special_words.items():
+                                    if word == special_w:
+                                        wt = special_wt
+                                        specials_found.add(special_w)
+                                        break
+                            word_objs.append(
                                 {
-                                    "id": pronunciation_primary_key,
-                                    "pronunciation": pron_string,
-                                    "probability": prob,
-                                    "disambiguation": None,
-                                    "silence_after_probability": silence_after_prob,
-                                    "silence_before_correction": silence_before_correct,
-                                    "non_silence_before_correction": non_silence_before_correct,
-                                    "word_id": word_cache[word],
+                                    "id": word_primary_key,
+                                    "mapping_id": current_index,
+                                    "word": word,
+                                    "word_type": wt,
+                                    "dictionary_id": dictionary.id,
                                 }
                             )
-                            pronunciation_primary_key += 1
-                            pronunciation_cache.add((word, pron_string))
-                            phone_counts.update(pron)
-                            pronunciation_counts[pron] += 1
+                            self._words_mappings[dictionary.id][word] = current_index
+                            current_index += 1
+                            word_cache[word] = word_primary_key
+                            word_primary_key += 1
+                        pron_string = " ".join(pron)
+                        if (word, pron_string) in pronunciation_cache:
+                            continue
+
+                        if not pretrained and word_objs[word_cache[word] - 1]["word_type"] in {
+                            WordType.speech,
+                            WordType.clitic,
+                        }:
+                            self.non_silence_phones.update(pron)
+                        base_pronunciation_key = pronunciation_primary_key
+
+                        pron_objs.append(
+                            {
+                                "id": pronunciation_primary_key,
+                                "pronunciation": pron_string,
+                                "probability": prob,
+                                "disambiguation": None,
+                                "silence_after_probability": silence_after_prob,
+                                "silence_before_correction": silence_before_correct,
+                                "non_silence_before_correction": non_silence_before_correct,
+                                "word_id": word_cache[word],
+                                "base_pronunciation_id": base_pronunciation_key,
+                            }
+                        )
+                        self.non_silence_phones.update(pron)
+
+                        pronunciation_primary_key += 1
+                        pronunciation_cache.add((word, pron_string))
+                        phone_counts.update(pron)
+                        pron = pron[:-1]
+                        while pron:
+                            subsequences.add(tuple(pron))
                             pron = pron[:-1]
-                            while pron:
-                                subsequences.add(tuple(pron))
-                                pron = pron[:-1]
 
                     for w, wt in special_words.items():
                         if w in specials_found:
@@ -572,7 +466,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         )
                         self._words_mappings[dictionary.id][w] = current_index
                         current_index += 1
-                        pron = tuple(self.oov_phone)
                         pron_objs.append(
                             {
                                 "id": pronunciation_primary_key,
@@ -583,32 +476,29 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                                 "silence_before_correction": None,
                                 "non_silence_before_correction": None,
                                 "word_id": word_primary_key,
+                                "base_pronunciation_id": pronunciation_primary_key,
                             }
                         )
                         pronunciation_primary_key += 1
                         word_primary_key += 1
-                        pronunciation_counts[pron] += 1
-                    self._words_mappings[dictionary.id]["#0"] = current_index
-                    self._words_mappings[dictionary.id]["<s>"] = current_index + 1
-                    self._words_mappings[dictionary.id]["</s>"] = current_index + 2
-
-                    last_used = collections.defaultdict(int)
-                    for p in pron_objs:
-                        pron = tuple(p["pronunciation"].split())
-                        if not (pronunciation_counts[pron] == 1 and pron not in subsequences):
-                            last_used[pron] += 1
-                            p["disambiguation"] = last_used[pron]
-                    if last_used:
-                        dictionary.max_disambiguation_symbol = max(
-                            dictionary.max_disambiguation_symbol, max(last_used.values())
+                    for s in ["#0", "<s>", "</s>"]:
+                        word_objs.append(
+                            {
+                                "id": word_primary_key,
+                                "word": s,
+                                "dictionary_id": dictionary.id,
+                                "mapping_id": current_index,
+                                "word_type": WordType.disambiguation,
+                            }
                         )
+                        self._words_mappings[dictionary.id][s] = current_index
+                        word_primary_key += 1
+                        current_index += 1
+
                     if not graphemes:
                         raise DictionaryFileError(
                             f"No words were found in the dictionary path {dictionary_model.path}"
                         )
-                    self.max_disambiguation_symbol = max(
-                        self.max_disambiguation_symbol, dictionary.max_disambiguation_symbol
-                    )
                     self.dictionary_lookup[dictionary.name] = dictionary.id
                     dictionary_id_cache[dictionary_model.path] = dictionary.id
                 for speaker in speakers:
@@ -626,17 +516,14 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 session.commit()
 
             self.non_silence_phones -= self.silence_phones
-            phone_objs = []
             grapheme_objs = []
             if graphemes:
                 i = 0
                 session.query(Grapheme).delete()
                 session.commit()
                 special_graphemes = [self.silence_word, "<space>"]
-                if self.bracket_regex is not None:
-                    special_graphemes.append(self.bracketed_word)
-                if self.laughter_regex is not None:
-                    special_graphemes.append(self.laughter_word)
+                special_graphemes.append(self.bracketed_word)
+                special_graphemes.append(self.laughter_word)
                 for g in special_graphemes:
                     grapheme_objs.append(
                         {
@@ -655,88 +542,256 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         }
                     )
                     i += 1
-
-            if self.non_silence_phones:
-                max_phone_ind = session.query(sqlalchemy.func.max(Phone.mapping_id)).scalar()
-                i = 0
-                if max_phone_ind is not None:
-                    session.query(Phone).delete()
-                    session.commit()
-                phone_objs.append(
-                    {
-                        "id": i + 1,
-                        "mapping_id": i,
-                        "phone": "<eps>",
-                        "phone_type": PhoneType.silence,
-                        "count": 0,
-                    }
-                )
-                for p in self.kaldi_silence_phones:
-                    i += 1
-                    phone_objs.append(
-                        {
-                            "id": i + 1,
-                            "mapping_id": i,
-                            "phone": p,
-                            "phone_type": PhoneType.silence,
-                            "count": 0,
-                        }
-                    )
-                for p in self.kaldi_non_silence_phones:
-                    i += 1
-                    phone_objs.append(
-                        {
-                            "id": i + 1,
-                            "mapping_id": i,
-                            "phone": p,
-                            "phone_type": PhoneType.non_silence,
-                            "count": phone_counts[split_phone_position(p)[0]],
-                        }
-                    )
-                for x in range(self.max_disambiguation_symbol + 2):
-                    p = f"#{x}"
-                    self.disambiguation_symbols.add(p)
-                    i += 1
-                    phone_objs.append(
-                        {
-                            "id": i + 1,
-                            "mapping_id": i,
-                            "phone": p,
-                            "phone_type": PhoneType.disambiguation,
-                            "count": 0,
-                        }
-                    )
-            else:
-                phones = [
-                    x[0]
-                    for x in session.query(Phone.phone).filter(
-                        Phone.phone_type == PhoneType.non_silence
-                    )
-                ]
-                if self.position_dependent_phones:
-                    phones = [split_phone_position(x)[0] for x in phones]
-                self.non_silence_phones.update(phones)
-                phones = [
-                    x[0]
-                    for x in session.query(Phone.phone).filter(
-                        Phone.phone_type == PhoneType.disambiguation
-                    )
-                ]
-                self.disambiguation_symbols.update(phones)
         with self.session() as session:
             with session.bind.begin() as conn:
                 if word_objs:
                     conn.execute(sqlalchemy.insert(Word.__table__), word_objs)
+                if pron_objs:
                     conn.execute(sqlalchemy.insert(Pronunciation.__table__), pron_objs)
                 if speaker_objs:
                     conn.execute(sqlalchemy.insert(Speaker.__table__), speaker_objs)
-                if phone_objs:
-                    conn.execute(sqlalchemy.insert(Phone.__table__), phone_objs)
                 if grapheme_objs:
                     conn.execute(sqlalchemy.insert(Grapheme.__table__), grapheme_objs)
 
                 session.commit()
+        if pron_objs:
+            self.apply_phonological_rules()
+            self.calculate_disambiguation()
+        self.calculate_phone_mapping()
+        self.load_phone_groups()
         return graphemes, phone_counts
+
+    def calculate_disambiguation(self) -> None:
+        """Calculate the number of disambiguation symbols necessary for the dictionary"""
+        with self.session() as session:
+            dictionaries = session.query(Dictionary)
+            update_pron_objs = []
+            for d in dictionaries:
+                subsequences = set()
+                words = (
+                    session.query(Word)
+                    .filter(Word.dictionary_id == d.id)
+                    .options(selectinload(Word.pronunciations))
+                )
+                for w in words:
+                    for p in w.pronunciations:
+
+                        pron = p.pronunciation.split()
+                        while pron:
+                            subsequences.add(tuple(pron))
+                            pron = pron[:-1]
+                last_used = collections.defaultdict(int)
+                for p_id, pron in (
+                    session.query(Pronunciation.id, Pronunciation.pronunciation)
+                    .join(Pronunciation.word)
+                    .filter(Word.dictionary_id == d.id)
+                ):
+                    pron = tuple(pron.split())
+                    if pron in subsequences:
+                        last_used[pron] += 1
+
+                        update_pron_objs.append({"id": p_id, "disambiguation": last_used[pron]})
+
+                if last_used:
+                    d.max_disambiguation_symbol = max(
+                        d.max_disambiguation_symbol, max(last_used.values())
+                    )
+                self.max_disambiguation_symbol = max(
+                    self.max_disambiguation_symbol, d.max_disambiguation_symbol
+                )
+            if update_pron_objs:
+                bulk_update(session, Pronunciation, update_pron_objs)
+                session.commit()
+
+    def apply_phonological_rules(self) -> None:
+        """Apply any phonological rules specified in the rules file path"""
+        # Set up phonological rules
+        if not self.rules_path or not os.path.exists(self.rules_path):
+            return
+        with mfa_open(self.rules_path) as f:
+            rule_data = yaml.safe_load(f)
+        with self.session() as session:
+            num_words = session.query(Word).count()
+            logger.info("Applying phonological rules...")
+            with tqdm.tqdm(total=num_words, disable=GLOBAL_CONFIG.quiet) as pbar:
+                new_pron_objs = []
+                rule_application_objs = []
+                dialect_ids = {d.name: d.id for d in session.query(Dialect).all()}
+                for rule in rule_data["rules"]:
+                    for d_id in dialect_ids.values():
+                        r = PhonologicalRule(dialect_id=d_id, **rule)
+                        session.add(r)
+                        if r.replacement:
+                            self.non_silence_phones.update(r.replacement.split())
+                for k, v in rule_data.get("dialects", {}).items():
+                    d_id = dialect_ids.get(k, None)
+                    if not d_id:
+                        continue
+                    for rule in v:
+                        r = PhonologicalRule(dialect_id=d_id, **rule)
+                        session.add(r)
+                        if r.replacement:
+                            self.non_silence_phones.update(r.replacement.split())
+                session.flush()
+                pronunciation_primary_key = session.query(
+                    sqlalchemy.func.max(Pronunciation.id)
+                ).scalar()
+                if not pronunciation_primary_key:
+                    pronunciation_primary_key = 0
+                pronunciation_primary_key += 1
+                dictionaries = session.query(Dictionary)
+                for d in dictionaries:
+                    words = (
+                        session.query(Word)
+                        .filter(Word.dictionary_id == d.id)
+                        .filter(Word.word_type.in_([WordType.clitic, WordType.speech]))
+                        .options(selectinload(Word.pronunciations))
+                    )
+                    rules = (
+                        session.query(PhonologicalRule)
+                        .filter(PhonologicalRule.dialect_id == d.dialect_id)
+                        .all()
+                    )
+                    for w in words:
+                        pbar.update(1)
+                        variant_to_rule_mapping = collections.defaultdict(set)
+                        variant_mapping = {}
+                        existing_prons = {p.pronunciation for p in w.pronunciations}
+                        for p in w.pronunciations:
+                            base_id = p.id
+                            new_variants = [p.pronunciation]
+
+                            variant_index = 0
+                            while True:
+                                s = new_variants[variant_index]
+                                for r in rules:
+                                    n = r.apply_rule(s)
+                                    if any(x not in self.non_silence_phones for x in n.split()):
+                                        continue
+                                    if n and n not in existing_prons and n not in new_variants:
+                                        new_pron_objs.append(
+                                            {
+                                                "id": pronunciation_primary_key,
+                                                "pronunciation": n,
+                                                "probability": None,
+                                                "disambiguation": None,
+                                                "silence_after_probability": None,
+                                                "silence_before_correction": None,
+                                                "non_silence_before_correction": None,
+                                                "word_id": w.id,
+                                                "base_pronunciation_id": base_id,
+                                            }
+                                        )
+                                        new_variants.append(n)
+                                        existing_prons.add(n)
+                                        variant_mapping[n] = pronunciation_primary_key
+                                        variant_to_rule_mapping[n].update(
+                                            variant_to_rule_mapping[s]
+                                        )
+                                        variant_to_rule_mapping[n].add(r)
+                                        pronunciation_primary_key += 1
+                                variant_index += 1
+
+                                if variant_index >= len(new_variants):
+                                    break
+                        for v, rs in variant_to_rule_mapping.items():
+                            for r in rs:
+                                rule_application_objs.append(
+                                    {"rule_id": r.id, "pronunciation_id": variant_mapping[v]}
+                                )
+            if new_pron_objs:
+                session.execute(sqlalchemy.insert(Pronunciation.__table__), new_pron_objs)
+            if rule_application_objs:
+                session.execute(
+                    sqlalchemy.insert(RuleApplication.__table__), rule_application_objs
+                )
+            session.commit()
+
+    def calculate_phone_mapping(self) -> None:
+        """Calculate the necessary phones and add phone objects to the database"""
+        with self.session() as session:
+            try:
+                session.query(Phone).delete()
+            except Exception:
+                return
+            i = 1
+            for r in session.query(PhonologicalRule):
+                if not r.replacement:
+                    continue
+                self.non_silence_phones.update(r.replacement.split())
+            phone_objs = []
+            phone_objs.append(
+                {
+                    "id": i,
+                    "mapping_id": i - 1,
+                    "phone": "<eps>",
+                    "kaldi_label": "<eps>",
+                    "phone_type": PhoneType.silence,
+                    "count": 0,
+                }
+            )
+            existing_phones = {"<eps>"}
+            i += 1
+            for p in self.kaldi_silence_phones:
+                if p in existing_phones:
+                    continue
+                phone = p
+                position = None
+                if self.position_dependent_phones:
+                    phone, position = split_phone_position(p)
+                phone_objs.append(
+                    {
+                        "id": i,
+                        "mapping_id": i - 1,
+                        "phone": phone,
+                        "position": position,
+                        "kaldi_label": p,
+                        "phone_type": PhoneType.silence,
+                        "count": 0,
+                    }
+                )
+                i += 1
+                existing_phones.add(p)
+            for p in self.kaldi_non_silence_phones:
+                if p in existing_phones:
+                    continue
+                phone = p
+                position = None
+                if self.position_dependent_phones:
+                    phone, position = split_phone_position(p)
+                phone_objs.append(
+                    {
+                        "id": i,
+                        "mapping_id": i - 1,
+                        "phone": phone,
+                        "position": position,
+                        "kaldi_label": p,
+                        "phone_type": PhoneType.non_silence,
+                        "count": 0,
+                    }
+                )
+                i += 1
+                existing_phones.add(p)
+            for x in range(self.max_disambiguation_symbol + 3):
+                p = f"#{x}"
+                if p in existing_phones:
+                    continue
+                self.disambiguation_symbols.add(p)
+                phone_objs.append(
+                    {
+                        "id": i,
+                        "mapping_id": i - 1,
+                        "phone": p,
+                        "kaldi_label": p,
+                        "phone_type": PhoneType.disambiguation,
+                        "count": 0,
+                    }
+                )
+                i += 1
+                existing_phones.add(p)
+            if phone_objs:
+                session.execute(sqlalchemy.insert(Phone.__table__), phone_objs)
+                session.commit()
 
     def _write_probabilistic_fst_text(
         self,
@@ -744,6 +799,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         dictionary: Dictionary,
         silence_disambiguation_symbol=None,
         path: typing.Optional[str] = None,
+        alignment: bool = False,
     ) -> None:
         """
         Write the L.fst or L_disambig.fst text file to the temporary directory
@@ -758,6 +814,8 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             Symbol to use for disambiguating silence for L_disambig.fst
         path: str, optional
             Full path to write L.fst to
+        alignment: bool
+            Flag for whether the FST will be used to align lattices
         """
         base_ext = ".text_fst"
         disambiguation = False
@@ -793,19 +851,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             outf.write(
                 f"{start_state}\t{silence_state}\t{self.optional_silence_phone}\t{self.silence_word}\t{initial_silence_cost}\n"
             )  # initial silence
-            if disambiguation:
-                sil_disambiguation_state = next_state
-                next_state += 1
-                outf.write(
-                    f"{silence_state}\t{sil_disambiguation_state}\t{self.optional_silence_phone}\t{self.silence_word}\t0.0\n"
-                )
-                outf.write(
-                    f"{sil_disambiguation_state}\t{non_silence_state}\t{silence_disambiguation_symbol}\t{self.silence_word}\t0.0\n"
-                )
-            else:
-                outf.write(
-                    f"{silence_state}\t{non_silence_state}\t{self.optional_silence_phone}\t{self.silence_word}\t0.0\n"
-                )
             silence_query = (
                 session.query(Word.word)
                 .filter(Word.word_type == WordType.silence)
@@ -836,6 +881,8 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 session.query(bn)
                 .join(Pronunciation.word)
                 .filter(Word.dictionary_id == dictionary.id)
+                .filter(Word.word_type != WordType.oov)
+                .filter(Word.count > 0)
                 .filter(Word.word_type != WordType.silence)
             )
             for row in pronunciation_query:
@@ -874,7 +921,8 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 pron_cost = abs(math.log(probability))
                 if disambiguation and data["disambiguation"] is not None:
                     phones += [f"#{data['disambiguation']}"]
-
+                if alignment:
+                    phones = ["#1"] + phones + ["#2"]
                 new_state = next_state
                 outf.write(
                     f"{non_silence_state}\t{new_state}\t{phones[0]}\t{data['word']}\t{pron_cost+non_silence_before_cost}\n"
@@ -896,9 +944,288 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 outf.write(
                     f"{current_state}\t{silence_state}\t{self.optional_silence_phone}\t<eps>\t{silence_following_cost}\n"
                 )
+            oov_pron = (
+                session.query(Pronunciation)
+                .join(Pronunciation.word)
+                .filter(Word.word == self.oov_word)
+                .first()
+            )
+            if not disambiguation:
+                oovs = (
+                    session.query(Word.word)
+                    .filter(Word.word_type == WordType.oov, Word.dictionary_id == dictionary.id)
+                    .filter(sqlalchemy.or_(Word.count > 0, Word.word.in_(self.specials_set)))
+                )
+            else:
+                oovs = session.query(Word.word).filter(Word.word == self.oov_word)
+
+            phones = [self.oov_phone]
+            if self.position_dependent_phones:
+                phones[0] += "_S"
+            if alignment:
+                phones = ["#1"] + phones + ["#2"]
+            for (w,) in oovs:
+                silence_before_cost = 0.0
+                non_silence_before_cost = 0.0
+                silence_following_cost = base_silence_following_cost
+                non_silence_following_cost = base_non_silence_following_cost
+
+                silence_after_probability = oov_pron.silence_after_probability
+                if silence_after_probability is not None:
+                    silence_following_cost = -math.log(silence_after_probability)
+                    non_silence_following_cost = -math.log(1 - (silence_after_probability))
+
+                silence_before_correction = oov_pron.silence_before_correction
+                if silence_before_correction is not None:
+                    silence_before_cost = -math.log(silence_before_correction)
+
+                non_silence_before_correction = oov_pron.non_silence_before_correction
+                if non_silence_before_correction is not None:
+                    non_silence_before_cost = -math.log(non_silence_before_correction)
+                pron_cost = 0.0
+                new_state = next_state
+                outf.write(
+                    f"{non_silence_state}\t{new_state}\t{phones[0]}\t{w}\t{pron_cost+non_silence_before_cost}\n"
+                )
+                outf.write(
+                    f"{silence_state}\t{new_state}\t{phones[0]}\t{w}\t{pron_cost+silence_before_cost}\n"
+                )
+
+                next_state += 1
+                current_state = new_state
+                for i in range(1, len(phones)):
+                    new_state = next_state
+                    next_state += 1
+                    outf.write(f"{current_state}\t{new_state}\t{phones[i]}\t<eps>\n")
+                    current_state = new_state
+                outf.write(
+                    f"{current_state}\t{non_silence_state}\t{silence_disambiguation_symbol}\t<eps>\t{non_silence_following_cost}\n"
+                )
+                outf.write(
+                    f"{current_state}\t{silence_state}\t{self.optional_silence_phone}\t<eps>\t{silence_following_cost}\n"
+                )
 
             outf.write(f"{silence_state}\t{final_silence_cost}\n")
             outf.write(f"{non_silence_state}\t{final_non_silence_cost}\n")
+
+    def _write_align_lexicon(
+        self,
+        session: sqlalchemy.orm.Session,
+        dictionary: Dictionary,
+        silence_disambiguation_symbol=None,
+    ) -> None:
+        """
+        Write an alignment FST for use by :kaldi_src:`phones-to-prons` to extract pronunciations
+
+        Parameters
+        ----------
+        session: sqlalchemy.orm.Session
+            Database session
+        dictionary: :class:`~montreal_forced_aligner.db.Dictionary`
+            Dictionary object for align lexicon
+        """
+        fst = pynini.Fst()
+        phone_symbol_table = pywrapfst.SymbolTable.read_text(self.phone_symbol_table_path)
+        word_symbol_table = pywrapfst.SymbolTable.read_text(dictionary.words_symbol_path)
+        start_state = fst.add_state()
+        loop_state = fst.add_state()
+        sil_state = fst.add_state()
+        next_state = fst.add_state()
+        fst.set_start(start_state)
+        silence_words = {self.silence_word}
+        silence_query = (
+            session.query(Word.word)
+            .filter(Word.word_type == WordType.silence)
+            .filter(Word.dictionary_id == dictionary.id)
+        )
+        for (word,) in silence_query:
+            silence_words.add(word)
+        word_eps_symbol = word_symbol_table.find("<eps>")
+        phone_eps_symbol = phone_symbol_table.find("<eps>")
+        sil_cost = -math.log(0.5)
+        non_sil_cost = sil_cost
+        fst.add_arc(
+            start_state,
+            pywrapfst.Arc(
+                phone_eps_symbol,
+                word_eps_symbol,
+                pywrapfst.Weight(fst.weight_type(), non_sil_cost),
+                loop_state,
+            ),
+        )
+        fst.add_arc(
+            start_state,
+            pywrapfst.Arc(
+                phone_eps_symbol,
+                word_eps_symbol,
+                pywrapfst.Weight(fst.weight_type(), sil_cost),
+                sil_state,
+            ),
+        )
+        for silence in silence_words:
+            w_s = word_symbol_table.find(silence)
+            fst.add_arc(
+                sil_state,
+                pywrapfst.Arc(
+                    phone_symbol_table.find(self.optional_silence_phone),
+                    w_s,
+                    pywrapfst.Weight.one(fst.weight_type()),
+                    loop_state,
+                ),
+            )
+
+        oovs = session.query(Word.word).filter(
+            Word.word_type == WordType.oov,
+            sqlalchemy.or_(Word.count > 0, Word.word.in_(self.specials_set)),
+        )
+        for (w,) in oovs:
+            pron = [self.oov_phone]
+            if self.position_dependent_phones:
+                pron[0] += "_S"
+            pron = ["#1"] + pron + ["#2"]
+            current_state = loop_state
+            for i in range(len(pron) - 1):
+                p_s = phone_symbol_table.find(pron[i])
+                if i == 0:
+                    w_s = word_symbol_table.find(w)
+                else:
+                    w_s = word_eps_symbol
+                fst.add_arc(
+                    current_state,
+                    pywrapfst.Arc(p_s, w_s, pywrapfst.Weight.one(fst.weight_type()), next_state),
+                )
+                current_state = next_state
+                next_state = fst.add_state()
+            i = len(pron) - 1
+            if i >= 0:
+                p_s = phone_symbol_table.find(pron[i])
+            else:
+                p_s = phone_eps_symbol
+            if i <= 0:
+                w_s = word_symbol_table.find(w)
+            else:
+                w_s = word_eps_symbol
+            fst.add_arc(
+                current_state,
+                pywrapfst.Arc(
+                    p_s, w_s, pywrapfst.Weight(fst.weight_type(), non_sil_cost), loop_state
+                ),
+            )
+            fst.add_arc(
+                current_state,
+                pywrapfst.Arc(p_s, w_s, pywrapfst.Weight(fst.weight_type(), sil_cost), sil_state),
+            )
+        pronunciation_query = (
+            session.query(Word.word, Pronunciation.pronunciation)
+            .join(Pronunciation.word)
+            .filter(Word.dictionary_id == dictionary.id)
+            .filter(
+                Word.word_type != WordType.silence, Word.word_type != WordType.oov, Word.count > 0
+            )
+        )
+        for w, pron in pronunciation_query:
+            pron = pron.split()
+            if self.position_dependent_phones:
+                if pron[0] != self.optional_silence_phone:
+                    if len(pron) == 1:
+                        pron[0] += "_S"
+                    else:
+                        pron[0] += "_B"
+                        pron[-1] += "_E"
+                        for i in range(1, len(pron) - 1):
+                            pron[i] += "_I"
+            pron = ["#1"] + pron + ["#2"]
+            current_state = loop_state
+            for i in range(len(pron) - 1):
+                p_s = phone_symbol_table.find(pron[i])
+                if i == 0:
+                    w_s = word_symbol_table.find(w)
+                else:
+                    w_s = word_eps_symbol
+                fst.add_arc(
+                    current_state,
+                    pywrapfst.Arc(p_s, w_s, pywrapfst.Weight.one(fst.weight_type()), next_state),
+                )
+                current_state = next_state
+                next_state = fst.add_state()
+            i = len(pron) - 1
+            if i >= 0:
+                p_s = phone_symbol_table.find(pron[i])
+            else:
+                p_s = phone_eps_symbol
+            if i <= 0:
+                w_s = word_symbol_table.find(w)
+            else:
+                w_s = word_eps_symbol
+            fst.add_arc(
+                current_state,
+                pywrapfst.Arc(
+                    p_s, w_s, pywrapfst.Weight(fst.weight_type(), non_sil_cost), loop_state
+                ),
+            )
+            fst.add_arc(
+                current_state,
+                pywrapfst.Arc(p_s, w_s, pywrapfst.Weight(fst.weight_type(), sil_cost), sil_state),
+            )
+        fst.delete_states([next_state])
+        fst.set_final(loop_state, pywrapfst.Weight.one(fst.weight_type()))
+        fst.arcsort("olabel")
+        fst.write(dictionary.align_lexicon_path)
+
+        with mfa_open(dictionary.align_lexicon_int_path, "w") as f:
+            pronunciation_query = (
+                session.query(Word.mapping_id, Pronunciation.pronunciation)
+                .join(Pronunciation.word)
+                .filter(Word.dictionary_id == dictionary.id)
+                .order_by(Word.mapping_id)
+            )
+            for m_id, pron in pronunciation_query:
+                pron = pron.split()
+                if self.position_dependent_phones:
+                    if pron[0] != self.optional_silence_phone:
+                        if len(pron) == 1:
+                            pron[0] += "_S"
+                        else:
+                            pron[0] += "_B"
+                            pron[-1] += "_E"
+                            for i in range(1, len(pron) - 1):
+                                pron[i] += "_I"
+
+                pron_string = " ".join(map(str, [self.phone_mapping[x] for x in pron]))
+                f.write(f"{m_id} {m_id} {pron_string}\n")
+
+    def export_trained_rules(self, output_directory: str) -> None:
+        """
+        Export rules with pronunciation and silence probabilities calculated to an output directory
+
+        Parameters
+        ----------
+        output_directory: str
+            Directory for export
+        """
+        with self.session() as session:
+            rules = (
+                session.query(PhonologicalRule)
+                .filter(PhonologicalRule.probability != None)  # noqa
+                .all()
+            )
+            if rules:
+                output_rules_path = os.path.join(output_directory, "rules.yaml")
+                dialectal_rules = {"rules": []}
+                for r in rules:
+                    d = r.to_json()
+                    dialect = d.pop("dialect")
+                    if dialect is None:
+                        dialectal_rules["rules"].append(d)
+                    else:
+                        dialect = dialect.name
+                        if "dialects" not in dialectal_rules:
+                            dialectal_rules["dialects"] = {}
+                        if dialect not in dialectal_rules["dialects"]:
+                            dialectal_rules["dialects"][dialect] = []
+                        dialectal_rules["dialects"][dialect].append(d)
+                with mfa_open(output_rules_path, "w") as f:
+                    yaml.safe_dump(dict(dialectal_rules), f, allow_unicode=True)
 
     def export_lexicon(
         self,
@@ -906,7 +1233,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         path: str,
         write_disambiguation: typing.Optional[bool] = False,
         probability: typing.Optional[bool] = False,
-        silence_probabilities: typing.Optional[bool] = False,
     ) -> None:
         """
         Export pronunciation dictionary to a text file
@@ -929,15 +1255,18 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 columns.append(Pronunciation.disambiguation)
             if probability:
                 columns.append(Pronunciation.probability)
-                if silence_probabilities:
-                    columns.append(Pronunciation.silence_after_probability)
-                    columns.append(Pronunciation.silence_before_correction)
-                    columns.append(Pronunciation.non_silence_before_correction)
+                columns.append(Pronunciation.silence_after_probability)
+                columns.append(Pronunciation.silence_before_correction)
+                columns.append(Pronunciation.non_silence_before_correction)
             bn = DictBundle("pronunciation_data", *columns)
             pronunciations = (
                 session.query(bn)
                 .join(Pronunciation.word)
-                .filter(Word.dictionary_id == dictionary_id)
+                .filter(
+                    Word.dictionary_id == dictionary_id,
+                    Word.word_type.in_([WordType.speech, WordType.clitic]),
+                )
+                .order_by(Word.word)
             )
             for row in pronunciations:
                 data = row.pronunciation_data
@@ -948,19 +1277,18 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 if probability and data["probability"] is not None:
                     probability_string = f"{data['probability']}"
 
-                    if silence_probabilities:
-                        extra_probs = [
-                            data["silence_after_probability"],
-                            data["silence_before_correction"],
-                            data["non_silence_before_correction"],
-                        ]
-                        if all(x is None for x in extra_probs):
+                    extra_probs = [
+                        data["silence_after_probability"],
+                        data["silence_before_correction"],
+                        data["non_silence_before_correction"],
+                    ]
+                    if all(x is None for x in extra_probs):
+                        continue
+                    for x in extra_probs:
+                        if x is None:
                             continue
-                        for x in extra_probs:
-                            if x is None:
-                                continue
-                            probability_string += f"\t{x}"
-                if probability:
+                        probability_string += f"\t{x}"
+                if probability_string:
                     f.write(f"{data['word']}\t{probability_string}\t{phones}\n")
                 else:
                     f.write(f"{data['word']}\t{phones}\n")
@@ -1001,10 +1329,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         binary_ext = ".fst"
         word_disambig_path = os.path.join(dictionary.temp_directory, "word_disambig.txt")
         with mfa_open(word_disambig_path, "w") as f:
-            try:
-                f.write(str(self.word_mapping(dictionary.id)["#0"]))
-            except KeyError:
-                pass
+            f.write(str(self.word_mapping(dictionary.id)["#0"]))
         if write_disambiguation:
             text_ext = ".disambig_text_fst"
             binary_ext = ".disambig_fst"
@@ -1100,7 +1425,9 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         """Mapping of phone symbols to integer IDs for Kaldi processing"""
         if self._phone_mapping is None:
             with self.session() as session:
-                phones = session.query(Phone.phone, Phone.mapping_id).order_by(Phone.id).all()
+                phones = (
+                    session.query(Phone.kaldi_label, Phone.mapping_id).order_by(Phone.id).all()
+                )
                 self._phone_mapping = {x[0]: x[1] for x in phones}
         return self._phone_mapping
 
@@ -1200,36 +1527,148 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     encoding="utf8",
                 ) as cf:
                     oovs = (
-                        session.query(OovWord.word, OovWord.count)
-                        .filter(OovWord.dictionary_id == dict_id)
-                        .order_by(sqlalchemy.desc(OovWord.count))
+                        session.query(Word.word, Word.count)
+                        .filter(
+                            Word.dictionary_id == dict_id,
+                            Word.word_type == WordType.oov,
+                            Word.word != self.oov_word,
+                        )
+                        .order_by(sqlalchemy.desc(Word.count))
                     )
                     for word, count in oovs:
                         f.write(word + "\n")
                         cf.write(f"{word}\t{count}\n")
 
-    def calculate_oovs_found(self) -> None:
-        """Sum the counts of oovs found in pronunciation dictionaries"""
-
+    def find_all_cutoffs(self) -> None:
+        """Find all instances of cutoff words followed by actual words"""
+        logger.info("Finding all cutoffs...")
         with self.session() as session:
-            session.query(OovWord).delete()
-            session.flush()
-            oov_words = {}
-            for dict_id in self.dictionary_lookup.values():
-                utterances = (
-                    session.query(Utterance.oovs)
-                    .join(Utterance.speaker)
-                    .filter(Speaker.dictionary_id == dict_id)
-                    .filter(Utterance.oovs != "")
+            c = session.query(Corpus).first()
+            if c.cutoffs_found:
+                return
+            initial_brackets = re.escape("".join(x[0] for x in self.brackets))
+            final_brackets = re.escape("".join(x[1] for x in self.brackets))
+            pronunciation_mapping = {}
+            word_mapping = {}
+            max_ids = collections.defaultdict(int)
+            max_pron_id = session.query(sqlalchemy.func.max(Pronunciation.id)).scalar()
+            max_word_id = session.query(sqlalchemy.func.max(Word.id)).scalar()
+            for d_id, max_id in (
+                session.query(Dictionary.id, sqlalchemy.func.max(Word.mapping_id))
+                .join(Word.dictionary)
+                .group_by(Dictionary.id)
+            ):
+                max_ids[d_id] = max_id
+            for d_id in self.dictionary_lookup.values():
+                pronunciation_mapping[d_id] = collections.defaultdict(list)
+                word_mapping[d_id] = {}
+                words = (
+                    session.query(Word.mapping_id, Word.word, Pronunciation.pronunciation)
+                    .join(Pronunciation.word)
+                    .filter(Word.dictionary_id == d_id)
                 )
-                for (oovs,) in utterances:
-                    for w in oovs.split():
-                        if w not in oov_words:
-                            oov_words[w] = {"word": w, "count": 0, "dictionary_id": dict_id}
-                        oov_words[w]["count"] += 1
-            session.bulk_insert_mappings(OovWord, oov_words.values())
+                for m_id, w, pron in words:
+                    pronunciation_mapping[d_id][w].append(pron)
+                    word_mapping[d_id][w] = m_id
+            new_word_mapping = []
+            new_pronunciation_mapping = []
+            utterances = (
+                session.query(
+                    Utterance.id,
+                    Speaker.dictionary_id,
+                    Utterance.normalized_text,
+                )
+                .join(Utterance.speaker)
+                .filter(
+                    Utterance.normalized_text.regexp_match(f"[{initial_brackets}](cutoff|hes)")
+                )
+            )
+            utterance_mapping = []
+            for u_id, dict_id, normalized_text in utterances:
+                text = normalized_text.split()
+                modified = False
+                for i, word in enumerate(text):
+                    m = re.match(
+                        f"^[{initial_brackets}](cutoff|hes)([-_](?P<word>[^{final_brackets}]))?[{final_brackets}]$",
+                        word,
+                    )
+                    if not m:
+                        continue
+                    next_word = None
+                    try:
+                        next_word = m.group("word")
+                        if next_word not in word_mapping[dict_id]:
+                            raise ValueError
+                    except Exception:
+                        if i != len(text) - 1:
+                            next_word = text[i + 1]
+                    if (
+                        next_word is None
+                        or next_word not in pronunciation_mapping[dict_id]
+                        or self.oov_phone in pronunciation_mapping[dict_id][next_word]
+                        or self.optional_silence_phone in pronunciation_mapping[dict_id][next_word]
+                    ):
+                        continue
+                    new_word = f"<cutoff-{next_word}>"
+                    if new_word not in word_mapping[dict_id]:
+                        max_word_id += 1
+                        max_ids[dict_id] += 1
+                        max_pron_id += 1
+                        new_pronunciation_mapping.append(
+                            {
+                                "id": max_pron_id,
+                                "base_pronunciation_id": max_pron_id,
+                                "pronunciation": self.oov_phone,
+                                "word_id": max_word_id,
+                            }
+                        )
+                        prons = pronunciation_mapping[dict_id][next_word]
+                        pronunciation_mapping[dict_id][new_word] = []
+                        for p in prons:
+                            p = p.split()
+                            for pi in range(len(p)):
+                                new_p = " ".join(p[: pi + 1])
+                                if new_p in pronunciation_mapping[dict_id][new_word]:
+                                    continue
+                                pronunciation_mapping[dict_id][new_word].append(new_p)
+                                max_pron_id += 1
+                                new_pronunciation_mapping.append(
+                                    {
+                                        "id": max_pron_id,
+                                        "pronunciation": new_p,
+                                        "word_id": max_word_id,
+                                        "base_pronunciation_id": max_pron_id,
+                                    }
+                                )
+                        new_word_mapping.append(
+                            {
+                                "id": max_word_id,
+                                "word": new_word,
+                                "dictionary_id": dict_id,
+                                "mapping_id": max_ids[dict_id],
+                                "word_type": WordType.cutoff,
+                            }
+                        )
+                        word_mapping[dict_id][new_word] = max_ids[dict_id]
+                    text[i] = new_word
+                    modified = True
+                if modified:
+                    utterance_mapping.append(
+                        {
+                            "id": u_id,
+                            "normalized_text": " ".join(text),
+                        }
+                    )
+            session.bulk_insert_mappings(
+                Word, new_word_mapping, return_defaults=False, render_nulls=True
+            )
+            session.bulk_insert_mappings(
+                Pronunciation, new_pronunciation_mapping, return_defaults=False, render_nulls=True
+            )
+            bulk_update(session, Utterance, utterance_mapping)
+            session.query(Corpus).update({"cutoffs_found": True})
             session.commit()
-        self.save_oovs_found(self.output_directory)
+        self._words_mappings = {}
 
     def write_lexicon_information(self, write_disambiguation: Optional[bool] = False) -> None:
         """
@@ -1241,33 +1680,29 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             Flag to use disambiguation symbols in the output
         """
         os.makedirs(self.phones_dir, exist_ok=True)
+        if self.use_cutoff_model:
+            self.find_all_cutoffs()
         self._write_phone_symbol_table()
         self._write_grapheme_symbol_table()
         self._write_disambig()
-        self._write_word_boundaries()
+        if self.position_dependent_phones:
+            self._write_word_boundaries()
         if self.use_g2p:
             return
         silence_disambiguation_symbol = None
         if write_disambiguation:
             silence_disambiguation_symbol = self.silence_disambiguation_symbol
 
-        debug = getattr(self, "debug", False)
         with self.session() as session:
-            dictionaries = session.query(Dictionary)
+            dictionaries: typing.List[Dictionary] = session.query(Dictionary)
             for d in dictionaries:
                 os.makedirs(d.temp_directory, exist_ok=True)
-                if debug:
-                    self.export_lexicon(d.id, os.path.join(d.temp_directory, "lexicon.txt"))
                 self._write_word_file(d)
                 self._write_probabilistic_fst_text(session, d, silence_disambiguation_symbol)
                 self._write_fst_binary(
                     d, write_disambiguation=silence_disambiguation_symbol is not None
                 )
-                if not debug:
-                    if os.path.exists(os.path.join(d.temp_directory, "temp.fst")):
-                        os.remove(os.path.join(d.temp_directory, "temp.fst"))
-                    if os.path.exists(os.path.join(d.temp_directory, "lexicon.text.fst")):
-                        os.remove(os.path.join(d.temp_directory, "lexicon.text.fst"))
+                self._write_align_lexicon(session, d, silence_disambiguation_symbol)
 
     def write_training_information(self) -> None:
         """Write phone information needed for training"""
@@ -1279,8 +1714,14 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         """
         Write the word mapping to the temporary directory
         """
-        with mfa_open(dictionary.words_symbol_path, "w") as f:
-            for w, i in self.word_mapping(dictionary.id).items():
+        self._words_mappings = {}
+        with mfa_open(dictionary.words_symbol_path, "w") as f, self.session() as session:
+            words = (
+                session.query(Word.word, Word.mapping_id)
+                .filter(Word.dictionary_id == dictionary.id)
+                .order_by(Word.mapping_id)
+            )
+            for w, i in words:
                 f.write(f"{w} {i}\n")
 
 
@@ -1307,4 +1748,4 @@ class MultispeakerDictionary(MultispeakerDictionaryMixin):
     @property
     def output_directory(self) -> str:
         """Root temporary directory to store all dictionary information"""
-        return os.path.join(self.temporary_directory, self.identifier)
+        return os.path.join(GLOBAL_CONFIG.temporary_directory, self.identifier)

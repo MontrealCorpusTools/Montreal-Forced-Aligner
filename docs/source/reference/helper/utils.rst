@@ -11,4 +11,3 @@
        thirdparty_binary
        log_kaldi_errors
        parse_logs
-       CustomFormatter

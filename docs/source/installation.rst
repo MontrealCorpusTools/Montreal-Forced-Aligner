@@ -5,7 +5,7 @@ Installation
 
 .. important::
 
-   Kaldi and MFA are now built on :xref:`conda_forge` |:tada:|, so installation of third party binaries is wholly through conda from 2.0.0b4 onwards. Installing MFA via conda will pick up Kaldi as well.
+   Kaldi and MFA are now built on :xref:`conda_forge` :fas:`party-horn`, so installation of third party binaries is wholly through conda from 2.0.0b4 onwards. Installing MFA via conda will pick up Kaldi as well.
 
 
 All platforms
@@ -17,6 +17,15 @@ All platforms
    a.  You can enable the :code:`conda-forge` channel by default by running :code:`conda config --add channels conda-forge` in order to omit the :code:`-c conda-forge` from these commands
 
 3. Ensure you're in the new environment created (:code:`conda activate aligner`)
+
+Installing SpeechBrain
+----------------------
+
+1. Ensure you are in the conda environment created above
+2. Install PyTorch
+   a. CPU: :code:`conda install pytorch torchvision torchaudio cpuonly -c pytorch`
+   b. GPU: :code:`conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia`
+3. Install Speechbrain via pip: :code:`pip install speechbrain`
 
 Upgrading from non-conda version
 ================================

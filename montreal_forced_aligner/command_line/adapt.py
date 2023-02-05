@@ -2,123 +2,117 @@
 from __future__ import annotations
 
 import os
-import time
-from typing import TYPE_CHECKING, List, Optional
+
+import click
 
 from montreal_forced_aligner.alignment import AdaptingAligner
-from montreal_forced_aligner.command_line.utils import validate_model_arg
-from montreal_forced_aligner.exceptions import ArgumentError
+from montreal_forced_aligner.command_line.utils import (
+    check_databases,
+    cleanup_databases,
+    common_options,
+    validate_acoustic_model,
+    validate_dictionary,
+)
+from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 
-if TYPE_CHECKING:
-    from argparse import Namespace
-
-__all__ = ["adapt_model", "validate_args", "run_adapt_model"]
+__all__ = ["adapt_model_cli"]
 
 
-def adapt_model(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
+@click.command(
+    name="adapt",
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+        allow_interspersed_args=True,
+    ),
+    short_help="Adapt an acoustic model",
+)
+@click.argument("corpus_directory", type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
+@click.argument("acoustic_model_path", type=click.UNPROCESSED, callback=validate_acoustic_model)
+@click.argument("output_model_path", type=click.Path(file_okay=True, dir_okay=False))
+@click.option(
+    "--output_directory",
+    help="Path to save alignments.",
+    type=click.Path(file_okay=False, dir_okay=True),
+)
+@click.option(
+    "--config_path",
+    "-c",
+    help="Path to config file to use for training.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+)
+@click.option(
+    "--speaker_characters",
+    "-s",
+    help="Number of characters of file names to use for determining speaker, "
+    "default is to use directory names.",
+    type=str,
+    default="0",
+)
+@click.option(
+    "--audio_directory",
+    "-a",
+    help="Audio directory root to use for finding audio files.",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+)
+@click.option(
+    "--output_format",
+    help="Format for aligned output files (default is long_textgrid).",
+    default="long_textgrid",
+    type=click.Choice(["long_textgrid", "short_textgrid", "json", "csv"]),
+)
+@click.option(
+    "--include_original_text",
+    is_flag=True,
+    help="Flag to include original utterance text in the output.",
+    default=False,
+)
+@common_options
+@click.help_option("-h", "--help")
+@click.pass_context
+def adapt_model_cli(context, **kwargs) -> None:
     """
-    Run the acoustic model adaptation
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Command line arguments
-    unknown_args: list[str]
-        Optional arguments that will be passed to configuration objects
+    Adapt an acoustic model to a new corpus.
     """
+    if kwargs.get("profile", None) is not None:
+        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+    GLOBAL_CONFIG.current_profile.update(kwargs)
+    GLOBAL_CONFIG.save()
+    check_databases()
+    config_path = kwargs.get("config_path", None)
+    output_directory = kwargs.get("output_directory", None)
+    output_model_path = kwargs.get("output_model_path", None)
+    corpus_directory = kwargs["corpus_directory"]
+    dictionary_path = kwargs["dictionary_path"]
+    acoustic_model_path = kwargs["acoustic_model_path"]
+    output_format = kwargs["output_format"]
+    include_original_text = kwargs["include_original_text"]
     adapter = AdaptingAligner(
-        acoustic_model_path=args.acoustic_model_path,
-        corpus_directory=args.corpus_directory,
-        dictionary_path=args.dictionary_path,
-        temporary_directory=args.temporary_directory,
-        **AdaptingAligner.parse_parameters(args.config_path, args, unknown_args),
+        corpus_directory=corpus_directory,
+        dictionary_path=dictionary_path,
+        acoustic_model_path=acoustic_model_path,
+        **AdaptingAligner.parse_parameters(config_path, context.params, context.args),
     )
+    if kwargs.get("clean", False):
+        adapter.clean_working_directory()
+        adapter.remove_database()
 
     try:
         adapter.adapt()
-        generate_final_alignments = True
-        if args.output_directory is None:
-            generate_final_alignments = False
-        else:
-            os.makedirs(args.output_directory, exist_ok=True)
-        export_model = True
-        if args.output_model_path is None:
-            export_model = False
-
-        if generate_final_alignments:
-            begin = time.time()
+        if output_directory is not None:
+            os.makedirs(output_directory, exist_ok=True)
             adapter.align()
-            adapter.log_debug(
-                f"Generated alignments with adapted model in {time.time() - begin} seconds"
-            )
-            output_format = getattr(args, "output_format", None)
             adapter.export_files(
-                args.output_directory,
+                output_directory,
                 output_format,
-                include_original_text=getattr(args, "include_original_text", False),
+                include_original_text=include_original_text,
             )
-        if export_model:
-            adapter.export_model(args.output_model_path)
+        if output_model_path is not None:
+            adapter.export_model(output_model_path)
     except Exception:
         adapter.dirty = True
         raise
     finally:
         adapter.cleanup()
-
-
-def validate_args(args: Namespace) -> None:
-    """
-    Validate the command line arguments
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Parsed command line arguments
-
-    Raises
-    ------
-    :class:`~montreal_forced_aligner.exceptions.ArgumentError`
-        If there is a problem with any arguments
-    """
-    try:
-        args.speaker_characters = int(args.speaker_characters)
-    except ValueError:
-        pass
-
-    args.output_directory = None
-    if not args.output_model_path:
-        args.output_model_path = None
-    output_paths = args.output_paths
-    if len(output_paths) > 2:
-        raise ArgumentError(f"Got more arguments for output_paths than 2: {output_paths}")
-    for path in output_paths:
-        if path.endswith(".zip"):
-            args.output_model_path = path
-        else:
-            args.output_directory = path.rstrip("/").rstrip("\\")
-
-    args.corpus_directory = args.corpus_directory.rstrip("/").rstrip("\\")
-    if not os.path.exists(args.corpus_directory):
-        raise ArgumentError(f"Could not find the corpus directory {args.corpus_directory}.")
-    if not os.path.isdir(args.corpus_directory):
-        raise ArgumentError(
-            f"The specified corpus directory ({args.corpus_directory}) is not a directory."
-        )
-
-    args.dictionary_path = validate_model_arg(args.dictionary_path, "dictionary")
-    args.acoustic_model_path = validate_model_arg(args.acoustic_model_path, "acoustic")
-
-
-def run_adapt_model(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
-    """
-    Wrapper function for running acoustic model adaptation
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Parsed command line arguments
-    unknown_args: list[str]
-        Parsed command line arguments to be passed to the configuration objects
-    """
-    validate_args(args)
-    adapt_model(args, unknown_args)
+        cleanup_databases()

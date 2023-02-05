@@ -2,83 +2,84 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, List, Optional
 
-from montreal_forced_aligner.exceptions import ArgumentError
-from montreal_forced_aligner.segmenter import Segmenter
+import click
 
-if TYPE_CHECKING:
-    from argparse import Namespace
+from montreal_forced_aligner.command_line.utils import (
+    check_databases,
+    cleanup_databases,
+    common_options,
+)
+from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
+from montreal_forced_aligner.vad.segmenter import Segmenter
+
+__all__ = ["create_segments_cli"]
 
 
-__all__ = ["create_segments", "validate_args", "run_create_segments"]
-
-
-def create_segments(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
+@click.command(
+    name="segment",
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+        allow_interspersed_args=True,
+    ),
+    short_help="Split long audio files into shorter segments",
+)
+@click.argument("corpus_directory", type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.argument("output_directory", type=click.Path(file_okay=False, dir_okay=True))
+@click.option(
+    "--config_path",
+    "-c",
+    help="Path to config file to use for training.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+)
+@click.option(
+    "--output_format",
+    help="Format for aligned output files (default is long_textgrid).",
+    default="long_textgrid",
+    type=click.Choice(["long_textgrid", "short_textgrid", "json", "csv"]),
+)
+@click.option(
+    "--speechbrain/--no_speechbrain",
+    "speechbrain",
+    help="Flag for using SpeechBrain's pretrained VAD model",
+)
+@click.option(
+    "--cuda/--no_cuda",
+    "cuda",
+    help="Flag for using CUDA for SpeechBrain's model",
+)
+@common_options
+@click.help_option("-h", "--help")
+@click.pass_context
+def create_segments_cli(context, **kwargs) -> None:
     """
-    Run the sound file segmentation
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Command line arguments
-    unknown_args: list[str]
-        Optional arguments that will be passed to configuration objects
+    Create segments based on SpeechBrain's voice activity detection (VAD) model or a basic energy-based algorithm
     """
+    if kwargs.get("profile", None) is not None:
+        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+    GLOBAL_CONFIG.current_profile.update(kwargs)
+    GLOBAL_CONFIG.save()
+    check_databases()
+
+    config_path = kwargs.get("config_path", None)
+    corpus_directory = kwargs["corpus_directory"]
+    output_directory = kwargs["output_directory"]
+    output_format = kwargs["output_format"]
 
     segmenter = Segmenter(
-        corpus_directory=args.corpus_directory,
-        temporary_directory=args.temporary_directory,
-        **Segmenter.parse_parameters(args.config_path, args, unknown_args),
+        corpus_directory=corpus_directory,
+        **Segmenter.parse_parameters(config_path, context.params, context.args),
     )
+    if kwargs.get("clean", False):
+        segmenter.clean_working_directory()
+        segmenter.remove_database()
     try:
         segmenter.segment()
-        output_format = getattr(args, "output_format", None)
-        segmenter.export_files(args.output_directory, output_format)
+        segmenter.export_files(output_directory, output_format)
     except Exception:
         segmenter.dirty = True
         raise
     finally:
         segmenter.cleanup()
-
-
-def validate_args(args: Namespace) -> None:
-    """
-    Validate the command line arguments
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Parsed command line arguments
-
-    Raises
-    ------
-    :class:`~montreal_forced_aligner.exceptions.ArgumentError`
-        If there is a problem with any arguments
-    """
-    args.output_directory = args.output_directory.rstrip("/").rstrip("\\")
-    args.corpus_directory = args.corpus_directory.rstrip("/").rstrip("\\")
-    if not os.path.exists(args.corpus_directory):
-        raise ArgumentError(f"Could not find the corpus directory {args.corpus_directory}.")
-    if not os.path.isdir(args.corpus_directory):
-        raise ArgumentError(
-            f"The specified corpus directory ({args.corpus_directory}) is not a directory."
-        )
-
-    if args.corpus_directory == args.output_directory:
-        raise ArgumentError("Corpus directory and output directory cannot be the same folder.")
-
-
-def run_create_segments(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
-    """
-    Wrapper function for running sound file segmentation
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Parsed command line arguments
-    unknown_args: list[str]
-        Parsed command line arguments to be passed to the configuration objects
-    """
-    validate_args(args)
-    create_segments(args, unknown_args)
+        cleanup_databases()

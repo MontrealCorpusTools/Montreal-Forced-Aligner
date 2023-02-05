@@ -42,8 +42,6 @@ Speaker-independent transcription
    LmRescoreArguments
    CarpaLmRescoreFunction
    CarpaLmRescoreArguments
-   ScoreFunction
-   ScoreArguments
 
 Speaker-adapted transcription
 -----------------------------

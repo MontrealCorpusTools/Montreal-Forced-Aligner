@@ -18,7 +18,6 @@ def test_monophone_config(basic_corpus_dir, basic_dict_path, temp_dir):
     am_trainer = TrainableAligner(
         corpus_directory=basic_corpus_dir,
         dictionary_path=basic_dict_path,
-        temporary_directory=temp_dir,
     )
     config = MonophoneTrainer(identifier="mono", worker=am_trainer)
     config.compute_calculated_properties()
@@ -53,7 +52,6 @@ def test_triphone_config(basic_corpus_dir, basic_dict_path, temp_dir):
     am_trainer = TrainableAligner(
         corpus_directory=basic_corpus_dir,
         dictionary_path=basic_dict_path,
-        temporary_directory=temp_dir,
     )
     config = TriphoneTrainer(identifier="tri", worker=am_trainer)
     config.compute_calculated_properties()
@@ -65,7 +63,6 @@ def test_lda_mllt_config(basic_corpus_dir, basic_dict_path, temp_dir):
     am_trainer = TrainableAligner(
         corpus_directory=basic_corpus_dir,
         dictionary_path=basic_dict_path,
-        temporary_directory=temp_dir,
     )
 
     assert am_trainer.beam == 10
@@ -92,7 +89,6 @@ def test_load_align(
         acoustic_model_path=english_acoustic_model,
         corpus_directory=basic_corpus_dir,
         dictionary_path=basic_dict_path,
-        temporary_directory=temp_dir,
         **params
     )
 
@@ -111,7 +107,6 @@ def test_load_align(
         acoustic_model_path=english_acoustic_model,
         corpus_directory=basic_corpus_dir,
         dictionary_path=basic_dict_path,
-        temporary_directory=temp_dir,
         **params
     )
     assert aligner.beam == 10
@@ -122,10 +117,7 @@ def test_load_align(
 def test_load_basic_train(basic_corpus_dir, basic_dict_path, temp_dir, basic_train_config_path):
     params = TrainableAligner.parse_parameters(basic_train_config_path)
     am_trainer = TrainableAligner(
-        corpus_directory=basic_corpus_dir,
-        dictionary_path=basic_dict_path,
-        temporary_directory=temp_dir,
-        **params
+        corpus_directory=basic_corpus_dir, dictionary_path=basic_dict_path, **params
     )
 
     assert am_trainer.beam == 100
@@ -144,29 +136,20 @@ def test_load_basic_train(basic_corpus_dir, basic_dict_path, temp_dir, basic_tra
 def test_load_mono_train(basic_corpus_dir, basic_dict_path, temp_dir, mono_train_config_path):
     params = TrainableAligner.parse_parameters(mono_train_config_path)
     am_trainer = TrainableAligner(
-        corpus_directory=basic_corpus_dir,
-        dictionary_path=basic_dict_path,
-        temporary_directory=temp_dir,
-        **params
+        corpus_directory=basic_corpus_dir, dictionary_path=basic_dict_path, **params
     )
     for t in am_trainer.training_configs.values():
-        assert not t.use_mp
         assert t.use_energy
-    assert not am_trainer.use_mp
     assert am_trainer.use_energy
     am_trainer.cleanup()
 
 
 def test_load_ivector_train(basic_corpus_dir, temp_dir, train_ivector_config_path):
     params = TrainableIvectorExtractor.parse_parameters(train_ivector_config_path)
-    trainer = TrainableIvectorExtractor(
-        corpus_directory=basic_corpus_dir, temporary_directory=temp_dir, **params
-    )
+    trainer = TrainableIvectorExtractor(corpus_directory=basic_corpus_dir, **params)
 
     for t in trainer.training_configs.values():
-        assert not t.use_mp
         assert t.use_energy
-    assert not trainer.use_mp
     trainer.cleanup()
 
 
@@ -174,10 +157,7 @@ def test_load(basic_corpus_dir, basic_dict_path, temp_dir, config_directory):
     path = os.path.join(config_directory, "basic_train_config.yaml")
     params = TrainableAligner.parse_parameters(path)
     am_trainer = TrainableAligner(
-        corpus_directory=basic_corpus_dir,
-        dictionary_path=basic_dict_path,
-        temporary_directory=temp_dir,
-        **params
+        corpus_directory=basic_corpus_dir, dictionary_path=basic_dict_path, **params
     )
     assert len(am_trainer.training_configs) == 4
     assert isinstance(am_trainer.training_configs["monophone"], MonophoneTrainer)

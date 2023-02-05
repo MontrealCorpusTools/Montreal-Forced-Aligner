@@ -7,21 +7,34 @@ dependencies:
   - tqdm
   - requests
   - colorama
-  - setuptools_scm
   - ansiwrap
   - pyyaml
   - praatio
   - dataclassy
-  - sqlalchemy>=1.4
-  - pip
+  - sqlalchemy>=2.0
   - pynini
-  - biopython
+  - pgvector
+  - pgvector-python
+  - postgresql
+  - hdbscan
+  - psycopg2
+  - biopython=1.79
+  - click
+  - setuptools_scm
+  - importlib_metadata
   - sphinx
   - numpydoc
   - sphinx-design
-  - sphinxcontrib-autoprogram
+  - sphinx-click
+  - sphinx-intl
   - pydata-sphinx-theme
-  - interrogate
-  - importlib_metadata
+  - myst-parser
+  - mock
+  - setuptools-scm
+  - numba
+  - kneed
+  - matplotlib
+  - seaborn
   - pip:
-      - sphinxemoji
+      - sphinx-needs
+      - sphinxcontrib-plantuml

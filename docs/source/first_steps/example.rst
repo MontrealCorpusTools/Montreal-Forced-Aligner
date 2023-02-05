@@ -34,9 +34,9 @@ Set up
 ------
 
 1. Ensure you have installed MFA via :ref:`installation`.
-2. Ensure you have downloaded the pretrained model via :code:`mfa model download acoustic english`
-3. Download the prepared LibriSpeech dataset (`LibriSpeech data set`_) and extract it somewhere on your computer
-4. Download the LibriSpeech lexicon (`LibriSpeech lexicon`_) and save it somewhere on your computer
+2. Ensure you have downloaded the pretrained model via :code:`mfa model download acoustic english_mfa`
+3. Ensure you have downloaded the pretrained US english dictionary via :code:`mfa model download dictionary english_us_mfa`
+4. Download the prepared LibriSpeech dataset (`LibriSpeech data set`_) and extract it somewhere on your computer
 
 
 Alignment
@@ -50,7 +50,7 @@ In the same environment that you've installed MFA, enter the following command i
 
 .. code-block:: bash
 
-   mfa align /path/to/librispeech/dataset /path/to/librispeech/lexicon.txt english ~/Documents/aligned_librispeech
+   mfa align /path/to/librispeech/dataset english_us_ma english_mfa ~/Documents/aligned_librispeech
 
 Aligning through training
 ~~~~~~~~~~~~~~~~~~~~~~~~~

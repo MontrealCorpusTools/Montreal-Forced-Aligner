@@ -21,11 +21,13 @@ Multiprocessing workers and functions
    :toctree: generated/
 
    AlignFunction
+   FineTuneFunction
    CompileTrainGraphsFunction
    compile_information_func
    AccStatsFunction
    AlignmentExtractionFunction
    ExportTextGridProcessWorker
+   PhoneConfidenceFunction
 
 
 Multiprocessing argument classes
@@ -42,3 +44,5 @@ Multiprocessing argument classes
    CompileInformationArguments
    AlignmentExtractionArguments
    ExportTextGridArguments
+   FineTuneArguments
+   PhoneConfidenceArguments

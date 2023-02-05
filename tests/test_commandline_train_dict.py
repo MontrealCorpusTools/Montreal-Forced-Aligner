@@ -1,8 +1,8 @@
 import os
 
-from montreal_forced_aligner.command_line.align import run_align_corpus
-from montreal_forced_aligner.command_line.mfa import parser
-from montreal_forced_aligner.command_line.train_dictionary import run_train_dictionary
+import click.testing
+
+from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
 def test_train_dict(
@@ -21,7 +21,7 @@ def test_train_dict(
         english_acoustic_model,
         output_path,
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "train_dictionary_cli"),
         "-q",
         "--clean",
         "--debug",
@@ -30,8 +30,15 @@ def test_train_dict(
         basic_align_config_path,
         "--use_mp",
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_train_dictionary(args)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
 
     dict_path = os.path.join(output_path, "english_us_arpa.dict")
     assert os.path.exists(output_path)
@@ -43,12 +50,20 @@ def test_train_dict(
         english_acoustic_model,
         textgrid_output,
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "train_dictionary_cli"),
         "-q",
         "--clean",
         "--debug",
         "--config_path",
         basic_align_config_path,
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_align_corpus(args)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+    assert os.path.exists(textgrid_output)

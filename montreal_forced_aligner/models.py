@@ -6,6 +6,7 @@ Model classes
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import typing
@@ -21,15 +22,13 @@ from montreal_forced_aligner.exceptions import (
     LanguageModelNotFoundError,
     ModelLoadError,
     ModelsConnectionError,
-    PretrainedModelNotFoundError,
     PronunciationAcousticMismatchError,
+    RemoteModelNotFoundError,
 )
 from montreal_forced_aligner.helper import EnhancedJSONEncoder, TerminalPrinter, mfa_open
-from montreal_forced_aligner.utils import configure_logger
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
-    from logging import Logger
 
     from montreal_forced_aligner.abc import MetaDict
     from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
@@ -39,6 +38,8 @@ else:
 
 # default format for output
 FORMAT = "zip"
+
+logger = logging.getLogger("mfa")
 
 __all__ = [
     "Archive",
@@ -258,7 +259,7 @@ class Archive(MfaModel):
             The trainer to construct the metadata from
         """
         with mfa_open(os.path.join(self.dirname, "meta.json"), "w") as f:
-            json.dump(trainer.meta, f)
+            json.dump(trainer.meta, f, ensure_ascii=False)
 
     @classmethod
     def empty(
@@ -337,8 +338,10 @@ class AcousticModel(Archive):
     files = [
         "final.mdl",
         "final.alimdl",
-        "final.occs",
         "lda.mat",
+        "phone_pdf.counts",
+        # "rules.yaml",
+        "phone_lm.fst",
         "tree",
         "phones.txt",
         "graphemes.txt",
@@ -363,7 +366,7 @@ class AcousticModel(Archive):
             Trainer to supply metadata information about the acoustic model
         """
         with mfa_open(os.path.join(self.dirname, "meta.json"), "w") as f:
-            json.dump(trainer.meta, f)
+            json.dump(trainer.meta, f, ensure_ascii=False)
 
     @property
     def parameters(self) -> MetaDict:
@@ -381,6 +384,18 @@ class AcousticModel(Archive):
         params["final_silence_correction"] = self.meta.get("final_silence_correction", None)
         if "other_noise_phone" in self.meta:
             params["other_noise_phone"] = self.meta["other_noise_phone"]
+        # rules_path = os.path.join(self.dirname, "rules.yaml")
+        # if os.path.exists(rules_path):
+        #    params["rules_path"] = rules_path
+        if (
+            "dictionaries" in self.meta
+            and "position_dependent_phones" in self.meta["dictionaries"]
+        ):
+            params["position_dependent_phones"] = self.meta["dictionaries"][
+                "position_dependent_phones"
+            ]
+        else:
+            params["position_dependent_phones"] = self.meta.get("position_dependent_phones", True)
         return params
 
     @property
@@ -399,6 +414,7 @@ class AcousticModel(Archive):
             "allow_downsample": True,
             "allow_upsample": True,
             "use_pitch": False,
+            "use_voicing": False,
             "uses_cmvn": True,
             "uses_deltas": True,
             "uses_splices": False,
@@ -431,6 +447,11 @@ class AcousticModel(Archive):
                     self._meta["features"] = default_features
                     if "pitch" in self._meta["features"]:
                         self._meta["features"]["use_pitch"] = self._meta["features"].pop("pitch")
+                if (
+                    self._meta["features"].get("use_pitch", False)
+                    and self._meta["version"] < "2.0.6"
+                ):
+                    self._meta["features"]["use_delta_pitch"] = True
             if "phone_type" not in self._meta:
                 self._meta["phone_type"] = "triphone"
             if "optional_silence_phone" not in self._meta:
@@ -460,6 +481,22 @@ class AcousticModel(Archive):
                 )
                 if self._meta["features"]["uses_splices"]:
                     self._meta["features"]["uses_deltas"] = False
+            if (
+                self._meta["features"].get("use_pitch", False)
+                and "use_voicing" not in self._meta["features"]
+            ):
+                self._meta["features"]["use_voicing"] = True
+            if (
+                "dictionaries" in self._meta
+                and "position_dependent_phones" not in self._meta["dictionaries"]
+            ):
+                if self._meta["version"] < "2.0":
+                    default_value = True
+                else:
+                    default_value = False
+                self._meta["dictionaries"]["position_dependent_phones"] = self._meta.get(
+                    "position_dependent_phones", default_value
+                )
         self.parse_old_features()
         return self._meta
 
@@ -525,9 +562,9 @@ class AcousticModel(Archive):
             Base names of dictionaries to add pronunciation models
         """
         for base_name in dictionary_base_names:
-            f = f"{base_name}.fst"
-            if os.path.exists(os.path.join(source, f)):
-                copyfile(os.path.join(source, f), os.path.join(self.dirname, f))
+            for f in [f"{base_name}.fst", f"{base_name}_align.fst"]:
+                if os.path.exists(os.path.join(source, f)):
+                    copyfile(os.path.join(source, f), os.path.join(self.dirname, f))
 
     def export_model(self, destination: str) -> None:
         """
@@ -543,14 +580,9 @@ class AcousticModel(Archive):
             if os.path.exists(os.path.join(self.dirname, f)):
                 copyfile(os.path.join(self.dirname, f), os.path.join(destination, f))
 
-    def log_details(self, logger: Logger) -> None:
+    def log_details(self) -> None:
         """
         Log metadata information to a logger
-
-        Parameters
-        ----------
-        logger: :class:`~logging.Logger`
-            Logger to send debug information to
         """
         logger.debug("")
         logger.debug("====ACOUSTIC MODEL INFO====")
@@ -586,7 +618,8 @@ class AcousticModel(Archive):
             missing_phones = dictionary.meta["phones"] - set(self.meta["phones"])
         else:
             missing_phones = dictionary.non_silence_phones - set(self.meta["phones"])
-        if missing_phones and missing_phones != {"sp"}:  # Compatibility
+        missing_phones -= {"sp", "<eps>"}
+        if missing_phones:  # Compatibility
             raise (PronunciationAcousticMismatchError(missing_phones))
 
 
@@ -601,11 +634,15 @@ class IvectorExtractorModel(Archive):
         "final.ie",
         "final.ubm",
         "final.dubm",
+        "ivector_lda.mat",
         "plda",
-        "mean.vec",
-        "trans.mat",
+        "num_utts.ark",
+        "speaker_ivectors.ark",
     ]
-    extensions = [".zip", ".ivector"]
+    extensions = [
+        ".ivector",
+        ".zip",
+    ]
 
     def __init__(self, source: str, root_directory: Optional[str] = None):
         if source in IvectorExtractorModel.get_available_models():
@@ -1022,9 +1059,7 @@ class DictionaryModel(MfaModel):
         temp_directory = os.path.join(self.dirname, "temp")
         if os.path.exists(temp_directory):
             shutil.rmtree(temp_directory)
-        dictionary = MultispeakerDictionary(
-            self.path, temporary_directory=temp_directory, phone_set_type=self.phone_set_type
-        )
+        dictionary = MultispeakerDictionary(self.path, phone_set_type=self.phone_set_type)
         graphemes, phone_counts = dictionary.dictionary_setup()
         configuration_data["Dictionary"]["data"]["phones"] = sorted(dictionary.non_silence_phones)
         configuration_data["Dictionary"]["data"]["detailed_phone_info"] = {}
@@ -1193,10 +1228,11 @@ class ModelManager:
             k: {} for k in MODEL_TYPES.keys()
         }
         self.token = token
+        environment_token = os.environ.get("GITHUB_TOKEN", None)
+        if self.token is not None:
+            self.token = environment_token
         self.synced_remote = False
         self.printer = TerminalPrinter()
-
-        self.logger = configure_logger("models")
         self._cache_info = {}
         self.refresh_local()
 
@@ -1236,6 +1272,8 @@ class ModelManager:
         headers = {"Accept": "application/vnd.github.v3+json"}
         if self.token:
             headers["Authorization"] = f"token {self.token}"
+        else:
+            logger.debug("No Github Token supplied")
         page = 1
         etags = {}
         if "list_etags" in self._cache_info:
@@ -1292,7 +1330,8 @@ class ModelManager:
                 ]
             page += 1
         with mfa_open(self.cache_path, "w") as f:
-            json.dump(self._cache_info, f)
+            json.dump(self._cache_info, f, ensure_ascii=False)
+        self.synced_remote = True
 
     def has_local_model(self, model_type: str, model_name: str) -> bool:
         """Check for local model"""
@@ -1386,7 +1425,7 @@ class ModelManager:
         if not self.synced_remote:
             self.refresh_remote()
         if model_name not in self.remote_models[model_type]:
-            raise PretrainedModelNotFoundError(
+            raise RemoteModelNotFoundError(
                 model_name, model_type, sorted(self.remote_models[model_type].keys())
             )
         release = self.remote_models[model_type][model_name]
@@ -1407,6 +1446,6 @@ class ModelManager:
         with mfa_open(local_path, "wb") as f:
             f.write(r.content)
         self.refresh_local()
-        self.logger.info(
-            f"Saved model to f{local_path}, you can now use {model_name} in place of {model_type} paths in mfa commands."
+        logger.info(
+            f"Saved model to {local_path}, you can now use {model_name} in place of {model_type} paths in mfa commands."
         )

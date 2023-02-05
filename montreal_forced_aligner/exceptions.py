@@ -38,7 +38,6 @@ __all__ = [
     "CorpusError",
     "ModelLoadError",
     "CorpusReadError",
-    "ArgumentError",
     "AlignerError",
     "AlignmentError",
     "AlignmentExportError",
@@ -165,6 +164,17 @@ class ThirdpartyError(MFAError):
                 )
 
 
+# Feature Generation Errors
+
+
+class FeatureGenerationError(MFAError):
+    """
+    Exception class related to generating features
+    """
+
+    pass
+
+
 # Model Errors
 
 
@@ -189,7 +199,25 @@ class ModelLoadError(ModelError):
     def __init__(self, path: str):
         super().__init__("")
         self.message_lines = [
-            f"The archive {self.printer.error_text(path)} could not be parsed as an MFA model"
+            f"The archive {self.printer.error_text(path)} could not be parsed as an MFA model."
+        ]
+
+
+class ModelSaveError(ModelError):
+    """
+    Exception during saving of a model archive
+
+    Parameters
+    ----------
+    path: str
+        Path of the model archive
+    """
+
+    def __init__(self, path: str):
+        super().__init__("")
+        self.message_lines = [
+            f"The archive {self.printer.error_text(path)} already exists.",
+            "Please specify --overwrite if you would like to overwrite  it.",
         ]
 
 
@@ -413,7 +441,7 @@ class NoAlignmentsError(MFAError):
         suggested_beam_size = beam_size * 10
         suggested_retry_beam_size = suggested_beam_size * 4
         self.message_lines.append(
-            f'You can try rerunning with a larger beam (i.e. "mfa align ... --beam={suggested_beam_size} --retry_beam={suggested_retry_beam_size}").'
+            f'You can try rerunning with a larger beam (i.e. "mfa align ... --beam {suggested_beam_size} --retry_beam {suggested_retry_beam_size}").'
         )
         self.message_lines.append(
             'If increasing the beam size does not help, then there are likely issues with the corpus, dictionary, or acoustic model, and can be further diagnosed with the "mfa validate" command'
@@ -850,12 +878,18 @@ class KaldiProcessingError(MFAError):
 
     def refresh_message(self) -> None:
         """Regenerate the exceptions message"""
+        from montreal_forced_aligner.config import GLOBAL_CONFIG
+
         self.message_lines = [
             f"There were {len(self.error_logs)} job(s) with errors when running Kaldi binaries.",
             "See the log files below for more information.",
         ]
         for error_log in self.error_logs:
             self.message_lines.append(error_log)
+            if GLOBAL_CONFIG.current_profile.verbose:
+                with open(error_log, "r", encoding="utf8") as f:
+                    for line in f:
+                        self.message_lines.append(line.strip())
         if self.log_file:
             self.message_lines.append(
                 f" For more details, please check {self.printer.error_text(self.log_file)}"
@@ -873,7 +907,7 @@ class KaldiProcessingError(MFAError):
         self.error_logs.append(error_log)
         self.refresh_message()
 
-    def update_log_file(self, logger: logging.Logger) -> None:
+    def update_log_file(self) -> None:
         """
         Update the log file output
 
@@ -882,6 +916,11 @@ class KaldiProcessingError(MFAError):
         logger: logging.Logger
             Logger
         """
+
+        logger = logging.getLogger("mfa")
         if logger.handlers:
-            self.log_file = logger.handlers[0].baseFilename
+            for handler in logger.handlers:
+                if isinstance(handler, logging.FileHandler):
+                    self.log_file = handler.baseFilename
+                    break
         self.refresh_message()

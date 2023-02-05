@@ -1,6 +1,7 @@
 """Class definitions for LDA trainer"""
 from __future__ import annotations
 
+import logging
 import multiprocessing as mp
 import os
 import re
@@ -14,6 +15,7 @@ import tqdm
 
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import (
@@ -34,6 +36,8 @@ __all__ = [
     "LdaAccStatsFunction",
     "LdaAccStatsArguments",
 ]
+
+logger = logging.getLogger("mfa")
 
 
 class LdaAccStatsArguments(MfaArguments):
@@ -298,22 +302,34 @@ class LdaTrainer(TriphoneTrainer):
         list[:class:`~montreal_forced_aligner.acoustic_modeling.lda.LdaAccStatsArguments`]
             Arguments for processing
         """
-        feat_strings = self.worker.construct_feature_proc_strings()
-        return [
-            LdaAccStatsArguments(
-                j.name,
-                getattr(self, "db_path", ""),
-                os.path.join(self.working_log_directory, f"lda_acc_stats.{j.name}.log"),
-                j.dictionary_ids,
-                feat_strings[j.name],
-                j.construct_path_dictionary(self.previous_aligner.working_directory, "ali", "ark"),
-                self.previous_aligner.alignment_model_path,
-                self.lda_options,
-                j.construct_path_dictionary(self.working_directory, "lda", "acc"),
+        arguments = []
+        for j in self.jobs:
+            feat_strings = {}
+            for d_id in j.dictionary_ids:
+                feat_strings[d_id] = j.construct_feature_proc_string(
+                    self.working_directory,
+                    d_id,
+                    self.feature_options["uses_splices"],
+                    self.feature_options["splice_left_context"],
+                    self.feature_options["splice_right_context"],
+                    self.feature_options["uses_speaker_adaptation"],
+                )
+            arguments.append(
+                LdaAccStatsArguments(
+                    j.id,
+                    getattr(self, "db_string", ""),
+                    os.path.join(self.working_log_directory, f"lda_acc_stats.{j.id}.log"),
+                    j.dictionary_ids,
+                    feat_strings,
+                    j.construct_path_dictionary(
+                        self.previous_aligner.working_directory, "ali", "ark"
+                    ),
+                    self.previous_aligner.alignment_model_path,
+                    self.lda_options,
+                    j.construct_path_dictionary(self.working_directory, "lda", "acc"),
+                )
             )
-            for j in self.jobs
-            if j.has_data
-        ]
+        return arguments
 
     def calc_lda_mllt_arguments(self) -> List[CalcLdaMlltArguments]:
         """
@@ -324,24 +340,34 @@ class LdaTrainer(TriphoneTrainer):
         list[:class:`~montreal_forced_aligner.acoustic_modeling.lda.CalcLdaMlltArguments`]
             Arguments for processing
         """
-        feat_strings = self.worker.construct_feature_proc_strings()
-        return [
-            CalcLdaMlltArguments(
-                j.name,
-                getattr(self, "db_path", ""),
-                os.path.join(
-                    self.working_log_directory, f"lda_mllt.{self.iteration}.{j.name}.log"
-                ),
-                j.dictionary_ids,
-                feat_strings[j.name],
-                j.construct_path_dictionary(self.working_directory, "ali", "ark"),
-                self.model_path,
-                self.lda_options,
-                j.construct_path_dictionary(self.working_directory, "lda", "macc"),
+        arguments = []
+        for j in self.jobs:
+            feat_strings = {}
+            for d_id in j.dictionary_ids:
+                feat_strings[d_id] = j.construct_feature_proc_string(
+                    self.working_directory,
+                    d_id,
+                    self.feature_options["uses_splices"],
+                    self.feature_options["splice_left_context"],
+                    self.feature_options["splice_right_context"],
+                    self.feature_options["uses_speaker_adaptation"],
+                )
+            arguments.append(
+                CalcLdaMlltArguments(
+                    j.id,
+                    getattr(self, "db_string", ""),
+                    os.path.join(
+                        self.working_log_directory, f"lda_mllt.{self.iteration}.{j.id}.log"
+                    ),
+                    j.dictionary_ids,
+                    feat_strings,
+                    j.construct_path_dictionary(self.working_directory, "ali", "ark"),
+                    self.model_path,
+                    self.lda_options,
+                    j.construct_path_dictionary(self.working_directory, "lda", "macc"),
+                )
             )
-            for j in self.jobs
-            if j.has_data
-        ]
+        return arguments
 
     @property
     def train_type(self) -> str:
@@ -355,6 +381,8 @@ class LdaTrainer(TriphoneTrainer):
             "lda_dimension": self.lda_dimension,
             "random_prune": self.random_prune,
             "silence_csl": self.silence_csl,
+            "splice_left_context": self.splice_left_context,
+            "splice_right_context": self.splice_right_context,
         }
 
     def compute_calculated_properties(self) -> None:
@@ -383,10 +411,8 @@ class LdaTrainer(TriphoneTrainer):
         if os.path.exists(worker_lda_path):
             os.remove(worker_lda_path)
         arguments = self.lda_acc_stats_arguments()
-        with tqdm.tqdm(
-            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
-        ) as pbar:
-            if self.use_mp:
+        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
                 stopped = Stopped()
@@ -480,12 +506,10 @@ class LdaTrainer(TriphoneTrainer):
             Reference Kaldi script
 
         """
-        self.log_info("Re-calculating LDA...")
+        logger.info("Re-calculating LDA...")
         arguments = self.calc_lda_mllt_arguments()
-        with tqdm.tqdm(
-            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
-        ) as pbar:
-            if self.use_mp:
+        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
                 stopped = Stopped()
@@ -569,6 +593,9 @@ class LdaTrainer(TriphoneTrainer):
         Run a single LDA training iteration
         """
         if os.path.exists(self.next_model_path):
+            if self.iteration <= self.final_gaussian_iteration:
+                self.increment_gaussians()
+            self.iteration += 1
             return
         if self.iteration in self.realignment_iterations:
             self.align_iteration()
