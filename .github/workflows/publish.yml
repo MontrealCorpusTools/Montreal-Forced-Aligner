@@ -4,6 +4,9 @@ on:
   - push
   - release
 
+env:
+  CACHE_NUMBER: 0  # increase to reset cache manually
+
 jobs:
   build-n-publish:
     name: Build and publish to PyPI and TestPyPI
@@ -20,29 +23,33 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Miniconda
-        uses: conda-incubator/setup-miniconda@v2.0.0
+      - name: Setup Mambaforge
+        uses: conda-incubator/setup-miniconda@v2
         with:
-          auto-update-conda: true
-          miniconda-version: "latest"
-          python-version: ${{ env.PYTHON }}
-          environment-file: ci/${{ env.ENV_NAME }}.yml
-          activate-environment: ${{ env.ENV_NAME }}
+          miniforge-variant: Mambaforge
+          miniforge-version: latest
+          activate-environment: my-env
+          use-mamba: true
+      - name: Set cache date
+        run: echo "DATE=$(date +'%Y%m%d')" >> $GITHUB_ENV
 
-      - name: Conda Info
-        run: |
-          conda info -a
-          conda list
-          PYVER=`python -c "import sys; print('{:d}.{:d}'.format(sys.version_info.major, sys.version_info.minor))"`
-          if [[ $PYVER != ${{ env.PYTHON }} ]]; then
-            exit 1;
-          fi
+      - uses: actions/cache@v2
+        with:
+          path: /usr/share/miniconda3/envs/my-env
+          key: linux-64-conda-${{ hashFiles('environment.yml') }}-${{ env.DATE }}-${{ env.CACHE_NUMBER }}
+        id: cache
+
+      - name: Update environment
+        run: mamba env update -n my-env -f environment.yml
+        if: steps.cache.outputs.cache-hit != 'true'
+
       - name: Create environment variable
         if: startsWith(github.ref, 'refs/tags/') != true
         run: |
           wget https://gist.github.com/plaplant/0902f09e59166bac742bbd554f3cd2f9/raw/make_dev_version.sh
           version=$(bash make_dev_version.sh)
           echo "SETUPTOOLS_SCM_PRETEND_VERSION=$version" >> $GITHUB_ENV
+
       - name: Check environment variable
         run: echo $SETUPTOOLS_SCM_PRETEND_VERSION
 
