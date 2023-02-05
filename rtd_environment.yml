@@ -38,3 +38,4 @@ dependencies:
   - pip:
       - sphinx-needs
       - sphinxcontrib-plantuml
+      - pygls<1.0.0
