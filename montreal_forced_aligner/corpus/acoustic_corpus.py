@@ -1002,7 +1002,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
                 if "error" in error_dict:
                     session.rollback()
-                    raise error_dict["error"][1]
+                    raise error_dict["error"]
                 self._finalize_load(session, import_data)
             for k in ["sound_file_errors", "decode_error_files", "textgrid_read_errors"]:
                 if hasattr(self, k):

@@ -504,7 +504,7 @@ class PldaClassificationFunction(KaldiFunction):
                 utterance_counts[int(speaker)] = utt_count
         input_proc = subprocess.Popen(
             [
-                thirdparty_binary("copy-vector"),
+                thirdparty_binary("ivector-subtract-global-mean"),
                 f"ark:{self.train_ivector_path}",
                 "ark,t:-",
             ],
@@ -537,8 +537,6 @@ class PldaClassificationFunction(KaldiFunction):
         for line in input_proc.stdout:
             lines.append(line)
         input_proc.wait()
-        for line in input_proc.stdout:
-            lines.append(line)
         with Session(self.db_engine) as session:
 
             job: Job = (

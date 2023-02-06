@@ -77,12 +77,6 @@ __all__ = ["configure_cli"]
     default=None,
 )
 @click.option(
-    "--enable_detect_phone_set/--disable_detect_phone_set",
-    "detect_phone_set",
-    help="Turn on/off automatic detection of phone sets during training.",
-    default=None,
-)
-@click.option(
     "--enable_terminal_colors/--disable_terminal_colors",
     "terminal_colors",
     help="Turn on/off colored text in command line output.",
@@ -106,6 +100,18 @@ __all__ = ["configure_cli"]
     "--database_port",
     default=None,
     help="Port for postgresql database.",
+    type=int,
+)
+@click.option(
+    "--bytes_limit",
+    default=None,
+    help="Bytes limit for Joblib Memory caching on disk.",
+    type=int,
+)
+@click.option(
+    "--seed",
+    default=None,
+    help="Random seed to set for various pseudorandom processes.",
     type=int,
 )
 @click.help_option("-h", "--help")

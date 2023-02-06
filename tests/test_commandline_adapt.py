@@ -62,7 +62,7 @@ def test_adapt_multilingual(
         basic_align_config_path,
         "-q",
         "--clean",
-        "--debug",
+        "--no_debug",
     ]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True

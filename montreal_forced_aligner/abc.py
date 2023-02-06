@@ -649,6 +649,8 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
 
     def save_worker_config(self) -> None:
         """Export worker configuration to its working directory"""
+        if not os.path.exists(self.output_directory):
+            return
         with mfa_open(self.worker_config_path, "w") as f:
             yaml.dump(self.configuration, f)
 

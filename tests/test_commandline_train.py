@@ -67,7 +67,7 @@ def test_train_and_align_basic_speaker_dict(
         basic_train_config_path,
         "-q",
         "--clean",
-        "--debug",
+        "--no_debug",
         "--output_directory",
         output_directory,
         "--single_speaker",

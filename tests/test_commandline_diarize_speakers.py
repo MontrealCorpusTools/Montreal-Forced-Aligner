@@ -99,6 +99,7 @@ def test_cluster_speechbrain(
         "3",
         "--clean",
         "--no_use_pca",
+        "--no_debug",
         "--evaluate",
     ]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
@@ -132,6 +133,7 @@ def test_classify_speechbrain(
         os.path.join(temp_dir, "diarize_cli"),
         "--classify",
         "--clean",
+        "--no_debug",
         "--evaluate",
     ]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
