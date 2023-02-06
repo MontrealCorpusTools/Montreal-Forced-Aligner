@@ -244,6 +244,9 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
             finally:
                 self._session.close()
             self._session = None
+        if getattr(self, "_db_engine", None) is not None:
+            self._db_engine.dispose()
+            self._db_engine = None
         time.sleep(1)
         try:
             subprocess.call(
@@ -626,6 +629,9 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
                 finally:
                     self._session.close()
                 self._session = None
+            if getattr(self, "_db_engine", None) is not None:
+                self._db_engine.dispose()
+                self._db_engine = None
             if self.dirty:
                 logger.error("There was an error in the run, please see the log.")
             else:
