@@ -9,7 +9,6 @@ import typing
 from typing import List
 
 import numpy as np
-import sqlalchemy
 import tqdm
 
 from montreal_forced_aligner.config import GLOBAL_CONFIG, IVECTOR_DIMENSION
@@ -273,7 +272,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         if os.path.exists(plda_transform_path):
             with open(plda_transform_path, "rb") as f:
                 self.plda = pickle.load(f)
-        if self.has_ivectors(speaker=False) and os.path.exists(plda_transform_path):
+        if self.has_ivectors() and os.path.exists(plda_transform_path):
             return
         plda_path = (
             self.adapted_plda_path if os.path.exists(self.adapted_plda_path) else self.plda_path
@@ -287,9 +286,6 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         )
         self.plda = PldaModel.load(plda_path)
         with self.session() as session:
-            session.execute(sqlalchemy.text("DROP INDEX IF EXISTS utterance_plda_vector_index"))
-            session.execute(sqlalchemy.text("ALTER TABLE utterance DISABLE TRIGGER all"))
-            session.commit()
             query = session.query(Utterance.id, Utterance.ivector).filter(
                 Utterance.ivector != None  # noqa
             )
@@ -303,14 +299,6 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
             for i, utt_id in enumerate(utterance_ids):
                 update_mapping.append({"id": utt_id, "plda_vector": ivectors[i, :]})
             bulk_update(session, Utterance, update_mapping)
-            session.execute(
-                sqlalchemy.text(
-                    "CREATE INDEX utterance_plda_vector_index ON utterance "
-                    "USING ivfflat (plda_vector vector_cosine_ops) "
-                    "WITH (lists = 100)"
-                )
-            )
-            session.execute(sqlalchemy.text("ALTER TABLE utterance ENABLE TRIGGER all"))
             session.commit()
             with open(plda_transform_path, "wb") as f:
                 pickle.dump(self.plda, f)
@@ -328,9 +316,6 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         with self.session() as session, tqdm.tqdm(
             total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar:
-            session.execute(sqlalchemy.text("DROP INDEX IF EXISTS utterance_ivector_index"))
-            session.execute(sqlalchemy.text("ALTER TABLE utterance DISABLE TRIGGER all"))
-            session.commit()
             update_mapping = {}
             for j in self.jobs:
                 ivector_scp_path = j.construct_path(self.split_directory, "ivectors", "scp")
@@ -375,37 +360,30 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                     pbar.update(1)
             bulk_update(session, Utterance, list(update_mapping.values()))
             session.query(Corpus).update({Corpus.ivectors_calculated: True})
-            session.execute(
-                sqlalchemy.text(
-                    "CREATE INDEX utterance_ivector_index ON utterance "
-                    "USING ivfflat (ivector vector_cosine_ops) "
-                    "WITH (lists = 100)"
-                )
-            )
-            session.execute(sqlalchemy.text("ALTER TABLE utterance ENABLE TRIGGER all"))
             session.commit()
         self._write_ivectors()
         self.transform_ivectors()
 
     def collect_speaker_ivectors(self) -> None:
         """Collect trained per-speaker ivectors"""
-        if self.has_ivectors(speaker=True):
-            return
         if self.plda is None:
             self.collect_utterance_ivectors()
         logger.info("Collecting speaker ivectors...")
         speaker_ivector_ark_path = os.path.join(
             self.working_directory, "current_speaker_ivectors.ark"
         )
+        num_utts_path = os.path.join(self.working_directory, "current_num_utts.ark")
         if not os.path.exists(speaker_ivector_ark_path):
             self.compute_speaker_ivectors()
         with self.session() as session, tqdm.tqdm(
             total=self.num_speakers, disable=GLOBAL_CONFIG.quiet
         ) as pbar:
-            session.execute(sqlalchemy.text("ALTER TABLE speaker DISABLE TRIGGER all"))
-            session.execute(sqlalchemy.text("DROP INDEX IF EXISTS speaker_ivector_index"))
-            session.execute(sqlalchemy.text("DROP INDEX IF EXISTS speaker_plda_vector_index"))
-            session.commit()
+            utterance_counts = {}
+            with open(num_utts_path) as f:
+                for line in f:
+                    speaker, utt_count = line.strip().split()
+                    utt_count = int(utt_count)
+                    utterance_counts[int(speaker)] = utt_count
             copy_proc = subprocess.Popen(
                 [thirdparty_binary("copy-vector"), f"ark:{speaker_ivector_ark_path}", "ark,t:-"],
                 stdout=subprocess.PIPE,
@@ -414,31 +392,24 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
             )
             ivectors = []
             speaker_ids = []
+            speaker_counts = []
             update_mapping = {}
             for speaker_id, ivector in read_feats(copy_proc, raw_id=True):
                 speaker_id = int(speaker_id)
+                if speaker_id not in utterance_counts:
+                    continue
                 speaker_ids.append(speaker_id)
                 ivectors.append(ivector)
+                speaker_counts.append(utterance_counts[speaker_id])
                 update_mapping[speaker_id] = {"id": speaker_id, "ivector": ivector}
                 pbar.update(1)
             ivectors = np.array(ivectors)
-            ivectors = self.plda.process_ivectors(ivectors)
+            if len(ivectors.shape) < 2:
+                ivectors = ivectors[np.newaxis, :]
+            print(ivectors.shape)
+            speaker_counts = np.array(speaker_counts)
+            ivectors = self.plda.process_ivectors(ivectors, counts=speaker_counts)
             for i, speaker_id in enumerate(speaker_ids):
                 update_mapping[speaker_id]["plda_vector"] = ivectors[i, :]
             bulk_update(session, Speaker, list(update_mapping.values()))
-            session.execute(
-                sqlalchemy.text(
-                    "CREATE INDEX speaker_ivector_index ON speaker "
-                    "USING ivfflat (ivector vector_cosine_ops) "
-                    "WITH (lists = 1000)"
-                )
-            )
-            session.execute(
-                sqlalchemy.text(
-                    "CREATE INDEX speaker_plda_vector_index ON speaker "
-                    "USING ivfflat (plda_vector vector_cosine_ops) "
-                    "WITH (lists = 1000)"
-                )
-            )
-            session.execute(sqlalchemy.text("ALTER TABLE speaker ENABLE TRIGGER all"))
             session.commit()

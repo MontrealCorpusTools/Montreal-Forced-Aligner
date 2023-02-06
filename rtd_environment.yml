@@ -9,7 +9,7 @@ dependencies:
   - colorama
   - ansiwrap
   - pyyaml
-  - praatio
+  - praatio=6.0.0
   - dataclassy
   - sqlalchemy>=2.0
   - pynini

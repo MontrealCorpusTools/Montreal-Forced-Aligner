@@ -20,7 +20,7 @@ dependencies:
   - hdbscan
   - baumwelch
   - ngram
-  - praatio
+  - praatio=6.0.0
   - biopython=1.79
   - sqlalchemy>=2.0
   - pgvector

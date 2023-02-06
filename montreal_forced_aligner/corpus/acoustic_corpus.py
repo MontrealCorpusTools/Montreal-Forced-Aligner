@@ -134,27 +134,24 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     )
         return check
 
-    def has_ivectors(self, speaker=False):
+    def has_ivectors(self):
         with self.session() as session:
-            if speaker:
-                check = (
-                    session.query(Speaker).filter(Speaker.ivector != None).limit(1).first()  # noqa
-                    is not None
-                )
-            else:
-                check = (
-                    session.query(Utterance)
-                    .filter(Utterance.ivector != None)  # noqa
-                    .limit(1)
-                    .first()
-                    is not None
-                )
+            check = (
+                session.query(Corpus)
+                .filter(Corpus.ivectors_calculated == True)  # noqa
+                .limit(1)
+                .first()
+                is not None
+            )
         return check
 
     def has_xvectors(self):
         with self.session() as session:
             check = (
-                session.query(Utterance).filter(Utterance.xvector != None).limit(1).first()  # noqa
+                session.query(Corpus)
+                .filter(Corpus.xvectors_loaded == True)  # noqa
+                .limit(1)
+                .first()
                 is not None
             )
         return check
@@ -162,9 +159,11 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
     def has_any_ivectors(self):
         with self.session() as session:
             check = (
-                session.query(Utterance)
+                session.query(Corpus)
                 .filter(
-                    sqlalchemy.or_(Utterance.xvector != None, Utterance.ivector != None)  # noqa
+                    sqlalchemy.or_(
+                        Corpus.ivectors_calculated == True, Corpus.xvectors_loaded == True  # noqa
+                    )
                 )
                 .limit(1)
                 .first()

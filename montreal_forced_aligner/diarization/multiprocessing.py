@@ -504,7 +504,7 @@ class PldaClassificationFunction(KaldiFunction):
                 utterance_counts[int(speaker)] = utt_count
         input_proc = subprocess.Popen(
             [
-                thirdparty_binary("ivector-subtract-global-mean"),
+                thirdparty_binary("copy-vector"),
                 f"ark:{self.train_ivector_path}",
                 "ark,t:-",
             ],

@@ -90,6 +90,8 @@ def bulk_update(
     column_names = [x for x in values[0].keys()]
     columns = [getattr(table, x)._copy() for x in column_names if x != id_field]
     sql_column_names = [f'"{x}"' for x in column_names if x != id_field]
+    session.execute(sqlalchemy.text(f"ALTER TABLE {table.__tablename__} DISABLE TRIGGER all"))
+    session.commit()
     with session.begin_nested():
         temp_table = sqlalchemy.Table(
             f"temp_{table.__tablename__}",
@@ -120,6 +122,8 @@ def bulk_update(
 
         # drop temp table
         session.execute(sqlalchemy.text(f"DROP TABLE temp_{table.__tablename__}"))
+    session.execute(sqlalchemy.text(f"ALTER TABLE {table.__tablename__} ENABLE TRIGGER all"))
+    session.commit()
     MfaSqlBase.metadata.remove(temp_table)
 
 
@@ -875,6 +879,30 @@ class Speaker(MfaSqlBase):
     utterances = relationship("Utterance", back_populates="speaker")
     files = relationship("File", secondary=SpeakerOrdering, back_populates="speakers")
 
+    __table_args__ = (
+        sqlalchemy.Index(
+            "speaker_ivector_index",
+            "ivector",
+            postgresql_using="ivfflat",
+            postgresql_with={"lists": 100},
+            postgresql_ops={"ivector": "vector_cosine_ops"},
+        ),
+        sqlalchemy.Index(
+            "speaker_xvector_index",
+            "xvector",
+            postgresql_using="ivfflat",
+            postgresql_with={"lists": 100},
+            postgresql_ops={"xvector": "vector_cosine_ops"},
+        ),
+        sqlalchemy.Index(
+            "speaker_plda_vector_index",
+            "plda_vector",
+            postgresql_using="ivfflat",
+            postgresql_with={"lists": 100},
+            postgresql_ops={"plda_vector": "vector_cosine_ops"},
+        ),
+    )
+
 
 class File(MfaSqlBase):
     """
@@ -1032,7 +1060,7 @@ class File(MfaSqlBase):
                         utterance.speaker.name, [], minT=0, maxT=max_time
                     )
                 if save_transcription:
-                    tiers[utterance.speaker.name].entryList.append(
+                    tiers[utterance.speaker.name].insertEntry(
                         Interval(
                             start=utterance.begin,
                             end=utterance.end,
@@ -1042,12 +1070,12 @@ class File(MfaSqlBase):
                         )
                     )
                 else:
-                    if tiers[utterance.speaker.name].entryList:
-                        if tiers[utterance.speaker.name].entryList[-1].end > utterance.begin:
-                            utterance.begin = tiers[utterance.speaker.name].entryList[-1].end
+                    if tiers[utterance.speaker.name].entries:
+                        if tiers[utterance.speaker.name].entries[-1].end > utterance.begin:
+                            utterance.begin = tiers[utterance.speaker.name].entries[-1].end
                     if utterance.end > self.duration:
                         utterance.end = self.duration
-                    tiers[utterance.speaker.name].entryList.append(
+                    tiers[utterance.speaker.name].insertEntry(
                         Interval(
                             start=utterance.begin, end=utterance.end, label=utterance.text.strip()
                         )
@@ -1305,6 +1333,27 @@ class Utterance(MfaSqlBase):
             "text",
             postgresql_ops={"text": "gin_trgm_ops"},
             postgresql_using="gin",
+        ),
+        sqlalchemy.Index(
+            "utterance_ivector_index",
+            "ivector",
+            postgresql_using="ivfflat",
+            postgresql_with={"lists": 100},
+            postgresql_ops={"ivector": "vector_cosine_ops"},
+        ),
+        sqlalchemy.Index(
+            "utterance_xvector_index",
+            "xvector",
+            postgresql_using="ivfflat",
+            postgresql_with={"lists": 100},
+            postgresql_ops={"xvector": "vector_cosine_ops"},
+        ),
+        sqlalchemy.Index(
+            "utterance_plda_vector_index",
+            "plda_vector",
+            postgresql_using="ivfflat",
+            postgresql_with={"lists": 100},
+            postgresql_ops={"plda_vector": "vector_cosine_ops"},
         ),
     )
 

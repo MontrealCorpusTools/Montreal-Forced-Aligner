@@ -110,12 +110,12 @@ def parse_aligned_textgrid(
     """
     tg = tgio.openTextgrid(path, includeEmptyIntervals=False, reportingMode="silence")
     data = {}
-    num_tiers = len(tg.tierNameList)
+    num_tiers = len(tg.tiers)
     if num_tiers == 0:
         raise TextGridParseError(path, "Number of tiers parsed was zero")
     phone_tier_pattern = re.compile(r"(.*) ?- ?phones")
-    for tier_name in tg.tierNameList:
-        ti = tg.tierDict[tier_name]
+    for tier_name in tg.tierNames:
+        ti = tg._tierDict[tier_name]
         if not isinstance(ti, tgio.IntervalTier):
             continue
         if "phones" not in tier_name:
@@ -129,7 +129,7 @@ def parse_aligned_textgrid(
             speaker_name = ""
         if speaker_name not in data:
             data[speaker_name] = []
-        for begin, end, text in ti.entryList:
+        for begin, end, text in ti.entries:
             text = text.lower().strip()
             if not text:
                 continue
@@ -165,6 +165,7 @@ def export_textgrid(
         Output format, one of: "long_textgrid" (default), "short_textgrid", "json", or "csv"
     """
     has_data = False
+    duration = round(duration, 6)
     if output_format == "csv":
         csv_data = []
         for speaker, data in speaker_data.items():
@@ -221,17 +222,18 @@ def export_textgrid(
                     tier_name = f"{speaker} - {annotation_type}"
                 else:
                     tier_name = annotation_type
-                if tier_name not in tg.tierNameList:
+                if tier_name not in tg.tierNames:
                     tg.addTier(tgio.IntervalTier(tier_name, [], minT=0, maxT=duration))
                 for a in sorted(intervals, key=lambda x: x.begin):
                     if duration - a.end < (frame_shift * 2):  # Fix rounding issues
                         a.end = duration
-                    tg.tierDict[tier_name].entryList.append(a.to_tg_interval())
+                    tg.getTier(tier_name).insertEntry(a.to_tg_interval())
         if has_data:
-            for tier in tg.tierDict.values():
-                if len(tier.entryList) > 0 and tier.entryList[-1][1] > tg.maxTimestamp:
-                    tier.entryList[-1] = Interval(
-                        tier.entryList[-1].start, tg.maxTimestamp, tier.entryList[-1].label
+            for tier in tg.tiers:
+                if len(tier.entries) > 0 and tier.entries[-1][1] > tg.maxTimestamp:
+                    tier.insertEntry(
+                        Interval(tier.entries[-1].start, tg.maxTimestamp, tier.entries[-1].label),
+                        collisionMode="replace",
                     )
             tg.save(
                 output_path, includeBlankSpaces=True, format=output_format, reportingMode="error"

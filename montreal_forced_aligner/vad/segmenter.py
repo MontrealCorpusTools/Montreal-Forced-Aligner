@@ -199,7 +199,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         """Options for segmentation"""
         return {
             "large_chunk_size": self.large_chunk_size,
-            "frame_shift": self.frame_shift,
+            "frame_shift": self.export_frame_shift,
             "small_chunk_size": self.small_chunk_size,
             "overlap_small_chunk": self.overlap_small_chunk,
             "apply_energy_VAD": self.apply_energy_VAD,
@@ -251,7 +251,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
                     begin -= self.segment_padding
                     end += self.segment_padding
                     begin = max(0.0, begin)
-                    end = max(f.sound_file.duration, end)
+                    end = min(f.sound_file.duration, end)
                     new_utts.append(
                         {
                             "id": utt_index,

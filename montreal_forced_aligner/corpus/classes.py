@@ -161,11 +161,11 @@ class FileData:
                     "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback)),
                 )
 
-            num_tiers = len(tg.tierNameList)
+            num_tiers = len(tg.tierNames)
             if num_tiers == 0:
                 raise TextGridParseError(self.text_path, "Number of tiers parsed was zero")
-            for i, tier_name in enumerate(tg.tierNameList):
-                ti = tg.tierDict[tier_name]
+            for i, tier_name in enumerate(tg.tierNames):
+                ti = tg._tierDict[tier_name]
                 if tier_name.lower() == "notes":
                     continue
                 if not isinstance(ti, textgrid.IntervalTier):
@@ -181,14 +181,14 @@ class FileData:
                     num_channels = self.wav_info.num_channels
                 else:
                     duration = tg.maxTimestamp
-                for begin, end, text in ti.entryList:
+                for begin, end, text in ti.entries:
                     text = text.lower().strip()
                     if not text:
                         continue
                     begin, end = round(begin, 4), round(end, 4)
                     end = min(end, duration)
                     channel = 0
-                    if num_channels == 2 and i >= i / len(tg.tierNameList):
+                    if num_channels == 2 and i >= i / num_tiers:
                         channel = 1
                     utt = UtteranceData(
                         speaker_name=speaker_name,

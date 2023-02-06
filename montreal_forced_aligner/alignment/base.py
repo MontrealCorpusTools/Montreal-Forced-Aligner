@@ -254,9 +254,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             logger.info("Performing first-pass alignment...")
             self.uses_speaker_adaptation = False
             for j in self.jobs:
-                paths = j.construct_dictionary_dependent_paths(
-                    self.working_directory, "trans", "ark"
-                )
+                paths = j.construct_path_dictionary(self.working_directory, "trans", "ark")
                 for p in paths.values():
                     if os.path.exists(p):
                         os.remove(p)
@@ -679,31 +677,10 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         :meth:`.CorpusAligner.alignment_extraction_arguments`
             Arguments for extraction
         """
-        indices = [
-            ("word_utterance_workflow_index", "word_interval", ["utterance_id", "workflow_id"]),
-            ("phone_utterance_workflow_index", "phone_interval", ["utterance_id", "workflow_id"]),
-            ("ix_word_interval_workflow_id", "word_interval", ["workflow_id"]),
-            ("ix_word_interval_word_id", "word_interval", ["word_id"]),
-            ("ix_word_interval_utterance_id", "word_interval", ["utterance_id"]),
-            ("ix_word_interval_pronunciation_id", "word_interval", ["pronunciation_id"]),
-            ("ix_word_interval_begin", "word_interval", ["begin"]),
-            ("ix_phone_interval_workflow_id", "phone_interval", ["workflow_id"]),
-            ("ix_phone_interval_word_interval_id", "phone_interval", ["word_interval_id"]),
-            ("ix_phone_interval_utterance_id", "phone_interval", ["utterance_id"]),
-            ("ix_phone_interval_phone_id", "phone_interval", ["phone_id"]),
-            ("ix_phone_interval_begin", "phone_interval", ["begin"]),
-        ]
         with self.session() as session:
             session.execute(sqlalchemy.text("ALTER TABLE word_interval DISABLE TRIGGER all"))
             session.execute(sqlalchemy.text("ALTER TABLE phone_interval DISABLE TRIGGER all"))
             session.commit()
-            for ix in indices:
-                try:
-                    session.execute(sqlalchemy.text(f"DROP INDEX {ix[0]}"))
-                except Exception:
-                    pass
-                session.commit()
-        with self.session() as session:
             workflow = (
                 session.query(CorpusWorkflow)
                 .filter(CorpusWorkflow.current == True)  # noqa
@@ -840,21 +817,10 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 phone_buf.seek(0)
             conn.commit()
             conn.close()
-        logger.info("Refreshing indices...")
-        with tqdm.tqdm(
-            total=len(indices), disable=GLOBAL_CONFIG.quiet
-        ) as pbar, self.session() as session:
+        with self.session() as session:
             if new_words:
                 session.execute(sqlalchemy.insert(Word).values(new_words))
-            for ix in indices:
-                session.execute(
-                    sqlalchemy.text(f'CREATE INDEX {ix[0]} ON {ix[1]} ({", ".join(ix[2])})')
-                )
                 session.commit()
-                pbar.update(1)
-            session.execute(sqlalchemy.text("ALTER TABLE word_interval ENABLE TRIGGER all"))
-            session.execute(sqlalchemy.text("ALTER TABLE phone_interval ENABLE TRIGGER all"))
-            session.commit()
 
         with self.session() as session:
             workflow = (
@@ -884,6 +850,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             session.query(CorpusWorkflow).filter(CorpusWorkflow.current == True).update(  # noqa
                 {CorpusWorkflow.alignments_collected: True}
             )
+            session.commit()
+            session.execute(sqlalchemy.text("ALTER TABLE word_interval ENABLE TRIGGER all"))
+            session.execute(sqlalchemy.text("ALTER TABLE phone_interval ENABLE TRIGGER all"))
             session.commit()
 
     def fine_tune_alignments(self) -> None:
