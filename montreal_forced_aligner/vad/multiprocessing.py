@@ -41,7 +41,9 @@ class SegmentVadArguments(MfaArguments):
     segmentation_options: MetaDict
 
 
-def get_initial_segmentation(frames: List[Union[int, str]], frame_shift: int) -> List[CtmInterval]:
+def get_initial_segmentation(
+    frames: List[Union[int, str]], frame_shift: float
+) -> List[CtmInterval]:
     """
     Compute initial segmentation over voice activity
 
@@ -49,8 +51,8 @@ def get_initial_segmentation(frames: List[Union[int, str]], frame_shift: int) ->
     ----------
     frames: list[Union[int, str]]
         List of frames with VAD output
-    frame_shift: int
-        Frame shift of features in ms
+    frame_shift: float
+        Frame shift of features in seconds
 
     Returns
     -------

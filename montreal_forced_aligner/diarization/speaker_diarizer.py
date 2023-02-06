@@ -1307,9 +1307,6 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar, self.session() as session:
             begin = time.time()
-            session.execute(sqlalchemy.text("DROP INDEX IF EXISTS utterance_xvector_index"))
-            session.execute(sqlalchemy.text("ALTER TABLE utterance DISABLE TRIGGER all"))
-            session.commit()
             update_mapping = {}
             arguments = [
                 SpeechbrainArguments(j.id, self.db_string, None, self.cuda, self.cluster)
@@ -1341,14 +1338,6 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                     v["plda_vector"] = v["xvector"]
             bulk_update(session, Utterance, list(update_mapping.values()))
             session.query(Corpus).update({Corpus.xvectors_loaded: True})
-            session.execute(
-                sqlalchemy.text(
-                    "CREATE INDEX utterance_xvector_index ON utterance "
-                    "USING ivfflat (xvector vector_cosine_ops) "
-                    "WITH (lists = 100)"
-                )
-            )
-            session.execute(sqlalchemy.text("ALTER TABLE utterance ENABLE TRIGGER all"))
             session.commit()
             logger.debug(f"Loading embeddings took {time.time() - begin:.3f} seconds")
 
@@ -1362,9 +1351,6 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 ivector_column = Utterance.xvector
             else:
                 ivector_column = Utterance.ivector
-            session.execute(sqlalchemy.text("DROP INDEX IF EXISTS utterance_plda_vector_index"))
-            session.execute(sqlalchemy.text("ALTER TABLE utterance DISABLE TRIGGER all"))
-            session.commit()
             update_mapping = []
             utterance_ids = []
             ivectors = []
@@ -1380,14 +1366,6 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             for i, utt_id in enumerate(utterance_ids):
                 update_mapping.append({"id": utt_id, "plda_vector": ivectors[i, :]})
             bulk_update(session, Utterance, update_mapping)
-            session.execute(
-                sqlalchemy.text(
-                    "CREATE INDEX utterance_plda_vector_index ON utterance "
-                    "USING ivfflat (plda_vector vector_cosine_ops) "
-                    "WITH (lists = 100)"
-                )
-            )
-            session.execute(sqlalchemy.text("ALTER TABLE utterance ENABLE TRIGGER all"))
             session.commit()
         plda_transform_path = os.path.join(self.working_directory, "plda.pkl")
         with open(plda_transform_path, "wb") as f:
@@ -1401,13 +1379,8 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         ) as pbar:
             if self.use_xvector:
                 ivector_column = Utterance.xvector
-                session.execute(sqlalchemy.text("DROP INDEX IF EXISTS speaker_xvector_index"))
             else:
                 ivector_column = Utterance.ivector
-                session.execute(sqlalchemy.text("DROP INDEX IF EXISTS speaker_ivector_index"))
-            session.execute(sqlalchemy.text("DROP INDEX IF EXISTS speaker_plda_vector_index"))
-            session.execute(sqlalchemy.text("ALTER TABLE speaker DISABLE TRIGGER all"))
-            session.commit()
             update_mapping = {}
             speaker_ids = []
             ivectors = []
@@ -1434,36 +1407,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 for i, speaker_id in enumerate(speaker_ids):
                     update_mapping[speaker_id]["plda_vector"] = ivectors[i, :]
             bulk_update(session, Speaker, list(update_mapping.values()))
-            if self.use_xvector:
-                session.execute(
-                    sqlalchemy.text(
-                        "CREATE INDEX speaker_xvector_index ON speaker "
-                        "USING ivfflat (xvector vector_cosine_ops) "
-                        "WITH (lists = 100)"
-                    )
-                )
-            else:
-                session.execute(
-                    sqlalchemy.text(
-                        "CREATE INDEX speaker_ivector_index ON speaker "
-                        "USING ivfflat (ivector vector_cosine_ops) "
-                        "WITH (lists = 100)"
-                    )
-                )
-            session.execute(
-                sqlalchemy.text(
-                    "CREATE INDEX speaker_plda_vector_index ON speaker "
-                    "USING ivfflat (plda_vector vector_cosine_ops) "
-                    "WITH (lists = 100)"
-                )
-            )
-            session.execute(sqlalchemy.text("ALTER TABLE speaker ENABLE TRIGGER all"))
             session.commit()
-
-        if self.use_xvector:
-            self.compute_speaker_embeddings()
-        else:
-            self.compute_speaker_ivectors()
 
     def compute_speaker_embeddings(self) -> None:
         """Generate per-speaker embeddings as the mean over their utterances"""
@@ -1473,9 +1417,6 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         with tqdm.tqdm(
             total=self.num_speakers, disable=GLOBAL_CONFIG.quiet
         ) as pbar, self.session() as session:
-            session.execute(sqlalchemy.text("DROP INDEX IF EXISTS speaker_xvector_index"))
-            session.execute(sqlalchemy.text("ALTER TABLE speaker DISABLE TRIGGER all"))
-            session.commit()
             update_mapping = []
             speakers = session.query(Speaker.id)
             for (s_id,) in speakers:
@@ -1491,14 +1432,6 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 update_mapping.append({"id": s_id, "xvector": speaker_xvector})
                 pbar.update(1)
             bulk_update(session, Speaker, update_mapping)
-            session.execute(
-                sqlalchemy.text(
-                    "CREATE INDEX speaker_xvector_index ON speaker "
-                    "USING ivfflat (xvector vector_cosine_ops) "
-                    "WITH (lists = 100)"
-                )
-            )
-            session.execute(sqlalchemy.text("ALTER TABLE speaker ENABLE TRIGGER all"))
             session.commit()
 
     def export_files(self, output_directory: str) -> None:

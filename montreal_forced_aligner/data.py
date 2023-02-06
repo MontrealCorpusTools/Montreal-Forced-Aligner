@@ -1741,10 +1741,10 @@ class CtmInterval:
         """
         if self.end < -1 or self.begin == 1000000:
             raise CtmError(self)
-        end = round(self.end, 5)
+        end = round(self.end, 6)
         if file_duration is not None and end > file_duration:
-            end = file_duration
-        return Interval(round(self.begin, 5), end, self.label)
+            end = round(file_duration, 6)
+        return Interval(round(self.begin, 6), end, self.label)
 
 
 # noinspection PyUnresolvedReferences

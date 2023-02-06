@@ -363,7 +363,7 @@ def test_align_stereo(
     tg = tgio.openTextgrid(
         os.path.join(output_dir, "michaelandsickmichael.TextGrid"), includeEmptyIntervals=False
     )
-    assert len(tg.tierNameList) == 4
+    assert len(tg.tierNames) == 4
 
 
 def test_align_mp3s(
@@ -402,7 +402,7 @@ def test_align_mp3s(
     tg = tgio.openTextgrid(
         os.path.join(output_dir, "common_voice_en_22058267.TextGrid"), includeEmptyIntervals=False
     )
-    assert len(tg.tierNameList) == 2
+    assert len(tg.tierNames) == 2
 
 
 def test_align_opus(
@@ -441,7 +441,7 @@ def test_align_opus(
     tg = tgio.openTextgrid(
         os.path.join(output_dir, "13697_11991_000000.TextGrid"), includeEmptyIntervals=False
     )
-    assert len(tg.tierNameList) == 2
+    assert len(tg.tierNames) == 2
 
 
 def test_swedish_cv(
@@ -488,7 +488,7 @@ def test_swedish_cv(
         tg_path = os.path.join(output_speaker_dir, file + ".TextGrid")
         assert os.path.exists(tg_path)
         tg = tgio.openTextgrid(tg_path, includeEmptyIntervals=False)
-        assert len(tg.tierNameList) == 2
+        assert len(tg.tierNames) == 2
 
 
 def test_swedish_mfa(
@@ -535,7 +535,7 @@ def test_swedish_mfa(
         tg_path = os.path.join(output_speaker_dir, file + ".TextGrid")
         assert os.path.exists(tg_path)
         tg = tgio.openTextgrid(tg_path, includeEmptyIntervals=False)
-        assert len(tg.tierNameList) == 2
+        assert len(tg.tierNames) == 2
 
 
 def test_acoustic_g2p_model(
