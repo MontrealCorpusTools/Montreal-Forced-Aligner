@@ -852,5 +852,4 @@ class UtteranceFileLoader(mp.Process):
             except Exception as e:
                 self.return_q.put(e)
             finally:
-                db_engine.dispose()
                 self.finished_adding.stop()

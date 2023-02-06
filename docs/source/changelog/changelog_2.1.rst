@@ -10,6 +10,7 @@
 
 - Fixed a crash in training when the debug flag was not set
 - Set default postgresql port to 5433 to avoid conflicts with any system installations
+- Fixed a crash in textgrid export
 
 2.1.1
 =====

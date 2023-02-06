@@ -2209,4 +2209,3 @@ class ExportIvectorsFunction(KaldiFunction):
                     utt_id, ark_path = line.split(maxsplit=1)
                     utt_id = int(utt_id.split("-")[1])
                     yield utt_id, ark_path
-        engine.dispose()

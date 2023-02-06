@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Dict, List, Union
 import numpy as np
 import pynini
 import pywrapfst
+import sqlalchemy
 from sqlalchemy.orm import Session, joinedload, selectinload, subqueryload
 
 from montreal_forced_aligner.corpus.features import (
@@ -2380,7 +2381,8 @@ class ExportTextGridProcessWorker(mp.Process):
 
     def run(self) -> None:
         """Run the exporter function"""
-        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine) as session:
+        db_engine = sqlalchemy.create_engine(self.db_string)
+        with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:
             workflow: CorpusWorkflow = (
                 session.query(CorpusWorkflow)
                 .filter(CorpusWorkflow.current == True)  # noqa
