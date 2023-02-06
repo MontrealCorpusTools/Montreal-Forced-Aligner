@@ -816,13 +816,12 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 phone_buf.truncate(0)
                 phone_buf.seek(0)
             conn.commit()
+            cursor.close()
             conn.close()
         with self.session() as session:
             if new_words:
                 session.execute(sqlalchemy.insert(Word).values(new_words))
                 session.commit()
-
-        with self.session() as session:
             workflow = (
                 session.query(CorpusWorkflow)
                 .filter(CorpusWorkflow.current == True)  # noqa
