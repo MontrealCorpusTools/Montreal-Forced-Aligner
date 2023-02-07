@@ -249,7 +249,6 @@ def check_databases(db_name=None) -> None:
             )
             conn = engine.connect()
             conn.close()
-            engine.dispose()
             return
         except Exception:
             pass

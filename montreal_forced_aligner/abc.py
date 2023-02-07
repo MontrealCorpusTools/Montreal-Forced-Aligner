@@ -78,8 +78,6 @@ class KaldiFunction(metaclass=abc.ABCMeta):
             exc_type, exc_value, exc_traceback = sys.exc_info()
             error_text = "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
             raise MultiprocessingError(self.job_name, error_text)
-        finally:
-            self.db_engine.dispose()
 
     def _run(self) -> None:
         """Internal logic for running the worker"""
@@ -649,6 +647,8 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
 
     def save_worker_config(self) -> None:
         """Export worker configuration to its working directory"""
+        if not os.path.exists(self.output_directory):
+            return
         with mfa_open(self.worker_config_path, "w") as f:
             yaml.dump(self.configuration, f)
 

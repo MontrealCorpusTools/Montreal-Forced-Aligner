@@ -58,7 +58,7 @@ def test_create_segments_speechbrain(
         os.path.join(temp_dir, "sad_cli_speechbrain"),
         "-q",
         "--clean",
-        "--debug",
+        "--no_debug",
         "-v",
         "--speechbrain",
         "--config_path",

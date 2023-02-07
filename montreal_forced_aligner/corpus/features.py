@@ -1986,7 +1986,7 @@ class PldaModel:
         numpy.ndarray
             Transformed ivectors
         """
-        ivectors = self.preprocess_ivectors(ivectors)
+        # ivectors = self.preprocess_ivectors(ivectors)
         # ivectors = self.compute_pca_transform(ivectors)
         ivectors = self.transform_ivectors(ivectors, counts=counts)
         return ivectors
@@ -2005,7 +2005,6 @@ class PldaModel:
         numpy.ndarray
             Preprocessed ivectors
         """
-        print(ivectors.shape)
         ivectors = ivectors.T  # DX N
         dim = ivectors.shape[1]
         # preprocessing
@@ -2123,16 +2122,18 @@ class PldaModel:
         # Defaults : normalize_length(true), simple_length_norm(false)
         X_new_sq = X_new**2
 
-        Dim = D.shape[0]
         if counts is not None:
             dot_prod = np.zeros((X_new.shape[0], 1))
             for i in range(dot_prod.shape[0]):
                 inv_covar = self.psi + (1.0 / counts[i])
                 inv_covar = 1.0 / inv_covar
                 dot_prod[i] = np.dot(X_new_sq[i], inv_covar)
-            normfactor = np.sqrt(Dim / dot_prod)
         else:
-            normfactor = np.sqrt(Dim) / np.sqrt(np.sum(X_new_sq))
+            inv_covar = (1.0 / (1.0 + self.psi)).reshape(-1, 1)
+            dot_prod = X_new_sq @ inv_covar  # N X 1
+        Dim = D.shape[0]
+        normfactor = np.sqrt(Dim / dot_prod)
+
         X_new = X_new * normfactor
 
         return X_new
@@ -2208,4 +2209,3 @@ class ExportIvectorsFunction(KaldiFunction):
                     utt_id, ark_path = line.split(maxsplit=1)
                     utt_id = int(utt_id.split("-")[1])
                     yield utt_id, ark_path
-        engine.dispose()

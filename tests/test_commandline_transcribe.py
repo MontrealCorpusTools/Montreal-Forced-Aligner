@@ -67,7 +67,7 @@ def test_transcribe_arpa(
         os.path.join(temp_dir, "transcribe_cli"),
         "-q",
         "--clean",
-        "--debug",
+        "--no_debug",
         "-v",
         "--use_mp",
         "false",

@@ -510,10 +510,6 @@ class AlignMixin(DictionaryMixin):
                         workflow.time_stamp = datetime.datetime.now()
                         workflow.score = log_like_sum / log_like_count
                 session.commit()
-            if not GLOBAL_CONFIG.debug:
-                for file in os.listdir(self.working_directory):
-                    if any(file.startswith(x) for x in ["fsts."]):
-                        os.remove(os.path.join(self.working_directory, file))
             logger.debug(f"Alignment round took {time.time() - begin:.3f} seconds")
 
     def compile_information(self) -> None:

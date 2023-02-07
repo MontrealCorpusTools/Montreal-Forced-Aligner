@@ -385,7 +385,11 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                     utt_count = int(utt_count)
                     utterance_counts[int(speaker)] = utt_count
             copy_proc = subprocess.Popen(
-                [thirdparty_binary("copy-vector"), f"ark:{speaker_ivector_ark_path}", "ark,t:-"],
+                [
+                    thirdparty_binary("ivector-subtract-global-mean"),
+                    f"ark:{speaker_ivector_ark_path}",
+                    "ark,t:-",
+                ],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 env=os.environ,
@@ -406,7 +410,6 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
             ivectors = np.array(ivectors)
             if len(ivectors.shape) < 2:
                 ivectors = ivectors[np.newaxis, :]
-            print(ivectors.shape)
             speaker_counts = np.array(speaker_counts)
             ivectors = self.plda.process_ivectors(ivectors, counts=speaker_counts)
             for i, speaker_id in enumerate(speaker_ids):

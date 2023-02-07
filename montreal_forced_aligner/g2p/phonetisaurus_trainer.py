@@ -318,7 +318,6 @@ class AlignmentInitWorker(mp.Process):
             self.stopped.stop()
             self.return_queue.put(e)
         finally:
-            engine.dispose()
             self.finished.stop()
             del far_writer
 
@@ -368,7 +367,6 @@ class ExpectationWorker(mp.Process):
             )
             for symbol, sym_id in query:
                 symbol_mapper[symbol_table.find(symbol)] = sym_id
-        engine.dispose()
         while not far_reader.done():
             if self.stopped.stop_check():
                 break
@@ -496,7 +494,6 @@ class MaximizationWorker(mp.Process):
             self.return_queue.put(e)
             raise
         finally:
-            engine.dispose()
             if count >= 1:
                 self.return_queue.put(count)
             self.finished.stop()

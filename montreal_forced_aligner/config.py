@@ -138,9 +138,8 @@ class MfaProfile:
     overwrite: bool = False
     terminal_colors: bool = True
     cleanup_textgrids: bool = True
-    detect_phone_set: bool = False
     database_backend: str = "psycopg2"
-    database_port: int = 5432
+    database_port: int = 5433
     bytes_limit: int = 100e6
     seed: int = 0
     num_jobs: int = 3

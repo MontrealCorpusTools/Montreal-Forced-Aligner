@@ -53,6 +53,7 @@ def test_validate_training_corpus(
         os.path.join(temp_dir, "validation"),
         "-q",
         "--clean",
+        "--no_debug",
         "--config_path",
         mono_train_config_path,
         "--test_transcriptions",

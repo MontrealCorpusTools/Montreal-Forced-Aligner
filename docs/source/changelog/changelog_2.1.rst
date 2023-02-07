@@ -5,6 +5,19 @@
 2.1 Changelog
 *************
 
+2.1.2
+=====
+
+- Fixed a crash in training when the debug flag was not set
+- Set default postgresql port to 5433 to avoid conflicts with any system installations
+- Fixed a crash in textgrid export
+
+2.1.1
+=====
+
+- Fixed a bug with `mfa` command not working from the command line
+- Updated to be compatible with PraatIO 6.0
+
 2.1.0
 =====
 
