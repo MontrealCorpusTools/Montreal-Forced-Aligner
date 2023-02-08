@@ -108,8 +108,6 @@ def validate_corpus_cli(context, **kwargs) -> None:
             dictionary_path=dictionary_path,
             **TrainingValidator.parse_parameters(config_path, context.params, context.args),
         )
-    validator.clean_working_directory()
-    validator.remove_database()
     try:
         validator.validate()
     except Exception:
@@ -169,8 +167,6 @@ def validate_dictionary_cli(*args, **kwargs) -> None:
         dictionary_path=dictionary_path,
         **DictionaryValidator.parse_parameters(config_path, kwargs, args),
     )
-    validator.clean_working_directory()
-    validator.remove_database()
     try:
         validator.validate(output_path=output_path)
     except Exception:

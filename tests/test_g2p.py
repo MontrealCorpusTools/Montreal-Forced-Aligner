@@ -37,8 +37,6 @@ def test_training(basic_dict_path, basic_g2p_model_path, temp_dir, global_config
         num_iterations=5,
         evaluate=True,
     )
-    trainer.clean_working_directory()
-    trainer.remove_database()
     trainer.setup()
 
     trainer.train()
@@ -49,8 +47,6 @@ def test_training(basic_dict_path, basic_g2p_model_path, temp_dir, global_config
     assert model.meta["phones"] == trainer.non_silence_phones
     assert model.meta["graphemes"] == trainer.g2p_training_graphemes
     trainer.cleanup()
-    trainer.clean_working_directory()
-    trainer.remove_database()
 
 
 def test_generator(
@@ -65,8 +61,6 @@ def test_generator(
         g2p_model_path=basic_g2p_model_path,
         corpus_directory=basic_corpus_dir,
     )
-    gen.clean_working_directory()
-    gen.remove_database()
 
     gen.setup()
     print(gen.corpus_word_set)
@@ -76,8 +70,6 @@ def test_generator(
     gen.export_pronunciations(g2p_basic_output)
     assert os.path.exists(g2p_basic_output)
     gen.cleanup()
-    gen.clean_working_directory()
-    gen.remove_database()
 
 
 def test_generator_pretrained(english_g2p_model, temp_dir, global_config, db_setup):
@@ -92,11 +84,7 @@ def test_generator_pretrained(english_g2p_model, temp_dir, global_config, db_set
     gen = PyniniWordListGenerator(
         g2p_model_path=english_g2p_model, word_list_path=word_list_path, num_pronunciations=3
     )
-    gen.clean_working_directory()
-    gen.remove_database()
     gen.setup()
     results = gen.generate_pronunciations()
     assert len(results["petted"]) == 3
     gen.cleanup()
-    gen.clean_working_directory()
-    gen.remove_database()

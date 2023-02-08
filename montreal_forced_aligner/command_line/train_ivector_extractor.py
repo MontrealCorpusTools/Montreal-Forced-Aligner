@@ -67,9 +67,6 @@ def train_ivector_cli(context, **kwargs) -> None:
         corpus_directory=corpus_directory,
         **TrainableIvectorExtractor.parse_parameters(config_path, context.params, context.args),
     )
-    if kwargs.get("clean", False):
-        trainer.clean_working_directory()
-        trainer.remove_database()
 
     try:
 

@@ -150,7 +150,10 @@ class AlignmentInitWorker(mp.Process):
     def run(self) -> None:
         """Run the function"""
         engine = sqlalchemy.create_engine(
-            self.db_string, poolclass=sqlalchemy.NullPool, pool_reset_on_return=None
+            self.db_string,
+            poolclass=sqlalchemy.NullPool,
+            pool_reset_on_return=None,
+            isolation_level="AUTOCOMMIT",
         ).execution_options(logging_token=f"{type(self).__name__}_engine")
         try:
             symbol_table = pynini.SymbolTable()
@@ -355,7 +358,10 @@ class ExpectationWorker(mp.Process):
     def run(self) -> None:
         """Run the function"""
         engine = sqlalchemy.create_engine(
-            self.db_string, poolclass=sqlalchemy.NullPool, pool_reset_on_return=None
+            self.db_string,
+            poolclass=sqlalchemy.NullPool,
+            pool_reset_on_return=None,
+            isolation_level="AUTOCOMMIT",
         ).execution_options(logging_token=f"{type(self).__name__}_engine")
         Session = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
         far_reader = pywrapfst.FarReader.open(self.far_path)
@@ -449,7 +455,10 @@ class MaximizationWorker(mp.Process):
         symbol_table = pynini.SymbolTable.read_text(self.far_path.replace(".far", ".syms"))
         count = 0
         engine = sqlalchemy.create_engine(
-            self.db_string, poolclass=sqlalchemy.NullPool, pool_reset_on_return=None
+            self.db_string,
+            poolclass=sqlalchemy.NullPool,
+            pool_reset_on_return=None,
+            isolation_level="AUTOCOMMIT",
         ).execution_options(logging_token=f"{type(self).__name__}_engine")
         try:
             Session = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
@@ -1656,7 +1665,6 @@ class PhonetisaurusTrainer(
                 ):
                     current_job += 1
                 mappings.append({"word_id": w, "job_id": current_job, "training": 1})
-            print(job_objs)
             session.bulk_insert_mappings(Job, job_objs)
             session.flush()
             session.execute(sqlalchemy.insert(Word2Job.__table__), mappings)

@@ -2382,7 +2382,10 @@ class ExportTextGridProcessWorker(mp.Process):
     def run(self) -> None:
         """Run the exporter function"""
         db_engine = sqlalchemy.create_engine(
-            self.db_string, poolclass=sqlalchemy.NullPool
+            self.db_string,
+            poolclass=sqlalchemy.NullPool,
+            pool_reset_on_return=None,
+            isolation_level="AUTOCOMMIT",
         ).execution_options(logging_token=f"{type(self).__name__}_engine")
         with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:
             workflow: CorpusWorkflow = (

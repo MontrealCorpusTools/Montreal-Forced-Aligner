@@ -83,7 +83,10 @@ def inspect_database(name: str) -> DatasetType:
     )
     try:
         engine = sqlalchemy.create_engine(
-            string, poolclass=sqlalchemy.NullPool, pool_reset_on_return=None
+            string,
+            poolclass=sqlalchemy.NullPool,
+            pool_reset_on_return=None,
+            isolation_level="AUTOCOMMIT",
         ).execution_options(logging_token="inspect_dataset_engine")
         with Session(engine) as session:
             corpus = session.query(Corpus).first()
@@ -417,6 +420,10 @@ def parse_logs(log_directory: str) -> None:
     error_logs = []
     for name in os.listdir(log_directory):
         log_path = os.path.join(log_directory, name)
+        if os.path.isdir(log_path):
+            continue
+        if not name.endswith(".log"):
+            continue
         with mfa_open(log_path, "r") as f:
             for line in f:
                 line = line.strip()

@@ -2163,7 +2163,10 @@ class ExportIvectorsFunction(KaldiFunction):
     def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
         """Run the function"""
         engine = sqlalchemy.create_engine(
-            self.db_string, poolclass=sqlalchemy.NullPool, pool_reset_on_return=None
+            self.db_string,
+            poolclass=sqlalchemy.NullPool,
+            pool_reset_on_return=None,
+            isolation_level="AUTOCOMMIT",
         ).execution_options(logging_token=f"{type(self).__name__}_engine")
         with sqlalchemy.orm.Session(engine) as session, mfa_open(self.log_path, "w") as log_file:
 

@@ -95,9 +95,6 @@ def train_acoustic_model_cli(context, **kwargs) -> None:
         dictionary_path=dictionary_path,
         **TrainableAligner.parse_parameters(config_path, context.params, context.args),
     )
-    if kwargs.get("clean", False):
-        trainer.clean_working_directory()
-        trainer.remove_database()
     try:
         trainer.train()
         if output_model_path is not None:

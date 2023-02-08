@@ -249,6 +249,7 @@ def check_databases(db_name=None) -> None:
                 f"postgresql+psycopg2://localhost:{GLOBAL_CONFIG.current_profile.database_port}/{db_name}",
                 poolclass=sqlalchemy.NullPool,
                 pool_reset_on_return=None,
+                isolation_level="AUTOCOMMIT",
             ).execution_options(logging_token="check_databases_engine")
             with engine.connect():
                 time.sleep(1)
@@ -318,7 +319,6 @@ def cleanup_databases() -> None:
     db_directory = os.path.join(
         GLOBAL_CONFIG["temporary_directory"], f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
-    time.sleep(5)
     try:
         subprocess.check_call(
             ["pg_ctl", "-D", db_directory, "stop"],

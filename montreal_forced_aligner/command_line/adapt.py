@@ -94,9 +94,6 @@ def adapt_model_cli(context, **kwargs) -> None:
         acoustic_model_path=acoustic_model_path,
         **AdaptingAligner.parse_parameters(config_path, context.params, context.args),
     )
-    if kwargs.get("clean", False):
-        adapter.clean_working_directory()
-        adapter.remove_database()
 
     try:
         adapter.adapt()

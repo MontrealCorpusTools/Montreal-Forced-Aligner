@@ -825,7 +825,10 @@ class UtteranceFileLoader(mp.Process):
         Run the waveform loading job
         """
         db_engine = sqlalchemy.create_engine(
-            self.db_string, poolclass=sqlalchemy.NullPool, pool_reset_on_return=None
+            self.db_string,
+            poolclass=sqlalchemy.NullPool,
+            pool_reset_on_return=None,
+            isolation_level="AUTOCOMMIT",
         ).execution_options(logging_token=f"{type(self).__name__}_engine")
         with Session(db_engine) as session:
             try:

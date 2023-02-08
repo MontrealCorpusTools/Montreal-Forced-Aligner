@@ -80,9 +80,6 @@ def train_dictionary_cli(context, **kwargs) -> None:
         dictionary_path=dictionary_path,
         **DictionaryTrainer.parse_parameters(config_path, context.params, context.args),
     )
-    if kwargs.get("clean", False):
-        trainer.clean_working_directory()
-        trainer.remove_database()
 
     try:
         trainer.align()
