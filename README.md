@@ -60,5 +60,5 @@ The test suite is run via `tox -e py38-win` or `tox -e py38-unix` depending on t
 * [API Reference](https://montreal-forced-aligner.readthedocs.io/en/latest/reference/index.html)
 * [Release notes](https://montreal-forced-aligner.readthedocs.io/en/latest/changelog/index.html)
 * [MFA Models](https://github.com/MontrealCorpusTools/mfa-models)
-* [Eleanor Chodroff's MFA tutorial](https://www.eleanorchodroff.com/tutorial/montreal-forced-aligner-v2.html)
+* [Eleanor Chodroff's MFA tutorial](https://lingmethodshub.github.io/content/tools/mfa/mfa-tutorial/)
 * [@mmcauliffe's forced alignment blog posts](https://memcauliffe.com/tag/forced-alignment.html)
