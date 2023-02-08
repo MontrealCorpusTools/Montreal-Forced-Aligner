@@ -82,7 +82,9 @@ def inspect_database(name: str) -> DatasetType:
         f"postgresql+psycopg2://localhost:{GLOBAL_CONFIG.current_profile.database_port}/{name}"
     )
     try:
-        engine = sqlalchemy.create_engine(string, future=True)
+        engine = sqlalchemy.create_engine(
+            string, poolclass=sqlalchemy.NullPool, pool_reset_on_return=None
+        ).execution_options(logging_token="inspect_dataset_engine")
         with Session(engine) as session:
             corpus = session.query(Corpus).first()
             dictionary = session.query(Dictionary).first()

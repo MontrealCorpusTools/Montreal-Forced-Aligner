@@ -25,13 +25,13 @@ jobs:
             label: linux-64
             prefix: /usr/share/miniconda3/envs/my-env
 
-          #- os: macos-latest
-          #  label: osx-64
-          #  prefix: /Users/runner/miniconda3/envs/my-env
+          - os: macos-latest
+            label: osx-64
+            prefix: /Users/runner/miniconda3/envs/my-env
 
-          #- os: windows-latest
-          #  label: win-64
-          #  prefix: C:\Miniconda3\envs\my-env
+          - os: windows-latest
+            label: win-64
+            prefix: C:\Miniconda3\envs\my-env
 
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}

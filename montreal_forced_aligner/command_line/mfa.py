@@ -97,7 +97,8 @@ class ExitHooks(object):
     name="mfa",
     help="Montreal Forced Aligner is a command line utility for aligning speech and text.",
 )
-def mfa_cli() -> None:
+@click.pass_context
+def mfa_cli(ctx: click.Context) -> None:
     """
     Main function for the MFA command line interface
     """
@@ -108,14 +109,26 @@ def mfa_cli() -> None:
         warnings.simplefilter("ignore")
     configure_logger("mfa")
     check_third_party()
-
-    hooks = ExitHooks()
-    hooks.hook()
-    atexit.register(hooks.history_save_handler)
+    if ctx.invoked_subcommand != "anchor":
+        hooks = ExitHooks()
+        hooks.hook()
+        atexit.register(hooks.history_save_handler)
     from colorama import init
 
     init()
     mp.freeze_support()
+
+
+@click.command(
+    name="version",
+    short_help="Show version of MFA",
+)
+def version_cli():
+    try:
+        from montreal_forced_aligner._version import version
+    except ImportError:
+        version = None
+    print(version)
 
 
 mfa_cli.add_command(adapt_model_cli)
@@ -136,6 +149,7 @@ mfa_cli.add_command(train_lm_cli)
 mfa_cli.add_command(transcribe_corpus_cli)
 mfa_cli.add_command(validate_corpus_cli)
 mfa_cli.add_command(validate_dictionary_cli)
+mfa_cli.add_command(version_cli)
 
 if __name__ == "__main__":
     mfa_cli()

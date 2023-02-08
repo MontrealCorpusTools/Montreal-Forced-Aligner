@@ -1060,6 +1060,8 @@ class DictionaryModel(MfaModel):
         if os.path.exists(temp_directory):
             shutil.rmtree(temp_directory)
         dictionary = MultispeakerDictionary(self.path, phone_set_type=self.phone_set_type)
+        dictionary.clean_working_directory()
+        dictionary.remove_database()
         graphemes, phone_counts = dictionary.dictionary_setup()
         configuration_data["Dictionary"]["data"]["phones"] = sorted(dictionary.non_silence_phones)
         configuration_data["Dictionary"]["data"]["detailed_phone_info"] = {}

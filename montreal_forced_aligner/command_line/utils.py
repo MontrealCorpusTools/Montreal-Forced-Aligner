@@ -9,7 +9,7 @@ import time
 import typing
 
 import click
-import sqlalchemy.engine
+import sqlalchemy
 import yaml
 
 from montreal_forced_aligner.config import GLOBAL_CONFIG
@@ -217,6 +217,7 @@ def configure_pg(directory):
         "#maintenance_work_mem = 64MB": "maintenance_work_mem = 500MB",
         "#work_mem = 4MB": "work_mem = 128MB",
         "shared_buffers = 128MB": "shared_buffers = 256MB",
+        "max_connections = 100": "max_connections = 300",
     }
     with mfa_open(os.path.join(directory, "postgresql.conf"), "r") as f:
         config = f.read()
@@ -245,12 +246,14 @@ def check_databases(db_name=None) -> None:
     if not create:
         try:
             engine = sqlalchemy.create_engine(
-                f"postgresql+psycopg2://localhost:{GLOBAL_CONFIG.current_profile.database_port}/{db_name}"
-            )
-            conn = engine.connect()
-            conn.close()
+                f"postgresql+psycopg2://localhost:{GLOBAL_CONFIG.current_profile.database_port}/{db_name}",
+                poolclass=sqlalchemy.NullPool,
+                pool_reset_on_return=None,
+            ).execution_options(logging_token="check_databases_engine")
+            with engine.connect():
+                time.sleep(1)
             return
-        except Exception:
+        except sqlalchemy.exc.OperationalError:
             pass
     with open(init_log_path, "w") as log_file:
         if create:
@@ -315,7 +318,7 @@ def cleanup_databases() -> None:
     db_directory = os.path.join(
         GLOBAL_CONFIG["temporary_directory"], f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
-    time.sleep(1)
+    time.sleep(5)
     try:
         subprocess.check_call(
             ["pg_ctl", "-D", db_directory, "stop"],

@@ -37,6 +37,7 @@ def test_align_no_speaker_adaptation(
         "-q",
         "--clean",
         "--debug",
+        "--verbose",
         "--uses_speaker_adaptation",
         "False",
     ]

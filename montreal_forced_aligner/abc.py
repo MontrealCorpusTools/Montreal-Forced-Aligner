@@ -71,7 +71,9 @@ class KaldiFunction(metaclass=abc.ABCMeta):
 
     def run(self) -> typing.Generator:
         """Run the function, calls subclassed object's ``_run`` with error handling"""
-        self.db_engine = sqlalchemy.create_engine(self.db_string)
+        self.db_engine = sqlalchemy.create_engine(
+            self.db_string, poolclass=sqlalchemy.NullPool, pool_reset_on_return=None
+        ).execution_options(logging_token=f"{type(self).__name__}_engine")
         try:
             yield from self._run()
         except Exception:
@@ -244,16 +246,12 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
             finally:
                 self._session.close()
             self._session = None
-        if getattr(self, "_db_engine", None) is not None:
-            self._db_engine.dispose()
-            self._db_engine = None
         time.sleep(1)
         try:
             subprocess.call(
                 [
                     "dropdb",
                     f"--port={GLOBAL_CONFIG.current_profile.database_port}",
-                    "-f",
                     self.identifier,
                 ],
                 stderr=None if GLOBAL_CONFIG.current_profile.verbose else subprocess.DEVNULL,
@@ -345,7 +343,14 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         :class:`~sqlalchemy.engine.Engine`
             SqlAlchemy engine
         """
-        return sqlalchemy.create_engine(self.db_string, future=True, **kwargs)
+        e = sqlalchemy.create_engine(
+            self.db_string,
+            pool_size=GLOBAL_CONFIG.current_profile.num_jobs,
+            max_overflow=10,
+            **kwargs,
+        ).execution_options(logging_token="main_process_engine")
+
+        return e
 
     def session(self, **kwargs) -> Session:
         """
@@ -629,9 +634,6 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
                 finally:
                     self._session.close()
                 self._session = None
-            if getattr(self, "_db_engine", None) is not None:
-                self._db_engine.dispose()
-                self._db_engine = None
             if self.dirty:
                 logger.error("There was an error in the run, please see the log.")
             else:

@@ -942,7 +942,6 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         file_counts = Counter()
         error_dict = {}
         procs = []
-        self.db_engine.dispose()
         parser = AcousticDirectoryParser(
             self.corpus_directory,
             job_queue,

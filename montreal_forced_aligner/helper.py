@@ -185,6 +185,8 @@ def configure_logger(identifier: str, log_file: Optional[str] = None) -> None:
         handler = logging.StreamHandler(sys.stdout)
         if config.current_profile.verbose:
             handler.setLevel(logging.DEBUG)
+            logging.getLogger("sqlalchemy.engine").setLevel(logging.DEBUG)
+            logging.getLogger("sqlalchemy.pool").setLevel(logging.DEBUG)
         else:
             handler.setLevel(logging.INFO)
         handler.setFormatter(CustomFormatter())
