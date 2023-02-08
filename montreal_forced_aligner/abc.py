@@ -239,7 +239,10 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         if exist_check:
             if GLOBAL_CONFIG.current_profile.clean:
                 self.clean_working_directory()
-                MfaSqlBase.metadata.drop_all(self.db_engine)
+                with self.db_engine.connect() as conn:
+                    for tbl in reversed(MfaSqlBase.metadata.sorted_tables):
+                        conn.execute(tbl.delete())
+                    conn.commit()
             else:
                 return
 

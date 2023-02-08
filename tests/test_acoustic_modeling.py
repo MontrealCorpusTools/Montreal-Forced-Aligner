@@ -20,7 +20,6 @@ def test_trainer(basic_dict_path, temp_dir, basic_corpus_dir):
     assert a.training_configs[a.final_identifier].max_gaussians == 150000
 
 
-@pytest.mark.skip("Inconsistent failing")
 def test_basic_mono(
     mixed_dict_path,
     basic_corpus_dir,
@@ -51,7 +50,6 @@ def test_basic_mono(
     assert os.path.exists(mono_output_directory)
 
 
-@pytest.mark.skip("Inconsistent failing")
 def test_pronunciation_training(
     mixed_dict_path,
     basic_corpus_dir,
@@ -101,7 +99,6 @@ def test_pronunciation_training(
     )
 
 
-@pytest.mark.skip("Inconsistent failing")
 def test_pitch_feature_training(
     basic_dict_path, basic_corpus_dir, pitch_train_config_path, db_setup
 ):
@@ -117,7 +114,6 @@ def test_pitch_feature_training(
     assert a.get_feat_dim() == 45
 
 
-@pytest.mark.skip("Inconsistent failing")
 def test_basic_lda(basic_dict_path, basic_corpus_dir, lda_train_config_path, db_setup):
     a = TrainableAligner(
         corpus_directory=basic_corpus_dir,
