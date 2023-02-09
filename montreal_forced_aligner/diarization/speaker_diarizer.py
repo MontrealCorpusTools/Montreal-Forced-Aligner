@@ -735,11 +735,13 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             session.commit()
             bulk_update(session, Utterance, utterance_mapping)
             session.execute(
-                sqlalchemy.text("CREATE INDEX ix_utterance_speaker_id on utterance(speaker_id)")
+                sqlalchemy.text(
+                    "CREATE INDEX IF NOT EXISTS ix_utterance_speaker_id on utterance(speaker_id)"
+                )
             )
             session.execute(
                 sqlalchemy.text(
-                    'CREATE INDEX utterance_position_index on utterance(file_id, speaker_id, begin, "end", channel)'
+                    'CREATE INDEX IF NOT EXISTS utterance_position_index on utterance(file_id, speaker_id, begin, "end", channel)'
                 )
             )
             session.commit()
@@ -839,11 +841,13 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             session.commit()
             bulk_update(session, Utterance, utterance_mapping)
             session.execute(
-                sqlalchemy.text("CREATE INDEX ix_utterance_speaker_id on utterance(speaker_id)")
+                sqlalchemy.text(
+                    "CREATE INDEX IF NOT EXISTS ix_utterance_speaker_id on utterance(speaker_id)"
+                )
             )
             session.execute(
                 sqlalchemy.text(
-                    'CREATE INDEX utterance_position_index on utterance(file_id, speaker_id, begin, "end", channel)'
+                    'CREATE INDEX IF NOT EXISTS utterance_position_index on utterance(file_id, speaker_id, begin, "end", channel)'
                 )
             )
             session.commit()
@@ -1337,6 +1341,17 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 for v in update_mapping.values():
                     v["plda_vector"] = v["xvector"]
             bulk_update(session, Utterance, list(update_mapping.values()))
+            session.flush()
+            session.execute(
+                sqlalchemy.text(
+                    "CREATE INDEX IF NOT EXISTS utterance_xvector_index ON utterance USING ivfflat (xvector vector_cosine_ops);"
+                )
+            )
+            session.execute(
+                sqlalchemy.text(
+                    "CREATE INDEX IF NOT EXISTS utterance_plda_vector_index ON utterance USING ivfflat (plda_vector vector_cosine_ops);"
+                )
+            )
             session.query(Corpus).update({Corpus.xvectors_loaded: True})
             session.commit()
             logger.debug(f"Loading embeddings took {time.time() - begin:.3f} seconds")

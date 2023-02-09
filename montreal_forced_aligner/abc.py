@@ -68,15 +68,18 @@ class KaldiFunction(metaclass=abc.ABCMeta):
         self.job_name = self.args.job_name
         self.log_path = self.args.log_path
 
-    def run(self) -> typing.Generator:
-        """Run the function, calls subclassed object's ``_run`` with error handling"""
-        self.db_engine = sqlalchemy.create_engine(
+    def db_engine(self):
+
+        return sqlalchemy.create_engine(
             self.db_string,
             poolclass=sqlalchemy.NullPool,
             isolation_level="AUTOCOMMIT",
             logging_name=f"{type(self).__name__}_engine",
             pool_reset_on_return=None,
         ).execution_options(logging_token=f"{type(self).__name__}_engine")
+
+    def run(self) -> typing.Generator:
+        """Run the function, calls subclassed object's ``_run`` with error handling"""
         try:
             yield from self._run()
         except Exception:

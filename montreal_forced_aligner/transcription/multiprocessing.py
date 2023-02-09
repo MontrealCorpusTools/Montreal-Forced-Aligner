@@ -1577,7 +1577,7 @@ class PerSpeakerDecodeFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, str]]:
         """Run the function"""
-        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine) as session:
+        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine()) as session:
 
             job: Job = (
                 session.query(Job)
@@ -1675,7 +1675,7 @@ class DecodePhoneFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[str, float, int]]:
         """Run the function"""
-        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
             phones = session.query(Phone.mapping_id, Phone.phone)
             reversed_phone_mapping = {}
             for p_id, phone in phones:

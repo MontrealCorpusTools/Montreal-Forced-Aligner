@@ -217,7 +217,7 @@ def configure_pg(directory):
         "#maintenance_work_mem = 64MB": "maintenance_work_mem = 500MB",
         "#work_mem = 4MB": "work_mem = 128MB",
         "shared_buffers = 128MB": "shared_buffers = 256MB",
-        "max_connections = 100": "max_connections = 300",
+        "max_connections = 100": "max_connections = 10000",
     }
     with mfa_open(os.path.join(directory, "postgresql.conf"), "r") as f:
         config = f.read()

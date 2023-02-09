@@ -537,7 +537,7 @@ class PldaClassificationFunction(KaldiFunction):
         for line in input_proc.stdout:
             lines.append(line)
         input_proc.wait()
-        with Session(self.db_engine) as session:
+        with Session(self.db_engine()) as session:
 
             job: Job = (
                 session.query(Job)
@@ -593,7 +593,7 @@ class ComputeEerFunction(KaldiFunction):
         else:
             columns = [Utterance.id, Utterance.speaker_id, Utterance.plda_vector]
             filter = Utterance.plda_vector != None  # noqa
-        with Session(self.db_engine) as session:
+        with Session(self.db_engine()) as session:
             speakers = (
                 session.query(Speaker.id)
                 .join(Speaker.utterances)
@@ -681,7 +681,7 @@ class SpeechbrainClassificationFunction(KaldiFunction):
             run_opts=run_opts,
         )
         device = torch.device("cuda" if self.cuda else "cpu")
-        with Session(self.db_engine) as session:
+        with Session(self.db_engine()) as session:
 
             job: Job = (
                 session.query(Job)

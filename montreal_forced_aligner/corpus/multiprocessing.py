@@ -506,7 +506,7 @@ class NormalizeTextFunction(KaldiFunction):
     def _run(self) -> typing.Generator[typing.Tuple[int, float]]:
         """Run the function"""
         self.compile_regexes()
-        with Session(self.db_engine) as session:
+        with Session(self.db_engine()) as session:
             dict_count = session.query(Dictionary).join(Dictionary.words).limit(1).count()
             if self.use_g2p or dict_count > 0:
                 yield from self._dictionary_sanitize(session)
@@ -771,7 +771,7 @@ class ExportKaldiFilesFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, float]]:
         """Run the function"""
-        with Session(self.db_engine) as session:
+        with Session(self.db_engine()) as session:
             if self.for_features:
                 yield from self.output_for_features(session)
             else:

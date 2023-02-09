@@ -150,7 +150,7 @@ class OnlineAlignmentFunction(KaldiFunction):
 
     def _run(self) -> typing.Tuple[typing.List[CtmInterval], typing.List[CtmInterval], float]:
         """Run the function"""
-        with Session(self.db_engine) as session:
+        with Session(self.db_engine()) as session:
             d: Dictionary = session.get(Dictionary, self.dictionary_id)
 
             self.clitic_marker = d.clitic_marker
