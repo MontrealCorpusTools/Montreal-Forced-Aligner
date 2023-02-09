@@ -108,9 +108,6 @@ def diarize_speakers_cli(context, **kwargs) -> None:
         ivector_extractor_path=ivector_extractor_path,
         **SpeakerDiarizer.parse_parameters(config_path, context.params, context.args),
     )
-    if kwargs.get("clean", False):
-        classifier.clean_working_directory()
-        classifier.remove_database()
     try:
         if classify:
             classifier.classify_speakers()

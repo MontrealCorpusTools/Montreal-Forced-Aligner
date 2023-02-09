@@ -80,9 +80,6 @@ def train_lm_cli(context, **kwargs) -> None:
             arpa_path=source_path,
             **MfaLmArpaTrainer.parse_parameters(config_path, context.params, context.args),
         )
-    if kwargs.get("clean", False):
-        trainer.clean_working_directory()
-        trainer.remove_database()
 
     try:
         trainer.setup()

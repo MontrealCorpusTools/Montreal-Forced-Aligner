@@ -71,9 +71,6 @@ def create_segments_cli(context, **kwargs) -> None:
         corpus_directory=corpus_directory,
         **Segmenter.parse_parameters(config_path, context.params, context.args),
     )
-    if kwargs.get("clean", False):
-        segmenter.clean_working_directory()
-        segmenter.remove_database()
     try:
         segmenter.segment()
         segmenter.export_files(output_directory, output_format)

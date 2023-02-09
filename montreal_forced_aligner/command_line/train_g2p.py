@@ -77,9 +77,6 @@ def train_g2p_cli(context, **kwargs) -> None:
             dictionary_path=dictionary_path,
             **PyniniTrainer.parse_parameters(config_path, context.params, context.args),
         )
-    if kwargs.get("clean", False):
-        trainer.clean_working_directory()
-        trainer.remove_database()
 
     try:
         trainer.setup()

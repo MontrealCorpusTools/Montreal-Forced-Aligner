@@ -149,7 +149,13 @@ class AlignmentInitWorker(mp.Process):
 
     def run(self) -> None:
         """Run the function"""
-        engine = sqlalchemy.create_engine(self.db_string)
+        engine = sqlalchemy.create_engine(
+            self.db_string,
+            poolclass=sqlalchemy.NullPool,
+            pool_reset_on_return=None,
+            isolation_level="AUTOCOMMIT",
+            logging_name=f"{type(self).__name__}_engine",
+        ).execution_options(logging_token=f"{type(self).__name__}_engine")
         try:
             symbol_table = pynini.SymbolTable()
             symbol_table.add_symbol(self.eps)
@@ -352,7 +358,13 @@ class ExpectationWorker(mp.Process):
 
     def run(self) -> None:
         """Run the function"""
-        engine = sqlalchemy.create_engine(self.db_string)
+        engine = sqlalchemy.create_engine(
+            self.db_string,
+            poolclass=sqlalchemy.NullPool,
+            pool_reset_on_return=None,
+            isolation_level="AUTOCOMMIT",
+            logging_name=f"{type(self).__name__}_engine",
+        ).execution_options(logging_token=f"{type(self).__name__}_engine")
         Session = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
         far_reader = pywrapfst.FarReader.open(self.far_path)
         symbol_table = pynini.SymbolTable.read_text(self.far_path.replace(".far", ".syms"))
@@ -444,7 +456,13 @@ class MaximizationWorker(mp.Process):
         """Run the function"""
         symbol_table = pynini.SymbolTable.read_text(self.far_path.replace(".far", ".syms"))
         count = 0
-        engine = sqlalchemy.create_engine(self.db_string)
+        engine = sqlalchemy.create_engine(
+            self.db_string,
+            poolclass=sqlalchemy.NullPool,
+            pool_reset_on_return=None,
+            isolation_level="AUTOCOMMIT",
+            logging_name=f"{type(self).__name__}_engine",
+        ).execution_options(logging_token=f"{type(self).__name__}_engine")
         try:
             Session = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
             alignment_model = {}
@@ -1637,7 +1655,7 @@ class PhonetisaurusTrainer(
             # Below we partition sorted list of words to try to have each process handling different symbol tables
             # so they're not completely overlapping and using more memory
             num_words = session.query(Word.id).count()
-            words_per_job = int(num_words / GLOBAL_CONFIG.num_jobs)
+            words_per_job = int(num_words / GLOBAL_CONFIG.num_jobs) + 1
             current_job = 0
             words = session.query(Word.id).filter(
                 Word.word_type.in_([WordType.speech, WordType.clitic])
@@ -1650,10 +1668,9 @@ class PhonetisaurusTrainer(
                 ):
                     current_job += 1
                 mappings.append({"word_id": w, "job_id": current_job, "training": 1})
-            with session.begin_nested():
-                session.execute(sqlalchemy.insert(Job.__table__), job_objs)
-                session.execute(sqlalchemy.insert(Word2Job.__table__), mappings)
-                session.flush()
+            session.bulk_insert_mappings(Job, job_objs)
+            session.flush()
+            session.execute(sqlalchemy.insert(Word2Job.__table__), mappings)
             session.commit()
 
             if self.evaluation_mode:

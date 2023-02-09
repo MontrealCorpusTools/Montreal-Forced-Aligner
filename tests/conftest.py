@@ -90,7 +90,7 @@ def temp_dir(generated_dir, global_config):
     yield temp_dir
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 def db_setup(temp_dir, global_config, request):
     from montreal_forced_aligner.command_line.utils import (
         check_databases,
@@ -105,7 +105,7 @@ def db_setup(temp_dir, global_config, request):
         remove_databases()
 
     yield True
-    request.addfinalizer(fin)
+    # request.addfinalizer(fin)
 
 
 @pytest.fixture(scope="session")

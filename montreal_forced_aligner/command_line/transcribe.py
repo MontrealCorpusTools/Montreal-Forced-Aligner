@@ -117,9 +117,6 @@ def transcribe_corpus_cli(context, **kwargs) -> None:
         language_model_path=language_model_path,
         **Transcriber.parse_parameters(config_path, context.params, context.args),
     )
-    if kwargs.get("clean", False):
-        transcriber.clean_working_directory()
-        transcriber.remove_database()
     try:
         transcriber.setup()
         transcriber.transcribe()

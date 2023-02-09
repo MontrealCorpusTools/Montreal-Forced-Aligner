@@ -71,9 +71,6 @@ def g2p_cli(context, **kwargs) -> None:
             g2p_model_path=g2p_model_path,
             **PyniniWordListGenerator.parse_parameters(config_path, context.params, context.args),
         )
-    if kwargs.get("clean", False):
-        g2p.clean_working_directory()
-        g2p.remove_database()
 
     try:
         g2p.setup()

@@ -1050,7 +1050,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     )
                     exported_file_count = Counter()
                     export_procs = []
-                    self.db_engine.dispose()
                     for j in range(len(self.jobs)):
                         export_proc = ExportTextGridProcessWorker(
                             self.db_string,

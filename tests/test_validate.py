@@ -15,8 +15,6 @@ def test_training_validator_arpa(
         phone_set_type="ARPA",
         position_dependent_phones=True,
     )
-    validator.clean_working_directory()
-    validator.remove_database()
     validator.setup()
     assert validator.phone_set_type.name == "ARPA"
     assert validator.extra_questions_mapping
@@ -55,8 +53,6 @@ def test_training_validator_arpa(
             validator.positions,
         )
     }
-    validator.clean_working_directory()
-    validator.remove_database()
 
 
 def test_training_validator_ipa(
@@ -70,8 +66,6 @@ def test_training_validator_ipa(
         phone_set_type="IPA",
         position_dependent_phones=True,
     )
-    validator.clean_working_directory()
-    validator.remove_database()
     validator.setup()
     assert validator.phone_set_type.name == "IPA"
     assert validator.extra_questions_mapping
@@ -87,5 +81,3 @@ def test_training_validator_ipa(
         )
     }
     assert all(x in validator.extra_questions_mapping["dental"] for x in dental)
-    validator.clean_working_directory()
-    validator.remove_database()

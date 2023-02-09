@@ -124,6 +124,7 @@ def bulk_update(
         session.execute(sqlalchemy.text(f"DROP TABLE temp_{table.__tablename__}"))
     session.execute(sqlalchemy.text(f"ALTER TABLE {table.__tablename__} ENABLE TRIGGER all"))
     session.commit()
+    session.execute(sqlalchemy.text("DISCARD TEMP"))
     MfaSqlBase.metadata.remove(temp_table)
 
 

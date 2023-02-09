@@ -106,9 +106,6 @@ def align_corpus_cli(context, **kwargs) -> None:
         acoustic_model_path=acoustic_model_path,
         **PretrainedAligner.parse_parameters(config_path, context.params, context.args),
     )
-    if kwargs.get("clean", False):
-        aligner.clean_working_directory()
-        aligner.remove_database()
     try:
         aligner.align()
         if aligner.use_phone_model:

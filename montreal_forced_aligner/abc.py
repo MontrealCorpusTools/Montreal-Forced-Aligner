@@ -29,16 +29,15 @@ from typing import (
 
 import sqlalchemy
 import yaml
-from sqlalchemy.orm import Session
 
 from montreal_forced_aligner.config import GLOBAL_CONFIG
+from montreal_forced_aligner.db import CorpusWorkflow, MfaSqlBase
 from montreal_forced_aligner.exceptions import KaldiProcessingError, MultiprocessingError
 from montreal_forced_aligner.helper import comma_join, load_configuration, mfa_open
 
 if TYPE_CHECKING:
 
     from montreal_forced_aligner.data import MfaArguments, WorkflowType
-    from montreal_forced_aligner.db import CorpusWorkflow, MfaSqlBase
 
 __all__ = [
     "MfaModel",
@@ -71,7 +70,13 @@ class KaldiFunction(metaclass=abc.ABCMeta):
 
     def run(self) -> typing.Generator:
         """Run the function, calls subclassed object's ``_run`` with error handling"""
-        self.db_engine = sqlalchemy.create_engine(self.db_string)
+        self.db_engine = sqlalchemy.create_engine(
+            self.db_string,
+            poolclass=sqlalchemy.NullPool,
+            isolation_level="AUTOCOMMIT",
+            logging_name=f"{type(self).__name__}_engine",
+            pool_reset_on_return=None,
+        ).execution_options(logging_token=f"{type(self).__name__}_engine")
         try:
             yield from self._run()
         except Exception:
@@ -207,11 +212,15 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
 
         self._db_engine = None
         self._db_path = None
+        self._session = None
+        self.database_initialized = False
 
     def initialize_database(self) -> None:
         """
         Initialize the database with database schema
         """
+        if self.database_initialized:
+            return
         retcode = subprocess.call(
             [
                 "createdb",
@@ -227,40 +236,20 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
             conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
             conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"))
             conn.commit()
+        self.database_initialized = True
         if exist_check:
-            return
-        from montreal_forced_aligner.db import MfaSqlBase
+            if GLOBAL_CONFIG.current_profile.clean:
+                self.clean_working_directory()
+                with self.db_engine.connect() as conn:
+                    for tbl in reversed(MfaSqlBase.metadata.sorted_tables):
+                        conn.execute(tbl.delete())
+                    conn.commit()
+            else:
+                return
 
         os.makedirs(self.output_directory, exist_ok=True)
 
         MfaSqlBase.metadata.create_all(self.db_engine)
-
-    def remove_database(self):
-        if getattr(self, "_session", None) is not None:
-            try:
-                self._session.commit()
-            except Exception:
-                self._session.rollback()
-            finally:
-                self._session.close()
-            self._session = None
-        if getattr(self, "_db_engine", None) is not None:
-            self._db_engine.dispose()
-            self._db_engine = None
-        time.sleep(1)
-        try:
-            subprocess.call(
-                [
-                    "dropdb",
-                    f"--port={GLOBAL_CONFIG.current_profile.database_port}",
-                    "-f",
-                    self.identifier,
-                ],
-                stderr=None if GLOBAL_CONFIG.current_profile.verbose else subprocess.DEVNULL,
-                stdout=None if GLOBAL_CONFIG.current_profile.verbose else subprocess.DEVNULL,
-            )
-        except Exception:
-            pass
 
     @property
     def db_engine(self) -> sqlalchemy.engine.Engine:
@@ -329,7 +318,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         """Connection string for the database"""
         return f"postgresql+psycopg2://localhost:{GLOBAL_CONFIG.current_profile.database_port}/{self.identifier}"
 
-    def construct_engine(self, read_only=False, **kwargs) -> sqlalchemy.engine.Engine:
+    def construct_engine(self, **kwargs) -> sqlalchemy.engine.Engine:
         """
         Construct a database engine
 
@@ -345,9 +334,17 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         :class:`~sqlalchemy.engine.Engine`
             SqlAlchemy engine
         """
-        return sqlalchemy.create_engine(self.db_string, future=True, **kwargs)
+        e = sqlalchemy.create_engine(
+            self.db_string,
+            poolclass=sqlalchemy.NullPool,
+            logging_name="main_process_engine",
+            **kwargs,
+        ).execution_options(logging_token="main_process_engine")
 
-    def session(self, **kwargs) -> Session:
+        return e
+
+    @property
+    def session(self, **kwargs) -> sqlalchemy.orm.sessionmaker:
         """
         Construct database session
 
@@ -358,11 +355,12 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        :class:`~sqlalchemy.orm.session.Session`
+        :class:`~sqlalchemy.orm.sessionmaker`
             SqlAlchemy session
         """
-        autoflush = kwargs.pop("autoflush", False)
-        return sqlalchemy.orm.Session(self.db_engine, autoflush=autoflush, **kwargs)
+        if self._session is None:
+            self._session = sqlalchemy.orm.sessionmaker(bind=self.db_engine, **kwargs)
+        return self._session
 
 
 class MfaWorker(metaclass=abc.ABCMeta):
@@ -517,10 +515,6 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
     def setup(self) -> None:
         """Setup for worker"""
         self.check_previous_run()
-        if GLOBAL_CONFIG.clean:
-            self.clean_working_directory()
-            if hasattr(self, "remove_database"):
-                self.remove_database()
         if hasattr(self, "initialize_database"):
             self.initialize_database()
 
@@ -622,15 +616,11 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         """
         try:
             if getattr(self, "_session", None) is not None:
-                try:
-                    self._session.commit()
-                except Exception:
-                    self._session.rollback()
-                finally:
-                    self._session.close()
+                del self._session
                 self._session = None
+
             if getattr(self, "_db_engine", None) is not None:
-                self._db_engine.dispose()
+                del self._db_engine
                 self._db_engine = None
             if self.dirty:
                 logger.error("There was an error in the run, please see the log.")

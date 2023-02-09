@@ -5,6 +5,13 @@
 2.1 Changelog
 *************
 
+2.1.3
+=====
+
+- Fixed a bug with intervals after the end of the sound file having negative duration (they are now not parsed)
+- Fixed an issue where utterances were not properly assigned to the correct channels
+- Modified the logic for connections to attempt to solve error with too many clients
+
 2.1.2
 =====
 
