@@ -847,7 +847,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             )
             session.execute(
                 sqlalchemy.text(
-                    'CREATE INDEX IF NOT EXISTS IF NOT EXISTS utterance_position_index on utterance(file_id, speaker_id, begin, "end", channel)'
+                    'CREATE INDEX IF NOT EXISTS utterance_position_index on utterance(file_id, speaker_id, begin, "end", channel)'
                 )
             )
             session.commit()
@@ -1344,12 +1344,12 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             session.flush()
             session.execute(
                 sqlalchemy.text(
-                    "CREATE INDEX IF NOT EXISTS ON utterance USING ivfflat (xvector vector_cosine_ops);"
+                    "CREATE INDEX IF NOT EXISTS utterance_xvector_index ON utterance USING ivfflat (xvector vector_cosine_ops);"
                 )
             )
             session.execute(
                 sqlalchemy.text(
-                    "CREATE INDEX IF NOT EXISTS ON utterance USING ivfflat (plda_vector vector_cosine_ops);"
+                    "CREATE INDEX IF NOT EXISTS utterance_plda_vector_index ON utterance USING ivfflat (plda_vector vector_cosine_ops);"
                 )
             )
             session.query(Corpus).update({Corpus.xvectors_loaded: True})

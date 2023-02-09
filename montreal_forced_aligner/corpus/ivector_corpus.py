@@ -363,7 +363,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
             session.flush()
             session.execute(
                 sqlalchemy.text(
-                    "CREATE INDEX IF NOT EXISTS ON utterance USING ivfflat (ivector vector_cosine_ops);"
+                    "CREATE INDEX IF NOT EXISTS utterance_ivector_index ON utterance USING ivfflat (ivector vector_cosine_ops);"
                 )
             )
             session.query(Corpus).update({Corpus.ivectors_calculated: True})
@@ -425,12 +425,12 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
             session.flush()
             session.execute(
                 sqlalchemy.text(
-                    "CREATE INDEX IF NOT EXISTS ON speaker USING ivfflat (ivector vector_cosine_ops);"
+                    "CREATE INDEX IF NOT EXISTS speaker_ivector_index ON speaker USING ivfflat (ivector vector_cosine_ops);"
                 )
             )
             session.execute(
                 sqlalchemy.text(
-                    "CREATE INDEX IF NOT EXISTS ON speaker USING ivfflat (plda_vector vector_cosine_ops);"
+                    "CREATE INDEX IF NOT EXISTS speaker_plda_vector_index ON speaker USING ivfflat (plda_vector vector_cosine_ops);"
                 )
             )
             session.commit()
