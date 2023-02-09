@@ -880,30 +880,6 @@ class Speaker(MfaSqlBase):
     utterances = relationship("Utterance", back_populates="speaker")
     files = relationship("File", secondary=SpeakerOrdering, back_populates="speakers")
 
-    __table_args__ = (
-        sqlalchemy.Index(
-            "speaker_ivector_index",
-            "ivector",
-            postgresql_using="ivfflat",
-            postgresql_with={"lists": 100},
-            postgresql_ops={"ivector": "vector_cosine_ops"},
-        ),
-        sqlalchemy.Index(
-            "speaker_xvector_index",
-            "xvector",
-            postgresql_using="ivfflat",
-            postgresql_with={"lists": 100},
-            postgresql_ops={"xvector": "vector_cosine_ops"},
-        ),
-        sqlalchemy.Index(
-            "speaker_plda_vector_index",
-            "plda_vector",
-            postgresql_using="ivfflat",
-            postgresql_with={"lists": 100},
-            postgresql_ops={"plda_vector": "vector_cosine_ops"},
-        ),
-    )
-
 
 class File(MfaSqlBase):
     """
@@ -1334,27 +1310,6 @@ class Utterance(MfaSqlBase):
             "text",
             postgresql_ops={"text": "gin_trgm_ops"},
             postgresql_using="gin",
-        ),
-        sqlalchemy.Index(
-            "utterance_ivector_index",
-            "ivector",
-            postgresql_using="ivfflat",
-            postgresql_with={"lists": 100},
-            postgresql_ops={"ivector": "vector_cosine_ops"},
-        ),
-        sqlalchemy.Index(
-            "utterance_xvector_index",
-            "xvector",
-            postgresql_using="ivfflat",
-            postgresql_with={"lists": 100},
-            postgresql_ops={"xvector": "vector_cosine_ops"},
-        ),
-        sqlalchemy.Index(
-            "utterance_plda_vector_index",
-            "plda_vector",
-            postgresql_using="ivfflat",
-            postgresql_with={"lists": 100},
-            postgresql_ops={"plda_vector": "vector_cosine_ops"},
         ),
     )
 

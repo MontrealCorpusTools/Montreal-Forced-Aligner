@@ -84,7 +84,7 @@ class TransitionAccFunction(KaldiFunction):
     def _run(self) -> typing.Generator[typing.Tuple[int, str]]:
         """Run the function"""
 
-        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine) as session:
+        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine()) as session:
             job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))

@@ -525,7 +525,7 @@ class CompileTrainGraphsFunction(KaldiFunction):
     def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
 
-        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine) as session:
+        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine()) as session:
             job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -825,7 +825,7 @@ class AlignFunction(KaldiFunction):
     def _run(self) -> typing.Generator[typing.Tuple[int, float]]:
         """Run the function"""
 
-        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine) as session:
+        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine()) as session:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -1119,7 +1119,7 @@ class FineTuneFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, float]]:
         """Run the function"""
-        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
             job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -1446,7 +1446,7 @@ class PhoneConfidenceFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, str]]:
         """Run the function"""
-        with Session(self.db_engine) as session:
+        with Session(self.db_engine()) as session:
             utterances = (
                 session.query(Utterance)
                 .filter(Utterance.job_id == self.job_name)
@@ -1599,7 +1599,7 @@ class GeneratePronunciationsFunction(KaldiFunction):
     def _run(self) -> typing.Generator[typing.Tuple[int, int, str]]:
         """Run the function"""
         self.phone_symbol_table = None
-        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine) as session:
+        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine()) as session:
             job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -1987,7 +1987,7 @@ class AlignmentExtractionFunction(KaldiFunction):
         """Run the function"""
         align_lexicon_paths = {}
         self.phone_symbol_table = None
-        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))

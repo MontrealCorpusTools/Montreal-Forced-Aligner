@@ -132,7 +132,7 @@ class TrainLmFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[bool]:
         """Run the function"""
-        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
             word_query = session.query(Word.word).filter(Word.word_type == WordType.speech)
             included_words = set(x[0] for x in word_query)
             utterance_query = session.query(Utterance.normalized_text, Utterance.text).filter(
@@ -206,7 +206,7 @@ class TrainPhoneLmFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[bool]:
         """Run the function"""
-        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
             pronunciation_query = (
                 sqlalchemy.select(Utterance.id, sqlalchemy.func.string_agg(Phone.kaldi_label, " "))
                 .select_from(Utterance)
@@ -279,7 +279,7 @@ class TrainSpeakerLmFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[bool]:
         """Run the function"""
-        with Session(self.db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+        with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
 
             job: Job = (
                 session.query(Job)

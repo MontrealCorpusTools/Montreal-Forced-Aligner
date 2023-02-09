@@ -9,6 +9,7 @@ import typing
 from typing import List
 
 import numpy as np
+import sqlalchemy
 import tqdm
 
 from montreal_forced_aligner.config import GLOBAL_CONFIG, IVECTOR_DIMENSION
@@ -359,6 +360,12 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                     }
                     pbar.update(1)
             bulk_update(session, Utterance, list(update_mapping.values()))
+            session.flush()
+            session.execute(
+                sqlalchemy.text(
+                    "CREATE INDEX ON utterance USING ivfflat (ivector vector_cosine_ops);"
+                )
+            )
             session.query(Corpus).update({Corpus.ivectors_calculated: True})
             session.commit()
         self._write_ivectors()
@@ -415,4 +422,15 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
             for i, speaker_id in enumerate(speaker_ids):
                 update_mapping[speaker_id]["plda_vector"] = ivectors[i, :]
             bulk_update(session, Speaker, list(update_mapping.values()))
+            session.flush()
+            session.execute(
+                sqlalchemy.text(
+                    "CREATE INDEX ON speaker USING ivfflat (ivector vector_cosine_ops);"
+                )
+            )
+            session.execute(
+                sqlalchemy.text(
+                    "CREATE INDEX ON speaker USING ivfflat (plda_vector vector_cosine_ops);"
+                )
+            )
             session.commit()
