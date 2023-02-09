@@ -2167,6 +2167,7 @@ class ExportIvectorsFunction(KaldiFunction):
             poolclass=sqlalchemy.NullPool,
             pool_reset_on_return=None,
             isolation_level="AUTOCOMMIT",
+            logging_name=f"{type(self).__name__}_engine",
         ).execution_options(logging_token=f"{type(self).__name__}_engine")
         with sqlalchemy.orm.Session(engine) as session, mfa_open(self.log_path, "w") as log_file:
 

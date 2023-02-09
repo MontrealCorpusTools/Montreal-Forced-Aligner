@@ -249,6 +249,7 @@ def check_databases(db_name=None) -> None:
                 f"postgresql+psycopg2://localhost:{GLOBAL_CONFIG.current_profile.database_port}/{db_name}",
                 poolclass=sqlalchemy.NullPool,
                 pool_reset_on_return=None,
+                logging_name="check_databases_engine",
                 isolation_level="AUTOCOMMIT",
             ).execution_options(logging_token="check_databases_engine")
             with engine.connect():
@@ -322,8 +323,8 @@ def cleanup_databases() -> None:
     try:
         subprocess.check_call(
             ["pg_ctl", "-D", db_directory, "stop"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL if not GLOBAL_CONFIG.current_profile.verbose else None,
+            stderr=subprocess.DEVNULL if not GLOBAL_CONFIG.current_profile.verbose else None,
         )
     except Exception:
         pass

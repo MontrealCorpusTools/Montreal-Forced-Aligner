@@ -74,6 +74,7 @@ class KaldiFunction(metaclass=abc.ABCMeta):
             self.db_string,
             poolclass=sqlalchemy.NullPool,
             isolation_level="AUTOCOMMIT",
+            logging_name=f"{type(self).__name__}_engine",
             pool_reset_on_return=None,
         ).execution_options(logging_token=f"{type(self).__name__}_engine")
         try:
@@ -335,8 +336,8 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         """
         e = sqlalchemy.create_engine(
             self.db_string,
-            pool_size=GLOBAL_CONFIG.current_profile.num_jobs,
-            max_overflow=10,
+            poolclass=sqlalchemy.NullPool,
+            logging_name="main_process_engine",
             **kwargs,
         ).execution_options(logging_token="main_process_engine")
 

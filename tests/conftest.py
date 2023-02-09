@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import time
 
 import mock
 import pytest
@@ -101,6 +102,7 @@ def db_setup(temp_dir, global_config, request):
     check_databases()
 
     def fin():
+        time.sleep(100)
         cleanup_databases()
         remove_databases()
 

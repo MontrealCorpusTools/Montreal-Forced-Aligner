@@ -2385,6 +2385,7 @@ class ExportTextGridProcessWorker(mp.Process):
             self.db_string,
             poolclass=sqlalchemy.NullPool,
             pool_reset_on_return=None,
+            logging_name=f"{type(self).__name__}_engine",
             isolation_level="AUTOCOMMIT",
         ).execution_options(logging_token=f"{type(self).__name__}_engine")
         with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:

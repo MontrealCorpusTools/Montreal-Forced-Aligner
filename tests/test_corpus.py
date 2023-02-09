@@ -1,8 +1,6 @@
 import os
 import shutil
 
-import pytest
-
 from montreal_forced_aligner.corpus.acoustic_corpus import (
     AcousticCorpus,
     AcousticCorpusWithPronunciations,
@@ -28,12 +26,11 @@ def test_opus(opus_test_path):
 
 def test_add(basic_corpus_dir, generated_dir, global_config, db_setup):
     output_directory = os.path.join(generated_dir, "corpus_tests")
-    if os.path.exists(output_directory):
-        shutil.rmtree(output_directory, ignore_errors=True)
     global_config.temporary_directory = output_directory
     corpus = AcousticCorpus(
         corpus_directory=basic_corpus_dir,
     )
+    print(corpus.db_string)
     corpus.load_corpus()
     with corpus.session() as session:
         new_speaker = "new_speaker"
@@ -73,7 +70,6 @@ def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir, db_setu
     assert corpus.get_feat_dim() == 45
 
 
-@pytest.mark.xfail
 def test_acoustic_from_temp(
     basic_corpus_txt_dir, basic_dict_path, generated_dir, global_config, db_setup
 ):

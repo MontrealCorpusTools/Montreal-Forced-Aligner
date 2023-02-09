@@ -154,6 +154,7 @@ class AlignmentInitWorker(mp.Process):
             poolclass=sqlalchemy.NullPool,
             pool_reset_on_return=None,
             isolation_level="AUTOCOMMIT",
+            logging_name=f"{type(self).__name__}_engine",
         ).execution_options(logging_token=f"{type(self).__name__}_engine")
         try:
             symbol_table = pynini.SymbolTable()
@@ -362,6 +363,7 @@ class ExpectationWorker(mp.Process):
             poolclass=sqlalchemy.NullPool,
             pool_reset_on_return=None,
             isolation_level="AUTOCOMMIT",
+            logging_name=f"{type(self).__name__}_engine",
         ).execution_options(logging_token=f"{type(self).__name__}_engine")
         Session = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
         far_reader = pywrapfst.FarReader.open(self.far_path)
@@ -459,6 +461,7 @@ class MaximizationWorker(mp.Process):
             poolclass=sqlalchemy.NullPool,
             pool_reset_on_return=None,
             isolation_level="AUTOCOMMIT",
+            logging_name=f"{type(self).__name__}_engine",
         ).execution_options(logging_token=f"{type(self).__name__}_engine")
         try:
             Session = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))

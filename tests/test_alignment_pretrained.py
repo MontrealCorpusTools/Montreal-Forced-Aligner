@@ -1,13 +1,10 @@
 import os
 import shutil
 
-import pytest
-
 from montreal_forced_aligner.alignment import PretrainedAligner
 from montreal_forced_aligner.db import PhoneInterval, Utterance, WordInterval, WorkflowType
 
 
-@pytest.mark.skip("skipping redundant tests")
 def test_align_sick(
     english_dictionary,
     english_acoustic_model,

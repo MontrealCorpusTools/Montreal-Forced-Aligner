@@ -39,7 +39,9 @@ def test_tabbed(tabbed_dict_path, basic_dict_path, generated_dir, global_config,
     tabbed_dictionary.dictionary_setup()
     basic_dictionary = MultispeakerDictionary(dictionary_path=basic_dict_path)
     basic_dictionary.dictionary_setup()
-    assert tabbed_dictionary.word_mapping(1) == basic_dictionary.word_mapping(1)
+    assert tabbed_dictionary.word_mapping(
+        tabbed_dictionary.dictionary_lookup["test_tabbed_dictionary"]
+    ) == basic_dictionary.word_mapping(basic_dictionary.dictionary_lookup["test_basic"])
 
 
 def test_extra_annotations(extra_annotations_path, generated_dir, global_config, db_setup):

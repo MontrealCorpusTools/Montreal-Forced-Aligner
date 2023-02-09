@@ -87,6 +87,7 @@ def inspect_database(name: str) -> DatasetType:
             poolclass=sqlalchemy.NullPool,
             pool_reset_on_return=None,
             isolation_level="AUTOCOMMIT",
+            logging_name="inspect_dataset_engine",
         ).execution_options(logging_token="inspect_dataset_engine")
         with Session(engine) as session:
             corpus = session.query(Corpus).first()
