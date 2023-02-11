@@ -243,10 +243,9 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         if exist_check:
             if GLOBAL_CONFIG.current_profile.clean:
                 self.clean_working_directory()
-                with self.db_engine.connect() as conn:
-                    for tbl in reversed(MfaSqlBase.metadata.sorted_tables):
-                        conn.execute(tbl.delete())
-                    conn.commit()
+                self.session.close_all()
+
+                MfaSqlBase.metadata.drop_all(self.db_engine)
             else:
                 return
 
@@ -619,6 +618,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         """
         try:
             if getattr(self, "_session", None) is not None:
+                self._session.close_all()
                 del self._session
                 self._session = None
 
