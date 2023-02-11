@@ -817,12 +817,12 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
     def _create_dummy_dictionary(self):
         with self.session() as session:
             if session.query(Dictionary).first() is None:
-                dialect = Dialect(id=1, name="unspecified")
-                d = Dictionary(id=1, name="unknown", path="unknown", dialect=dialect)
+                dialect = Dialect(name="unspecified")
+                d = Dictionary(name="unknown", path="unknown", dialect=dialect)
                 session.add(dialect)
                 session.add(d)
                 session.flush()
-                session.query(Speaker).update({Speaker.dictionary_id: 1})
+                session.query(Speaker).update({Speaker.dictionary_id: d.id})
                 session.commit()
 
     def add_file(self, file: FileData, session: Session = None):
