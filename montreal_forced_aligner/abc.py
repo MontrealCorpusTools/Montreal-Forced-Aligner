@@ -243,10 +243,9 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         if exist_check:
             if GLOBAL_CONFIG.current_profile.clean:
                 self.clean_working_directory()
-                with self.db_engine.connect() as conn:
-                    for tbl in reversed(MfaSqlBase.metadata.sorted_tables):
-                        conn.execute(tbl.delete())
-                    conn.commit()
+                sqlalchemy.orm.session.close_all_sessions()
+
+                MfaSqlBase.metadata.drop_all(self.db_engine)
             else:
                 return
 
@@ -617,6 +616,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         """
         Clean up loggers and output final message for top-level workers
         """
+        sqlalchemy.orm.session.close_all_sessions()
         try:
             if getattr(self, "_session", None) is not None:
                 del self._session
