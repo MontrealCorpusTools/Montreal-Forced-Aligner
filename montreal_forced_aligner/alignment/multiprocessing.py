@@ -2309,6 +2309,8 @@ def construct_output_path(
     Path
         Output path
     """
+    if isinstance(output_directory, str):
+        output_directory = Path(output_directory)
     if output_format.upper() == "LAB":
         extension = ".lab"
     elif output_format.upper() == "JSON":
