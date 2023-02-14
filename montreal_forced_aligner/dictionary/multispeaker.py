@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import typing
+from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 import pynini
@@ -83,9 +84,9 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
 
     def __init__(
         self,
-        dictionary_path: str = None,
-        rules_path: str = None,
-        groups_path: str = None,
+        dictionary_path: typing.Union[str, Path] = None,
+        rules_path: typing.Union[str, Path] = None,
+        phone_groups_path: typing.Union[str, Path] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -104,15 +105,19 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         self._dictionary_base_names = None
         self.clitic_marker = None
         self.use_g2p = False
+        if isinstance(rules_path, str):
+            rules_path = Path(rules_path)
+        if isinstance(phone_groups_path, str):
+            phone_groups_path = Path(phone_groups_path)
         self.rules_path = rules_path
-        self.groups_path = groups_path
+        self.phone_groups_path = phone_groups_path
 
     def load_phone_groups(self) -> None:
         """
         Load phone groups from the dictionary's groups file path
         """
-        if self.groups_path is not None and os.path.exists(self.groups_path):
-            with mfa_open(self.groups_path) as f:
+        if self.phone_groups_path is not None and self.phone_groups_path.exists():
+            with mfa_open(self.phone_groups_path) as f:
                 self._phone_groups = yaml.safe_load(f)
                 if isinstance(self._phone_groups, list):
                     self._phone_groups = {k: v for k, v in enumerate(self._phone_groups)}
@@ -606,7 +611,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
     def apply_phonological_rules(self) -> None:
         """Apply any phonological rules specified in the rules file path"""
         # Set up phonological rules
-        if not self.rules_path or not os.path.exists(self.rules_path):
+        if not self.rules_path or not self.rules_path.exists():
             return
         with mfa_open(self.rules_path) as f:
             rule_data = yaml.safe_load(f)

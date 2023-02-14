@@ -185,7 +185,7 @@ class FileData:
                 if num_channels == 2 and i >= num_tiers / 2:
                     channel = 1
                 for begin, end, text in ti.entries:
-                    text = text.lower().strip()
+                    text = text.strip()
                     if not text:
                         continue
                     begin, end = round(begin, 4), round(end, 4)

@@ -10,6 +10,7 @@ import logging
 import os
 import shutil
 import typing
+from pathlib import Path
 from shutil import copy, copyfile, make_archive, move, rmtree, unpack_archive
 from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Tuple, Union
 
@@ -89,9 +90,9 @@ class Archive(MfaModel):
 
     Parameters
     ----------
-    source: str
+    source: Path
         Source path
-    root_directory: str
+    root_directory: Path
         Root directory to unpack and store temporary files
     """
 
@@ -99,32 +100,42 @@ class Archive(MfaModel):
 
     model_type = None
 
-    def __init__(self, source: str, root_directory: Optional[str] = None):
+    def __init__(
+        self,
+        source: typing.Union[str, Path],
+        root_directory: Optional[typing.Union[str, Path]] = None,
+    ):
         from .config import get_temporary_directory
 
+        if isinstance(source, str):
+            source = Path(source)
+        source = source.resolve()
         if root_directory is None:
-            root_directory = os.path.join(
-                get_temporary_directory(), "extracted_models", self.model_type
+            root_directory = get_temporary_directory().joinpath(
+                "extracted_models", self.model_type
             )
+        if isinstance(root_directory, str):
+            root_directory = Path(root_directory)
         self.root_directory = root_directory
         self.source = source
         self._meta = {}
-        self.name, _ = os.path.splitext(os.path.basename(source))
+        self.name = source.stem
         if os.path.isdir(source):
-            self.dirname = os.path.abspath(source)
+            self.dirname = source
         else:
-            self.dirname = os.path.join(root_directory, f"{self.name}_{self.model_type}")
-            if os.path.exists(self.dirname):
+            self.dirname = root_directory.joinpath(f"{self.name}_{self.model_type}")
+            if self.dirname.exists():
                 shutil.rmtree(self.dirname, ignore_errors=True)
 
             os.makedirs(root_directory, exist_ok=True)
             unpack_archive(source, self.dirname)
-            files = os.listdir(self.dirname)
-            old_dir_path = os.path.join(self.dirname, files[0])
-            if len(files) == 1 and os.path.isdir(old_dir_path):  # Backwards compatibility
-                for f in os.listdir(old_dir_path):
-                    move(os.path.join(old_dir_path, f), os.path.join(self.dirname, f))
-                os.rmdir(old_dir_path)
+            files = [x for x in self.dirname.iterdir()]
+            old_dir_path = self.dirname.joinpath(files[0])
+            if len(files) == 1 and old_dir_path.is_dir():  # Backwards compatibility
+                for f in old_dir_path.iterdir():
+                    f = f.relative_to(old_dir_path)
+                    move(old_dir_path.joinpath(f), self.dirname.joinpath(f))
+                old_dir_path.rmdir()
 
     def parse_old_features(self) -> None:
         """
@@ -179,13 +190,13 @@ class Archive(MfaModel):
         raise ModelLoadError(self.source)
 
     @classmethod
-    def valid_extension(cls, filename: str) -> bool:
+    def valid_extension(cls, filename: Path) -> bool:
         """
         Check whether a file has a valid extension for the given model archive
 
         Parameters
         ----------
-        filename: str
+        filename: Path
             File name to check
 
         Returns
@@ -193,18 +204,20 @@ class Archive(MfaModel):
         bool
             True if the extension matches the models allowed extensions
         """
-        if os.path.splitext(filename)[1] in cls.extensions:
+        if filename.suffix in cls.extensions:
             return True
         return False
 
     @classmethod
-    def generate_path(cls, root: str, name: str, enforce_existence: bool = True) -> Optional[str]:
+    def generate_path(
+        cls, root: Path, name: str, enforce_existence: bool = True
+    ) -> Optional[Path]:
         """
         Generate a path for a given model from the root directory and the name of the model
 
         Parameters
         ----------
-        root: str
+        root: Path
             Root directory for the full path
         name: str
             Name of the model
@@ -213,12 +226,13 @@ class Archive(MfaModel):
 
         Returns
         -------
-        str
+        Path
            Full path in the root directory for the model
         """
         for ext in cls.extensions:
             path = os.path.join(root, name + ext)
-            if os.path.exists(path) or not enforce_existence:
+            path = root.joinpath(name + ext)
+            if path.exists() or not enforce_existence:
                 return path
         return None
 
@@ -341,6 +355,7 @@ class AcousticModel(Archive):
         "lda.mat",
         "phone_pdf.counts",
         # "rules.yaml",
+        "tokenizer.fst",
         "phone_lm.fst",
         "tree",
         "phones.txt",
@@ -586,8 +601,8 @@ class AcousticModel(Archive):
         """
         logger.debug("")
         logger.debug("====ACOUSTIC MODEL INFO====")
-        logger.debug("Acoustic model root directory: " + self.root_directory)
-        logger.debug("Acoustic model dirname: " + self.dirname)
+        logger.debug("Acoustic model root directory: " + str(self.root_directory))
+        logger.debug("Acoustic model dirname: " + str(self.dirname))
         meta_path = os.path.join(self.dirname, "meta.json")
         if not os.path.exists(meta_path):
             meta_path = os.path.join(self.dirname, "meta.yaml")
@@ -846,20 +861,22 @@ class LanguageModel(Archive):
     arpa_extension = ".arpa"
     extensions = [f".{FORMAT}", arpa_extension, ".lm"]
 
-    def __init__(self, source: str, root_directory: Optional[str] = None):
+    def __init__(self, source: typing.Union[str, Path], root_directory: Optional[str] = None):
         if source in LanguageModel.get_available_models():
             source = LanguageModel.get_pretrained_path(source)
         from .config import get_temporary_directory
 
+        if isinstance(source, str):
+            source = Path(source)
         if root_directory is None:
             root_directory = os.path.join(
                 get_temporary_directory(), "extracted_models", self.model_type
             )
 
-        if source.endswith(self.arpa_extension):
+        if source.suffix == self.arpa_extension:
             self.root_directory = root_directory
             self._meta = {}
-            self.name, _ = os.path.splitext(os.path.basename(source))
+            self.name = source.stem
             self.dirname = os.path.join(root_directory, f"{self.name}_{self.model_type}")
             if not os.path.exists(self.dirname):
                 os.makedirs(self.dirname, exist_ok=True)
@@ -934,9 +951,9 @@ class DictionaryModel(MfaModel):
 
     Parameters
     ----------
-    path: str
+    path: Path
         Path to the dictionary file
-    root_directory: str, optional
+    root_directory: Path, optional
         Path to working directory (currently not needed, but present to maintain consistency with other MFA Models
     """
 
@@ -946,21 +963,24 @@ class DictionaryModel(MfaModel):
 
     def __init__(
         self,
-        path: str,
-        root_directory: Optional[str] = None,
+        path: typing.Union[str, Path],
+        root_directory: Optional[typing.Union[str, Path]] = None,
         phone_set_type: typing.Union[str, PhoneSetType] = "UNKNOWN",
     ):
         if path in DictionaryModel.get_available_models():
             path = DictionaryModel.get_pretrained_path(path)
-
+        if isinstance(path, str):
+            path = Path(path)
         if root_directory is None:
             from montreal_forced_aligner.config import get_temporary_directory
 
-            root_directory = os.path.join(
-                get_temporary_directory(), "extracted_models", self.model_type
+            root_directory = get_temporary_directory().joinpath(
+                "extracted_models", self.model_type
             )
+        if isinstance(root_directory, str):
+            root_directory = Path(root_directory)
         self.path = path
-        self.dirname = os.path.join(root_directory, f"{self.name}_{self.model_type}")
+        self.dirname = root_directory.joinpath(f"{self.name}_{self.model_type}")
         self.pronunciation_probabilities = True
         self.silence_probabilities = True
         self.oov_probabilities = True
@@ -1056,8 +1076,8 @@ class DictionaryModel(MfaModel):
 
         printer = TerminalPrinter()
         configuration_data = {"Dictionary": {"name": (self.name, "green"), "data": self.meta}}
-        temp_directory = os.path.join(self.dirname, "temp")
-        if os.path.exists(temp_directory):
+        temp_directory = self.dirname.joinpath("temp")
+        if temp_directory.exists():
             shutil.rmtree(temp_directory)
         dictionary = MultispeakerDictionary(self.path, phone_set_type=self.phone_set_type)
         graphemes, phone_counts = dictionary.dictionary_setup()
@@ -1086,13 +1106,13 @@ class DictionaryModel(MfaModel):
         printer.print_config(configuration_data)
 
     @classmethod
-    def valid_extension(cls, filename: str) -> bool:
+    def valid_extension(cls, filename: Path) -> bool:
         """
         Check whether a file has a valid extension for the given model archive
 
         Parameters
         ----------
-        filename: str
+        filename: Path
             File name to check
 
         Returns
@@ -1100,18 +1120,20 @@ class DictionaryModel(MfaModel):
         bool
             True if the extension matches the models allowed extensions
         """
-        if os.path.splitext(filename)[1] in cls.extensions:
+        if filename.suffix in cls.extensions:
             return True
         return False
 
     @classmethod
-    def generate_path(cls, root: str, name: str, enforce_existence: bool = True) -> Optional[str]:
+    def generate_path(
+        cls, root: Path, name: str, enforce_existence: bool = True
+    ) -> Optional[Path]:
         """
         Generate a path for a given model from the root directory and the name of the model
 
         Parameters
         ----------
-        root: str
+        root: Path
             Root directory for the full path
         name: str
             Name of the model
@@ -1120,26 +1142,26 @@ class DictionaryModel(MfaModel):
 
         Returns
         -------
-        str
+        Path
            Full path in the root directory for the model
         """
         for ext in cls.extensions:
-            path = os.path.join(root, name + ext)
-            if os.path.exists(path) or not enforce_existence:
+            path = root.joinpath(name + ext)
+            if path.exists() or not enforce_existence:
                 return path
         return None
 
     @property
     def is_multiple(self) -> bool:
         """Flag for whether the dictionary contains multiple lexicons"""
-        return os.path.splitext(self.path)[1] in [".yaml", ".yml"]
+        return self.path.suffix in [".yaml", ".yml"]
 
     @property
     def name(self) -> str:
         """Name of the dictionary"""
-        return os.path.splitext(os.path.basename(self.path))[0]
+        return self.path.stem
 
-    def load_dictionary_paths(self) -> Dict[str, Tuple[DictionaryModel, List[str]]]:
+    def load_dictionary_paths(self) -> Dict[str, Tuple[DictionaryModel, typing.Set[str]]]:
         """
         Load the pronunciation dictionaries
 
@@ -1157,7 +1179,7 @@ class DictionaryModel(MfaModel):
                         mapping[path] = (DictionaryModel(path), set())
                     mapping[path][1].add(speaker)
         else:
-            mapping[self.path] = (self, {"default"})
+            mapping[str(self.path)] = (self, {"default"})
         return mapping
 
 
@@ -1221,8 +1243,8 @@ class ModelManager:
     def __init__(self, token=None):
         from montreal_forced_aligner.config import get_temporary_directory
 
-        pretrained_dir = os.path.join(get_temporary_directory(), "pretrained_models")
-        os.makedirs(pretrained_dir, exist_ok=True)
+        pretrained_dir = get_temporary_directory().joinpath("pretrained_models")
+        pretrained_dir.mkdir(parents=True, exist_ok=True)
         self.local_models = {k: [] for k in MODEL_TYPES.keys()}
         self.remote_models: Dict[str, Dict[str, ModelRelease]] = {
             k: {} for k in MODEL_TYPES.keys()
@@ -1237,23 +1259,23 @@ class ModelManager:
         self.refresh_local()
 
     @property
-    def cache_path(self) -> str:
+    def cache_path(self) -> Path:
         """Path to json file with cached etags and download links"""
         from montreal_forced_aligner.config import get_temporary_directory
 
-        pretrained_dir = os.path.join(get_temporary_directory(), "pretrained_models")
-        return os.path.join(pretrained_dir, "cache.json")
+        return get_temporary_directory().joinpath("pretrained_models", "cache.json")
 
     def reset_local(self) -> None:
         """Reset cached models"""
         from montreal_forced_aligner.config import get_temporary_directory
 
-        pretrained_dir = os.path.join(get_temporary_directory(), "pretrained_models")
-        shutil.rmtree(pretrained_dir, ignore_errors=True)
+        pretrained_dir = get_temporary_directory().joinpath("pretrained_models")
+        if pretrained_dir.exists():
+            shutil.rmtree(pretrained_dir, ignore_errors=True)
 
     def refresh_local(self) -> None:
         """Refresh cached information with the latest list of local model"""
-        if os.path.exists(self.cache_path):
+        if self.cache_path.exists():
             with mfa_open(self.cache_path, "r") as f:
                 self._cache_info = json.load(f)
                 if "list_etags" in self._cache_info:
@@ -1429,10 +1451,10 @@ class ModelManager:
                 model_name, model_type, sorted(self.remote_models[model_type].keys())
             )
         release = self.remote_models[model_type][model_name]
-        local_path = os.path.join(
-            MODEL_TYPES[model_type].pretrained_directory(), release.download_file_name
+        local_path = (
+            MODEL_TYPES[model_type].pretrained_directory().joinpath(release.download_file_name)
         )
-        if os.path.exists(local_path) and not ignore_cache:
+        if local_path.exists() and not ignore_cache:
             return
         headers = {"Accept": "application/octet-stream"}
         if self.token:

@@ -1,5 +1,7 @@
 """Mixin module for G2P functionality"""
+import typing
 from abc import ABCMeta, abstractmethod
+from pathlib import Path
 from typing import Dict, List
 
 from montreal_forced_aligner.abc import MfaWorker
@@ -81,7 +83,7 @@ class G2PTopLevelMixin(MfaWorker, DictionaryMixin, G2PMixin):
         """
         raise NotImplementedError
 
-    def export_pronunciations(self, output_file_path: str) -> None:
+    def export_pronunciations(self, output_file_path: typing.Union[str, Path]) -> None:
         """
         Output pronunciations to text file
 
@@ -90,6 +92,9 @@ class G2PTopLevelMixin(MfaWorker, DictionaryMixin, G2PMixin):
         output_file_path: str
             Path to save
         """
+        if isinstance(output_file_path, str):
+            output_file_path = Path(output_file_path)
+        output_file_path.parent.mkdir(parents=True, exist_ok=True)
         results = self.generate_pronunciations()
         with mfa_open(output_file_path, "w") as f:
             for (orthography, pronunciations) in results.items():

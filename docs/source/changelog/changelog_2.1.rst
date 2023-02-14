@@ -5,6 +5,24 @@
 2.1 Changelog
 *************
 
+2.1.6
+=====
+
+- Fix for issue with ignore_case flag not being respected
+- Fixed a hang in speaker diarization
+- Fixed an error related to paths ending in trailing slashes which caused MFA to try to connect to a database named after the local user
+- Partial migration to using :class:`pathlib.Path` instead of :mod:`os.path`
+
+2.1.5
+=====
+
+- Fix for improperly reset databases
+
+2.1.4
+=====
+
+- Change how database connections are made to remove pooling
+
 2.1.3
 =====
 

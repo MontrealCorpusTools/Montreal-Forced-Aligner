@@ -11,6 +11,7 @@ import os
 import subprocess
 import time
 import typing
+from pathlib import Path
 from queue import Empty
 from typing import Dict, List, Optional
 
@@ -1131,7 +1132,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
     def export_files(
         self,
-        output_directory: str,
+        output_directory: typing.Union[Path, str],
         output_format: Optional[str] = None,
         include_original_text: bool = False,
     ) -> None:
@@ -1140,7 +1141,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
         Parameters
         ----------
-        output_directory: str
+        output_directory: Path
             Directory to save to
         output_format: str, optional
             Format to save alignments, one of 'long_textgrids' (the default), 'short_textgrids', or 'json', passed to praatio
@@ -1149,6 +1150,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         workflow: :class:`~montreal_forced_aligner.data.WorkflowType`
             Workflow to use when exporting files
         """
+        if isinstance(output_directory, str):
+            output_directory = Path(output_directory)
         if output_format is None:
             output_format = TextFileType.TEXTGRID.value
         self.export_output_directory = output_directory
@@ -1156,7 +1159,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         logger.info(
             f"Exporting {self.current_workflow.name} TextGrids to {self.export_output_directory}..."
         )
-        os.makedirs(self.export_output_directory, exist_ok=True)
+        self.export_output_directory.mkdir(parents=True, exist_ok=True)
         self.export_textgrids(output_format, include_original_text)
 
     def evaluate_alignments(

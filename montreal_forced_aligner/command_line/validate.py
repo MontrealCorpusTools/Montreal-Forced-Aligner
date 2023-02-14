@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import click
 
@@ -31,7 +32,10 @@ __all__ = ["validate_corpus_cli", "validate_dictionary_cli"]
     ),
     short_help="Validate corpus",
 )
-@click.argument("corpus_directory", type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.argument(
+    "corpus_directory",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+)
 @click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
 @click.option(
     "--acoustic_model_path",
@@ -43,7 +47,7 @@ __all__ = ["validate_corpus_cli", "validate_dictionary_cli"]
     "--config_path",
     "-c",
     help="Path to config file to use for training.",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
     "--speaker_characters",
@@ -57,7 +61,7 @@ __all__ = ["validate_corpus_cli", "validate_dictionary_cli"]
     "--audio_directory",
     "-a",
     help="Audio directory root to use for finding audio files.",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
 )
 @click.option(
     "--phone_set",
@@ -131,14 +135,14 @@ def validate_corpus_cli(context, **kwargs) -> None:
 @click.option(
     "--output_path",
     help="Path to save the CSV file with the scored pronunciations.",
-    type=click.Path(file_okay=False, dir_okay=True),
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
 )
 @click.option("--g2p_model_path", help="Pretrained G2P model path.", type=str)
 @click.option(
     "--config_path",
     "-c",
     help="Path to config file to use for training.",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
     "--g2p_threshold",

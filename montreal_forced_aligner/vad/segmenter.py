@@ -243,7 +243,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
             )
             for f, u in files:
                 boundaries = self.vad_model.get_speech_segments(
-                    f.sound_file.sound_file_path, **kwargs
+                    str(f.sound_file.sound_file_path), **kwargs
                 ).numpy()
                 for i in range(boundaries.shape[0]):
                     old_utts.add(u.id)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import click
 import yaml
@@ -30,15 +31,20 @@ __all__ = ["align_corpus_cli"]
     ),
     short_help="Align a corpus",
 )
-@click.argument("corpus_directory", type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.argument(
+    "corpus_directory",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+)
 @click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
 @click.argument("acoustic_model_path", type=click.UNPROCESSED, callback=validate_acoustic_model)
-@click.argument("output_directory", type=click.Path(file_okay=False, dir_okay=True))
+@click.argument(
+    "output_directory", type=click.Path(file_okay=False, dir_okay=True, path_type=Path)
+)
 @click.option(
     "--config_path",
     "-c",
     help="Path to config file to use for training.",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
     "--speaker_characters",
@@ -52,17 +58,17 @@ __all__ = ["align_corpus_cli"]
     "--audio_directory",
     "-a",
     help="Audio directory root to use for finding audio files.",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
 )
 @click.option(
     "--reference_directory",
     help="Directory containing gold standard alignments to evaluate",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
 )
 @click.option(
     "--custom_mapping_path",
     help="YAML file for mapping phones across phone sets in evaluations.",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
     "--output_format",

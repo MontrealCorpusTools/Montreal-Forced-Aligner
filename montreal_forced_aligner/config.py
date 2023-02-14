@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import re
 import typing
+from pathlib import Path
 from typing import Any, Dict, List, Union
 
 import click
@@ -37,49 +38,49 @@ XVECTOR_DIMENSION = 192
 PLDA_DIMENSION = 192
 
 
-def get_temporary_directory():
+def get_temporary_directory() -> Path:
     """
     Get the root temporary directory for MFA
 
     Returns
     -------
-    str
+    Path
         Root temporary directory
 
     Raises
     ------
-    :class:`~montreal_forced_aligner.exceptions.RootDirectoryError`
+        :class:`~montreal_forced_aligner.exceptions.RootDirectoryError`
     """
     TEMP_DIR = os.environ.get(MFA_ROOT_ENVIRONMENT_VARIABLE, os.path.expanduser("~/Documents/MFA"))
     try:
         os.makedirs(TEMP_DIR, exist_ok=True)
     except OSError:
         raise RootDirectoryError(TEMP_DIR, MFA_ROOT_ENVIRONMENT_VARIABLE)
-    return TEMP_DIR
+    return Path(TEMP_DIR)
 
 
-def generate_config_path() -> str:
+def generate_config_path() -> Path:
     """
     Generate the global configuration path for MFA
 
     Returns
     -------
-    str
+    Path
         Full path to configuration yaml
     """
-    return os.path.join(get_temporary_directory(), "global_config.yaml")
+    return get_temporary_directory().joinpath("global_config.yaml")
 
 
-def generate_command_history_path() -> str:
+def generate_command_history_path() -> Path:
     """
     Generate the path to the command history file
 
     Returns
     -------
-    str
+    Path
         Full path to history file
     """
-    return os.path.join(get_temporary_directory(), "command_history.yaml")
+    return get_temporary_directory().joinpath("command_history.yaml")
 
 
 def load_command_history() -> List[Dict[str, Any]]:
@@ -93,7 +94,7 @@ def load_command_history() -> List[Dict[str, Any]]:
     """
     path = generate_command_history_path()
     history = []
-    if os.path.exists(path):
+    if path.exists():
         with mfa_open(path, "r") as f:
             history = yaml.safe_load(f)
             if not history:

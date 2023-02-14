@@ -10,6 +10,7 @@ import json
 import os
 import re
 import typing
+from pathlib import Path
 from typing import Dict, List
 
 from praatio import textgrid as tgio
@@ -143,7 +144,7 @@ def parse_aligned_textgrid(
 
 def export_textgrid(
     speaker_data: Dict[str, Dict[str, List[CtmInterval]]],
-    output_path: str,
+    output_path: Path,
     duration: float,
     frame_shift: float,
     output_format: str = TextFileType.TEXTGRID.value,
@@ -185,7 +186,7 @@ def export_textgrid(
                         }
                     )
         if has_data:
-            with mfa_open(output_path, "w", newline=None) as f:
+            with mfa_open(output_path, "w") as f:
                 writer = csv.DictWriter(f, fieldnames=["Begin", "End", "Label", "Type", "Speaker"])
                 writer.writeheader()
                 for line in csv_data:
@@ -236,5 +237,8 @@ def export_textgrid(
                         collisionMode="replace",
                     )
             tg.save(
-                output_path, includeBlankSpaces=True, format=output_format, reportingMode="error"
+                str(output_path),
+                includeBlankSpaces=True,
+                format=output_format,
+                reportingMode="error",
             )

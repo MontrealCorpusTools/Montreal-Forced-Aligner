@@ -104,8 +104,8 @@ def db_setup(temp_dir, global_config, request):
         cleanup_databases()
         remove_databases()
 
-    yield True
-    # request.addfinalizer(fin)
+    request.addfinalizer(fin)
+    return True
 
 
 @pytest.fixture(scope="session")

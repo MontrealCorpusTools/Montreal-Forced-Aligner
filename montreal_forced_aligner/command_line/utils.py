@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import time
 import typing
+from pathlib import Path
 
 import click
 import sqlalchemy
@@ -119,7 +120,7 @@ def common_options(f: typing.Callable) -> typing.Callable:
     return functools.reduce(lambda x, opt: opt(x), options, f)
 
 
-def validate_model_arg(name: str, model_type: str) -> str:
+def validate_model_arg(name: str, model_type: str) -> Path:
     """
     Validate pretrained model name argument
 
@@ -132,7 +133,7 @@ def validate_model_arg(name: str, model_type: str) -> str:
 
     Returns
     -------
-    str
+    path_like
         Full path of validated model
 
     Raises
@@ -155,10 +156,13 @@ def validate_model_arg(name: str, model_type: str) -> str:
     model_class = MODEL_TYPES[model_type]
     if name in available_models:
         name = model_class.get_pretrained_path(name)
-    elif model_class.valid_extension(name):
-        if not os.path.exists(name):
+    else:
+        if isinstance(name, str):
+            name = Path(name)
+    if model_class.valid_extension(name):
+        if not name.exists():
             raise click.BadParameter(str(FileArgumentNotFoundError(name)))
-        if model_type == "dictionary" and os.path.splitext(name)[1].lower() == ".yaml":
+        if model_type == "dictionary" and name.suffix.lower() == ".yaml":
             with mfa_open(name, "r") as f:
                 data = yaml.safe_load(f)
                 paths = sorted(set(data.values()))
@@ -167,8 +171,8 @@ def validate_model_arg(name: str, model_type: str) -> str:
                 if "default" not in data:
                     raise click.BadParameter(str(NoDefaultSpeakerDictionaryError()))
     else:
-        if os.path.exists(name):
-            if os.path.splitext(name)[1]:
+        if name.exists():
+            if name.suffix:
                 raise click.BadParameter(
                     str(ModelExtensionError(name, model_type, model_class.extensions))
                 )
@@ -256,7 +260,9 @@ def check_databases(db_name=None) -> None:
                 time.sleep(1)
             return
         except sqlalchemy.exc.OperationalError:
-            pass
+            if not os.listdir(db_directory):
+                create = False
+                os.rmdir(db_directory)
     with open(init_log_path, "w") as log_file:
         if create:
             subprocess.check_call(

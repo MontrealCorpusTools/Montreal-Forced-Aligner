@@ -153,7 +153,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 session.add(
                     Corpus(
                         name=self.data_source_identifier,
-                        path=self.corpus_directory,
+                        path=str(self.corpus_directory),
                         data_directory=self.corpus_output_directory,
                     )
                 )

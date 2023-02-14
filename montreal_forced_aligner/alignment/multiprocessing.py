@@ -16,6 +16,7 @@ import subprocess
 import sys
 import traceback
 import typing
+from pathlib import Path
 from queue import Empty
 from typing import TYPE_CHECKING, Dict, List, Union
 
@@ -2295,17 +2296,17 @@ def construct_output_tiers(
 
 def construct_output_path(
     name: str,
-    relative_path: str,
-    output_directory: str,
-    input_path: str = "",
+    relative_path: Path,
+    output_directory: Path,
+    input_path: Path = None,
     output_format: str = TextgridFormats.SHORT_TEXTGRID,
-) -> str:
+) -> Path:
     """
     Construct an output path
 
     Returns
     -------
-    str
+    Path
         Output path
     """
     if output_format.upper() == "LAB":
@@ -2317,13 +2318,14 @@ def construct_output_path(
     else:
         extension = ".TextGrid"
     if relative_path:
-        relative = os.path.join(output_directory, relative_path)
+        relative = output_directory.joinpath(relative_path)
     else:
         relative = output_directory
-    output_path = os.path.join(relative, name + extension)
+    output_path = relative.joinpath(name + extension)
     if output_path == input_path:
-        output_path = os.path.join(relative, name + "_aligned" + extension)
+        output_path = relative.joinpath(name + "_aligned" + extension)
     os.makedirs(relative, exist_ok=True)
+    relative.mkdir(parents=True, exist_ok=True)
     return output_path
 
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import click
 
@@ -25,13 +26,18 @@ __all__ = ["create_segments_cli"]
     ),
     short_help="Split long audio files into shorter segments",
 )
-@click.argument("corpus_directory", type=click.Path(exists=True, file_okay=False, dir_okay=True))
-@click.argument("output_directory", type=click.Path(file_okay=False, dir_okay=True))
+@click.argument(
+    "corpus_directory",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+)
+@click.argument(
+    "output_directory", type=click.Path(file_okay=False, dir_okay=True, path_type=Path)
+)
 @click.option(
     "--config_path",
     "-c",
     help="Path to config file to use for training.",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
     "--output_format",

@@ -64,7 +64,7 @@ def test_pronunciation_training(
         corpus_directory=basic_corpus_dir,
         dictionary_path=mixed_dict_path,
         rules_path=rules_path,
-        groups_path=groups_path,
+        phone_groups_path=groups_path,
         **TrainableAligner.parse_parameters(pron_train_config_path)
     )
     a.train()

@@ -1381,7 +1381,7 @@ class PhonetisaurusTrainer(
     def configuration(self) -> MetaDict:
         """Configuration for G2P trainer"""
         config = super().configuration
-        config.update({"dictionary_path": self.dictionary_model.path})
+        config.update({"dictionary_path": str(self.dictionary_model.path)})
         return config
 
     def setup(self) -> None:

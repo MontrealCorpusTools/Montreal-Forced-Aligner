@@ -5,10 +5,12 @@ import logging
 import os
 import re
 import typing
+from pathlib import Path
 
 import librosa
 import numpy as np
 import sqlalchemy
+import sqlalchemy.types as types
 from pgvector.sqlalchemy import Vector
 from praatio import textgrid
 from praatio.utilities.constants import Interval
@@ -60,6 +62,22 @@ __all__ = [
 ]
 
 MfaSqlBase = declarative_base()
+
+
+class PathType(types.TypeDecorator):
+    impl = types.String
+
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        return str(value)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        return Path(value)
 
 
 def bulk_update(
@@ -186,7 +204,7 @@ class Corpus(MfaSqlBase):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(50), unique=True, nullable=False)
-    path = Column(String, unique=True, nullable=False)
+    path = Column(PathType, unique=True, nullable=False)
     imported = Column(Boolean, default=False)
     text_normalized = Column(Boolean, default=False)
     cutoffs_found = Column(Boolean, default=False)
@@ -308,9 +326,9 @@ class Dictionary(MfaSqlBase):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(50), nullable=False)
-    path = Column(String, unique=True)
+    path = Column(PathType, unique=True)
     phone_set_type = Column(Enum(PhoneSetType), nullable=True)
-    root_temp_directory = Column(String, nullable=True)
+    root_temp_directory = Column(PathType, nullable=True)
     clitic_cleanup_regex = Column(String, nullable=True)
     bracket_regex = Column(String, nullable=True)
     laughter_regex = Column(String, nullable=True)
@@ -909,7 +927,7 @@ class File(MfaSqlBase):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False, index=True)
-    relative_path = Column(String, nullable=False)
+    relative_path = Column(PathType, nullable=False)
     modified = Column(Boolean, nullable=False, default=False, index=True)
     speakers = relationship(
         "Speaker",
@@ -1120,7 +1138,7 @@ class SoundFile(MfaSqlBase):
 
     file_id = Column(ForeignKey("file.id"), primary_key=True)
     file = relationship("File", back_populates="sound_file")
-    sound_file_path = Column(String, nullable=False)
+    sound_file_path = Column(PathType, nullable=False)
     format = Column(String, nullable=False)
     sample_rate = Column(Integer, nullable=False)
     duration = Column(Float, nullable=False)
@@ -1184,7 +1202,7 @@ class TextFile(MfaSqlBase):
 
     file_id = Column(ForeignKey("file.id"), primary_key=True)
     file = relationship("File", back_populates="text_file")
-    text_file_path = Column(String, nullable=False)
+    text_file_path = Column(PathType, nullable=False)
     file_type = Column(String, nullable=False)
 
 
@@ -1256,7 +1274,7 @@ class Utterance(MfaSqlBase):
     duration = Column(Float, sqlalchemy.Computed('"end" - "begin"'), index=True)
     channel = Column(Integer, nullable=False)
     num_frames = Column(Integer)
-    text = Column(String)
+    text = Column(String, index=True)
     oovs = Column(String)
     normalized_text = Column(String)
     normalized_character_text = Column(String)
@@ -1304,12 +1322,6 @@ class Utterance(MfaSqlBase):
     __table_args__ = (
         sqlalchemy.Index(
             "utterance_position_index", "file_id", "speaker_id", "begin", "end", "channel"
-        ),
-        sqlalchemy.Index(
-            "utterance_text_idx",
-            "text",
-            postgresql_ops={"text": "gin_trgm_ops"},
-            postgresql_using="gin",
         ),
     )
 

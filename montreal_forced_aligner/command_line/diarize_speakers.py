@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import click
 
@@ -27,16 +28,21 @@ __all__ = ["diarize_speakers_cli"]
     ),
     short_help="Diarize a corpus",
 )
-@click.argument("corpus_directory", type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.argument(
+    "corpus_directory",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+)
 @click.argument(
     "ivector_extractor_path", type=click.UNPROCESSED, callback=validate_ivector_extractor
 )
-@click.argument("output_directory", type=click.Path(file_okay=False, dir_okay=True))
+@click.argument(
+    "output_directory", type=click.Path(file_okay=False, dir_okay=True, path_type=Path)
+)
 @click.option(
     "--config_path",
     "-c",
     help="Path to config file to use for training.",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
     "--expected_num_speakers", "-s", help="Number of speakers if known.", type=int, default=0

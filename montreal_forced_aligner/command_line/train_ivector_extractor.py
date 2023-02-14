@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import click
 
@@ -25,13 +26,18 @@ __all__ = ["train_ivector_cli"]
     ),
     short_help="Train an ivector extractor",
 )
-@click.argument("corpus_directory", type=click.Path(exists=True, file_okay=False, dir_okay=True))
-@click.argument("output_model_path", type=click.Path(file_okay=True, dir_okay=False))
+@click.argument(
+    "corpus_directory",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+)
+@click.argument(
+    "output_model_path", type=click.Path(file_okay=True, dir_okay=False, path_type=Path)
+)
 @click.option(
     "--config_path",
     "-c",
     help="Path to config file to use for training.",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
     "--speaker_characters",
@@ -45,7 +51,7 @@ __all__ = ["train_ivector_cli"]
     "--audio_directory",
     "-a",
     help="Audio directory root to use for finding audio files.",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
 )
 @common_options
 @click.help_option("-h", "--help")

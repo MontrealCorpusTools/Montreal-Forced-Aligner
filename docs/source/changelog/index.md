@@ -1,7 +1,5 @@
 
-.. _news:
-
-
+(news=)
 # News
 
 ## Roadmap
