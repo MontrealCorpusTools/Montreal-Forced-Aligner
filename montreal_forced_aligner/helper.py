@@ -158,7 +158,7 @@ def parse_old_features(config: MetaDict) -> MetaDict:
     return config
 
 
-def configure_logger(identifier: str, log_file: Optional[str] = None) -> None:
+def configure_logger(identifier: str, log_file: Optional[Path] = None) -> None:
     """
     Configure logging for the given identifier
 

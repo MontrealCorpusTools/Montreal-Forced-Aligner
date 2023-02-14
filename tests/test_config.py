@@ -1,4 +1,5 @@
 import os
+import pathlib
 
 import pytest
 
@@ -168,3 +169,14 @@ def test_load(basic_corpus_dir, basic_dict_path, temp_dir, config_directory):
     with pytest.raises(ConfigError):
         params = TrainableAligner.parse_parameters(path)
     am_trainer.cleanup()
+
+
+def test_config(global_config):
+    new_temp_path = global_config.current_profile.temporary_directory.joinpath("test")
+    global_config.current_profile.temporary_directory = new_temp_path
+    global_config.save()
+    global_config.load()
+    assert isinstance(global_config.current_profile.temporary_directory, pathlib.Path)
+    assert global_config.current_profile.temporary_directory == new_temp_path
+    global_config.current_profile.temporary_directory = new_temp_path.parent
+    global_config.save()

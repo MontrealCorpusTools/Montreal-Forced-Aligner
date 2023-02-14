@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import pathlib
 import shutil
 
 import mock
@@ -85,7 +86,7 @@ def global_config():
 @pytest.fixture(scope="session")
 def temp_dir(generated_dir, global_config):
     temp_dir = os.path.join(generated_dir, "temp")
-    global_config.current_profile.temporary_directory = temp_dir
+    global_config.current_profile.temporary_directory = pathlib.Path(temp_dir)
     global_config.save()
     yield temp_dir
 
