@@ -6,9 +6,9 @@ MFA configuration
 from __future__ import annotations
 
 import os
+import pathlib
 import re
 import typing
-from pathlib import Path
 from typing import Any, Dict, List, Union
 
 import click
@@ -38,7 +38,7 @@ XVECTOR_DIMENSION = 192
 PLDA_DIMENSION = 192
 
 
-def get_temporary_directory() -> Path:
+def get_temporary_directory() -> pathlib.Path:
     """
     Get the root temporary directory for MFA
 
@@ -51,15 +51,17 @@ def get_temporary_directory() -> Path:
     ------
         :class:`~montreal_forced_aligner.exceptions.RootDirectoryError`
     """
-    TEMP_DIR = os.environ.get(MFA_ROOT_ENVIRONMENT_VARIABLE, os.path.expanduser("~/Documents/MFA"))
+    TEMP_DIR = pathlib.Path(
+        os.environ.get(MFA_ROOT_ENVIRONMENT_VARIABLE, os.path.expanduser("~/Documents/MFA"))
+    )
     try:
-        os.makedirs(TEMP_DIR, exist_ok=True)
+        TEMP_DIR.mkdir(parents=True, exist_ok=True)
     except OSError:
         raise RootDirectoryError(TEMP_DIR, MFA_ROOT_ENVIRONMENT_VARIABLE)
-    return Path(TEMP_DIR)
+    return TEMP_DIR
 
 
-def generate_config_path() -> Path:
+def generate_config_path() -> pathlib.Path:
     """
     Generate the global configuration path for MFA
 
@@ -71,7 +73,7 @@ def generate_config_path() -> Path:
     return get_temporary_directory().joinpath("global_config.yaml")
 
 
-def generate_command_history_path() -> Path:
+def generate_command_history_path() -> pathlib.Path:
     """
     Generate the path to the command history file
 
@@ -147,7 +149,7 @@ class MfaProfile:
     blas_num_threads: int = 1
     use_mp: bool = True
     single_speaker: bool = False
-    temporary_directory: str = get_temporary_directory()
+    temporary_directory: pathlib.Path = get_temporary_directory()
     github_token: typing.Optional[str] = None
 
     def __getitem__(self, item):
@@ -166,6 +168,8 @@ class MfaProfile:
         for k, v in data.items():
             if k == "temp_directory":
                 k = "temporary_directory"
+            if k == "temporary_directory":
+                v = pathlib.Path(v)
             if v is None:
                 continue
             if hasattr(self, k):
@@ -220,7 +224,7 @@ class MfaConfiguration:
     def load(self) -> None:
         """Load MFA configuration"""
         with mfa_open(self.config_path, "r") as f:
-            data = yaml.safe_load(f)
+            data = yaml.load(f, Loader=yaml.Loader)
         for name, p in data.pop("profiles", {}).items():
             self.profiles[name] = MfaProfile()
             self.profiles[name].update(p)

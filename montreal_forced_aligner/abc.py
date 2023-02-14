@@ -522,9 +522,9 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
             self.initialize_database()
 
     @property
-    def working_directory(self) -> str:
+    def working_directory(self) -> Path:
         """Alias for a folder that contains worker information, separate from the data directory"""
-        return os.path.join(self.output_directory, self._current_workflow)
+        return self.output_directory.joinpath(self._current_workflow)
 
     @classmethod
     def parse_args(
@@ -712,14 +712,14 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         return self.data_source_identifier
 
     @property
-    def output_directory(self) -> str:
+    def output_directory(self) -> Path:
         """Root temporary directory to store all of this worker's files"""
-        return os.path.join(GLOBAL_CONFIG.temporary_directory, self.identifier)
+        return GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(self.identifier)
 
     @property
-    def log_file(self) -> str:
+    def log_file(self) -> Path:
         """Path to the worker's log file"""
-        return os.path.join(self.output_directory, f"{self.data_source_identifier}.log")
+        return self.output_directory.joinpath(f"{self.data_source_identifier}.log")
 
     def setup_logger(self) -> None:
         """
