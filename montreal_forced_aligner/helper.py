@@ -14,6 +14,7 @@ import shutil
 import sys
 import typing
 from contextlib import contextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
 
 import ansiwrap
@@ -68,13 +69,13 @@ def mfa_open(path, mode="r", encoding="utf8", newline=""):
         file.close()
 
 
-def load_configuration(config_path: str) -> Dict[str, Any]:
+def load_configuration(config_path: typing.Union[str, Path]) -> Dict[str, Any]:
     """
     Load a configuration file
 
     Parameters
     ----------
-    config_path: str
+    config_path: str or Path
         Path to yaml or json configuration file
 
     Returns
@@ -83,10 +84,12 @@ def load_configuration(config_path: str) -> Dict[str, Any]:
         Configuration dictionary
     """
     data = {}
+    if not isinstance(config_path, Path):
+        config_path = Path(config_path)
     with mfa_open(config_path, "r") as f:
-        if config_path.endswith(".yaml"):
+        if config_path.suffix == ".yaml":
             data = yaml.load(f, Loader=yaml.SafeLoader)
-        elif config_path.endswith(".json"):
+        elif config_path.suffix == ".json":
             data = json.load(f)
     if not data:
         return {}

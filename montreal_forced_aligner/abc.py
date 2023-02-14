@@ -36,6 +36,7 @@ from montreal_forced_aligner.exceptions import KaldiProcessingError, Multiproces
 from montreal_forced_aligner.helper import comma_join, load_configuration, mfa_open
 
 if TYPE_CHECKING:
+    from pathlib import Path
 
     from montreal_forced_aligner.data import MfaArguments, WorkflowType
 
@@ -870,12 +871,12 @@ class MfaModel(abc.ABC):
     model_type = "base_model"
 
     @classmethod
-    def pretrained_directory(cls) -> str:
+    def pretrained_directory(cls) -> Path:
         """Directory that pretrained models are saved in"""
         from .config import get_temporary_directory
 
-        path = os.path.join(get_temporary_directory(), "pretrained_models", cls.model_type)
-        os.makedirs(path, exist_ok=True)
+        path = get_temporary_directory().joinpath("pretrained_models", cls.model_type)
+        path.mkdir(parents=True, exist_ok=True)
         return path
 
     @classmethod
@@ -888,16 +889,16 @@ class MfaModel(abc.ABC):
         list[str]
             List of model names
         """
-        if not os.path.exists(cls.pretrained_directory()):
+        if not cls.pretrained_directory().exists():
             return []
         available = []
-        for f in os.listdir(cls.pretrained_directory()):
+        for f in cls.pretrained_directory().iterdir():
             if cls.valid_extension(f):
-                available.append(os.path.splitext(f)[0])
+                available.append(f.stem)
         return available
 
     @classmethod
-    def get_pretrained_path(cls, name: str, enforce_existence: bool = True) -> str:
+    def get_pretrained_path(cls, name: str, enforce_existence: bool = True) -> Path:
         """
         Generate a path to a pretrained model based on its name and model type
 
@@ -910,20 +911,22 @@ class MfaModel(abc.ABC):
 
         Returns
         -------
-        str
+        Path
             Path to model
         """
         return cls.generate_path(cls.pretrained_directory(), name, enforce_existence)
 
     @classmethod
     @abc.abstractmethod
-    def valid_extension(cls, filename: str) -> bool:
+    def valid_extension(cls, filename: Path) -> bool:
         """Check whether a file has a valid extensions"""
         ...
 
     @classmethod
     @abc.abstractmethod
-    def generate_path(cls, root: str, name: str, enforce_existence: bool = True) -> Optional[str]:
+    def generate_path(
+        cls, root: Path, name: str, enforce_existence: bool = True
+    ) -> Optional[Path]:
         """Generate a path from a root directory"""
         ...
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import click
 
@@ -30,8 +31,12 @@ __all__ = ["train_lm_cli"]
     ),
     short_help="Train a language model",
 )
-@click.argument("source_path", type=click.Path(exists=True, file_okay=True, dir_okay=True))
-@click.argument("output_model_path", type=click.Path(file_okay=True, dir_okay=False))
+@click.argument(
+    "source_path", type=click.Path(exists=True, file_okay=True, dir_okay=True, path_type=Path)
+)
+@click.argument(
+    "output_model_path", type=click.Path(file_okay=True, dir_okay=False, path_type=Path)
+)
 @click.option(
     "--dictionary_path",
     help="Full path to pronunciation dictionary, or saved dictionary name.",
@@ -42,7 +47,7 @@ __all__ = ["train_lm_cli"]
     "--config_path",
     "-c",
     help="Path to config file to use for training.",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @common_options
 @click.help_option("-h", "--help")
@@ -61,7 +66,7 @@ def train_lm_cli(context, **kwargs) -> None:
     source_path = kwargs["source_path"]
     output_model_path = kwargs["output_model_path"]
 
-    if not source_path.lower().endswith(".arpa"):
+    if source_path.suffix.lower() != ".arpa":
         if not dictionary_path:
             trainer = MfaLmCorpusTrainer(
                 corpus_directory=source_path,

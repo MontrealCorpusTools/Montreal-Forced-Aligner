@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import click
 
@@ -28,12 +29,14 @@ __all__ = ["train_g2p_cli"]
     short_help="Train a G2P model",
 )
 @click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
-@click.argument("output_model_path", type=click.Path(file_okay=True, dir_okay=False))
+@click.argument(
+    "output_model_path", type=click.Path(file_okay=True, dir_okay=False, path_type=Path)
+)
 @click.option(
     "--config_path",
     "-c",
     help="Path to config file to use for training.",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
     "--phonetisaurus",

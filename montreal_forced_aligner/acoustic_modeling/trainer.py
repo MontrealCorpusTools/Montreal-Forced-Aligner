@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import time
 import typing
+from pathlib import Path
 from queue import Empty
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -354,7 +355,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         config = super().configuration
         config.update(
             {
-                "dictionary_path": self.dictionary_model.path,
+                "dictionary_path": str(self.dictionary_model.path),
                 "corpus_directory": self.corpus_directory,
             }
         )
@@ -700,7 +701,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
 
     def export_files(
         self,
-        output_directory: str,
+        output_directory: Path,
         output_format: Optional[str] = None,
         include_original_text: bool = False,
     ) -> None:
@@ -709,7 +710,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
 
         Parameters
         ----------
-        output_directory: str
+        output_directory: Path
             Directory to save to
         output_format: str, optional
             Format to save alignments, one of 'long_textgrids' (the default), 'short_textgrids', or 'json', passed to praatio

@@ -1,6 +1,5 @@
 
-(tutorials_index)=
-# Implementation details
+# In depth guides
 
 :::{warning}
 This section is under construction!

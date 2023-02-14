@@ -344,14 +344,15 @@ html_theme_options = {
         "text": "Montreal Forced Aligner",
         # "image_dark": "logo-dark.svg",
     },
-    "google_analytics_id": "UA-73068199-4",
+    "analytics": {
+        "google_analytics_id": "UA-73068199-4",
+    },
     # "show_nav_level": 1,
     # "navigation_depth": 4,
     # "show_toc_level": 2,
     # "collapse_navigation": True,
 }
 html_context = {
-    # "github_url": "https://github.com", # or your GitHub Enterprise interprise
     "github_user": "MontrealCorpusTools",
     "github_repo": "Montreal-Forced-Aligner",
     "github_version": "main",

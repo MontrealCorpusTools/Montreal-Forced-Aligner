@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import click
 
@@ -27,15 +28,20 @@ __all__ = ["train_dictionary_cli"]
     ),
     short_help="Calculate pronunciation probabilities",
 )
-@click.argument("corpus_directory", type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.argument(
+    "corpus_directory",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+)
 @click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
 @click.argument("acoustic_model_path", type=click.UNPROCESSED, callback=validate_acoustic_model)
-@click.argument("output_directory", type=click.Path(file_okay=False, dir_okay=True))
+@click.argument(
+    "output_directory", type=click.Path(file_okay=False, dir_okay=True, path_type=Path)
+)
 @click.option(
     "--config_path",
     "-c",
     help="Path to config file to use for training.",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
     "--silence_probabilities",
@@ -55,7 +61,7 @@ __all__ = ["train_dictionary_cli"]
     "--audio_directory",
     "-a",
     help="Audio directory root to use for finding audio files.",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
 )
 @common_options
 @click.help_option("-h", "--help")

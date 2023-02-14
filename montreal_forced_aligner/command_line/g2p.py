@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import click
 
@@ -26,14 +27,16 @@ __all__ = ["g2p_cli"]
     ),
     short_help="Generate pronunciations",
 )
-@click.argument("input_path", type=click.Path(exists=True, file_okay=True, dir_okay=True))
+@click.argument(
+    "input_path", type=click.Path(exists=True, file_okay=True, dir_okay=True, path_type=Path)
+)
 @click.argument("g2p_model_path", type=click.UNPROCESSED, callback=validate_g2p_model)
-@click.argument("output_path", type=click.Path(file_okay=True, dir_okay=False))
+@click.argument("output_path", type=click.Path(file_okay=True, dir_okay=False, path_type=Path))
 @click.option(
     "--config_path",
     "-c",
     help="Path to config file to use for training.",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
     "--include_bracketed",

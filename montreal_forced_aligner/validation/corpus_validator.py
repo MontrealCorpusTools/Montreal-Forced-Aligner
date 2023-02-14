@@ -167,7 +167,7 @@ class ValidationMixin:
             for file_name, relative_path, speaker_name, begin, end, oovs in utterances:
                 total_instances += len(oovs)
                 f.write(
-                    f"{relative_path +'/' + file_name}, {speaker_name}: {begin}-{end}: {', '.join(oovs)}\n"
+                    f"{relative_path.joinpath(file_name)}, {speaker_name}: {begin}-{end}: {', '.join(oovs)}\n"
                 )
                 self.oovs_found.update(oovs)
         if self.oovs_found:

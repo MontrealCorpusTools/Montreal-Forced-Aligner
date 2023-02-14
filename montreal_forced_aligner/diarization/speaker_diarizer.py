@@ -730,6 +730,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             if speaker_mapping:
                 session.bulk_insert_mappings(Speaker, list(speaker_mapping.values()))
                 session.flush()
+            session.commit()
             session.execute(sqlalchemy.text("DROP INDEX IF EXISTS ix_utterance_speaker_id"))
             session.execute(sqlalchemy.text("DROP INDEX IF EXISTS utterance_position_index"))
             session.commit()
@@ -1037,7 +1038,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             logger.info(f"Number of speakers: {self.num_speakers}")
             logger.info(f"Unclassified utterances: {uncategorized_count}")
         logger.debug(f"Found {self.num_speakers} clusters")
-        if GLOBAL_CONFIG.current_profile.debug:
+        if GLOBAL_CONFIG.current_profile.debug and self.num_utterances < 100000:
             self.visualize_current_clusters()
 
     def visualize_current_clusters(self):
@@ -1476,7 +1477,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         with mfa_open(os.path.join(output_directory, "parameters.yaml"), "w") as f:
             yaml.safe_dump(
                 {
-                    "ivector_extractor_path": self.ivector_extractor_path,
+                    "ivector_extractor_path": str(self.ivector_extractor_path),
                     "expected_num_speakers": self.expected_num_speakers,
                     "cluster": self.cluster,
                     "cuda": self.cuda,

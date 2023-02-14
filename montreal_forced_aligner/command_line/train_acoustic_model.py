@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import click
 
@@ -26,19 +27,24 @@ __all__ = ["train_acoustic_model_cli"]
     ),
     short_help="Train a new acoustic model",
 )
-@click.argument("corpus_directory", type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.argument(
+    "corpus_directory",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+)
 @click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
-@click.argument("output_model_path", type=click.Path(file_okay=True, dir_okay=False))
+@click.argument(
+    "output_model_path", type=click.Path(file_okay=True, dir_okay=False, path_type=Path)
+)
 @click.option(
     "--output_directory",
     help="Path to save alignments.",
-    type=click.Path(file_okay=False, dir_okay=True),
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
 )
 @click.option(
     "--config_path",
     "-c",
     help="Path to config file to use for training.",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
     "--speaker_characters",
@@ -52,7 +58,7 @@ __all__ = ["train_acoustic_model_cli"]
     "--audio_directory",
     "-a",
     help="Audio directory root to use for finding audio files.",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
 )
 @click.option(
     "--phone_set",
@@ -60,6 +66,18 @@ __all__ = ["train_acoustic_model_cli"]
     help="Enable extra decision tree modeling based on the phone set.",
     default="UNKNOWN",
     type=click.Choice(["UNKNOWN", "AUTO", "MFA", "IPA", "ARPA", "PINYIN"]),
+)
+@click.option(
+    "--phone_groups_path",
+    "phone_groups_path",
+    help="Path to yaml file defining phone groups.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "--rules_path",
+    "rules_path",
+    help="Path to yaml file defining phonological rules.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
     "--output_format",

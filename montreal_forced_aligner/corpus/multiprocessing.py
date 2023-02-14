@@ -136,7 +136,7 @@ class AcousticDirectoryParser(mp.Process):
                 all_sound_files.update(wav_files)
         for root, _, files in os.walk(self.corpus_directory, followlinks=True):
             exts = find_exts(files)
-            relative_path = root.replace(self.corpus_directory, "").lstrip("/").lstrip("\\")
+            relative_path = root.replace(str(self.corpus_directory), "").lstrip("/").lstrip("\\")
 
             if self.stopped.stop_check():
                 break

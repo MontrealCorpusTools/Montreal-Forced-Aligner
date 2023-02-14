@@ -5,6 +5,7 @@ import logging
 import os
 import shutil
 import typing
+from pathlib import Path
 
 import click
 
@@ -139,7 +140,9 @@ def inspect_model_cli(model_type: str, model: str) -> None:
 
 @model_cli.command(name="save", short_help="Save a model")
 @click.argument("model_type", type=click.Choice(sorted(MODEL_TYPES)))
-@click.argument("path", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+@click.argument(
+    "path", type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path)
+)
 @click.option(
     "--name", help="Name to use as reference (defaults to the name of the zip file).", type=str
 )
