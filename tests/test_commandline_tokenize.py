@@ -1,12 +1,10 @@
 import os
 
 import click.testing
-import pytest
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
-@pytest.mark.skip("No pretrained model yet")
 def test_tokenize_pretrained(japanese_tokenizer_model, japanese_dir, temp_dir, generated_dir):
     out_directory = generated_dir.joinpath("japanese_tokenized")
     command = [

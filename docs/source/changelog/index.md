@@ -60,6 +60,7 @@ Not tied to 2.1, but in the near-ish term I would like to:
 :hidden:
 :maxdepth: 1
 
+changelog_2.2.rst
 news_2.1.rst
 changelog_2.1.rst
 news_2.0.rst

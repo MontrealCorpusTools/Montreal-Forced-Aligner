@@ -100,7 +100,8 @@ class TokenizerTrainer(
         with self.session() as session:
             self.num_validation_utterances = 0
             self.num_training_utterances = 0
-            self.num_iterations = 2
+            self.num_iterations = 1
+            self.random_starts = 1
             self.input_token_type = self.working_directory.joinpath("graphemes.txt")
             if self.evaluation_mode:
                 validation_items = int(self.num_utterances * self.validation_proportion)
