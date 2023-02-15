@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import abc
 import collections
 import logging
 import multiprocessing as mp
@@ -1214,21 +1213,6 @@ class PhonetisaurusTrainerMixin:
             change = self.maximization(last_iteration=i == self.num_iterations - 1)
             if change < self.em_threshold:
                 break
-
-    @property
-    @abc.abstractmethod
-    def working_directory(self) -> Path:
-        ...
-
-    @property
-    @abc.abstractmethod
-    def working_log_directory(self) -> Path:
-        ...
-
-    @property
-    @abc.abstractmethod
-    def db_string(self) -> str:
-        ...
 
     @property
     def data_directory(self) -> Path:
