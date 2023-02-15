@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 import typing
+from pathlib import Path
 from typing import Dict, List, Optional
 
 import sqlalchemy
@@ -137,7 +138,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
     @classmethod
     def parse_parameters(
         cls,
-        config_path: Optional[str] = None,
+        config_path: Optional[Path] = None,
         args: Optional[Dict[str, typing.Any]] = None,
         unknown_args: Optional[typing.Iterable[str]] = None,
     ) -> MetaDict:
@@ -146,7 +147,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
 
         Parameters
         ----------
-        config_path: str
+        config_path: :class:`~pathlib.Path`
             Config path
         args: dict[str, Any]
             Parsed arguments
@@ -187,7 +188,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
             SegmentVadArguments(
                 j.id,
                 getattr(self, "db_string", ""),
-                os.path.join(self.working_log_directory, f"segment_vad.{j.id}.log"),
+                self.working_log_directory.joinpath(f"segment_vad.{j.id}.log"),
                 j.construct_path(self.split_directory, "vad", "scp"),
                 self.segmentation_options,
             )
@@ -330,7 +331,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         """Setup segmentation"""
         super().setup()
         self.create_new_current_workflow(WorkflowType.segmentation)
-        log_dir = os.path.join(self.working_directory, "log")
+        log_dir = self.working_directory.joinpath("log")
         os.makedirs(log_dir, exist_ok=True)
         try:
             if self.speechbrain:

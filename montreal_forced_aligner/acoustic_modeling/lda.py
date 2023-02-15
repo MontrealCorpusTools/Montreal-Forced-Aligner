@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import typing
+from pathlib import Path
 from queue import Empty
 from typing import TYPE_CHECKING, Dict, List
 
@@ -45,10 +46,10 @@ class LdaAccStatsArguments(MfaArguments):
 
     dictionaries: List[str]
     feature_strings: Dict[str, str]
-    ali_paths: Dict[str, str]
-    model_path: str
+    ali_paths: Dict[str, Path]
+    model_path: Path
     lda_options: MetaDict
-    acc_paths: Dict[str, str]
+    acc_paths: Dict[str, Path]
 
 
 class CalcLdaMlltArguments(MfaArguments):
@@ -56,10 +57,10 @@ class CalcLdaMlltArguments(MfaArguments):
 
     dictionaries: List[str]
     feature_strings: Dict[str, str]
-    ali_paths: Dict[str, str]
-    model_path: str
+    ali_paths: Dict[str, Path]
+    model_path: Path
     lda_options: MetaDict
-    macc_paths: Dict[str, str]
+    macc_paths: Dict[str, Path]
 
 
 class LdaAccStatsFunction(KaldiFunction):
@@ -318,7 +319,7 @@ class LdaTrainer(TriphoneTrainer):
                 LdaAccStatsArguments(
                     j.id,
                     getattr(self, "db_string", ""),
-                    os.path.join(self.working_log_directory, f"lda_acc_stats.{j.id}.log"),
+                    self.working_log_directory.joinpath(f"lda_acc_stats.{j.id}.log"),
                     j.dictionary_ids,
                     feat_strings,
                     j.construct_path_dictionary(
@@ -407,7 +408,7 @@ class LdaTrainer(TriphoneTrainer):
 
         """
         worker_lda_path = os.path.join(self.worker.working_directory, "lda.mat")
-        lda_path = os.path.join(self.working_directory, "lda.mat")
+        lda_path = self.working_directory.joinpath("lda.mat")
         if os.path.exists(worker_lda_path):
             os.remove(worker_lda_path)
         arguments = self.lda_acc_stats_arguments()
@@ -450,7 +451,7 @@ class LdaTrainer(TriphoneTrainer):
                     for done, errors in function.run():
                         pbar.update(done + errors)
 
-        log_path = os.path.join(self.working_log_directory, "lda_est.log")
+        log_path = self.working_log_directory.joinpath("lda_est.log")
         acc_list = []
         for x in arguments:
             acc_list.extend(x.acc_paths.values())
@@ -549,9 +550,9 @@ class LdaTrainer(TriphoneTrainer):
         log_path = os.path.join(
             self.working_log_directory, f"transform_means.{self.iteration}.log"
         )
-        previous_mat_path = os.path.join(self.working_directory, "lda.mat")
-        new_mat_path = os.path.join(self.working_directory, "lda_new.mat")
-        composed_path = os.path.join(self.working_directory, "lda_composed.mat")
+        previous_mat_path = self.working_directory.joinpath("lda.mat")
+        new_mat_path = self.working_directory.joinpath("lda_new.mat")
+        composed_path = self.working_directory.joinpath("lda_composed.mat")
         with mfa_open(log_path, "a") as log_file:
             macc_list = []
             for x in arguments:

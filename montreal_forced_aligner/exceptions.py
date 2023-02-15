@@ -10,6 +10,7 @@ import logging
 import re
 import sys
 import typing
+from pathlib import Path
 from typing import TYPE_CHECKING, Collection, Dict, List, Optional
 
 import requests.structures
@@ -192,11 +193,11 @@ class ModelLoadError(ModelError):
 
     Parameters
     ----------
-    path: str
+    path: :class:`~pathlib.Path`
         Path of the model archive
     """
 
-    def __init__(self, path: str):
+    def __init__(self, path: typing.Union[str, Path]):
         super().__init__("")
         self.message_lines = [
             f"The archive {self.printer.error_text(path)} could not be parsed as an MFA model."
@@ -209,11 +210,11 @@ class ModelSaveError(ModelError):
 
     Parameters
     ----------
-    path: str
+    path: :class:`~pathlib.Path`
         Path of the model archive
     """
 
-    def __init__(self, path: str):
+    def __init__(self, path: Path):
         super().__init__("")
         self.message_lines = [
             f"The archive {self.printer.error_text(path)} already exists.",
@@ -283,11 +284,11 @@ class DictionaryPathError(DictionaryError):
 
     Parameters
     ----------
-    input_path: str
+    input_path: :class:`~pathlib.Path`
         Path of the pronunciation dictionary
     """
 
-    def __init__(self, input_path: str):
+    def __init__(self, input_path: Path):
         super().__init__("")
         self.message_lines = [
             f"The specified path for the dictionary ({self.printer.error_text(input_path)}) was not found."
@@ -300,11 +301,11 @@ class DictionaryFileError(DictionaryError):
 
     Parameters
     ----------
-    input_path: str
+    input_path: :class:`~pathlib.Path`
         Path of the pronunciation dictionary
     """
 
-    def __init__(self, input_path: str):
+    def __init__(self, input_path: Path):
         super().__init__("")
         self.message_lines = [
             f"The specified path for the dictionary ({self.printer.error_text(input_path)}) is not a file."
@@ -481,7 +482,7 @@ class AlignmentExportError(AlignmentError):
 
     """
 
-    def __init__(self, path: str, error_lines: List[str]):
+    def __init__(self, path: Path, error_lines: List[str]):
         MFAError.__init__(self, f"Error was encountered in exporting {path}:")
         self.path = path
         self.message_lines.append("")
@@ -567,11 +568,11 @@ class FileArgumentNotFoundError(ArgumentError):
 
     Parameters
     ----------
-    path: str
+    path: :class:`~pathlib.Path`
         Path not found
     """
 
-    def __init__(self, path):
+    def __init__(self, path: Path):
         super().__init__("")
         self.message_lines = [f'Could not find "{self.printer.error_text(path)}".']
 
@@ -806,11 +807,11 @@ class LanguageModelNotFoundError(LMError):
 
     Parameters
     ----------
-    path: str
+    path: :class:`~pathlib.Path`
         Path to missing language model
     """
 
-    def __init__(self, path: str):
+    def __init__(self, path: Path):
         super().__init__(f"Could not find a suitable language model: {path}")
 
 
@@ -867,7 +868,7 @@ class KaldiProcessingError(MFAError):
         Overall log file to find more information
     """
 
-    def __init__(self, error_logs: List[str], log_file: Optional[str] = None):
+    def __init__(self, error_logs: List[typing.Union[Path, str]], log_file: Optional[Path] = None):
         super().__init__(
             f"There were {len(error_logs)} job(s) with errors when running Kaldi binaries."
         )

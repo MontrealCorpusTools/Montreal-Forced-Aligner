@@ -171,7 +171,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 AlignmentExtractionArguments(
                     j.id,
                     getattr(self, "db_string", ""),
-                    os.path.join(self.working_log_directory, f"get_phone_ctm.{j.id}.log"),
+                    self.working_log_directory.joinpath(f"get_phone_ctm.{j.id}.log"),
                     self.alignment_model_path,
                     round(self.frame_shift / 1000, 4),
                     self.phone_symbol_table_path,
@@ -203,7 +203,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             ExportTextGridArguments(
                 j.id,
                 getattr(self, "db_string", ""),
-                os.path.join(self.working_log_directory, f"export_textgrids.{j.id}.log"),
+                self.working_log_directory.joinpath(f"export_textgrids.{j.id}.log"),
                 self.export_frame_shift,
                 GLOBAL_CONFIG.cleanup_textgrids,
                 self.clitic_marker,
@@ -230,7 +230,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             GeneratePronunciationsArguments(
                 j.id,
                 getattr(self, "db_string", ""),
-                os.path.join(self.working_log_directory, f"generate_pronunciations.{j.id}.log"),
+                self.working_log_directory.joinpath(f"generate_pronunciations.{j.id}.log"),
                 self.model_path,
                 False,
             )
@@ -264,15 +264,15 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 acoustic_model is not None
                 and acoustic_model.meta["features"]["uses_speaker_adaptation"]
             ):
-                if self.alignment_model_path.endswith(".mdl"):
-                    if os.path.exists(self.alignment_model_path.replace(".mdl", ".alimdl")):
+                if self.alignment_model_path.suffix == ".mdl":
+                    if os.path.exists(self.alignment_model_path.with_suffix(".alimdl")):
                         raise AlignerError(
                             "Not using speaker independent model when it is available"
                         )
                 self.calc_fmllr()
 
                 self.uses_speaker_adaptation = True
-                assert self.alignment_model_path.endswith(".mdl")
+                assert self.alignment_model_path.suffix == ".mdl"
                 logger.info("Performing second-pass alignment...")
                 self.align_utterances()
                 self.collect_alignments()
@@ -377,7 +377,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         final_silence_correction_sum = 0
         final_non_silence_correction_sum = 0
         with mfa_open(
-            os.path.join(self.working_log_directory, "pronunciation_probability_calculation.log"),
+            self.working_log_directory.joinpath("pronunciation_probability_calculation.log"),
             "w",
             encoding="utf8",
         ) as log_file, self.session() as session:
@@ -952,7 +952,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         """
         args = []
         for j in self.jobs:
-            log_path = os.path.join(self.working_log_directory, f"fine_tune.{j.id}.log")
+            log_path = self.working_log_directory.joinpath(f"fine_tune.{j.id}.log")
             args.append(
                 FineTuneArguments(
                     j.id,
@@ -1141,7 +1141,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
         Parameters
         ----------
-        output_directory: Path
+        output_directory: :class:`~pathlib.Path`
             Directory to save to
         output_format: str, optional
             Format to save alignments, one of 'long_textgrids' (the default), 'short_textgrids', or 'json', passed to praatio

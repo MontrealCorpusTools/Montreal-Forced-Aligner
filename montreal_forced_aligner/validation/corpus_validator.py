@@ -9,6 +9,7 @@ import os
 import time
 import typing
 from decimal import Decimal
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import sqlalchemy
@@ -84,7 +85,7 @@ class ValidationMixin:
     @property
     def working_log_directory(self) -> str:
         """Working log directory"""
-        return os.path.join(self.working_directory, "log")
+        return self.working_directory.joinpath("log")
 
     def analyze_setup(self) -> None:
         """
@@ -531,7 +532,7 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
     @classmethod
     def parse_parameters(
         cls,
-        config_path: Optional[str] = None,
+        config_path: Optional[Path] = None,
         args: Optional[Dict[str, Any]] = None,
         unknown_args: Optional[typing.Iterable[str]] = None,
     ) -> MetaDict:
@@ -541,7 +542,7 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
 
         Parameters
         ----------
-        config_path: str
+        config_path: :class:`~pathlib.Path`
             Config path
         args: dict[str, Any]
             Parsed arguments

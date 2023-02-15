@@ -30,6 +30,7 @@ def test_configure(
         "--disable_mp",
         "--always_verbose",
     ]
+    command = [str(x) for x in command]
     click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
     assert os.path.exists(path)
     global_config.load()

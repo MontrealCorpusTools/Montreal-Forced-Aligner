@@ -6,6 +6,7 @@ import multiprocessing as mp
 import os
 import sys
 import time
+from pathlib import Path
 from queue import Empty
 
 import tqdm
@@ -149,7 +150,6 @@ class TextCorpusMixin(CorpusMixin):
             logger.info("Detected ctrl-c, please wait a moment while we clean everything up...")
             self.stopped.stop()
             finished_adding.stop()
-            job_queue.join()
             self.stopped.set_sigint_source()
             while True:
                 try:
@@ -306,12 +306,12 @@ class TextCorpus(TextCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
         return self.data_source_identifier
 
     @property
-    def output_directory(self) -> str:
+    def output_directory(self) -> Path:
         """Root temporary directory to store all corpus and dictionary files"""
-        return os.path.join(GLOBAL_CONFIG.temporary_directory, self.identifier)
+        return GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(self.identifier)
 
     @property
-    def working_directory(self) -> str:
+    def working_directory(self) -> Path:
         """Working directory"""
         return self.corpus_output_directory
 
@@ -341,11 +341,11 @@ class DictionaryTextCorpus(DictionaryTextCorpusMixin, MfaWorker, TemporaryDirect
         return self.data_source_identifier
 
     @property
-    def output_directory(self) -> str:
+    def output_directory(self) -> Path:
         """Root temporary directory to store all corpus and dictionary files"""
-        return os.path.join(GLOBAL_CONFIG.temporary_directory, self.identifier)
+        return GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(self.identifier)
 
     @property
-    def working_directory(self) -> str:
+    def working_directory(self) -> Path:
         """Working directory"""
         return self.corpus_output_directory

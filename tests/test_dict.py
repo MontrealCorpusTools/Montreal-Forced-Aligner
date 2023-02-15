@@ -1,4 +1,3 @@
-import os
 import shutil
 
 from montreal_forced_aligner.db import Pronunciation
@@ -6,7 +5,7 @@ from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictiona
 
 
 def test_abstract(abstract_dict_path, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "dictionary_tests", "abstract")
+    output_directory = generated_dir.joinpath("dictionary_tests", "abstract")
     global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     dictionary = MultispeakerDictionary(
@@ -32,7 +31,7 @@ def test_abstract(abstract_dict_path, generated_dir, global_config, db_setup):
 
 
 def test_tabbed(tabbed_dict_path, basic_dict_path, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "dictionary_tests", "tabbed")
+    output_directory = generated_dir.joinpath("dictionary_tests", "tabbed")
     global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     tabbed_dictionary = MultispeakerDictionary(dictionary_path=tabbed_dict_path)
@@ -45,7 +44,7 @@ def test_tabbed(tabbed_dict_path, basic_dict_path, generated_dir, global_config,
 
 
 def test_extra_annotations(extra_annotations_path, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "dictionary_tests", "extras")
+    output_directory = generated_dir.joinpath("dictionary_tests", "extras")
     global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     dictionary = MultispeakerDictionary(dictionary_path=extra_annotations_path)
@@ -59,7 +58,7 @@ def test_extra_annotations(extra_annotations_path, generated_dir, global_config,
 
 
 def test_abstract_noposition(abstract_dict_path, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "dictionary_tests", "abstract_no_position")
+    output_directory = generated_dir.joinpath("dictionary_tests", "abstract_no_position")
     global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     dictionary = MultispeakerDictionary(
@@ -72,7 +71,7 @@ def test_abstract_noposition(abstract_dict_path, generated_dir, global_config, d
 
 
 def test_english_clitics(english_dictionary, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "dictionary_tests", "english_clitics")
+    output_directory = generated_dir.joinpath("dictionary_tests", "english_clitics")
     global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     dictionary = MultispeakerDictionary(
@@ -103,7 +102,7 @@ def test_english_clitics(english_dictionary, generated_dir, global_config, db_se
 
 
 def test_english_mfa(english_us_mfa_dictionary, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "dictionary_tests", "english_mfa")
+    output_directory = generated_dir.joinpath("dictionary_tests", "english_mfa")
     global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     dictionary = MultispeakerDictionary(
@@ -125,7 +124,7 @@ def test_english_mfa(english_us_mfa_dictionary, generated_dir, global_config, db
 
 
 def test_mandarin_pinyin(pinyin_dictionary, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "dictionary_tests", "pinyin")
+    output_directory = generated_dir.joinpath("dictionary_tests", "pinyin")
     global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     dictionary = MultispeakerDictionary(
@@ -163,7 +162,7 @@ def test_mandarin_pinyin(pinyin_dictionary, generated_dir, global_config, db_set
 def test_multispeaker_config(
     multispeaker_dictionary_config_path, generated_dir, global_config, db_setup
 ):
-    output_directory = os.path.join(generated_dir, "dictionary_tests", "multispeaker")
+    output_directory = generated_dir.joinpath("dictionary_tests", "multispeaker")
     global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     dictionary = MultispeakerDictionary(
@@ -176,7 +175,7 @@ def test_multispeaker_config(
 
 
 def test_mixed_dictionary(mixed_dict_path, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "dictionary_tests", "mixed")
+    output_directory = generated_dir.joinpath("dictionary_tests", "mixed")
     global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     dictionary = MultispeakerDictionary(
@@ -214,7 +213,7 @@ def test_mixed_dictionary(mixed_dict_path, generated_dir, global_config, db_setu
 
 
 def test_vietnamese_tones(vietnamese_dict_path, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "dictionary_tests", "vietnamese")
+    output_directory = generated_dir.joinpath("dictionary_tests", "vietnamese")
     global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     dictionary = MultispeakerDictionary(

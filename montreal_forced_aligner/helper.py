@@ -75,7 +75,7 @@ def load_configuration(config_path: typing.Union[str, Path]) -> Dict[str, Any]:
 
     Parameters
     ----------
-    config_path: str or Path
+    config_path: :class:`~pathlib.Path`
         Path to yaml or json configuration file
 
     Returns
@@ -88,7 +88,7 @@ def load_configuration(config_path: typing.Union[str, Path]) -> Dict[str, Any]:
         config_path = Path(config_path)
     with mfa_open(config_path, "r") as f:
         if config_path.suffix == ".yaml":
-            data = yaml.load(f, Loader=yaml.SafeLoader)
+            data = yaml.load(f, Loader=yaml.Loader)
         elif config_path.suffix == ".json":
             data = json.load(f)
     if not data:
@@ -308,7 +308,7 @@ class TerminalPrinter:
         str
             Highlighted text
         """
-        return self.colorize(text, "red")
+        return self.colorize(str(text), "red")
 
     def emphasized_text(self, text: Any) -> str:
         """
@@ -324,7 +324,7 @@ class TerminalPrinter:
         str
             Highlighted text
         """
-        return self.colorize(text, "bright")
+        return self.colorize(str(text), "bright")
 
     def pass_text(self, text: Any) -> str:
         """
@@ -340,7 +340,7 @@ class TerminalPrinter:
         str
             Highlighted text
         """
-        return self.colorize(text, "green")
+        return self.colorize(str(text), "green")
 
     def warning_text(self, text: Any) -> str:
         """
@@ -356,7 +356,7 @@ class TerminalPrinter:
         str
             Highlighted text
         """
-        return self.colorize(text, "yellow")
+        return self.colorize(str(text), "yellow")
 
     @property
     def indent_string(self) -> str:
@@ -420,7 +420,7 @@ class TerminalPrinter:
 
         for i, line in enumerate(lines):
             lines[i] = ansiwrap.fill(
-                line,
+                str(line),
                 initial_indent=self.indent_string,
                 subsequent_indent=" " * self.indent_size * (self.indent_level + 1),
                 width=shutil.get_terminal_size().columns,
@@ -705,7 +705,7 @@ def load_scp_safe(string: str) -> str:
     return string.replace("_MFASPACE_", " ")
 
 
-def output_mapping(mapping: Dict[str, Any], path: str, skip_safe: bool = False) -> None:
+def output_mapping(mapping: Dict[str, Any], path: Path, skip_safe: bool = False) -> None:
     """
     Helper function to save mapping information (i.e., utt2spk) in Kaldi scp format
 
@@ -716,7 +716,7 @@ def output_mapping(mapping: Dict[str, Any], path: str, skip_safe: bool = False) 
     ----------
     mapping: dict[str, Any]
         Mapping to output
-    path: str
+    path: :class:`~pathlib.Path`
         Path to save mapping
     skip_safe: bool, optional
         Flag for whether to skip over making a string safe
@@ -733,7 +733,7 @@ def output_mapping(mapping: Dict[str, Any], path: str, skip_safe: bool = False) 
             f.write(f"{make_scp_safe(k)} {v}\n")
 
 
-def load_scp(path: str, data_type: Optional[Type] = str) -> Dict[str, Any]:
+def load_scp(path: Path, data_type: Optional[Type] = str) -> Dict[str, Any]:
     """
     Load a Kaldi script file (.scp)
 
@@ -750,7 +750,7 @@ def load_scp(path: str, data_type: Optional[Type] = str) -> Dict[str, Any]:
 
     Parameters
     ----------
-    path : str
+    path : :class:`~pathlib.Path`
         Path to Kaldi script file
     data_type : type
         Type to coerce the data to

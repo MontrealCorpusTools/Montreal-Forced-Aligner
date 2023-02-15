@@ -130,7 +130,7 @@ def align_corpus_cli(context, **kwargs) -> None:
             mapping = None
             if custom_mapping_path:
                 with mfa_open(custom_mapping_path, "r") as f:
-                    mapping = yaml.safe_load(f)
+                    mapping = yaml.load(f, Loader=yaml.Loader)
             aligner.load_reference_alignments(reference_directory)
             reference_alignments = WorkflowType.reference
         else:

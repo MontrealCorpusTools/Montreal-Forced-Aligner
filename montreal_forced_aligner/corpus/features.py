@@ -9,6 +9,7 @@ import re
 import subprocess
 import typing
 from abc import abstractmethod
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 import dataclassy
@@ -59,8 +60,8 @@ logger = logging.getLogger("mfa")
 class VadArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.corpus.features.ComputeVadFunction`"""
 
-    feats_scp_path: str
-    vad_scp_path: str
+    feats_scp_path: Path
+    vad_scp_path: Path
     vad_options: MetaDict
 
 
@@ -71,7 +72,7 @@ class MfccArguments(MfaArguments):
     Arguments for :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
     """
 
-    data_directory: str
+    data_directory: Path
     mfcc_options: MetaDict
     pitch_options: MetaDict
 
@@ -83,7 +84,7 @@ class FinalFeatureArguments(MfaArguments):
     Arguments for :class:`~montreal_forced_aligner.corpus.features.FinalFeatureFunction`
     """
 
-    data_directory: str
+    data_directory: Path
     uses_cmvn: bool
     voiced_only: bool
     subsample_feats: int
@@ -96,7 +97,7 @@ class PitchArguments(MfaArguments):
     Arguments for :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
     """
 
-    data_directory: str
+    data_directory: Path
     pitch_options: MetaDict
 
 
@@ -107,7 +108,7 @@ class PitchRangeArguments(MfaArguments):
     Arguments for :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
     """
 
-    data_directory: str
+    data_directory: Path
     pitch_options: MetaDict
 
 
@@ -118,11 +119,11 @@ class CalcFmllrArguments(MfaArguments):
 
     dictionaries: List[str]
     feature_strings: Dict[str, str]
-    ali_paths: Dict[str, str]
-    ali_model_path: str
-    model_path: str
-    spk2utt_paths: Dict[str, str]
-    trans_paths: Dict[str, str]
+    ali_paths: Dict[str, Path]
+    ali_model_path: Path
+    model_path: Path
+    spk2utt_paths: Dict[str, Path]
+    trans_paths: Dict[str, Path]
     fmllr_options: MetaDict
 
 
@@ -132,9 +133,9 @@ class ExtractIvectorsArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.corpus.features.ExtractIvectorsFunction`"""
 
     ivector_options: MetaDict
-    ie_path: str
-    ivectors_scp_path: str
-    dubm_path: str
+    ie_path: Path
+    ivectors_scp_path: Path
+    dubm_path: Path
 
 
 # noinspection PyUnresolvedReferences
@@ -166,7 +167,7 @@ def feature_make_safe(value: Any) -> str:
 
 def compute_mfcc_process(
     log_file: io.FileIO,
-    wav_path: str,
+    wav_path: Path,
     segments: typing.Union[str, subprocess.Popen, subprocess.PIPE],
     mfcc_options: MetaDict,
     min_length=0.1,
@@ -250,7 +251,7 @@ def compute_mfcc_process(
 
 def compute_pitch_process(
     log_file: io.FileIO,
-    wav_path: str,
+    wav_path: Path,
     segments: typing.Union[str, subprocess.Popen, subprocess.PIPE],
     pitch_options: MetaDict,
     min_length=0.1,
@@ -361,10 +362,10 @@ def compute_pitch_process(
 
 def compute_transform_process(
     log_file: io.FileIO,
-    feat_proc: typing.Union[subprocess.Popen, str],
-    utt2spk_path: str,
-    lda_mat_path: typing.Optional[str],
-    fmllr_path: typing.Optional[str],
+    feat_proc: typing.Union[subprocess.Popen, Path],
+    utt2spk_path: Path,
+    lda_mat_path: typing.Optional[Path],
+    fmllr_path: typing.Optional[Path],
     lda_options: MetaDict,
 ) -> subprocess.Popen:
     """
@@ -376,13 +377,11 @@ def compute_transform_process(
         File for logging stderr
     feat_proc: subprocess.Popen
         Feature generation process
-    utt2spk_path: str
+    utt2spk_path: :class:`~pathlib.Path`
         Utterance to speaker SCP file path
-    cmvn_path: str
-        CMVN SCP file path
-    lda_mat_path: str
+    lda_mat_path: :class:`~pathlib.Path`
         LDA matrix file path
-    fmllr_path: str
+    fmllr_path: :class:`~pathlib.Path`
         fMLLR transform file path
     lda_options: dict[str, Any]
         Options for LDA
@@ -888,7 +887,7 @@ class ComputeVadFunction(KaldiFunction):
         with mfa_open(self.log_path, "w") as log_file:
             feats_scp_path = self.feats_scp_path
             vad_scp_path = self.vad_scp_path
-            vad_ark_path = self.vad_scp_path.replace(".scp", ".ark")
+            vad_ark_path = self.vad_scp_path.with_suffix(".ark")
             vad_proc = subprocess.Popen(
                 [
                     thirdparty_binary("compute-vad"),
@@ -966,7 +965,7 @@ class CalcFmllrFunction(KaldiFunction):
                     spk2utt_path = self.spk2utt_paths[dict_id]
                     trans_path = self.trans_paths[dict_id]
                     initial = True
-                    if os.path.exists(trans_path):
+                    if trans_path.exists():
                         initial = False
                     post_proc = subprocess.Popen(
                         [thirdparty_binary("ali-to-post"), f"ark,s,cs:{ali_path}", "ark:-"],
@@ -990,7 +989,7 @@ class CalcFmllrFunction(KaldiFunction):
                         env=os.environ,
                     )
 
-                    temp_trans_path = trans_path + ".tmp"
+                    temp_trans_path = trans_path.with_suffix(trans_path.suffix + ".tmp")
                     if self.ali_model_path != self.model_path:
                         post_gpost_proc = subprocess.Popen(
                             [
@@ -1025,7 +1024,7 @@ class CalcFmllrFunction(KaldiFunction):
                     else:
 
                         if not initial:
-                            temp_composed_trans_path = trans_path + ".cmp.tmp"
+                            temp_composed_trans_path = trans_path.with_suffix(".cmp.tmp")
                             est_proc = subprocess.Popen(
                                 [
                                     thirdparty_binary("gmm-est-fmllr"),
@@ -1247,7 +1246,7 @@ class FeatureConfigMixin:
 
     @property
     @abstractmethod
-    def working_directory(self) -> str:
+    def working_directory(self) -> Path:
         """Abstract method for working directory"""
         ...
 
@@ -1522,7 +1521,7 @@ class ExtractIvectorsFunction(KaldiFunction):
                 stderr=log_file,
                 env=os.environ,
             )
-            ivector_ark_path = self.ivectors_scp_path.replace(".scp", ".ark")
+            ivector_ark_path = self.ivectors_scp_path.with_suffix(".ark")
             extract_proc = subprocess.Popen(
                 [
                     thirdparty_binary("ivector-extract"),
@@ -1886,13 +1885,13 @@ class PldaModel:
     transformed_diagonalizing_transform: typing.Optional[np.ndarray] = None
 
     @classmethod
-    def load(cls, plda_path):
+    def load(cls, plda_path: Path):
         """
         Instantiate a PLDA model from a trained model file
 
         Parameters
         ----------
-        plda_path: str
+        plda_path: :class:`~pathlib.Path`
             Path to trained PLDA model
 
         Returns

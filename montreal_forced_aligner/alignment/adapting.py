@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import time
+from pathlib import Path
 from queue import Empty
 from typing import TYPE_CHECKING, List
 
@@ -96,7 +97,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
                 AccStatsArguments(
                     j.id,
                     getattr(self, "db_string", ""),
-                    os.path.join(self.working_log_directory, f"map_acc_stats.{j.id}.log"),
+                    self.working_log_directory.joinpath(f"map_acc_stats.{j.id}.log"),
                     j.dictionary_ids,
                     feat_strings,
                     j.construct_path_dictionary(self.working_directory, "ali", "ark"),
@@ -117,11 +118,11 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         """
         arguments = self.map_acc_stats_arguments(alignment)
         if alignment:
-            initial_mdl_path = os.path.join(self.working_directory, "unadapted.alimdl")
-            final_mdl_path = os.path.join(self.working_directory, "final.alimdl")
+            initial_mdl_path = self.working_directory.joinpath("unadapted.alimdl")
+            final_mdl_path = self.working_directory.joinpath("final.alimdl")
         else:
-            initial_mdl_path = os.path.join(self.working_directory, "unadapted.mdl")
-            final_mdl_path = os.path.join(self.working_directory, "final.mdl")
+            initial_mdl_path = self.working_directory.joinpath("unadapted.mdl")
+            final_mdl_path = self.working_directory.joinpath("final.mdl")
         logger.info("Accumulating statistics...")
         with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
@@ -161,8 +162,8 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
                     function = AccStatsFunction(args)
                     for num_utterances, errors in function.run():
                         pbar.update(num_utterances + errors)
-        log_path = os.path.join(self.working_log_directory, "map_model_est.log")
-        occs_path = os.path.join(self.working_directory, "final.occs")
+        log_path = self.working_log_directory.joinpath("map_model_est.log")
+        occs_path = self.working_directory.joinpath("final.occs")
         with mfa_open(log_path, "w") as log_file:
             acc_files = []
             for j in arguments:
@@ -211,20 +212,20 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
     @property
     def working_log_directory(self) -> str:
         """Current log directory"""
-        return os.path.join(self.working_directory, "log")
+        return self.working_directory.joinpath("log")
 
     @property
     def model_path(self) -> str:
         """Current acoustic model path"""
         if self.current_workflow.workflow_type == WorkflowType.acoustic_model_adaptation:
-            return os.path.join(self.working_directory, "unadapted.mdl")
-        return os.path.join(self.working_directory, "final.mdl")
+            return self.working_directory.joinpath("unadapted.mdl")
+        return self.working_directory.joinpath("final.mdl")
 
     @property
     def alignment_model_path(self) -> str:
         """Current acoustic model path"""
         if self.current_workflow.workflow_type == WorkflowType.acoustic_model_adaptation:
-            path = os.path.join(self.working_directory, "unadapted.alimdl")
+            path = self.working_directory.joinpath("unadapted.alimdl")
             if os.path.exists(path) and not getattr(self, "uses_speaker_adaptation", False):
                 return path
             return self.model_path
@@ -233,7 +234,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
     @property
     def next_model_path(self) -> str:
         """Mapped acoustic model path"""
-        return os.path.join(self.working_directory, "final.mdl")
+        return self.working_directory.joinpath("final.mdl")
 
     def train_map(self) -> None:
         """
@@ -275,15 +276,15 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         for f in ["final.mdl", "final.alimdl"]:
             shutil.copyfile(
                 os.path.join(alignment_workflow.working_directory, f),
-                os.path.join(self.working_directory, f.replace("final", "unadapted")),
+                self.working_directory.joinpath(f).with_stem("unadapted"),
             )
         shutil.copyfile(
             os.path.join(alignment_workflow.working_directory, "tree"),
-            os.path.join(self.working_directory, "tree"),
+            self.working_directory.joinpath("tree"),
         )
         shutil.copyfile(
             os.path.join(alignment_workflow.working_directory, "lda.mat"),
-            os.path.join(self.working_directory, "lda.mat"),
+            self.working_directory.joinpath("lda.mat"),
         )
         for j in self.jobs:
             old_paths = j.construct_path_dictionary(
@@ -302,27 +303,27 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         try:
             logger.info("Adapting pretrained model...")
             self.train_map()
-            self.export_model(os.path.join(self.working_log_directory, "acoustic_model.zip"))
+            self.export_model(self.working_log_directory.joinpath("acoustic_model.zip"))
             shutil.copyfile(
-                os.path.join(self.working_directory, "final.mdl"),
+                self.working_directory.joinpath("final.mdl"),
                 os.path.join(self.align_directory, "final.mdl"),
             )
             shutil.copyfile(
-                os.path.join(self.working_directory, "final.occs"),
+                self.working_directory.joinpath("final.occs"),
                 os.path.join(self.align_directory, "final.occs"),
             )
             shutil.copyfile(
-                os.path.join(self.working_directory, "tree"),
+                self.working_directory.joinpath("tree"),
                 os.path.join(self.align_directory, "tree"),
             )
-            if os.path.exists(os.path.join(self.working_directory, "final.alimdl")):
+            if os.path.exists(self.working_directory.joinpath("final.alimdl")):
                 shutil.copyfile(
-                    os.path.join(self.working_directory, "final.alimdl"),
+                    self.working_directory.joinpath("final.alimdl"),
                     os.path.join(self.align_directory, "final.alimdl"),
                 )
-            if os.path.exists(os.path.join(self.working_directory, "lda.mat")):
+            if os.path.exists(self.working_directory.joinpath("lda.mat")):
                 shutil.copyfile(
-                    os.path.join(self.working_directory, "lda.mat"),
+                    self.working_directory.joinpath("lda.mat"),
                     os.path.join(self.align_directory, "lda.mat"),
                 )
             wf = self.current_workflow
@@ -360,7 +361,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         }
         return data
 
-    def export_model(self, output_model_path: str) -> None:
+    def export_model(self, output_model_path: Path) -> None:
         """
         Output an acoustic model to the specified path
 
@@ -369,9 +370,11 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         output_model_path : str
             Path to save adapted acoustic model
         """
-        directory, filename = os.path.split(output_model_path)
-        basename, _ = os.path.splitext(filename)
-        acoustic_model = AcousticModel.empty(basename, root_directory=self.working_log_directory)
+        directory = output_model_path.parent
+
+        acoustic_model = AcousticModel.empty(
+            output_model_path.stem, root_directory=self.working_log_directory
+        )
         acoustic_model.add_meta_file(self)
         acoustic_model.add_model(self.working_directory)
         if directory:

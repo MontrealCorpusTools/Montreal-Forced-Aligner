@@ -211,19 +211,19 @@ class GeneratePronunciationsArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
-    text_int_paths: dict[int, str]
+    text_int_paths: dict[int, Path]
         Per dictionary text SCP paths
-    ali_paths: dict[int, str]
+    ali_paths: dict[int, Path]
         Per dictionary alignment paths
-    model_path: str
+    model_path: :class:`~pathlib.Path`
         Acoustic model path
     for_g2p: bool
         Flag for training a G2P model with acoustic information
     """
 
-    model_path: str
+    model_path: Path
     for_g2p: bool
 
 
@@ -238,25 +238,25 @@ class AlignmentExtractionArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
-    model_path: str
+    model_path: :class:`~pathlib.Path`
         Acoustic model path
     frame_shift: float
         Frame shift in seconds
-    ali_paths: dict[int, str]
+    ali_paths: dict[int, Path]
         Per dictionary alignment paths
-    text_int_paths: dict[int, str]
+    text_int_paths: dict[int, Path]
         Per dictionary text SCP paths
-    phone_symbol_path: str
+    phone_symbol_path: :class:`~pathlib.Path`
         Path to phone symbols table
     score_options: dict[str, Any]
         Options for Kaldi functions
     """
 
-    model_path: str
+    model_path: Path
     frame_shift: float
-    phone_symbol_path: str
+    phone_symbol_path: Path
     score_options: MetaDict
     confidence: bool
     transcription: bool
@@ -273,7 +273,7 @@ class ExportTextGridArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     export_frame_shift: float
         Frame shift in seconds
@@ -281,20 +281,18 @@ class ExportTextGridArguments(MfaArguments):
         Flag to cleanup silences and recombine words
     clitic_marker: str
         Marker indicating clitics
-    output_directory: str
+    output_directory: :class:`~pathlib.Path`
         Directory for exporting
     output_format: str
         Format to export
     include_original_text: bool
         Flag for including original unnormalized text as a tier
-    workflow_id: int
-        Integer id of workflow to export
     """
 
     export_frame_shift: float
     cleanup_textgrids: bool
     clitic_marker: str
-    output_directory: str
+    output_directory: Path
     output_format: str
     include_original_text: bool
 
@@ -310,13 +308,13 @@ class CompileInformationArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
-    align_log_path: str
+    align_log_path: :class:`~pathlib.Path`
         Path to log file for parsing
     """
 
-    align_log_path: str
+    align_log_path: Path
 
 
 @dataclass
@@ -330,22 +328,18 @@ class CompileTrainGraphsArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
-    dictionaries: list[int]
-        List of dictionary ids
-    tree_path: str
+    tree_path: :class:`~pathlib.Path`
         Path to tree file
-    model_path: str
+    model_path: :class:`~pathlib.Path`
         Path to model file
-    text_int_paths: dict[int, str]
-        Mapping of dictionaries to text scp files
-    fst_ark_paths: dict[int, str]
-        Mapping of dictionaries to fst ark files
+    use_g2p: bool
+        Flag for whether acoustic model uses g2p
     """
 
-    tree_path: str
-    model_path: str
+    tree_path: Path
+    model_path: Path
     use_g2p: bool
 
 
@@ -360,23 +354,19 @@ class AlignArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
-    dictionaries: list[int]
-        List of dictionary ids
-    fst_ark_paths: dict[int, str]
-        Mapping of dictionaries to fst ark files
-    feature_strings: dict[int, str]
-        Mapping of dictionaries to feature generation strings
-    model_path: str
+    model_path: :class:`~pathlib.Path`
         Path to model file
-    ali_paths: dict[int, str]
-        Per dictionary alignment paths
     align_options: dict[str, Any]
         Alignment options
+    feature_options: dict[str, Any]
+        Feature options
+    confidence: bool
+        Flag for outputting confidence
     """
 
-    model_path: str
+    model_path: Path
     align_options: MetaDict
     feature_options: MetaDict
     confidence: bool
@@ -393,40 +383,30 @@ class FineTuneArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
-    working_directory: str
-        Current working directory
-    tree_path: str
+    tree_path: :class:`~pathlib.Path`
         Path to tree file
-    model_path: str
+    model_path: :class:`~pathlib.Path`
         Path to model file
     frame_shift: int
         Frame shift in ms
-    cmvn_paths: dict[int, str]
-        Mapping of dictionaries to CMVN scp paths
-    fmllr_paths: dict[int, str]
-        Mapping of dictionaries to fMLLR ark paths
-    lda_mat_path: str, optional
-        Path to LDA matrix file
     mfcc_options: dict[str, Any]
         MFCC computation options
     pitch_options: dict[str, Any]
         Pitch computation options
     align_options: dict[str, Any]
         Alignment options
-    workflow_id: int
-        Integer ID for workflow to fine tune
     position_dependent_phones: bool
         Flag for whether to use position dependent phones
     grouped_phones: dict[str, list[str]]
         Grouped lists of phones
     """
 
-    phone_symbol_table_path: str
-    disambiguation_symbols_int_path: str
-    tree_path: str
-    model_path: str
+    phone_symbol_table_path: Path
+    disambiguation_symbols_int_path: Path
+    tree_path: Path
+    model_path: Path
     frame_shift: int
     mfcc_options: MetaDict
     pitch_options: MetaDict
@@ -447,18 +427,18 @@ class PhoneConfidenceArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
-    model_path: str
+    model_path: :class:`~pathlib.Path`
         Path to model file
-    phone_pdf_counts_path: str
+    phone_pdf_counts_path: :class:`~pathlib.Path`
         Path to output PDF counts
     feature_strings: dict[int, str]
         Mapping of dictionaries to feature generation strings
     """
 
-    model_path: str
-    phone_pdf_counts_path: str
+    model_path: Path
+    phone_pdf_counts_path: Path
     feature_strings: Dict[int, str]
 
 
@@ -473,25 +453,25 @@ class AccStatsArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     dictionaries: list[int]
         List of dictionary ids
     feature_strings: dict[int, str]
         Mapping of dictionaries to feature generation strings
-    ali_paths: dict[int, str]
+    ali_paths: dict[int, Path]
         Per dictionary alignment paths
-    acc_paths: dict[int, str]
+    acc_paths: dict[int, Path]
         Per dictionary accumulated stats paths
-    model_path: str
+    model_path: :class:`~pathlib.Path`
         Path to model file
     """
 
     dictionaries: List[int]
     feature_strings: Dict[int, str]
-    ali_paths: Dict[int, str]
-    acc_paths: Dict[int, str]
-    model_path: str
+    ali_paths: Dict[int, Path]
+    acc_paths: Dict[int, Path]
+    model_path: Path
 
 
 class CompileTrainGraphsFunction(KaldiFunction):
@@ -1735,7 +1715,7 @@ def compile_information_func(
     data = {"unaligned": [], "too_short": [], "log_like": 0, "total_frames": 0}
     align_log_path = arguments.align_log_path
     if not os.path.exists(align_log_path):
-        align_log_path = align_log_path.replace(".log", ".fmllr.log")
+        align_log_path = align_log_path.with_suffix(".fmllr.log")
     with mfa_open(arguments.log_path, "w"), mfa_open(align_log_path, "r") as f:
         for line in f:
             decode_error_match = re.match(decode_error_pattern, line)

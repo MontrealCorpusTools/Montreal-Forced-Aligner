@@ -92,14 +92,14 @@ def output_textgrid_writing_errors(
 
 
 def parse_aligned_textgrid(
-    path: str, root_speaker: typing.Optional[str] = None
+    path: Path, root_speaker: typing.Optional[str] = None
 ) -> Dict[str, List[CtmInterval]]:
     """
     Load a TextGrid as a dictionary of speaker's phone tiers
 
     Parameters
     ----------
-    path: str
+    path: :class:`~pathlib.Path`
         TextGrid file to parse
     root_speaker: str, optional
         Optional speaker if the TextGrid has no speaker information
@@ -156,7 +156,7 @@ def export_textgrid(
     ----------
     speaker_data: dict[Speaker, dict[str, list[:class:`~montreal_forced_aligner.data.CtmInterval`]]
         Per speaker, per word/phone :class:`~montreal_forced_aligner.data.CtmInterval`
-    output_path: str
+    output_path: :class:`~pathlib.Path`
         Output path of the file
     duration: float
         Duration of the file

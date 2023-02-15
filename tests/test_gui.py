@@ -1,10 +1,8 @@
-import os
-
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpus
 
 
 def test_save_text_lab(basic_corpus_dir, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "gui_tests")
+    output_directory = generated_dir.joinpath("gui_tests")
     global_config.temporary_directory = output_directory
     corpus = AcousticCorpus(
         corpus_directory=basic_corpus_dir,
@@ -19,7 +17,7 @@ def test_file_properties(
     global_config,
     db_setup,
 ):
-    output_directory = os.path.join(generated_dir, "gui_tests")
+    output_directory = generated_dir.joinpath("gui_tests")
     global_config.temporary_directory = output_directory
     corpus = AcousticCorpus(
         corpus_directory=stereo_corpus_dir,
@@ -34,7 +32,7 @@ def test_file_properties(
 
 
 def test_flac_tg(flac_tg_corpus_dir, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "gui_tests")
+    output_directory = generated_dir.joinpath("gui_tests")
     global_config.temporary_directory = output_directory
     corpus = AcousticCorpus(
         corpus_directory=flac_tg_corpus_dir,

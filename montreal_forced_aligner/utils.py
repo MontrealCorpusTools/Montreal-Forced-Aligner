@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import time
 import typing
+from pathlib import Path
 from queue import Empty
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -142,7 +143,7 @@ def get_class_for_dataset_type(dataset_type: DatasetType):
 
 
 def parse_dictionary_file(
-    path: str,
+    path: Path,
 ) -> typing.Generator[
     typing.Tuple[
         str,
@@ -158,7 +159,7 @@ def parse_dictionary_file(
 
     Parameters
     ----------
-    path: str
+    path: :class:`~pathlib.Path`
         Path to lexicon file
 
     Yields
@@ -403,7 +404,7 @@ def read_feats(proc: subprocess.Popen, raw_id=False) -> Dict[str, np.array]:
         yield current_id, feats
 
 
-def parse_logs(log_directory: str) -> None:
+def parse_logs(log_directory: Path) -> None:
     """
     Parse the output of a Kaldi run for any errors and raise relevant MFA exceptions
 
@@ -419,11 +420,10 @@ def parse_logs(log_directory: str) -> None:
 
     """
     error_logs = []
-    for name in os.listdir(log_directory):
-        log_path = os.path.join(log_directory, name)
-        if os.path.isdir(log_path):
+    for log_path in log_directory.iterdir():
+        if log_path.is_dir():
             continue
-        if not name.endswith(".log"):
+        if log_path.suffix != ".log":
             continue
         with mfa_open(log_path, "r") as f:
             for line in f:

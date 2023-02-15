@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import time
 import typing
+from pathlib import Path
 from queue import Empty
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
@@ -187,7 +188,7 @@ class TranscriberMixin(CorpusAligner):
                     TrainSpeakerLmArguments(
                         j.id,
                         getattr(self, "db_string", ""),
-                        os.path.join(self.working_log_directory, f"train_lm.{j.id}.log"),
+                        self.working_log_directory.joinpath(f"train_lm.{j.id}.log"),
                         self.model_path,
                         self.order,
                         self.method,
@@ -244,14 +245,14 @@ class TranscriberMixin(CorpusAligner):
         logger.debug(f"Compiling speaker language models took {time.time() - begin:.3f} seconds")
 
     @property
-    def model_directory(self) -> str:
+    def model_directory(self) -> Path:
         """Model directory for the transcriber"""
-        return os.path.join(self.output_directory, "models")
+        return self.output_directory.joinpath("models")
 
     @property
-    def model_log_directory(self) -> str:
+    def model_log_directory(self) -> Path:
         """Model directory for the transcriber"""
-        return os.path.join(self.model_directory, "log")
+        return self.model_directory.joinpath("log")
 
     def lm_rescore(self) -> None:
         """
@@ -377,8 +378,8 @@ class TranscriberMixin(CorpusAligner):
 
         ngram_order = 4
         num_ngrams = 20000
-        phone_lm_path = os.path.join(self.phones_dir, "phone_lm.fst")
-        log_path = os.path.join(self.phones_dir, "phone_lm_training.log")
+        phone_lm_path = self.phones_dir.joinpath("phone_lm.fst")
+        log_path = self.phones_dir.joinpath("phone_lm_training.log")
         unigram_phones = set()
         return_queue = mp.Queue()
         stopped = Stopped()
@@ -390,14 +391,14 @@ class TranscriberMixin(CorpusAligner):
             total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar:
 
-            with mfa_open(os.path.join(self.phones_dir, "phone_boundaries.int"), "w") as f:
+            with mfa_open(self.phones_dir.joinpath("phone_boundaries.int"), "w") as f:
                 for p in session.query(Phone):
                     f.write(f"{p.mapping_id} singleton\n")
             for j in self.jobs:
                 args = TrainLmArguments(
                     j.id,
                     getattr(self, "db_string", ""),
-                    os.path.join(self.working_log_directory, f"ngram_count.{j.id}.log"),
+                    self.working_log_directory.joinpath(f"ngram_count.{j.id}.log"),
                     self.phones_dir,
                     self.phone_symbol_table_path,
                     ngram_order,
@@ -407,7 +408,7 @@ class TranscriberMixin(CorpusAligner):
                 p = KaldiProcessWorker(j.id, return_queue, function, stopped)
                 procs.append(p)
                 p.start()
-                count_paths.append(os.path.join(self.phones_dir, f"{j.id}.cnts"))
+                count_paths.append(self.phones_dir.joinpath(f"{j.id}.cnts"))
             while True:
                 try:
                     result = return_queue.get(timeout=1)
@@ -438,7 +439,7 @@ class TranscriberMixin(CorpusAligner):
                 raise v
         logger.info("Training model...")
         with mfa_open(log_path, "w") as log_file:
-            merged_file = os.path.join(self.phones_dir, "merged.cnts")
+            merged_file = self.phones_dir.joinpath("merged.cnts")
             if len(count_paths) > 1:
                 ngrammerge_proc = subprocess.Popen(
                     [
@@ -490,7 +491,7 @@ class TranscriberMixin(CorpusAligner):
             log_file.flush()
             bigram_fst = model.construct_bigram_fst("#1", allowed_bigrams, phone_symbols)
 
-            bigram_fst.write(os.path.join(self.phones_dir, "bigram.fst"))
+            bigram_fst.write(self.phones_dir.joinpath("bigram.fst"))
             bigram_fst.project("output")
             push_special_proc = subprocess.Popen(
                 [thirdparty_binary("fstpushspecial")],
@@ -528,15 +529,15 @@ class TranscriberMixin(CorpusAligner):
         from montreal_forced_aligner.transcription.multiprocessing import compose_clg, compose_hclg
 
         self.train_phone_lm()
-        with mfa_open(os.path.join(self.working_log_directory, "hclg.log"), "w") as log_file:
+        with mfa_open(self.working_log_directory.joinpath("hclg.log"), "w") as log_file:
             context_width = self.hclg_options["context_width"]
             central_pos = self.hclg_options["central_pos"]
 
             clg_path = os.path.join(
                 self.working_directory, f"CLG_{context_width}_{central_pos}.fst"
             )
-            hclga_path = os.path.join(self.working_directory, "HCLGa.fst")
-            hclg_path = os.path.join(self.working_directory, "HCLG_phone.fst")
+            hclga_path = self.working_directory.joinpath("HCLGa.fst")
+            hclg_path = self.working_directory.joinpath("HCLG_phone.fst")
             ilabels_temp = os.path.join(
                 self.working_directory, f"ilabels_{context_width}_{central_pos}"
             )
@@ -550,7 +551,7 @@ class TranscriberMixin(CorpusAligner):
                 context_width,
                 central_pos,
                 ilabels_temp,
-                os.path.join(self.phones_dir, "phone_lm.fst"),
+                self.phones_dir.joinpath("phone_lm.fst"),
                 clg_path,
                 log_file,
             )
@@ -693,7 +694,7 @@ class TranscriberMixin(CorpusAligner):
         ser, wer, cer = self.compute_wer()
         logger.info(f"SER: {100 * ser:.2f}%, WER: {100 * wer:.2f}%, CER: {100 * cer:.2f}%")
 
-    def save_transcription_evaluation(self, output_directory: str) -> None:
+    def save_transcription_evaluation(self, output_directory: Path) -> None:
         """
         Save transcription evaluation to an output directory
 
@@ -702,7 +703,7 @@ class TranscriberMixin(CorpusAligner):
         output_directory: str
             Directory to save evaluation
         """
-        output_path = os.path.join(output_directory, "transcription_evaluation.csv")
+        output_path = output_directory.joinpath("transcription_evaluation.csv")
         with mfa_open(output_path, "w") as f, self.session() as session:
             writer = csv.writer(f)
             writer.writerow(
@@ -966,7 +967,7 @@ class TranscriberMixin(CorpusAligner):
         workflow = self.current_workflow
         arguments = self.lat_gen_fmllr_arguments(workflow.workflow_type)
         with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar, mfa_open(
-            os.path.join(self.working_log_directory, "lat_gen_fmllr_log_like.csv"),
+            self.working_log_directory.joinpath("lat_gen_fmllr_log_like.csv"),
             "w",
             encoding="utf8",
         ) as log_file:
@@ -1179,7 +1180,7 @@ class TranscriberMixin(CorpusAligner):
                     PerSpeakerDecodeArguments(
                         j.id,
                         getattr(self, "db_string", ""),
-                        os.path.join(self.working_log_directory, f"per_speaker_decode.{j.id}.log"),
+                        self.working_log_directory.joinpath(f"per_speaker_decode.{j.id}.log"),
                         self.model_directory,
                         feat_strings,
                         j.construct_path_dictionary(self.working_directory, "lat", "ark"),
@@ -1196,14 +1197,14 @@ class TranscriberMixin(CorpusAligner):
                     DecodePhoneArguments(
                         j.id,
                         getattr(self, "db_string", ""),
-                        os.path.join(self.working_log_directory, f"decode.{j.id}.log"),
+                        self.working_log_directory.joinpath(f"decode.{j.id}.log"),
                         j.dictionary_ids,
                         feat_strings,
                         self.decode_options,
                         self.alignment_model_path,
                         j.construct_path_dictionary(self.working_directory, "lat", "ark"),
                         self.phone_symbol_table_path,
-                        os.path.join(self.working_directory, "HCLG_phone.fst"),
+                        self.working_directory.joinpath("HCLG_phone.fst"),
                     )
                 )
             else:
@@ -1211,7 +1212,7 @@ class TranscriberMixin(CorpusAligner):
                     DecodeArguments(
                         j.id,
                         getattr(self, "db_string", ""),
-                        os.path.join(self.working_log_directory, f"decode.{j.id}.log"),
+                        self.working_log_directory.joinpath(f"decode.{j.id}.log"),
                         j.dictionary_ids,
                         feat_strings,
                         self.decode_options,
@@ -1240,13 +1241,13 @@ class TranscriberMixin(CorpusAligner):
             LmRescoreArguments(
                 j.id,
                 getattr(self, "db_string", ""),
-                os.path.join(self.working_log_directory, f"lm_rescore.{j.id}.log"),
+                self.working_log_directory.joinpath(f"lm_rescore.{j.id}.log"),
                 j.dictionary_ids,
                 self.lm_rescore_options,
                 j.construct_path_dictionary(self.working_directory, "lat", "ark"),
                 j.construct_path_dictionary(self.working_directory, "lat.rescored", "ark"),
-                j.construct_dictionary_dependent_paths(self.model_directory, "G.small", "fst"),
-                j.construct_dictionary_dependent_paths(self.model_directory, "G.med", "fst"),
+                j.construct_dictionary_dependent_paths(self.model_directory, "G_small", "fst"),
+                j.construct_dictionary_dependent_paths(self.model_directory, "G_med", "fst"),
             )
             for j in self.jobs
         ]
@@ -1264,11 +1265,11 @@ class TranscriberMixin(CorpusAligner):
             CarpaLmRescoreArguments(
                 j.id,
                 getattr(self, "db_string", ""),
-                os.path.join(self.working_log_directory, f"carpa_lm_rescore.{j.id}.log"),
+                self.working_log_directory.joinpath(f"carpa_lm_rescore.{j.id}.log"),
                 j.dictionary_ids,
                 j.construct_path_dictionary(self.working_directory, "lat.rescored", "ark"),
                 j.construct_path_dictionary(self.working_directory, "lat.carpa.rescored", "ark"),
-                j.construct_dictionary_dependent_paths(self.model_directory, "G.med", "fst"),
+                j.construct_dictionary_dependent_paths(self.model_directory, "G_med", "fst"),
                 j.construct_dictionary_dependent_paths(self.model_directory, "G", "carpa"),
             )
             for j in self.jobs
@@ -1308,7 +1309,7 @@ class TranscriberMixin(CorpusAligner):
                 InitialFmllrArguments(
                     j.id,
                     getattr(self, "db_string", ""),
-                    os.path.join(self.working_log_directory, f"initial_fmllr.{j.id}.log"),
+                    self.working_log_directory.joinpath(f"initial_fmllr.{j.id}.log"),
                     j.dictionary_ids,
                     feat_strings,
                     self.model_path,
@@ -1350,7 +1351,7 @@ class TranscriberMixin(CorpusAligner):
                         self.feature_options["uses_speaker_adaptation"],
                     )
             else:
-                hclg_paths = os.path.join(self.working_directory, "HCLG_phone.fst")
+                hclg_paths = self.working_directory.joinpath("HCLG_phone.fst")
                 word_paths = self.phone_symbol_table_path
 
                 feat_strings = j.construct_feature_proc_string(
@@ -1366,7 +1367,7 @@ class TranscriberMixin(CorpusAligner):
                 LatGenFmllrArguments(
                     j.id,
                     getattr(self, "db_string", ""),
-                    os.path.join(self.working_log_directory, f"lat_gen_fmllr.{j.id}.log"),
+                    self.working_log_directory.joinpath(f"lat_gen_fmllr.{j.id}.log"),
                     j.dictionary_ids,
                     feat_strings,
                     self.model_path,
@@ -1404,7 +1405,7 @@ class TranscriberMixin(CorpusAligner):
                 FinalFmllrArguments(
                     j.id,
                     getattr(self, "db_string", ""),
-                    os.path.join(self.working_log_directory, f"final_fmllr.{j.id}.log"),
+                    self.working_log_directory.joinpath(f"final_fmllr.{j.id}.log"),
                     j.dictionary_ids,
                     feat_strings,
                     self.model_path,
@@ -1441,7 +1442,7 @@ class TranscriberMixin(CorpusAligner):
                 FmllrRescoreArguments(
                     j.id,
                     getattr(self, "db_string", ""),
-                    os.path.join(self.working_log_directory, f"fmllr_rescore.{j.id}.log"),
+                    self.working_log_directory.joinpath(f"fmllr_rescore.{j.id}.log"),
                     j.dictionary_ids,
                     feat_strings,
                     self.model_path,
@@ -1487,8 +1488,8 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
 
     def __init__(
         self,
-        acoustic_model_path: str,
-        language_model_path: str,
+        acoustic_model_path: Path,
+        language_model_path: Path,
         output_type: str = "transcription",
         **kwargs,
     ):
@@ -1514,11 +1515,10 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
                 args[d.id] = CreateHclgArguments(
                     d.id,
                     getattr(self, "db_string", ""),
-                    os.path.join(self.model_directory, "log", f"hclg.{d.id}.log"),
+                    self.model_directory.joinpath("log", f"hclg.{d.id}.log"),
                     self.model_directory,
-                    os.path.join(self.model_directory, f"{{file_name}}.{d.id}.fst"),
-                    os.path.join(self.model_directory, f"words.{d.id}.txt"),
-                    os.path.join(self.model_directory, f"G.{d.id}.carpa"),
+                    self.model_directory.joinpath(f"words.{d.id}.txt"),
+                    self.model_directory.joinpath(f"G.{d.id}.carpa"),
                     self.language_model.small_arpa_path,
                     self.language_model.medium_arpa_path,
                     self.language_model.carpa_path,
@@ -1595,7 +1595,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
                         pbar.update(1)
         error_logs = []
         for arg in dict_arguments:
-            if not os.path.exists(arg.hclg_path):
+            if not self.model_directory.joinpath(f"HCLG.{arg.job_name}.fst").exists():
                 error_logs.append(arg.log_path)
         if error_logs:
             raise KaldiProcessingError(error_logs)
@@ -1629,7 +1629,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
                 "Running `mfa train_lm` on the ARPA file will remove this warning."
             )
             logger.info("Parsing large ngram model...")
-            mod_path = os.path.join(self.model_directory, "base_lm.mod")
+            mod_path = self.model_directory.joinpath("base_lm.mod")
             new_carpa_path = os.path.join(self.model_directory, "base_lm.arpa")
             with mfa_open(big_arpa_path, "r") as inf, mfa_open(new_carpa_path, "w") as outf:
                 for line in inf:
@@ -1642,7 +1642,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
                     "Generating small model from the large ARPA with a pruning threshold of 3e-7"
                 )
                 prune_thresh_small = 0.0000003
-                small_mod_path = mod_path.replace(".mod", "_small.mod")
+                small_mod_path = mod_path.with_stem(mod_path.stem + "_small")
                 subprocess.call(
                     [
                         "ngramshrink",
@@ -1659,7 +1659,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
                     "Generating medium model from the large ARPA with a pruning threshold of 1e-7"
                 )
                 prune_thresh_medium = 0.0000001
-                med_mod_path = mod_path.replace(".mod", "_med.mod")
+                med_mod_path = mod_path.with_stem(mod_path.stem + "_med")
                 subprocess.call(
                     [
                         "ngramshrink",
@@ -1684,7 +1684,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
     @classmethod
     def parse_parameters(
         cls,
-        config_path: Optional[str] = None,
+        config_path: Optional[Path] = None,
         args: Optional[Dict[str, typing.Any]] = None,
         unknown_args: Optional[typing.Iterable[str]] = None,
     ) -> MetaDict:
@@ -1693,7 +1693,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
 
         Parameters
         ----------
-        config_path: str, optional
+        config_path: :class:`~pathlib.Path`, optional
             Path to yaml configuration file
         args: dict[str, Any]
             Parsed arguments
@@ -1734,7 +1734,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
         begin = time.time()
         os.makedirs(self.working_log_directory, exist_ok=True)
         self.load_corpus()
-        dirty_path = os.path.join(self.working_directory, "dirty")
+        dirty_path = self.working_directory.joinpath("dirty")
         if os.path.exists(dirty_path):
             shutil.rmtree(self.working_directory, ignore_errors=True)
         os.makedirs(self.working_log_directory, exist_ok=True)
@@ -1744,13 +1744,6 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
             shutil.rmtree(self.model_directory)
         log_dir = os.path.join(self.model_directory, "log")
         os.makedirs(log_dir, exist_ok=True)
-        if self.acoustic_model.meta["version"] < "2.1":
-            logger.warning(
-                "The acoustic model was trained in an earlier version of MFA. "
-                "There may be incompatibilities in feature generation that cause errors. "
-                "Please download the latest version of the model via `mfa model download`, "
-                "use a different acoustic model, or use version 2.0.6 of MFA."
-            )
         self.acoustic_model.validate(self)
         self.acoustic_model.export_model(self.model_directory)
         self.acoustic_model.export_model(self.working_directory)
@@ -1813,7 +1806,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
 
     def export_files(
         self,
-        output_directory: str,
+        output_directory: Path,
         output_format: Optional[str] = None,
         include_original_text: bool = False,
     ) -> None:

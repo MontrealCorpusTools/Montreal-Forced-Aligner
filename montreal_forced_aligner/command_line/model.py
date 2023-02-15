@@ -153,13 +153,13 @@ def inspect_model_cli(model_type: str, model: str) -> None:
     default=GLOBAL_CONFIG.overwrite,
 )
 @click.help_option("-h", "--help")
-def save_model_cli(path: str, model_type: str, name: str, overwrite: bool) -> None:
+def save_model_cli(path: Path, model_type: str, name: str, overwrite: bool) -> None:
     """
     Save a model to pretrained folder for later use
 
     Parameters
     ----------
-    path: str
+    path: :class:`~pathlib.Path`
         Path to model
     model_type: str
         Type of model

@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 import typing
+from pathlib import Path
 
 import dataclassy
 import hdbscan
@@ -74,8 +75,8 @@ class PldaClassificationArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.diarization.multiprocessing.PldaClassificationFunction`"""
 
     plda: PldaModel
-    train_ivector_path: str
-    num_utts_path: str
+    train_ivector_path: Path
+    num_utts_path: Path
     use_xvector: bool
 
 

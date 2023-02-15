@@ -8,6 +8,7 @@ import multiprocessing as mp
 import os
 import time
 from abc import abstractmethod
+from pathlib import Path
 from queue import Empty
 from typing import TYPE_CHECKING, Dict, List
 
@@ -107,9 +108,9 @@ class AlignMixin(DictionaryMixin):
         self.unaligned_files = set()
 
     @property
-    def tree_path(self) -> str:
+    def tree_path(self) -> Path:
         """Path to tree file"""
-        return os.path.join(self.working_directory, "tree")
+        return self.working_directory.joinpath("tree")
 
     @property
     @abstractmethod
@@ -140,8 +141,8 @@ class AlignMixin(DictionaryMixin):
                 CompileTrainGraphsArguments(
                     j.id,
                     getattr(self, "db_string", ""),
-                    os.path.join(self.working_log_directory, f"compile_train_graphs.{j.id}.log"),
-                    os.path.join(self.working_directory, "tree"),
+                    self.working_log_directory.joinpath(f"compile_train_graphs.{j.id}.log"),
+                    self.working_directory.joinpath("tree"),
                     model_path,
                     getattr(self, "use_g2p", False),
                 )
@@ -161,13 +162,11 @@ class AlignMixin(DictionaryMixin):
         iteration = getattr(self, "iteration", None)
         for j in self.jobs:
             if iteration is not None:
-                log_path = os.path.join(
-                    self.working_log_directory, f"align.{iteration}.{j.id}.log"
-                )
+                log_path = self.working_log_directory.joinpath(f"align.{iteration}.{j.id}.log")
             else:
-                log_path = os.path.join(self.working_log_directory, f"align.{j.id}.log")
+                log_path = self.working_log_directory.joinpath(f"align.{j.id}.log")
             if getattr(self, "uses_speaker_adaptation", False):
-                log_path = log_path.replace(".log", ".fmllr.log")
+                log_path = log_path.with_suffix(".fmllr.log")
             args.append(
                 AlignArguments(
                     j.id,
@@ -196,7 +195,7 @@ class AlignMixin(DictionaryMixin):
         """
         args = []
         for j in self.jobs:
-            log_path = os.path.join(self.working_log_directory, f"phone_confidence.{j.id}.log")
+            log_path = self.working_log_directory.joinpath(f"phone_confidence.{j.id}.log")
 
             feat_strings = {}
             for d in j.dictionaries:
@@ -237,12 +236,12 @@ class AlignMixin(DictionaryMixin):
                     self.working_log_directory, f"align.{iteration}.{j.id}.log"
                 )
             else:
-                log_path = os.path.join(self.working_log_directory, f"align.{j.id}.log")
+                log_path = self.working_log_directory.joinpath(f"align.{j.id}.log")
             args.append(
                 CompileInformationArguments(
                     j.id,
                     getattr(self, "db_string", ""),
-                    os.path.join(self.working_log_directory, f"compile_information.{j.id}.log"),
+                    self.working_log_directory.joinpath(f"compile_information.{j.id}.log"),
                     log_path,
                 )
             )
@@ -553,7 +552,7 @@ class AlignMixin(DictionaryMixin):
                 average_logdet_sum += data["logdet"] * data["logdet_frames"]
 
         if hasattr(self, "db_engine"):
-            csv_path = os.path.join(self.working_directory, "alignment_log_likelihood.csv")
+            csv_path = self.working_directory.joinpath("alignment_log_likelihood.csv")
             with mfa_open(csv_path, "w") as f, self.session() as session:
                 writer = csv.writer(f)
                 writer.writerow(["file", "begin", "end", "speaker", "loglikelihood"])
@@ -598,30 +597,30 @@ class AlignMixin(DictionaryMixin):
 
     @property
     @abstractmethod
-    def working_directory(self) -> str:
+    def working_directory(self) -> Path:
         """Working directory"""
         ...
 
     @property
     @abstractmethod
-    def working_log_directory(self) -> str:
+    def working_log_directory(self) -> Path:
         """Working log directory"""
         ...
 
     @property
-    def model_path(self) -> str:
+    def model_path(self) -> Path:
         """Acoustic model file path"""
-        return os.path.join(self.working_directory, "final.mdl")
+        return self.working_directory.joinpath("final.mdl")
 
     @property
-    def phone_pdf_counts_path(self) -> str:
+    def phone_pdf_counts_path(self) -> Path:
         """Acoustic model file path"""
-        return os.path.join(self.working_directory, "phone_pdf.counts")
+        return self.working_directory.joinpath("phone_pdf.counts")
 
     @property
-    def alignment_model_path(self) -> str:
+    def alignment_model_path(self) -> Path:
         """Acoustic model file path for speaker-independent alignment"""
-        path = os.path.join(self.working_directory, "final.alimdl")
+        path = self.working_directory.joinpath("final.alimdl")
         if os.path.exists(path) and not getattr(self, "uses_speaker_adaptation", False):
             return path
         return self.model_path

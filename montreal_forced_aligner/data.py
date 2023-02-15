@@ -12,6 +12,7 @@ import itertools
 import math
 import re
 import typing
+from pathlib import Path
 
 import dataclassy
 import pynini
@@ -95,13 +96,13 @@ class MfaArguments:
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     """
 
     job_name: int
     db_string: str
-    log_path: str
+    log_path: Path
 
 
 class TextFileType(enum.Enum):
@@ -228,6 +229,7 @@ class WorkflowType(enum.Enum):
     train_g2p = 10
     g2p = 11
     language_model_training = 12
+    tokenizer_training = 13
 
 
 class WordType(enum.Enum):

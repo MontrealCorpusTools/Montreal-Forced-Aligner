@@ -14,7 +14,7 @@ def test_create_segments(
     temp_dir,
     basic_segment_config_path,
 ):
-    output_path = os.path.join(generated_dir, "segment_output")
+    output_path = generated_dir.joinpath("segment_output")
     shutil.rmtree(output_path, ignore_errors=True)
     command = [
         "segment",
@@ -29,6 +29,7 @@ def test_create_segments(
         "--config_path",
         basic_segment_config_path,
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -49,7 +50,7 @@ def test_create_segments_speechbrain(
 ):
     if not FOUND_SPEECHBRAIN:
         pytest.skip("SpeechBrain not installed")
-    output_path = os.path.join(generated_dir, "segment_output")
+    output_path = generated_dir.joinpath("segment_output")
     command = [
         "segment",
         basic_corpus_dir,
@@ -64,6 +65,7 @@ def test_create_segments_speechbrain(
         "--config_path",
         basic_segment_config_path,
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )

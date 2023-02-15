@@ -13,7 +13,7 @@ def test_train_dict(
     temp_dir,
     basic_align_config_path,
 ):
-    output_path = os.path.join(generated_dir, "trained_dict")
+    output_path = generated_dir.joinpath("trained_dict")
     command = [
         "train_dictionary",
         basic_corpus_dir,
@@ -30,6 +30,7 @@ def test_train_dict(
         basic_align_config_path,
         "--use_mp",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -42,7 +43,7 @@ def test_train_dict(
 
     dict_path = os.path.join(output_path, "english_us_arpa.dict")
     assert os.path.exists(output_path)
-    textgrid_output = os.path.join(generated_dir, "trained_dict_output")
+    textgrid_output = generated_dir.joinpath("trained_dict_output")
     command = [
         "align",
         basic_corpus_dir,
@@ -57,6 +58,7 @@ def test_train_dict(
         "--config_path",
         basic_align_config_path,
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )

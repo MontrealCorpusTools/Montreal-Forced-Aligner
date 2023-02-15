@@ -12,7 +12,7 @@ def test_train_lm(
     basic_train_lm_config_path,
 ):
     temp_dir = os.path.join(temp_dir, "train_lm")
-    output_model_path = os.path.join(generated_dir, "test_basic_lm.zip")
+    output_model_path = generated_dir.joinpath("test_basic_lm.zip")
     command = [
         "train_lm",
         basic_corpus_dir,
@@ -24,6 +24,7 @@ def test_train_lm(
         "-q",
         "--clean",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -44,7 +45,7 @@ def test_train_lm_text(
 ):
     temp_dir = os.path.join(temp_dir, "train_lm_text")
     text_dir = basic_split_dir[1]
-    output_model_path = os.path.join(generated_dir, "test_basic_lm_split.zip")
+    output_model_path = generated_dir.joinpath("test_basic_lm_split.zip")
     command = [
         "train_lm",
         text_dir,
@@ -56,6 +57,7 @@ def test_train_lm_text(
         "-q",
         "--clean",
     ]
+    command = [str(x) for x in command]
     click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
     assert os.path.exists(output_model_path)
 
@@ -69,7 +71,7 @@ def test_train_lm_dictionary(
 ):
     temp_dir = os.path.join(temp_dir, "train_lm_dictionary")
     text_dir = basic_split_dir[1]
-    output_model_path = os.path.join(generated_dir, "test_basic_lm_split.zip")
+    output_model_path = generated_dir.joinpath("test_basic_lm_split.zip")
     command = [
         "train_lm",
         text_dir,
@@ -83,6 +85,7 @@ def test_train_lm_dictionary(
         "-q",
         "--clean",
     ]
+    command = [str(x) for x in command]
     click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
     assert os.path.exists(output_model_path)
 
@@ -94,7 +97,7 @@ def test_train_lm_arpa(
     basic_train_lm_config_path,
 ):
     temp_dir = os.path.join(temp_dir, "train_lm_arpa")
-    output_model_path = os.path.join(generated_dir, "test_basic_lm_split.zip")
+    output_model_path = generated_dir.joinpath("test_basic_lm_split.zip")
     command = [
         "train_lm",
         transcription_language_model_arpa,
@@ -106,6 +109,7 @@ def test_train_lm_arpa(
         "-q",
         "--clean",
     ]
+    command = [str(x) for x in command]
     click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
     assert os.path.exists(output_model_path)
 
@@ -117,7 +121,7 @@ def test_train_lm_text_no_mp(
     basic_train_lm_config_path,
 ):
     text_dir = basic_split_dir[1]
-    output_model_path = os.path.join(generated_dir, "test_basic_lm_split.zip")
+    output_model_path = generated_dir.joinpath("test_basic_lm_split.zip")
     command = [
         "train_lm",
         text_dir,
@@ -131,5 +135,6 @@ def test_train_lm_text_no_mp(
         "-j",
         "1",
     ]
+    command = [str(x) for x in command]
     click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
     assert os.path.exists(output_model_path)

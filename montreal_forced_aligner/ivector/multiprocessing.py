@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import typing
+from pathlib import Path
 
 from sqlalchemy.orm import Session, joinedload
 
@@ -31,8 +32,8 @@ class GmmGselectArguments(MfaArguments):
 
     feature_options: MetaDict
     ivector_options: MetaDict
-    dubm_model: str
-    gselect_path: str
+    dubm_model: Path
+    gselect_path: Path
 
 
 class AccGlobalStatsArguments(MfaArguments):
@@ -40,9 +41,9 @@ class AccGlobalStatsArguments(MfaArguments):
 
     feature_options: MetaDict
     ivector_options: MetaDict
-    gselect_path: str
-    acc_path: str
-    dubm_model: str
+    gselect_path: Path
+    acc_path: Path
+    dubm_model: Path
 
 
 class GaussToPostArguments(MfaArguments):
@@ -50,8 +51,8 @@ class GaussToPostArguments(MfaArguments):
 
     feature_options: MetaDict
     ivector_options: MetaDict
-    post_path: str
-    dubm_model: str
+    post_path: Path
+    dubm_model: Path
 
 
 class AccIvectorStatsArguments(MfaArguments):
@@ -59,9 +60,9 @@ class AccIvectorStatsArguments(MfaArguments):
 
     feature_options: MetaDict
     ivector_options: MetaDict
-    ie_path: str
-    post_path: str
-    acc_path: str
+    ie_path: Path
+    post_path: Path
+    acc_path: Path
 
 
 class GmmGselectFunction(KaldiFunction):

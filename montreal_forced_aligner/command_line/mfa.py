@@ -19,11 +19,13 @@ from montreal_forced_aligner.command_line.diarize_speakers import diarize_speake
 from montreal_forced_aligner.command_line.g2p import g2p_cli
 from montreal_forced_aligner.command_line.history import history_cli
 from montreal_forced_aligner.command_line.model import model_cli
+from montreal_forced_aligner.command_line.tokenize import tokenize_cli
 from montreal_forced_aligner.command_line.train_acoustic_model import train_acoustic_model_cli
 from montreal_forced_aligner.command_line.train_dictionary import train_dictionary_cli
 from montreal_forced_aligner.command_line.train_g2p import train_g2p_cli
 from montreal_forced_aligner.command_line.train_ivector_extractor import train_ivector_cli
 from montreal_forced_aligner.command_line.train_lm import train_lm_cli
+from montreal_forced_aligner.command_line.train_tokenizer import train_tokenizer_cli
 from montreal_forced_aligner.command_line.transcribe import transcribe_corpus_cli
 from montreal_forced_aligner.command_line.validate import (
     validate_corpus_cli,
@@ -141,11 +143,13 @@ mfa_cli.add_command(history_cli)
 mfa_cli.add_command(g2p_cli)
 mfa_cli.add_command(model_cli, name="model")
 mfa_cli.add_command(model_cli, name="models")
+mfa_cli.add_command(tokenize_cli)
 mfa_cli.add_command(train_acoustic_model_cli)
 mfa_cli.add_command(train_dictionary_cli)
 mfa_cli.add_command(train_g2p_cli)
 mfa_cli.add_command(train_ivector_cli)
 mfa_cli.add_command(train_lm_cli)
+mfa_cli.add_command(train_tokenizer_cli)
 mfa_cli.add_command(transcribe_corpus_cli)
 mfa_cli.add_command(validate_corpus_cli)
 mfa_cli.add_command(validate_dictionary_cli)

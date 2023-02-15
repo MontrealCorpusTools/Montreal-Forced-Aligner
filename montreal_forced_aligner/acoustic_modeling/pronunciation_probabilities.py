@@ -6,6 +6,7 @@ import re
 import shutil
 import time
 import typing
+from pathlib import Path
 
 import tqdm
 from sqlalchemy.orm import joinedload
@@ -72,47 +73,47 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
         pass
 
     @property
-    def exported_model_path(self) -> str:
+    def exported_model_path(self) -> Path:
         """Path to exported acoustic model"""
         return self.previous_trainer.exported_model_path
 
     @property
-    def model_path(self) -> str:
+    def model_path(self) -> Path:
         """Current acoustic model path"""
-        return os.path.join(self.working_directory, "final.mdl")
+        return self.working_directory.joinpath("final.mdl")
 
     @property
-    def alignment_model_path(self) -> str:
+    def alignment_model_path(self) -> Path:
         """Alignment model path"""
-        path = self.model_path.replace(".mdl", ".alimdl")
+        path = self.model_path.with_suffix(".alimdl")
         if os.path.exists(path):
             return path
         return self.model_path
 
     @property
-    def phone_symbol_table_path(self) -> str:
+    def phone_symbol_table_path(self) -> Path:
         """Worker's phone symbol table"""
         return self.worker.phone_symbol_table_path
 
     @property
-    def grapheme_symbol_table_path(self) -> str:
+    def grapheme_symbol_table_path(self) -> Path:
         """Worker's grapheme symbol table"""
         return self.worker.grapheme_symbol_table_path
 
     @property
-    def input_path(self) -> str:
+    def input_path(self) -> Path:
         """Path to temporary file to store training data"""
-        return os.path.join(self.working_directory, f"input_{self._data_source}.txt")
+        return self.working_directory.joinpath(f"input_{self._data_source}.txt")
 
     @property
-    def output_path(self) -> str:
+    def output_path(self) -> Path:
         """Path to temporary file to store training data"""
-        return os.path.join(self.working_directory, f"output_{self._data_source}.txt")
+        return self.working_directory.joinpath(f"output_{self._data_source}.txt")
 
     @property
-    def output_alignment_path(self) -> str:
+    def output_alignment_path(self) -> Path:
         """Path to temporary file to store training data"""
-        return os.path.join(self.working_directory, f"output_{self._data_source}_alignment.txt")
+        return self.working_directory.joinpath(f"output_{self._data_source}_alignment.txt")
 
     def generate_pronunciations_arguments(self) -> typing.List[GeneratePronunciationsArguments]:
         """
@@ -128,7 +129,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
             GeneratePronunciationsArguments(
                 j.id,
                 getattr(self, "db_string", ""),
-                os.path.join(self.working_log_directory, f"generate_pronunciations.{j.id}.log"),
+                self.working_log_directory.joinpath(f"generate_pronunciations.{j.id}.log"),
                 self.model_path,
                 True,
             )
@@ -208,11 +209,11 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
             os.makedirs(self.working_log_directory, exist_ok=True)
             dictionaries = session.query(Dictionary)
             shutil.copyfile(
-                self.phone_symbol_table_path, os.path.join(self.working_directory, "phones.txt")
+                self.phone_symbol_table_path, self.working_directory.joinpath("phones.txt")
             )
             shutil.copyfile(
                 self.grapheme_symbol_table_path,
-                os.path.join(self.working_directory, "graphemes.txt"),
+                self.working_directory.joinpath("graphemes.txt"),
             )
             self.input_token_type = self.grapheme_symbol_table_path
             self.output_token_type = self.phone_symbol_table_path
@@ -233,7 +234,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                 logger.debug(
                     f"Generating model for {d.name} took {time.time() - begin:.3f} seconds"
                 )
-                os.rename(d.lexicon_fst_path, d.lexicon_fst_path + ".backup")
+                os.rename(d.lexicon_fst_path, d.lexicon_fst_path.with_suffix(".backup"))
                 os.rename(self.fst_path, d.lexicon_fst_path)
 
                 if not GLOBAL_CONFIG.current_profile.debug:
@@ -242,7 +243,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                 os.remove(self.output_far_path)
                 for f in os.listdir(self.working_directory):
                     if any(f.endswith(x) for x in [".fst", ".like", ".far", ".enc"]):
-                        os.remove(os.path.join(self.working_directory, f))
+                        os.remove(self.working_directory.joinpath(f))
 
                 begin = time.time()
                 self.align_g2p(self.output_alignment_path)
@@ -254,7 +255,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                 logger.debug(
                     f"Generating model for {d.name} took {time.time() - begin:.3f} seconds"
                 )
-                os.rename(d.align_lexicon_path, d.align_lexicon_path + ".backup")
+                os.rename(d.align_lexicon_path, d.align_lexicon_path.with_suffix(".backup"))
                 os.rename(self.fst_path, d.align_lexicon_path)
                 if not GLOBAL_CONFIG.current_profile.debug:
                     os.remove(self.output_alignment_path)
@@ -263,12 +264,12 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                     os.remove(self.output_far_path)
                 for f in os.listdir(self.working_directory):
                     if any(f.endswith(x) for x in [".fst", ".like", ".far", ".enc"]):
-                        os.remove(os.path.join(self.working_directory, f))
+                        os.remove(self.working_directory.joinpath(f))
                 d.use_g2p = True
             session.commit()
             self.worker.use_g2p = True
 
-    def export_model(self, output_model_path: str) -> None:
+    def export_model(self, output_model_path: Path) -> None:
         """
         Export an acoustic model to the specified path
 
@@ -284,11 +285,11 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
         previous_directory = self.previous_aligner.working_directory
         for j in self.jobs:
             for p in j.construct_path_dictionary(previous_directory, "ali", "ark").values():
-                shutil.copy(p, p.replace(previous_directory, wf.working_directory))
+                shutil.copy(p, wf.working_directory.joinpath(p.name))
         for f in ["final.mdl", "final.alimdl", "final.occs", "lda.mat"]:
-            p = os.path.join(previous_directory, f)
+            p = previous_directory.joinpath(f)
             if os.path.exists(p):
-                shutil.copy(p, p.replace(previous_directory, wf.working_directory))
+                shutil.copy(p, wf.working_directory.joinpath(p.name))
 
     def train_pronunciation_probabilities(self) -> None:
         """
@@ -310,7 +311,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                             self.working_directory,
                             f"{self.worker.dictionary_base_names[d.id]}.fst",
                         )
-                        os.rename(d.lexicon_fst_path, d.lexicon_fst_path + ".backup")
+                        os.rename(d.lexicon_fst_path, d.lexicon_fst_path.with_suffix(".backup"))
                         shutil.copy(fst_path, d.lexicon_fst_path)
                         d.use_g2p = True
                     session.commit()
@@ -333,7 +334,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                         .filter(Word.dictionary_id == d.id)
                     )
                     cache = {(x.word.word, x.pronunciation): x for x in pronunciations}
-                    new_dictionary_path = os.path.join(self.working_directory, f"{d.id}.dict")
+                    new_dictionary_path = self.working_directory.joinpath(f"{d.id}.dict")
                     for (
                         word,
                         pron,
@@ -388,7 +389,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
             self.worker.write_lexicon_information()
             with self.worker.session() as session:
                 for d in session.query(Dictionary):
-                    dict_path = os.path.join(self.working_directory, f"{d.id}.dict")
+                    dict_path = self.working_directory.joinpath(f"{d.id}.dict")
                     self.worker.export_trained_rules(self.working_directory)
                     self.worker.export_lexicon(
                         d.id,

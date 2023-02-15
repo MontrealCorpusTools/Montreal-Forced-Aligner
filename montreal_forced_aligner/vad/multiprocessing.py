@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import typing
+from pathlib import Path
 from typing import TYPE_CHECKING, List, Union
 
 from montreal_forced_aligner.abc import KaldiFunction
@@ -37,7 +38,7 @@ if TYPE_CHECKING:
 class SegmentVadArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.segmenter.SegmentVadFunction`"""
 
-    vad_path: str
+    vad_path: Path
     segmentation_options: MetaDict
 
 

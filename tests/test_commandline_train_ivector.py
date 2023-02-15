@@ -24,6 +24,7 @@ def test_basic_ivector(
         "--clean",
         "--debug",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )

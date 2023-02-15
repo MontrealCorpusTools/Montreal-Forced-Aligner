@@ -15,7 +15,7 @@ def test_train_acoustic_with_g2p(
 ):
     if os.path.exists(acoustic_g2p_model_path):
         os.remove(acoustic_g2p_model_path)
-    output_directory = os.path.join(generated_dir, "train_g2p_textgrids")
+    output_directory = generated_dir.joinpath("train_g2p_textgrids")
     command = [
         "train",
         combined_corpus_dir,
@@ -32,6 +32,7 @@ def test_train_acoustic_with_g2p(
         "--config_path",
         train_g2p_acoustic_config_path,
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -55,7 +56,7 @@ def test_train_and_align_basic_speaker_dict(
 ):
     if os.path.exists(textgrid_output_model_path):
         os.remove(textgrid_output_model_path)
-    output_directory = os.path.join(generated_dir, "ipa speaker output")
+    output_directory = generated_dir.joinpath("ipa speaker output")
     command = [
         "train",
         multilingual_ipa_tg_corpus_dir,
@@ -72,6 +73,7 @@ def test_train_and_align_basic_speaker_dict(
         output_directory,
         "--single_speaker",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )

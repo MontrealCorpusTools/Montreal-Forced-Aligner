@@ -24,4 +24,6 @@ MFA now contains several command line utilities for helping to create corpora fr
    transcribing
    training_lm
    training_dictionary
+   tokenize
+   train_tokenizer
    anchor
