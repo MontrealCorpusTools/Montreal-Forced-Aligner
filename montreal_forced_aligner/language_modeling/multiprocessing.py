@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import subprocess
 import typing
+from pathlib import Path
 
 import sqlalchemy
 from sqlalchemy.orm import Session, joinedload, subqueryload
@@ -38,27 +39,21 @@ class TrainSpeakerLmArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
-    model_directory: str
-        Path to model directory
-    word_symbols_paths: dict[int, str]
-        Per dictionary words symbol table paths
-    speaker_mapping: dict[int, str]
-        Mapping of dictionaries to speakers
-    speaker_paths: dict[int, str]
-        Per speaker output LM paths
-    oov_word: str
-        OOV word
+    model_path: :class:`~pathlib.Path`
+        Path to model
     order: int
         Ngram order of the language models
     method: str
         Ngram smoothing method
     target_num_ngrams: int
         Target number of ngrams
+    hclg_options: dict[str, Any]
+        HCLG creation options
     """
 
-    model_path: str
+    model_path: Path
     order: int
     method: str
     target_num_ngrams: int
@@ -76,28 +71,18 @@ class TrainLmArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
-    model_directory: str
-        Path to model directory
-    word_symbols_paths: dict[int, str]
-        Per dictionary words symbol table paths
-    speaker_mapping: dict[int, str]
-        Mapping of dictionaries to speakers
-    speaker_paths: dict[int, str]
-        Per speaker output LM paths
+    symbols_path: :class:`~pathlib.Path`
+        Words symbol table paths
     oov_word: str
         OOV word
     order: int
         Ngram order of the language models
-    method: str
-        Ngram smoothing method
-    target_num_ngrams: int
-        Target number of ngrams
     """
 
-    working_directory: str
-    symbols_path: str
+    working_directory: Path
+    symbols_path: Path
     order: int
     oov_word: str
 
@@ -158,7 +143,7 @@ class TrainLmFunction(KaldiFunction):
                     "--round_to_int",
                     f"--order={self.order}",
                     "-",
-                    os.path.join(self.working_directory, f"{self.job_name}.cnts"),
+                    self.working_directory.joinpath(f"{self.job_name}.cnts"),
                 ],
                 stderr=log_file,
                 stdin=farcompile_proc.stdout,
@@ -234,7 +219,7 @@ class TrainPhoneLmFunction(KaldiFunction):
                     "--round_to_int",
                     f"--order={self.order}",
                     "-",
-                    os.path.join(self.working_directory, f"{self.job_name}.cnts"),
+                    self.working_directory.joinpath(f"{self.job_name}.cnts"),
                 ],
                 stderr=log_file,
                 stdin=farcompile_proc.stdout,
@@ -300,7 +285,7 @@ class TrainSpeakerLmFunction(KaldiFunction):
                 )
                 for (speaker_id,) in speakers:
 
-                    hclg_path = os.path.join(d.temp_directory, f"{speaker_id}.fst")
+                    hclg_path = d.temp_directory.joinpath(f"{speaker_id}.fst")
                     if os.path.exists(hclg_path):
                         continue
                     utterances = (
@@ -308,7 +293,7 @@ class TrainSpeakerLmFunction(KaldiFunction):
                         .filter(Utterance.speaker_id == speaker_id)
                         .order_by(Utterance.kaldi_id)
                     )
-                    mod_path = os.path.join(d.temp_directory, f"g.{speaker_id}.fst")
+                    mod_path = d.temp_directory.joinpath(f"g.{speaker_id}.fst")
                     farcompile_proc = subprocess.Popen(
                         [
                             thirdparty_binary("farcompilestrings"),
@@ -357,18 +342,18 @@ class TrainSpeakerLmFunction(KaldiFunction):
                     shrink_proc.wait()
                     context_width = self.hclg_options["context_width"]
                     central_pos = self.hclg_options["central_pos"]
-                    path_template = os.path.join(
-                        d.temp_directory, f"{{file_name}}.{speaker_id}.fst"
+                    lg_path = d.temp_directory.joinpath(f"LG.{speaker_id}.fst")
+                    hclga_path = d.temp_directory.joinpath(f"HCLGa.{speaker_id}.fst")
+                    ilabels_temp = d.temp_directory.joinpath(
+                        f"ilabels_{context_width}_{central_pos}.{speaker_id}"
                     )
-                    lg_path = path_template.format(file_name="LG")
-                    hclga_path = path_template.format(file_name="HCLGa")
-                    clg_path = path_template.format(file_name=f"CLG_{context_width}_{central_pos}")
-                    ilabels_temp = path_template.format(
-                        file_name=f"ilabels_{context_width}_{central_pos}"
-                    ).replace(".fst", "")
-                    out_disambig = path_template.format(
-                        file_name=f"disambig_ilabels_{context_width}_{central_pos}"
-                    ).replace(".fst", ".int")
+                    out_disambig = d.temp_directory.joinpath(
+                        f"disambig_ilabels_{context_width}_{central_pos}.int"
+                    )
+                    clg_path = d.temp_directory.joinpath(
+                        f"CLG_{context_width}_{central_pos}.{speaker_id}.fst"
+                    )
+
                     log_file.write("Generating LG.fst...")
                     compose_lg(d.lexicon_disambig_fst_path, mod_path, lg_path, log_file)
                     log_file.write("Generating CLG.fst...")

@@ -162,7 +162,7 @@ def test_save_model(transcription_acoustic_model):
         "model",
         "save",
         "acoustic",
-        transcription_acoustic_model,
+        str(transcription_acoustic_model),
         "--name",
         "test_acoustic",
         "--overwrite",

@@ -54,7 +54,7 @@ logger = logging.getLogger("mfa")
 class TransitionAccArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.acoustic_modeling.trainer.TransitionAccFunction`"""
 
-    model_path: str
+    model_path: Path
 
 
 class TransitionAccFunction(KaldiFunction):
@@ -254,7 +254,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
     @classmethod
     def parse_parameters(
         cls,
-        config_path: Optional[str] = None,
+        config_path: Optional[Path] = None,
         args: Optional[Dict[str, Any]] = None,
         unknown_args: Optional[typing.Iterable[str]] = None,
     ) -> MetaDict:
@@ -263,7 +263,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
 
         Parameters
         ----------
-        config_path: str, optional
+        config_path: :class:`~pathlib.Path`, optional
             Path to yaml configuration file
         args: dict[str, Any]
             Parsed arguments
@@ -429,7 +429,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
 
         self.training_configs[identifier] = config
 
-    def export_model(self, output_model_path: str) -> None:
+    def export_model(self, output_model_path: Path) -> None:
         """
         Export an acoustic model to the specified path
 
@@ -540,7 +540,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         self.acoustic_model = AcousticModel(previous.exported_model_path, self.working_directory)
         self.align()
         self.finalize_training()
-        counts_path = os.path.join(self.working_directory, "phone_pdf.counts")
+        counts_path = self.working_directory.joinpath("phone_pdf.counts")
         new_counts_path = os.path.join(previous.working_directory, "phone_pdf.counts")
         if not os.path.exists(new_counts_path):
             shutil.copyfile(counts_path, new_counts_path)
@@ -565,7 +565,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             TransitionAccArguments(
                 j.id,
                 getattr(self, "db_string", ""),
-                os.path.join(self.working_log_directory, f"test_utterances.{j.id}.log"),
+                self.working_log_directory.joinpath(f"test_utterances.{j.id}.log"),
                 self.model_path,
             )
             for j in self.jobs
@@ -630,7 +630,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                     thirdparty_binary("vector-sum"),
                     "--binary=false",
                     *t_accs,
-                    os.path.join(self.working_directory, "final.tacc"),
+                    self.working_directory.joinpath("final.tacc"),
                 ],
                 stderr=subprocess.DEVNULL,
             )
@@ -669,7 +669,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                     if m:
                         transition_id = int(m.group("transition_id"))
                         phone_pdfs[transition_id] = (phone, pdf)
-            with mfa_open(os.path.join(self.working_directory, "final.tacc"), "r") as f:
+            with mfa_open(self.working_directory.joinpath("final.tacc"), "r") as f:
                 data = f.read().strip().split()[1:-1]
 
                 transition_counts = {
@@ -683,7 +683,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                 pdf_counts[pdf] += transition_counts[transition_id]
                 pdf_phone_counts[(phone, pdf)] += transition_counts[transition_id]
                 phone_pdf_mapping[phone][pdf] += transition_counts[transition_id]
-            with mfa_open(os.path.join(self.working_directory, "phone_pdf.counts"), "w") as f:
+            with mfa_open(self.working_directory.joinpath("phone_pdf.counts"), "w") as f:
                 json.dump(phone_pdf_mapping, f, ensure_ascii=False)
             logger.debug(f"Accumulating transition stats took {time.time() - begin:.3f} seconds")
             logger.info("Finished accumulating transition stats!")
@@ -710,7 +710,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
 
         Parameters
         ----------
-        output_directory: Path
+        output_directory: :class:`~pathlib.Path`
             Directory to save to
         output_format: str, optional
             Format to save alignments, one of 'long_textgrids' (the default), 'short_textgrids', or 'json', passed to praatio
@@ -769,10 +769,10 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                         if not os.path.exists(path):
                             missing_transforms = True
                 if missing_transforms:
-                    assert self.alignment_model_path.endswith(".alimdl")
+                    assert self.alignment_model_path.suffix == ".alimdl"
                     self.calc_fmllr()
                 self.uses_speaker_adaptation = True
-                assert self.alignment_model_path.endswith(".mdl")
+                assert self.alignment_model_path.suffix == ".mdl"
                 self.align_utterances()
             if self.current_subset:
                 logger.debug(
@@ -800,19 +800,19 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             raise
 
     @property
-    def alignment_model_path(self) -> str:
+    def alignment_model_path(self) -> Path:
         """Current alignment model path"""
-        path = os.path.join(self.working_directory, "final.alimdl")
+        path = self.working_directory.joinpath("final.alimdl")
         if os.path.exists(path) and not self.uses_speaker_adaptation:
             return path
         return self.model_path
 
     @property
-    def model_path(self) -> str:
+    def model_path(self) -> Path:
         """Current model path"""
         if self.current_trainer is not None:
             return self.current_trainer.model_path
-        return os.path.join(self.working_directory, "final.mdl")
+        return self.working_directory.joinpath("final.mdl")
 
     @property
     def data_directory(self) -> str:
@@ -820,15 +820,15 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         return self.subset_directory(self.current_subset)
 
     @property
-    def working_directory(self) -> Optional[str]:
+    def working_directory(self) -> Optional[Path]:
         """Working directory"""
         if self.current_trainer is not None and not self.current_trainer.training_complete:
             return self.current_trainer.working_directory
         if self.current_aligner is None:
             return None
-        return os.path.join(self.output_directory, f"{self.current_aligner.identifier}_ali")
+        return self.output_directory.joinpath(f"{self.current_aligner.identifier}_ali")
 
     @property
     def working_log_directory(self) -> Optional[str]:
         """Current log directory"""
-        return os.path.join(self.working_directory, "log")
+        return self.working_directory.joinpath("log")

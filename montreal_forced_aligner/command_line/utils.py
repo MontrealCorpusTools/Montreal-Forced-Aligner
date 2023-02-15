@@ -164,7 +164,7 @@ def validate_model_arg(name: str, model_type: str) -> Path:
             raise click.BadParameter(str(FileArgumentNotFoundError(name)))
         if model_type == "dictionary" and name.suffix.lower() == ".yaml":
             with mfa_open(name, "r") as f:
-                data = yaml.safe_load(f)
+                data = yaml.load(f, Loader=yaml.Loader)
                 paths = sorted(set(data.values()))
                 for path in paths:
                     validate_model_arg(path, "dictionary")
@@ -202,8 +202,13 @@ def validate_language_model(ctx, param, value):
 
 
 def validate_g2p_model(ctx, param, value):
-    """Validation callback for G2O model paths"""
+    """Validation callback for G2P model paths"""
     return validate_model_arg(value, "g2p")
+
+
+def validate_tokenizer_model(ctx, param, value):
+    """Validation callback for tokenizer model paths"""
+    return validate_model_arg(value, "tokenizer")
 
 
 def validate_ivector_extractor(ctx, param, value):

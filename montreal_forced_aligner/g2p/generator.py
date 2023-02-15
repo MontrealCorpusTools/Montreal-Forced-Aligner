@@ -9,6 +9,7 @@ import os
 import queue
 import statistics
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 import pynini
@@ -353,7 +354,7 @@ class PyniniGenerator(G2PTopLevelMixin):
         G2P model
     """
 
-    def __init__(self, g2p_model_path: str, strict_graphemes: bool = False, **kwargs):
+    def __init__(self, g2p_model_path: Path = None, strict_graphemes: bool = False, **kwargs):
         self.strict_graphemes = strict_graphemes
         super().__init__(**kwargs)
         self.g2p_model = G2PModel(
@@ -518,14 +519,14 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
         return "validation"
 
     @property
-    def data_directory(self) -> str:
+    def data_directory(self) -> Path:
         """Data directory"""
         return self.working_directory
 
     @property
-    def evaluation_csv_path(self) -> str:
+    def evaluation_csv_path(self) -> Path:
         """Path to working directory's CSV file"""
-        return os.path.join(self.working_directory, "pronunciation_evaluation.csv")
+        return self.working_directory.joinpath("pronunciation_evaluation.csv")
 
     def setup(self) -> None:
         """Set up the G2P validator"""
@@ -588,6 +589,8 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
                 )
                 continue
             hyp = hypothesis_values[word]
+            if not isinstance(hyp, list):
+                hyp = [hyp]
             for h in hyp:
                 if h in gold_pronunciations:
                     correct += 1
@@ -676,7 +679,7 @@ class PyniniWordListGenerator(PyniniValidator, DatabaseMixin):
 
     Parameters
     ----------
-    word_list_path: str
+    word_list_path: :class:`~pathlib.Path`
         Path to word list file
 
     See Also
@@ -692,12 +695,12 @@ class PyniniWordListGenerator(PyniniValidator, DatabaseMixin):
         Word list to generate pronunciations
     """
 
-    def __init__(self, word_list_path: str, **kwargs):
+    def __init__(self, word_list_path: Path, **kwargs):
         self.word_list_path = word_list_path
         super().__init__(**kwargs)
 
     @property
-    def data_directory(self) -> str:
+    def data_directory(self) -> Path:
         """Data directory"""
         return self.working_directory
 

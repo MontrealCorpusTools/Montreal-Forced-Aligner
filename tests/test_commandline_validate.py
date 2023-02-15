@@ -27,6 +27,7 @@ def test_validate_corpus(
         "--test_transcriptions",
         "--phone_confidence",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -59,6 +60,7 @@ def test_validate_training_corpus(
         "--test_transcriptions",
         "--phone_confidence",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -89,6 +91,7 @@ def test_validate_xsampa(
         "--config_path",
         xsampa_train_config_path,
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -116,6 +119,7 @@ def test_validate_dictionary(
         "-j",
         "1",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -138,6 +142,7 @@ def test_validate_dictionary_train(
         "-t",
         os.path.join(temp_dir, "dictionary_validation_train"),
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )

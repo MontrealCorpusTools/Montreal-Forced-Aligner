@@ -10,7 +10,7 @@ from montreal_forced_aligner.dictionary import MultispeakerDictionary
 def test_generate_pretrained(
     english_g2p_model, basic_corpus_dir, temp_dir, generated_dir, db_setup
 ):
-    output_path = os.path.join(generated_dir, "g2p_out.txt")
+    output_path = generated_dir.joinpath("g2p_out.txt")
     command = [
         "g2p",
         basic_corpus_dir,
@@ -25,6 +25,7 @@ def test_generate_pretrained(
         "--use_mp",
         "False",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -44,7 +45,7 @@ def test_generate_pretrained(
 def test_generate_pretrained_threshold(
     english_g2p_model, basic_corpus_dir, temp_dir, generated_dir, db_setup
 ):
-    output_path = os.path.join(generated_dir, "g2p_out.txt")
+    output_path = generated_dir.joinpath("g2p_out.txt")
     command = [
         "g2p",
         basic_corpus_dir,
@@ -57,6 +58,7 @@ def test_generate_pretrained_threshold(
         "--g2p_threshold",
         "0.95",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -93,6 +95,7 @@ def test_train_g2p(
         "--config_path",
         train_g2p_config_path,
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -124,6 +127,7 @@ def test_train_g2p_phonetisaurus(
         "--phonetisaurus" "--config_path",
         train_g2p_config_path,
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -157,6 +161,7 @@ def test_generate_dict(
         "--config_path",
         g2p_config_path,
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -194,6 +199,7 @@ def test_generate_dict_phonetisaurus(
         "--config_path",
         g2p_config_path,
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -232,6 +238,7 @@ def test_generate_dict_text_only(
         "--config_path",
         g2p_config_path,
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -256,7 +263,7 @@ def test_generate_dict_textgrid(
     g2p_config_path,
     db_setup,
 ):
-    output_file = os.path.join(generated_dir, "tg_g2pped.dict")
+    output_file = generated_dir.joinpath("tg_g2pped.dict")
     command = [
         "g2p",
         multilingual_ipa_tg_corpus_dir,
@@ -270,6 +277,7 @@ def test_generate_dict_textgrid(
         "--config_path",
         g2p_config_path,
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )

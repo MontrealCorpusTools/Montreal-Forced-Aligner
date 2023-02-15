@@ -8,6 +8,7 @@ import multiprocessing as mp
 import os
 import re
 import typing
+from pathlib import Path
 from queue import Empty, Queue
 
 import sqlalchemy
@@ -249,14 +250,6 @@ class NormalizeTextArguments(MfaArguments):
     """
     Arguments for :class:`~montreal_forced_aligner.corpus.multiprocessing.NormalizeTextFunction`
 
-    Parameters
-    ----------
-    model_path: str
-        Path to model file
-    phone_pdf_counts_path: str
-        Path to output PDF counts
-    feature_strings: dict[int, str]
-        Mapping of dictionaries to feature generation strings
     """
 
     word_break_markers: typing.List[str]
@@ -281,7 +274,7 @@ class ExportKaldiFilesArguments(MfaArguments):
 
     """
 
-    split_directory: str
+    split_directory: Path
     for_features: bool
 
 
@@ -495,12 +488,24 @@ class NormalizeTextFunction(KaldiFunction):
             .filter(Utterance.job_id == self.job_name)
         )
         for u_id, u_text in utterances:
-            text = " ".join(sanitize_function(u_text))
-            oovs = set()
+            text = []
+            character_text = []
+            for w in sanitize_function(u_text):
+                text.append(w)
+                if character_text:
+                    character_text.append("<space>")
+                if self.bracket_regex.match(w):
+                    character_text.append(self.bracketed_word)
+                else:
+                    for g in w:
+                        character_text.append(g)
+            text = " ".join(text)
+            character_text = " ".join(character_text)
             yield {
                 "id": u_id,
-                "oovs": " ".join(sorted(oovs)),
+                "oovs": "",
                 "normalized_text": text,
+                "normalized_character_text": character_text,
             }, None
 
     def _run(self) -> typing.Generator[typing.Tuple[int, float]]:

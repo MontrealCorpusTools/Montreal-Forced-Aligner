@@ -13,7 +13,7 @@ def test_adapt_basic(
     test_align_config,
     english_acoustic_model,
 ):
-    adapted_model_path = os.path.join(generated_dir, "basic_adapted.zip")
+    adapted_model_path = generated_dir.joinpath("basic_adapted.zip")
     command = [
         "adapt",
         basic_corpus_dir,
@@ -23,10 +23,11 @@ def test_adapt_basic(
         "--beam",
         "15",
         "-t",
-        os.path.join(temp_dir, "adapt_cli"),
+        temp_dir.joinpath("adapt_cli"),
         "--clean",
-        "--no-debug",
+        "--no_debug",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -47,8 +48,8 @@ def test_adapt_multilingual(
     english_acoustic_model,
     english_mfa_acoustic_model,
 ):
-    adapted_model_path = os.path.join(generated_dir, "multilingual_adapted.zip")
-    output_path = os.path.join(generated_dir, "multilingual_output")
+    adapted_model_path = generated_dir.joinpath("multilingual_adapted.zip")
+    output_path = generated_dir.joinpath("multilingual_output")
     command = [
         "adapt",
         multilingual_ipa_corpus_dir,
@@ -64,6 +65,7 @@ def test_adapt_multilingual(
         "--clean",
         "--no_debug",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )

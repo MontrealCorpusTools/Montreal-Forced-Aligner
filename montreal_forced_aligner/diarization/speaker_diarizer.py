@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 import typing
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import numpy as np
@@ -125,7 +126,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
 
     def __init__(
         self,
-        ivector_extractor_path: str = "speechbrain",
+        ivector_extractor_path: typing.Union[str, Path] = "speechbrain",
         expected_num_speakers: int = 0,
         cluster: bool = True,
         evaluation_mode: bool = False,
@@ -185,7 +186,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
     @classmethod
     def parse_parameters(
         cls,
-        config_path: Optional[str] = None,
+        config_path: Optional[Path] = None,
         args: Optional[Dict[str, Any]] = None,
         unknown_args: Optional[List[str]] = None,
     ) -> MetaDict:
@@ -194,7 +195,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
 
         Parameters
         ----------
-        config_path: str
+        config_path: :class:`~pathlib.Path`
             Config path
         args: dict[str, Any]
             Parsed arguments
@@ -240,7 +241,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         if wf.done:
             logger.info("Diarization already done, skipping initialization.")
             return
-        log_dir = os.path.join(self.working_directory, "log")
+        log_dir = self.working_directory.joinpath("log")
         os.makedirs(log_dir, exist_ok=True)
         try:
             if self.ivector_extractor is None:  # Download models if needed
@@ -308,7 +309,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             PldaClassificationArguments(
                 j.id,
                 getattr(self, "db_string", ""),
-                os.path.join(self.working_log_directory, f"plda_classification.{j.id}.log"),
+                self.working_log_directory.joinpath(f"plda_classification.{j.id}.log"),
                 self.plda,
                 self.speaker_ivector_path,
                 self.num_utts_path,
@@ -325,7 +326,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         with self.session() as session, tqdm.tqdm(
             total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar, mfa_open(
-            os.path.join(self.working_directory, "speaker_classification_results.csv"), "w"
+            self.working_directory.joinpath("speaker_classification_results.csv"), "w"
         ) as f:
             writer = csv.DictWriter(f, ["utt_id", "file", "begin", "end", "speaker", "score"])
 
@@ -359,7 +360,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 ]
                 func = SpeechbrainClassificationFunction
             else:
-                plda_transform_path = os.path.join(self.working_directory, "plda.pkl")
+                plda_transform_path = self.working_directory.joinpath("plda.pkl")
                 with open(plda_transform_path, "rb") as f:
                     self.plda: PldaModel = pickle.load(f)
                 arguments = self.plda_classification_arguments()
@@ -440,7 +441,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         """Compute clustering metric scores and output clustering evaluation results"""
         label_to_ground_truth_mapping = self.map_speakers_to_ground_truth()
         with self.session() as session, mfa_open(
-            os.path.join(self.working_directory, "diarization_evaluation_results.csv"), "w"
+            self.working_directory.joinpath("diarization_evaluation_results.csv"), "w"
         ) as f:
 
             writer = csv.DictWriter(
@@ -503,7 +504,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         """Evaluate and output classification accuracy"""
         label_to_ground_truth_mapping = self.map_speakers_to_ground_truth()
         with self.session() as session, mfa_open(
-            os.path.join(self.working_directory, "diarization_evaluation_results.csv"), "w"
+            self.working_directory.joinpath("diarization_evaluation_results.csv"), "w"
         ) as f:
             writer = csv.DictWriter(
                 f,
@@ -563,12 +564,12 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
     @property
     def num_utts_path(self) -> str:
         """Path to archive containing number of per training speaker"""
-        return os.path.join(self.working_directory, "num_utts.ark")
+        return self.working_directory.joinpath("num_utts.ark")
 
     @property
     def speaker_ivector_path(self) -> str:
         """Path to archive containing training speaker ivectors"""
-        return os.path.join(self.working_directory, "speaker_ivectors.ark")
+        return self.working_directory.joinpath("speaker_ivectors.ark")
 
     def visualize_clusters(self, ivectors, cluster_labels=None):
         import seaborn as sns
@@ -621,7 +622,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             shadow=True,
             ncol=5,
         )
-        plot_path = os.path.join(self.working_directory, "cluster_plot.png")
+        plot_path = self.working_directory.joinpath("cluster_plot.png")
         plt.savefig(plot_path, bbox_extra_artists=(lgd,), bbox_inches="tight", transparent=True)
         if GLOBAL_CONFIG.current_profile.verbose:
             plt.show(block=False)
@@ -693,7 +694,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 score_threshold = self.initial_sb_score_threshold
                 self.export_xvectors()
             else:
-                plda_transform_path = os.path.join(self.working_directory, "plda.pkl")
+                plda_transform_path = self.working_directory.joinpath("plda.pkl")
                 with open(plda_transform_path, "rb") as f:
                     self.plda: PldaModel = pickle.load(f)
                 arguments = self.plda_classification_arguments()
@@ -815,7 +816,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
 
             utterance_mapping = []
             self.classification_score = 0
-            plda_transform_path = os.path.join(self.working_directory, "plda.pkl")
+            plda_transform_path = self.working_directory.joinpath("plda.pkl")
             with open(plda_transform_path, "rb") as f:
                 self.plda: PldaModel = pickle.load(f)
             arguments = self.plda_classification_arguments()
@@ -1092,7 +1093,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         os.environ["OPENBLAS_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
         os.environ["MKL_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
         if self.metric is DistanceMetric.plda:
-            plda_transform_path = os.path.join(self.working_directory, "plda.pkl")
+            plda_transform_path = self.working_directory.joinpath("plda.pkl")
             with open(plda_transform_path, "rb") as f:
                 self.plda: PldaModel = pickle.load(f)
         if self.evaluation_mode and GLOBAL_CONFIG.current_profile.debug:
@@ -1383,7 +1384,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 update_mapping.append({"id": utt_id, "plda_vector": ivectors[i, :]})
             bulk_update(session, Utterance, update_mapping)
             session.commit()
-        plda_transform_path = os.path.join(self.working_directory, "plda.pkl")
+        plda_transform_path = self.working_directory.joinpath("plda.pkl")
         with open(plda_transform_path, "wb") as f:
             pickle.dump(self.plda, f)
 
@@ -1460,7 +1461,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             Output directory to save files
         """
         if not self.overwrite and os.path.exists(output_directory):
-            output_directory = os.path.join(self.working_directory, "speaker_classification")
+            output_directory = self.working_directory.joinpath("speaker_classification")
         os.makedirs(output_directory, exist_ok=True)
         diagnostic_files = [
             "diarization_evaluation_results.csv",
@@ -1468,14 +1469,14 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             "nearest_neighbors.png",
         ]
         for fname in diagnostic_files:
-            path = os.path.join(self.working_directory, fname)
+            path = self.working_directory.joinpath(fname)
             if os.path.exists(path):
                 shutil.copyfile(
                     path,
                     os.path.join(output_directory, fname),
                 )
         with mfa_open(os.path.join(output_directory, "parameters.yaml"), "w") as f:
-            yaml.safe_dump(
+            yaml.dump(
                 {
                     "ivector_extractor_path": str(self.ivector_extractor_path),
                     "expected_num_speakers": self.expected_num_speakers,
@@ -1488,6 +1489,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                     "linkage": self.linkage,
                 },
                 f,
+                Dumper=yaml.Dumper,
             )
         with self.session() as session:
 

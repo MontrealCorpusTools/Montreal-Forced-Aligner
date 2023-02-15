@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import subprocess
 import typing
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -32,7 +33,7 @@ class OnlineAlignmentArguments(MfaArguments):
     Arguments for performing alignment online on single utterances
     """
 
-    working_directory: str
+    working_directory: Path
     sox_string: str
     utterance_data: UtteranceData
     mfcc_options: MetaDict
@@ -40,8 +41,8 @@ class OnlineAlignmentArguments(MfaArguments):
     feature_options: MetaDict
     lda_options: MetaDict
     align_options: MetaDict
-    model_path: str
-    tree_path: str
+    model_path: Path
+    tree_path: Path
     dictionary_id: int
 
 
@@ -186,18 +187,18 @@ class OnlineAlignmentFunction(KaldiFunction):
         )
         for w_id, pron, p_id in pronunciations:
             self.pronunciation_mapping[(w_id, pron)] = p_id
-        wav_path = os.path.join(self.working_directory, "wav.scp")
-        likelihood_path = os.path.join(self.working_directory, "likelihoods.scp")
-        feat_path = os.path.join(self.working_directory, "feats.scp")
-        utt2spk_path = os.path.join(self.working_directory, "utt2spk.scp")
-        segment_path = os.path.join(self.working_directory, "segments.scp")
-        text_int_path = os.path.join(self.working_directory, "text.int")
-        lda_mat_path = os.path.join(self.working_directory, "lda.mat")
-        fst_path = os.path.join(self.working_directory, "fsts.ark")
-        mfcc_ark_path = os.path.join(self.working_directory, "mfcc.ark")
-        pitch_ark_path = os.path.join(self.working_directory, "pitch.ark")
-        feats_ark_path = os.path.join(self.working_directory, "feats.ark")
-        ali_path = os.path.join(self.working_directory, "ali.ark")
+        wav_path = self.working_directory.joinpath("wav.scp")
+        likelihood_path = self.working_directory.joinpath("likelihoods.scp")
+        feat_path = self.working_directory.joinpath("feats.scp")
+        utt2spk_path = self.working_directory.joinpath("utt2spk.scp")
+        segment_path = self.working_directory.joinpath("segments.scp")
+        text_int_path = self.working_directory.joinpath("text.int")
+        lda_mat_path = self.working_directory.joinpath("lda.mat")
+        fst_path = self.working_directory.joinpath("fsts.ark")
+        mfcc_ark_path = self.working_directory.joinpath("mfcc.ark")
+        pitch_ark_path = self.working_directory.joinpath("pitch.ark")
+        feats_ark_path = self.working_directory.joinpath("feats.ark")
+        ali_path = self.working_directory.joinpath("ali.ark")
         min_length = 0.1
         if self.align_options["boost_silence"] != 1.0:
             mdl_string = f"gmm-boost-silence --boost={self.align_options['boost_silence']} {self.align_options['optional_silence_csl']} {self.model_path} - |"

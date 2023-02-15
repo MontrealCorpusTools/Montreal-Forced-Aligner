@@ -89,7 +89,7 @@ class G2PTopLevelMixin(MfaWorker, DictionaryMixin, G2PMixin):
 
         Parameters
         ----------
-        output_file_path: str
+        output_file_path: :class:`~pathlib.Path`
             Path to save
         """
         if isinstance(output_file_path, str):

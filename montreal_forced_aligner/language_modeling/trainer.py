@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import typing
+from pathlib import Path
 from queue import Empty
 
 import sqlalchemy
@@ -82,29 +83,29 @@ class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
         self.prune_thresh_medium = prune_thresh_medium
 
     @property
-    def mod_path(self) -> str:
+    def mod_path(self) -> Path:
         """Internal temporary path to the model file"""
-        return os.path.join(self.working_directory, f"{self.data_source_identifier}.mod")
+        return self.working_directory.joinpath(f"{self.data_source_identifier}.mod")
 
     @property
-    def far_path(self) -> str:
+    def far_path(self) -> Path:
         """Internal temporary path to the FAR file"""
-        return os.path.join(self.working_directory, f"{self.data_source_identifier}.far")
+        return self.working_directory.joinpath(f"{self.data_source_identifier}.far")
 
     @property
-    def large_arpa_path(self) -> str:
+    def large_arpa_path(self) -> Path:
         """Internal temporary path to the large arpa file"""
-        return os.path.join(self.working_directory, f"{self.data_source_identifier}.arpa")
+        return self.working_directory.joinpath(f"{self.data_source_identifier}.arpa")
 
     @property
-    def medium_arpa_path(self) -> str:
+    def medium_arpa_path(self) -> Path:
         """Internal temporary path to the medium arpa file"""
-        return self.large_arpa_path.replace(".arpa", "_medium.arpa")
+        return self.working_directory.joinpath(f"{self.data_source_identifier}_medium.arpa")
 
     @property
-    def small_arpa_path(self) -> str:
+    def small_arpa_path(self) -> Path:
         """Internal temporary path to the small arpa file"""
-        return self.large_arpa_path.replace(".arpa", "_small.arpa")
+        return self.working_directory.joinpath(f"{self.data_source_identifier}_small.arpa")
 
     def initialize_training(self) -> None:
         """Initialize training"""
@@ -121,8 +122,8 @@ class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
     def prune_large_language_model(self) -> None:
         """Prune the large language model into small and medium versions"""
         logger.info("Pruning large ngram model to medium and small versions...")
-        small_mod_path = self.mod_path.replace(".mod", "_small.mod")
-        med_mod_path = self.mod_path.replace(".mod", "_med.mod")
+        small_mod_path = self.mod_path.with_stem(self.mod_path.stem + "_small")
+        med_mod_path = self.mod_path.with_stem(self.mod_path.stem + "_med")
         subprocess.check_call(
             [
                 "ngramshrink",
@@ -132,7 +133,7 @@ class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
                 med_mod_path,
             ]
         )
-        assert os.path.exists(med_mod_path)
+        assert med_mod_path.exists()
         if getattr(self, "sym_path", None):
             subprocess.check_call(
                 [
@@ -145,7 +146,7 @@ class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
             )
         else:
             subprocess.check_call(["ngramprint", "--ARPA", med_mod_path, self.medium_arpa_path])
-        assert os.path.exists(self.medium_arpa_path)
+        assert self.medium_arpa_path.exists()
 
         logger.debug("Finished pruning medium arpa!")
         subprocess.check_call(
@@ -157,7 +158,7 @@ class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
                 small_mod_path,
             ]
         )
-        assert os.path.exists(small_mod_path)
+        assert small_mod_path.exists()
         if getattr(self, "sym_path", None):
             subprocess.check_call(
                 [
@@ -170,31 +171,31 @@ class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
             )
         else:
             subprocess.check_call(["ngramprint", "--ARPA", small_mod_path, self.small_arpa_path])
-        assert os.path.exists(self.small_arpa_path)
+        assert self.small_arpa_path.exists()
 
         logger.debug("Finished pruning small arpa!")
         logger.info("Done pruning!")
 
-    def export_model(self, output_model_path: str) -> None:
+    def export_model(self, output_model_path: Path) -> None:
         """
         Export language model to specified path
 
         Parameters
         ----------
-        output_model_path:str
+        output_model_path: :class:`~pathlib.Path`
             Path to export model
         """
-        directory, filename = os.path.split(output_model_path)
-        basename, _ = os.path.splitext(filename)
-        model_temp_dir = os.path.join(self.working_directory, "model_archiving")
+        directory = output_model_path.parent
+        directory.mkdir(parents=True, exist_ok=True)
+
+        model_temp_dir = self.working_directory.joinpath("model_archiving")
         os.makedirs(model_temp_dir, exist_ok=True)
-        model = LanguageModel.empty(basename, root_directory=model_temp_dir)
+        model = LanguageModel.empty(output_model_path.stem, root_directory=model_temp_dir)
         model.add_meta_file(self)
         model.add_arpa_file(self.large_arpa_path)
         model.add_arpa_file(self.medium_arpa_path)
         model.add_arpa_file(self.small_arpa_path)
-        basename, _ = os.path.splitext(output_model_path)
-        model.dump(basename)
+        model.dump(output_model_path)
 
 
 class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
@@ -229,22 +230,22 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
     @property
     def sym_path(self) -> str:
         """Internal path to symbols file"""
-        return os.path.join(self.working_directory, "lm.sym")
+        return self.working_directory.joinpath("lm.sym")
 
     @property
     def far_path(self) -> str:
         """Internal path to FAR file"""
-        return os.path.join(self.working_directory, "lm.far")
+        return self.working_directory.joinpath("lm.far")
 
     @property
     def cnts_path(self) -> str:
         """Internal path to counts file"""
-        return os.path.join(self.working_directory, "lm.cnts")
+        return self.working_directory.joinpath("lm.cnts")
 
     @property
     def training_path(self) -> str:
         """Internal path to training data"""
-        return os.path.join(self.working_directory, "training.txt")
+        return self.working_directory.joinpath("training.txt")
 
     @property
     def meta(self) -> MetaDict:
@@ -287,10 +288,10 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
         """
         Run an evaluation over the training data to generate perplexity score
         """
-        log_path = os.path.join(self.working_log_directory, "evaluate.log")
+        log_path = self.working_log_directory.joinpath("evaluate.log")
 
-        small_mod_path = self.mod_path.replace(".mod", "_small.mod")
-        med_mod_path = self.mod_path.replace(".mod", "_med.mod")
+        small_mod_path = self.mod_path.with_stem(self.mod_path.stem + "_small")
+        med_mod_path = self.mod_path.with_stem(self.mod_path.stem + "_med")
         with self.session() as session, mfa_open(log_path, "w") as log_file:
             word_query = session.query(Word.word).filter(Word.word_type == WordType.speech)
             included_words = set(x[0] for x in word_query)
@@ -401,7 +402,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
     def train_large_lm(self) -> None:
         """Train a large language model"""
         logger.info("Beginning training large ngram model...")
-        log_path = os.path.join(self.working_log_directory, "lm_training.log")
+        log_path = self.working_log_directory.joinpath("lm_training.log")
         return_queue = mp.Queue()
         stopped = Stopped()
         error_dict = {}
@@ -412,7 +413,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
             args = TrainLmArguments(
                 j.id,
                 getattr(self, "db_string", ""),
-                os.path.join(self.working_log_directory, f"ngram_count.{j.id}.log"),
+                self.working_log_directory.joinpath(f"ngram_count.{j.id}.log"),
                 self.working_directory,
                 self.sym_path,
                 self.order,
@@ -422,7 +423,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
             p = KaldiProcessWorker(j.id, return_queue, function, stopped)
             procs.append(p)
             p.start()
-            count_paths.append(os.path.join(self.working_directory, f"{j.id}.cnts"))
+            count_paths.append(self.working_directory.joinpath(f"{j.id}.cnts"))
         with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             while True:
                 try:
@@ -442,7 +443,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
                 pbar.update(1)
         logger.info("Training model...")
         with mfa_open(log_path, "w") as log_file:
-            merged_file = os.path.join(self.working_directory, "merged.cnts")
+            merged_file = self.working_directory.joinpath("merged.cnts")
             if len(count_paths) > 1:
                 ngrammerge_proc = subprocess.Popen(
                     [
@@ -525,14 +526,14 @@ class MfaLmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker, DatabaseMixin):
         For top-level parsing parameters
     """
 
-    def __init__(self, arpa_path: str, keep_case: bool = False, **kwargs):
+    def __init__(self, arpa_path: Path, keep_case: bool = False, **kwargs):
         self.arpa_path = arpa_path
         self.keep_case = keep_case
         super().__init__(**kwargs)
 
     @property
-    def working_directory(self) -> str:
-        return os.path.join(self.output_directory, self.data_source_identifier)
+    def working_directory(self) -> Path:
+        return self.output_directory.joinpath(self.data_source_identifier)
 
     def setup(self) -> None:
         """Set up language model training"""
@@ -566,7 +567,7 @@ class MfaLmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker, DatabaseMixin):
         """Convert the arpa model to MFA format"""
         logger.info("Parsing large ngram model...")
 
-        with mfa_open(os.path.join(self.working_log_directory, "read.log"), "w") as log_file:
+        with mfa_open(self.working_log_directory.joinpath("read.log"), "w") as log_file:
             subprocess.check_call(
                 ["ngramread", "--ARPA", self.large_arpa_path, self.mod_path], stderr=log_file
             )

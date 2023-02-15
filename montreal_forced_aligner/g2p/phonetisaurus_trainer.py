@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import abc
 import collections
 import logging
 import multiprocessing as mp
@@ -7,6 +8,7 @@ import os
 import queue
 import subprocess
 import time
+from pathlib import Path
 
 import dataclassy
 import numpy
@@ -47,7 +49,7 @@ class MaximizationArguments:
     """Arguments for the MaximizationWorker"""
 
     db_string: str
-    far_path: str
+    far_path: Path
     penalize_em: bool
     batch_size: int
 
@@ -57,7 +59,7 @@ class ExpectationArguments:
     """Arguments for the ExpectationWorker"""
 
     db_string: str
-    far_path: str
+    far_path: Path
     batch_size: int
 
 
@@ -66,8 +68,8 @@ class AlignmentExportArguments:
     """Arguments for the AlignmentExportWorker"""
 
     db_string: str
-    log_path: str
-    far_path: str
+    log_path: Path
+    far_path: Path
     penalize: bool
 
 
@@ -75,9 +77,9 @@ class AlignmentExportArguments:
 class NgramCountArguments:
     """Arguments for the NgramCountWorker"""
 
-    log_path: str
-    far_path: str
-    alignment_symbols_path: str
+    log_path: Path
+    far_path: Path
+    alignment_symbols_path: Path
     order: int
 
 
@@ -86,8 +88,8 @@ class AlignmentInitArguments:
     """Arguments for the alignment initialization worker"""
 
     db_string: str
-    log_path: str
-    far_path: str
+    log_path: Path
+    far_path: Path
     deletions: bool
     insertions: bool
     restrict: bool
@@ -142,7 +144,7 @@ class AlignmentInitWorker(mp.Process):
         self.seq_sep = args.seq_sep
         self.skip = args.skip
         self.far_path = args.far_path
-        self.sym_path = self.far_path.replace(".far", ".syms")
+        self.sym_path = self.far_path.with_suffix(".syms")
         self.log_path = args.log_path
         self.db_string = args.db_string
         self.batch_size = args.batch_size
@@ -318,7 +320,7 @@ class AlignmentInitWorker(mp.Process):
             if data:
                 data = {k: float(v) for k, v in data.items()}
                 self.return_queue.put((self.job_name, data, count))
-            symbol_table.write_text(self.far_path.replace(".far", ".syms"))
+            symbol_table.write_text(self.far_path.with_suffix(".syms"))
             return
         except Exception as e:
             self.stopped.stop()
@@ -367,7 +369,7 @@ class ExpectationWorker(mp.Process):
         ).execution_options(logging_token=f"{type(self).__name__}_engine")
         Session = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
         far_reader = pywrapfst.FarReader.open(self.far_path)
-        symbol_table = pynini.SymbolTable.read_text(self.far_path.replace(".far", ".syms"))
+        symbol_table = pynini.SymbolTable.read_text(self.far_path.with_suffix(".syms"))
         symbol_mapper = {}
         data = {}
         count = 0
@@ -454,7 +456,7 @@ class MaximizationWorker(mp.Process):
 
     def run(self) -> None:
         """Run the function"""
-        symbol_table = pynini.SymbolTable.read_text(self.far_path.replace(".far", ".syms"))
+        symbol_table = pynini.SymbolTable.read_text(self.far_path.with_suffix(".syms"))
         count = 0
         engine = sqlalchemy.create_engine(
             self.db_string,
@@ -481,7 +483,9 @@ class MaximizationWorker(mp.Process):
                             weight = pynini.Weight("log", 99)
                     alignment_model[symbol_table.find(m2m.symbol)] = weight
             far_reader = pywrapfst.FarReader.open(self.far_path)
-            far_writer = pywrapfst.FarWriter.create(self.far_path + ".temp", arc_type="log")
+            far_writer = pywrapfst.FarWriter.create(
+                self.far_path.with_suffix(self.far_path.suffix + ".temp"), arc_type="log"
+            )
             while not far_reader.done():
                 if self.stopped.stop_check():
                     break
@@ -506,7 +510,7 @@ class MaximizationWorker(mp.Process):
             del far_reader
             del far_writer
             os.remove(self.far_path)
-            os.rename(self.far_path + ".temp", self.far_path)
+            os.rename(self.far_path.with_suffix(self.far_path.suffix + ".temp"), self.far_path)
         except Exception as e:
             self.stopped.stop()
             self.return_queue.put(e)
@@ -543,10 +547,10 @@ class AlignmentExporter(mp.Process):
 
     def run(self) -> None:
         """Run the function"""
-        symbol_table = pynini.SymbolTable.read_text(self.far_path.replace(".far", ".syms"))
+        symbol_table = pynini.SymbolTable.read_text(self.far_path.with_suffix(".syms"))
         with mfa_open(self.log_path, "w") as log_file:
             far_reader = pywrapfst.FarReader.open(self.far_path)
-            one_best_path = self.far_path + ".strings"
+            one_best_path = self.far_path.with_suffix(".strings")
             no_alignment_count = 0
             total = 0
             with mfa_open(one_best_path, "w") as f:
@@ -628,8 +632,8 @@ class NgramCountWorker(mp.Process):
     def run(self) -> None:
         """Run the function"""
         with mfa_open(self.log_path, "w") as log_file:
-            one_best_path = self.far_path + ".strings"
-            ngram_count_path = self.far_path.replace(".far", ".cnts")
+            one_best_path = self.far_path.with_suffix(".strings")
+            ngram_count_path = self.far_path.with_suffix(".cnts")
             farcompile_proc = subprocess.Popen(
                 [
                     thirdparty_binary("farcompilestrings"),
@@ -652,7 +656,6 @@ class NgramCountWorker(mp.Process):
                 ],
                 stderr=log_file,
                 stdin=farcompile_proc.stdout,
-                # stdout=subprocess.PIPE,
                 env=os.environ,
             )
             ngramcount_proc.communicate()
@@ -775,8 +778,8 @@ class PhonetisaurusTrainerMixin:
         for i in range(GLOBAL_CONFIG.num_jobs):
             args = AlignmentInitArguments(
                 self.db_string,
-                os.path.join(self.working_log_directory, f"alignment_init.{i}.log"),
-                os.path.join(self.working_directory, f"{i}.far"),
+                self.working_log_directory.joinpath(f"alignment_init.{i}.log"),
+                self.working_directory.joinpath(f"{i}.far"),
                 self.deletions,
                 self.insertions,
                 self.restrict_m2m,
@@ -904,7 +907,7 @@ class PhonetisaurusTrainerMixin:
         for i in range(GLOBAL_CONFIG.num_jobs):
             args = MaximizationArguments(
                 self.db_string,
-                os.path.join(self.working_directory, f"{i}.far"),
+                self.working_directory.joinpath(f"{i}.far"),
                 self.penalize_em,
                 self.batch_size,
             )
@@ -958,7 +961,7 @@ class PhonetisaurusTrainerMixin:
         for i in range(GLOBAL_CONFIG.num_jobs):
             args = ExpectationArguments(
                 self.db_string,
-                os.path.join(self.working_directory, f"{i}.far"),
+                self.working_directory.joinpath(f"{i}.far"),
                 self.batch_size,
             )
             procs.append(ExpectationWorker(i, return_queue, stopped, args))
@@ -1019,13 +1022,13 @@ class PhonetisaurusTrainerMixin:
         count_paths = []
         for i in range(GLOBAL_CONFIG.num_jobs):
             args = NgramCountArguments(
-                os.path.join(self.working_log_directory, f"ngram_count.{i}.log"),
-                os.path.join(self.working_directory, f"{i}.far"),
+                self.working_log_directory.joinpath(f"ngram_count.{i}.log"),
+                self.working_directory.joinpath(f"{i}.far"),
                 self.alignment_symbols_path,
                 self.order,
             )
             procs.append(NgramCountWorker(return_queue, stopped, args))
-            count_paths.append(args.far_path.replace(".far", ".cnts"))
+            count_paths.append(args.far_path.with_suffix(".cnts"))
             procs[i].start()
 
         with tqdm.tqdm(
@@ -1056,11 +1059,11 @@ class PhonetisaurusTrainerMixin:
         logger.info("Done counting ngrams!")
 
         logger.info("Training ngram model...")
-        with mfa_open(os.path.join(self.working_log_directory, "model.log"), "w") as logf:
+        with mfa_open(self.working_log_directory.joinpath("model.log"), "w") as logf:
             ngrammerge_proc = subprocess.Popen(
                 [
                     thirdparty_binary("ngrammerge"),
-                    f'--ofile={self.ngram_path.replace(".fst", ".cnts")}',
+                    f'--ofile={self.ngram_path.with_suffix(".cnts")}',
                     *count_paths,
                 ],
                 stderr=logf,
@@ -1072,7 +1075,7 @@ class PhonetisaurusTrainerMixin:
                 [
                     thirdparty_binary("ngrammake"),
                     f"--method={self.smoothing_method}",
-                    self.ngram_path.replace(".fst", ".cnts"),
+                    self.ngram_path.with_suffix(".cnts"),
                 ],
                 stderr=logf,
                 stdout=subprocess.PIPE,
@@ -1213,7 +1216,22 @@ class PhonetisaurusTrainerMixin:
                 break
 
     @property
-    def data_directory(self) -> str:
+    @abc.abstractmethod
+    def working_directory(self) -> Path:
+        ...
+
+    @property
+    @abc.abstractmethod
+    def working_log_directory(self) -> Path:
+        ...
+
+    @property
+    @abc.abstractmethod
+    def db_string(self) -> str:
+        ...
+
+    @property
+    def data_directory(self) -> Path:
         """Data directory for trainer"""
         return self.working_directory
 
@@ -1226,63 +1244,62 @@ class PhonetisaurusTrainerMixin:
         """Dictionary name"""
         return self._data_source
 
-    def export_model(self, output_model_path: str) -> None:
+    def export_model(self, output_model_path: Path) -> None:
         """
         Export G2P model to specified path
 
         Parameters
         ----------
-        output_model_path:str
+        output_model_path: :class:`~pathlib.Path`
             Path to export model
         """
-        directory, filename = os.path.split(output_model_path)
-        basename, _ = os.path.splitext(filename)
-        models_temp_dir = os.path.join(self.working_directory, "model_archive_temp")
-        model = G2PModel.empty(basename, root_directory=models_temp_dir)
+        directory = output_model_path.parent
+        directory.mkdir(parents=True, exist_ok=True)
+        models_temp_dir = self.working_directory.joinpath("model_archive_temp")
+        model = G2PModel.empty(output_model_path.stem, root_directory=models_temp_dir)
         model.add_meta_file(self)
         model.add_fst_model(self.working_directory)
         model.add_sym_path(self.working_directory)
         if directory:
             os.makedirs(directory, exist_ok=True)
-        basename, _ = os.path.splitext(output_model_path)
-        model.dump(basename)
+        model.dump(output_model_path)
         model.clean_up()
         logger.info(f"Saved model to {output_model_path}")
 
     @property
-    def alignment_model_path(self) -> str:
+    def alignment_model_path(self) -> Path:
         """Path to store alignment model FST"""
-        return os.path.join(self.working_directory, "align.fst")
+        return self.working_directory.joinpath("align.fst")
 
     @property
-    def ngram_path(self) -> str:
+    def ngram_path(self) -> Path:
         """Path to store ngram model"""
-        return os.path.join(self.working_directory, "ngram.fst")
+        return self.working_directory.joinpath("ngram.fst")
 
     @property
-    def fst_path(self) -> str:
+    def fst_path(self) -> Path:
         """Path to store final trained model"""
-        return os.path.join(self.working_directory, "model.fst")
+        return self.working_directory.joinpath("model.fst")
 
     @property
-    def alignment_symbols_path(self) -> str:
+    def alignment_symbols_path(self) -> Path:
         """Path to alignment symbol table"""
-        return os.path.join(self.working_directory, "alignment.syms")
+        return self.working_directory.joinpath("alignment.syms")
 
     @property
-    def grapheme_symbols_path(self) -> str:
+    def grapheme_symbols_path(self) -> Path:
         """Path to final model's grapheme symbol table"""
-        return os.path.join(self.working_directory, "graphemes.txt")
+        return self.working_directory.joinpath("graphemes.txt")
 
     @property
-    def phone_symbols_path(self) -> str:
+    def phone_symbols_path(self) -> Path:
         """Path to final model's phone symbol table"""
-        return os.path.join(self.working_directory, "phones.txt")
+        return self.working_directory.joinpath("phones.txt")
 
     @property
-    def far_path(self) -> str:
+    def far_path(self) -> Path:
         """Path to store final aligned FSTs"""
-        return os.path.join(self.working_directory, "aligned.far")
+        return self.working_directory.joinpath("aligned.far")
 
     def export_alignments(self) -> None:
         """
@@ -1298,12 +1315,12 @@ class PhonetisaurusTrainerMixin:
         for i in range(GLOBAL_CONFIG.num_jobs):
             args = AlignmentExportArguments(
                 self.db_string,
-                os.path.join(self.working_log_directory, f"ngram_count.{i}.log"),
-                os.path.join(self.working_directory, f"{i}.far"),
+                self.working_log_directory.joinpath(f"ngram_count.{i}.log"),
+                self.working_directory.joinpath(f"{i}.far"),
                 self.penalize,
             )
             procs.append(AlignmentExporter(return_queue, stopped, args))
-            count_paths.append(args.far_path.replace(".far", ".cnts"))
+            count_paths.append(args.far_path.with_suffix(".cnts"))
             procs[i].start()
 
         with tqdm.tqdm(
@@ -1345,7 +1362,7 @@ class PhonetisaurusTrainerMixin:
             stdout=subprocess.PIPE,
         )
         for j in range(GLOBAL_CONFIG.num_jobs):
-            text_path = os.path.join(self.working_directory, f"{j}.far.strings")
+            text_path = self.working_directory.joinpath(f"{j}.far.strings")
             with mfa_open(text_path, "r") as f:
                 for line in f:
                     symbols_proc.stdin.write(line)
@@ -1367,13 +1384,13 @@ class PhonetisaurusTrainer(
         self,
         **kwargs,
     ):
-        self._data_source = os.path.splitext(os.path.basename(kwargs["dictionary_path"]))[0]
+        self._data_source = kwargs["dictionary_path"].stem
         super().__init__(**kwargs)
         self.ler = None
         self.wer = None
 
     @property
-    def data_directory(self) -> str:
+    def data_directory(self) -> Path:
         """Data directory for trainer"""
         return self.working_directory
 
@@ -1454,9 +1471,9 @@ class PhonetisaurusTrainer(
         """
         Validate the G2P model against held out data
         """
-        temp_model_path = os.path.join(self.working_log_directory, "g2p_model.zip")
+        temp_model_path = self.working_log_directory.joinpath("g2p_model.zip")
         self.export_model(temp_model_path)
-        temp_dir = os.path.join(self.working_directory, "validation")
+        temp_dir = self.working_directory.joinpath("validation")
         os.makedirs(temp_dir, exist_ok=True)
         with self.session() as session:
             validation_set = collections.defaultdict(set)
@@ -1474,7 +1491,7 @@ class PhonetisaurusTrainer(
             num_pronunciations=self.num_pronunciations,
         )
         output = gen.generate_pronunciations()
-        with mfa_open(os.path.join(temp_dir, "validation_output.txt"), "w") as f:
+        with mfa_open(temp_dir.joinpath("validation_output.txt"), "w") as f:
             for (orthography, pronunciations) in output.items():
                 if not pronunciations:
                     continue
@@ -1485,9 +1502,9 @@ class PhonetisaurusTrainer(
         gen.compute_validation_errors(validation_set, output)
 
     def compute_initial_ngrams(self) -> None:
-        word_path = os.path.join(self.working_directory, "words.txt")
-        word_ngram_path = os.path.join(self.working_directory, "grapheme_ngram.fst")
-        word_symbols_path = os.path.join(self.working_directory, "grapheme_ngram.syms")
+        word_path = self.working_directory.joinpath("words.txt")
+        word_ngram_path = self.working_directory.joinpath("grapheme_ngram.fst")
+        word_symbols_path = self.working_directory.joinpath("grapheme_ngram.syms")
         symbols_proc = subprocess.Popen(
             [
                 thirdparty_binary("ngramsymbols"),
@@ -1559,13 +1576,13 @@ class PhonetisaurusTrainer(
             ngrams.add(ngram)
 
         print_proc.wait()
-        with mfa_open(word_ngram_path.replace(".fst", ".ngrams"), "w") as f:
+        with mfa_open(word_ngram_path.with_suffix(".ngrams"), "w") as f:
             for ngram in sorted(ngrams):
                 f.write(f"{ngram}\n")
 
-        phone_path = os.path.join(self.working_directory, "pronunciations.txt")
-        phone_ngram_path = os.path.join(self.working_directory, "phone_ngram.fst")
-        phone_symbols_path = os.path.join(self.working_directory, "phone_ngram.syms")
+        phone_path = self.working_directory.joinpath("pronunciations.txt")
+        phone_ngram_path = self.working_directory.joinpath("phone_ngram.fst")
+        phone_symbols_path = self.working_directory.joinpath("phone_ngram.syms")
         symbols_proc = subprocess.Popen(
             [
                 thirdparty_binary("ngramsymbols"),
@@ -1634,7 +1651,7 @@ class PhonetisaurusTrainer(
             ngrams.add(ngram)
 
         print_proc.wait()
-        with mfa_open(phone_ngram_path.replace(".fst", ".ngrams"), "w") as f:
+        with mfa_open(phone_ngram_path.with_suffix(".ngrams"), "w") as f:
             for ngram in sorted(ngrams):
                 f.write(f"{ngram}\n")
 
@@ -1716,10 +1733,8 @@ class PhonetisaurusTrainer(
                 .join(Word.job)
                 .filter(Word2Job.training == True)  # noqa
             )
-            with mfa_open(
-                os.path.join(self.working_directory, "words.txt"), "w"
-            ) as word_f, mfa_open(
-                os.path.join(self.working_directory, "pronunciations.txt"), "w"
+            with mfa_open(self.working_directory.joinpath("words.txt"), "w") as word_f, mfa_open(
+                self.working_directory.joinpath("pronunciations.txt"), "w"
             ) as phone_f:
                 for pronunciation, word in query:
                     word = list(word)

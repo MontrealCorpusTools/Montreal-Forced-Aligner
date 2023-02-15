@@ -6,6 +6,7 @@ import os
 import time
 import typing
 from abc import ABCMeta, abstractmethod
+from pathlib import Path
 
 import sqlalchemy.engine
 import tqdm
@@ -153,7 +154,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 session.add(
                     Corpus(
                         name=self.data_source_identifier,
-                        path=str(self.corpus_directory),
+                        path=self.corpus_directory,
                         data_directory=self.corpus_output_directory,
                     )
                 )
@@ -235,8 +236,10 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         :class:`~montreal_forced_aligner.db.File`
             File match
         """
+        close = False
         if session is None:
             session = self.session()
+            close = True
         file = session.query(File).options(
             selectinload(File.utterances).joinedload(Utterance.speaker, innerjoin=True),
             joinedload(File.sound_file, innerjoin=True),
@@ -247,11 +250,15 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             file = file.get(id)
             if not file:
                 raise Exception(f"Could not find utterance with id of {id}")
+            if close:
+                session.close()
             return file
         else:
             file = file.filter(File.name == name).first()
             if not file:
                 raise Exception(f"Could not find utterance with name of {name}")
+            if close:
+                session.close()
             return file
 
     @property
@@ -260,15 +267,15 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         return {}
 
     @property
-    def features_log_directory(self) -> str:
+    def features_log_directory(self) -> Path:
         """Feature log directory"""
-        return os.path.join(self.split_directory, "log")
+        return self.split_directory.joinpath("log")
 
     @property
-    def split_directory(self) -> str:
+    def split_directory(self) -> Path:
         """Directory used to store information split by job"""
-        return os.path.join(
-            self.corpus_output_directory, f"split{GLOBAL_CONFIG.current_profile.num_jobs}"
+        return self.corpus_output_directory.joinpath(
+            f"split{GLOBAL_CONFIG.current_profile.num_jobs}"
         )
 
     def _write_spk2utt(self) -> None:
@@ -289,12 +296,12 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 data[speaker_id].append(utt_id)
                 utt2spk_data[utt_id] = speaker_id
 
-        output_mapping(utt2spk_data, os.path.join(self.corpus_output_directory, "utt2spk.scp"))
-        output_mapping(data, os.path.join(self.corpus_output_directory, "spk2utt.scp"))
+        output_mapping(utt2spk_data, self.corpus_output_directory.joinpath("utt2spk.scp"))
+        output_mapping(data, self.corpus_output_directory.joinpath("spk2utt.scp"))
 
     def create_corpus_split(self) -> None:
         """Create split directory and output information from Jobs"""
-        os.makedirs(os.path.join(self.split_directory, "log"), exist_ok=True)
+        os.makedirs(self.split_directory.joinpath("log"), exist_ok=True)
         with self.session() as session, tqdm.tqdm(
             total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar:
@@ -644,7 +651,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         if args is None:
             return
         logger.info("Normalizing text...")
-        log_directory = os.path.join(self.split_directory, "log")
+        log_directory = self.split_directory.joinpath("log")
         word_update_mappings = {}
         word_insert_mappings = {}
         pronunciation_insert_mappings = []
@@ -1026,8 +1033,8 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             Number of utterances to include in subset
         """
         logger.info(f"Creating subset directory with {subset} utterances...")
-        subset_directory = os.path.join(self.corpus_output_directory, f"subset_{subset}")
-        log_dir = os.path.join(subset_directory, "log")
+        subset_directory = self.corpus_output_directory.joinpath(f"subset_{subset}")
+        log_dir = subset_directory.joinpath("log")
         os.makedirs(log_dir, exist_ok=True)
         num_dictionaries = getattr(self, "num_dictionaries", 1)
         with self.session() as session:
@@ -1226,7 +1233,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             session.commit()
         if subset is None or subset >= self.num_utterances or subset <= 0:
             return self.split_directory
-        directory = os.path.join(self.corpus_output_directory, f"subset_{subset}")
+        directory = self.corpus_output_directory.joinpath(f"subset_{subset}")
         if not os.path.exists(directory):
             self.create_subset(subset)
         return directory

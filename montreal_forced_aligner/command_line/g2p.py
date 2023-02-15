@@ -35,7 +35,7 @@ __all__ = ["g2p_cli"]
 @click.option(
     "--config_path",
     "-c",
-    help="Path to config file to use for training.",
+    help="Path to config file to use for G2P.",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(

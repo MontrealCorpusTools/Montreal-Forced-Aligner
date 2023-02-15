@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import time
 import typing
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import tqdm
@@ -78,7 +79,7 @@ class IvectorModelTrainingMixin(AcousticModelTrainingMixin):
         """Not implemented"""
         pass
 
-    def export_model(self, output_model_path: str) -> None:
+    def export_model(self, output_model_path: Path) -> None:
         """
         Output IvectorExtractor model
 
@@ -87,9 +88,11 @@ class IvectorModelTrainingMixin(AcousticModelTrainingMixin):
         output_model_path : str
             Path to save ivector extractor model
         """
-        directory, filename = os.path.split(output_model_path)
-        basename, _ = os.path.splitext(filename)
-        ivector_extractor = IvectorExtractorModel.empty(basename, self.working_log_directory)
+        directory = output_model_path.parent
+
+        ivector_extractor = IvectorExtractorModel.empty(
+            output_model_path.stem, self.working_log_directory
+        )
         ivector_extractor.add_meta_file(self)
         ivector_extractor.add_model(self.working_directory)
         if directory:
@@ -180,7 +183,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
                 GmmGselectArguments(
                     j.id,
                     getattr(self, "db_string", ""),
-                    os.path.join(self.working_log_directory, f"gmm_gselect.{j.id}.log"),
+                    self.working_log_directory.joinpath(f"gmm_gselect.{j.id}.log"),
                     self.feature_options,
                     self.dubm_options,
                     self.model_path,
@@ -247,7 +250,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
 
     def _trainer_initialization(self, initial_alignment_directory: Optional[str] = None) -> None:
         """DUBM training initialization"""
-        log_path = os.path.join(self.working_log_directory, "gmm_init.log")
+        log_path = self.working_log_directory.joinpath("gmm_init.log")
         with self.session() as session, mfa_open(log_path, "w") as log_file:
             alignment_workflow: CorpusWorkflow = (
                 session.query(CorpusWorkflow)
@@ -278,7 +281,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
                 feature_string = job.construct_online_feature_proc_string()
                 feature_string = feature_string.replace(f".{job.id}.scp", ".scp")
                 feature_string = feature_string.replace(
-                    job.corpus.current_subset_directory, job.corpus.data_directory
+                    str(job.corpus.current_subset_directory), str(job.corpus.data_directory)
                 )
                 gmm_init_proc = subprocess.Popen(
                     [
@@ -332,7 +335,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
             opt = "--remove-low-count-gaussians=false"
         else:
             opt = f"--remove-low-count-gaussians={self.remove_low_count_gaussians}"
-        log_path = os.path.join(self.working_log_directory, f"update.{self.iteration}.log")
+        log_path = self.working_log_directory.joinpath(f"update.{self.iteration}.log")
         with mfa_open(log_path, "w") as log_file:
             acc_files = []
             for j in arguments:
@@ -365,7 +368,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
     @property
     def exported_model_path(self) -> str:
         """Temporary model path to save intermediate model"""
-        return os.path.join(self.working_log_directory, "dubm_model.zip")
+        return self.working_log_directory.joinpath("dubm_model.zip")
 
     def train_iteration(self) -> None:
         """
@@ -377,9 +380,9 @@ class DubmTrainer(IvectorModelTrainingMixin):
 
     def finalize_training(self) -> None:
         """Finalize DUBM training"""
-        final_dubm_path = os.path.join(self.working_directory, "final.dubm")
+        final_dubm_path = self.working_directory.joinpath("final.dubm")
         shutil.copy(
-            os.path.join(self.working_directory, f"{self.num_iterations+1}.dubm"),
+            self.working_directory.joinpath(f"{self.num_iterations+1}.dubm"),
             final_dubm_path,
         )
         # Update VAD with dubm likelihoods
@@ -393,15 +396,15 @@ class DubmTrainer(IvectorModelTrainingMixin):
     def model_path(self) -> str:
         """Current iteration's DUBM model path"""
         if self.training_complete:
-            return os.path.join(self.working_directory, "final.dubm")
-        return os.path.join(self.working_directory, f"{self.iteration}.dubm")
+            return self.working_directory.joinpath("final.dubm")
+        return self.working_directory.joinpath(f"{self.iteration}.dubm")
 
     @property
     def next_model_path(self) -> str:
         """Next iteration's DUBM model path"""
         if self.training_complete:
-            return os.path.join(self.working_directory, "final.dubm")
-        return os.path.join(self.working_directory, f"{self.iteration + 1}.dubm")
+            return self.working_directory.joinpath("final.dubm")
+        return self.working_directory.joinpath(f"{self.iteration + 1}.dubm")
 
 
 class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
@@ -436,7 +439,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
     @property
     def exported_model_path(self) -> str:
         """Temporary directory path that trainer will save ivector extractor model"""
-        return os.path.join(self.working_log_directory, "ivector_model.zip")
+        return self.working_log_directory.joinpath("ivector_model.zip")
 
     def acc_ivector_stats_arguments(self) -> List[AccIvectorStatsArguments]:
         """
@@ -469,11 +472,11 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         """Ivector extractor training initialization"""
         self.iteration = 1
         # Initialize job_name-vector extractor
-        log_directory = os.path.join(self.working_directory, "log")
+        log_directory = self.working_directory.joinpath("log")
         log_path = os.path.join(log_directory, "init.log")
-        diag_ubm_path = os.path.join(self.working_directory, "final.dubm")
+        diag_ubm_path = self.working_directory.joinpath("final.dubm")
 
-        full_ubm_path = os.path.join(self.working_directory, "final.ubm")
+        full_ubm_path = self.working_directory.joinpath("final.ubm")
         if not os.path.exists(self.ie_path):
             with mfa_open(log_path, "w") as log_file:
                 subprocess.check_call(
@@ -510,7 +513,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
                 GaussToPostArguments(
                     j.id,
                     getattr(self, "db_string", ""),
-                    os.path.join(self.working_log_directory, f"gauss_to_post.{j.id}.log"),
+                    self.working_log_directory.joinpath(f"gauss_to_post.{j.id}.log"),
                     self.feature_options,
                     self.ivector_options,
                     j.construct_path(self.working_directory, "post", "ark"),
@@ -572,20 +575,20 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
     def ie_path(self) -> str:
         """Current ivector extractor model path"""
         if self.training_complete:
-            return os.path.join(self.working_directory, "final.ie")
-        return os.path.join(self.working_directory, f"{self.iteration}.ie")
+            return self.working_directory.joinpath("final.ie")
+        return self.working_directory.joinpath(f"{self.iteration}.ie")
 
     @property
     def next_ie_path(self) -> str:
         """Next iteration's ivector extractor model path"""
         if self.training_complete:
-            return os.path.join(self.working_directory, "final.ie")
-        return os.path.join(self.working_directory, f"{self.iteration + 1}.ie")
+            return self.working_directory.joinpath("final.ie")
+        return self.working_directory.joinpath(f"{self.iteration + 1}.ie")
 
     @property
     def dubm_path(self) -> str:
         """DUBM model path"""
-        return os.path.join(self.working_directory, "final.dubm")
+        return self.working_directory.joinpath("final.dubm")
 
     def acc_ivector_stats(self) -> None:
         """
@@ -615,8 +618,8 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
 
         logger.debug(f"Accumulating stats took {time.time() - begin:.3f} seconds")
 
-        log_path = os.path.join(self.working_log_directory, f"sum_acc.{self.iteration}.log")
-        acc_path = os.path.join(self.working_directory, f"acc.{self.iteration}")
+        log_path = self.working_log_directory.joinpath(f"sum_acc.{self.iteration}.log")
+        acc_path = self.working_directory.joinpath(f"acc.{self.iteration}")
         with mfa_open(log_path, "w") as log_file:
             accinits = []
             for j in arguments:
@@ -635,7 +638,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
             if os.path.exists(p):
                 os.remove(p)
         # Est extractor
-        log_path = os.path.join(self.working_log_directory, f"update.{self.iteration}.log")
+        log_path = self.working_log_directory.joinpath(f"update.{self.iteration}.log")
         with mfa_open(log_path, "w") as log_file:
             extractor_est_proc = subprocess.Popen(
                 [
@@ -643,7 +646,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
                     f"--num-threads={len(self.jobs)}",
                     f"--gaussian-min-count={self.gaussian_min_count}",
                     self.ie_path,
-                    os.path.join(self.working_directory, f"acc.{self.iteration}"),
+                    self.working_directory.joinpath(f"acc.{self.iteration}"),
                     self.next_ie_path,
                 ],
                 stderr=subprocess.PIPE,
@@ -686,8 +689,8 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         """
         # Rename to final
         shutil.copy(
-            os.path.join(self.working_directory, f"{self.num_iterations}.ie"),
-            os.path.join(self.working_directory, "final.ie"),
+            self.working_directory.joinpath(f"{self.num_iterations}.ie"),
+            self.working_directory.joinpath("final.ie"),
         )
         self.export_model(self.exported_model_path)
         wf = self.worker.current_workflow
@@ -713,8 +716,8 @@ class PldaTrainer(IvectorTrainer):
 
     def compute_lda(self):
 
-        lda_path = os.path.join(self.working_directory, "ivector_lda.mat")
-        log_path = os.path.join(self.working_log_directory, "lda.log")
+        lda_path = self.working_directory.joinpath("ivector_lda.mat")
+        log_path = self.working_log_directory.joinpath("lda.log")
         utt2spk_path = os.path.join(self.corpus_output_directory, "utt2spk.scp")
         with tqdm.tqdm(
             total=self.worker.num_utterances, disable=GLOBAL_CONFIG.quiet
@@ -757,12 +760,12 @@ class PldaTrainer(IvectorTrainer):
         self.worker.compute_plda()
         self.worker.compute_speaker_ivectors()
         os.rename(
-            os.path.join(self.working_directory, "current_speaker_ivectors.ark"),
-            os.path.join(self.working_directory, "speaker_ivectors.ark"),
+            self.working_directory.joinpath("current_speaker_ivectors.ark"),
+            self.working_directory.joinpath("speaker_ivectors.ark"),
         )
         os.rename(
-            os.path.join(self.working_directory, "current_num_utts.ark"),
-            os.path.join(self.working_directory, "num_utts.ark"),
+            self.working_directory.joinpath("current_num_utts.ark"),
+            self.working_directory.joinpath("num_utts.ark"),
         )
 
 
@@ -900,7 +903,7 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
             previous = trainer
         logger.info(f"Completed training in {time.time()-begin} seconds!")
 
-    def export_model(self, output_model_path: str) -> None:
+    def export_model(self, output_model_path: Path) -> None:
         """
         Export an ivector extractor model to the specified path
 
@@ -916,7 +919,7 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
     @classmethod
     def parse_parameters(
         cls,
-        config_path: Optional[str] = None,
+        config_path: Optional[Path] = None,
         args: Optional[Dict[str, Any]] = None,
         unknown_args: Optional[typing.Iterable[str]] = None,
     ) -> MetaDict:
@@ -925,7 +928,7 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
 
         Parameters
         ----------
-        config_path: str, optional
+        config_path: :class:`~pathlib.Path`, optional
             Path to yaml configuration file
         args: dict[str, Any]
             Parsed arguments

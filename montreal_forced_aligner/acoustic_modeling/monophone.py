@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import typing
+from pathlib import Path
 from queue import Empty
 
 import tqdm
@@ -32,7 +33,7 @@ logger = logging.getLogger("mfa")
 class MonoAlignEqualArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.monophone.MonoAlignEqualFunction`"""
 
-    model_path: str
+    model_path: Path
     feature_options: MetaDict
 
 
@@ -180,7 +181,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
             MonoAlignEqualArguments(
                 j.id,
                 getattr(self, "db_string", ""),
-                os.path.join(self.working_log_directory, f"mono_align_equal.{j.id}.log"),
+                self.working_log_directory.joinpath(f"mono_align_equal.{j.id}.log"),
                 self.model_path,
                 self.feature_options,
             )
@@ -286,7 +287,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
                     for num_utterances, errors in function.run():
                         pbar.update(num_utterances + errors)
 
-        log_path = os.path.join(self.working_log_directory, "update.0.log")
+        log_path = self.working_log_directory.joinpath("update.0.log")
         with mfa_open(log_path, "w") as log_file:
             acc_files = []
             for j in self.jobs:
@@ -324,7 +325,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
         if self.initialized:
             return
         self.iteration = 0
-        tree_path = os.path.join(self.working_directory, "tree")
+        tree_path = self.working_directory.joinpath("tree")
         feat_dim = self.worker.get_feat_dim()
 
         feature_string = self.jobs[0].construct_feature_proc_string(
@@ -336,8 +337,8 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
             self.feature_options["uses_speaker_adaptation"],
         )
         shared_phones_path = os.path.join(self.worker.phones_dir, "sets.int")
-        init_log_path = os.path.join(self.working_log_directory, "init.log")
-        temp_feats_path = os.path.join(self.working_directory, "temp_feats")
+        init_log_path = self.working_log_directory.joinpath("init.log")
+        temp_feats_path = self.working_directory.joinpath("temp_feats")
         with mfa_open(init_log_path, "w") as log_file:
             subprocess.call(
                 [

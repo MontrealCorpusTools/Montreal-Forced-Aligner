@@ -7,6 +7,7 @@ import os
 import shutil
 import time
 import typing
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import sqlalchemy
@@ -67,7 +68,7 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
 
     def __init__(
         self,
-        acoustic_model_path: str = None,
+        acoustic_model_path: Path = None,
         **kwargs,
     ):
         self.acoustic_model = AcousticModel(acoustic_model_path)
@@ -77,17 +78,10 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
 
     def setup_acoustic_model(self) -> None:
         """Set up the acoustic model"""
-        if self.acoustic_model.meta["version"] < "2.1":
-            logger.warning(
-                "The acoustic model was trained in an earlier version of MFA. "
-                "There may be incompatibilities in feature generation that cause errors. "
-                "Please download the latest version of the model via `mfa model download`, "
-                "use a different acoustic model, or use version 2.0.6 of MFA."
-            )
         self.acoustic_model.export_model(self.working_directory)
         os.makedirs(self.phones_dir, exist_ok=True)
         for f in ["phones.txt", "graphemes.txt"]:
-            path = os.path.join(self.working_directory, f)
+            path = self.working_directory.joinpath(f)
             if os.path.exists(path):
                 os.rename(path, os.path.join(self.phones_dir, f))
         dict_info = self.acoustic_model.meta.get("dictionaries", None)
@@ -229,7 +223,7 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
     @classmethod
     def parse_parameters(
         cls,
-        config_path: Optional[str] = None,
+        config_path: Optional[Path] = None,
         args: Optional[Dict[str, Any]] = None,
         unknown_args: Optional[typing.Iterable[str]] = None,
     ) -> MetaDict:
@@ -238,7 +232,7 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
 
         Parameters
         ----------
-        config_path: str
+        config_path: :class:`~pathlib.Path`
             Config path
         args: dict[str, Any]
             Parsed arguments
@@ -301,7 +295,7 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
             session.flush()
         if not sox_string:
             sox_string = utterance.file.sound_file.sound_file_path
-        text_int_path = os.path.join(self.working_directory, "text.int")
+        text_int_path = self.working_directory.joinpath("text.int")
         with mfa_open(text_int_path, "w") as f:
             normalized_text_int = " ".join(
                 [
@@ -311,20 +305,20 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
             )
             f.write(f"{utterance.kaldi_id} {normalized_text_int}\n")
         if utterance.features:
-            feats_path = os.path.join(self.working_directory, "feats.scp")
+            feats_path = self.working_directory.joinpath("feats.scp")
             with mfa_open(feats_path, "w") as f:
                 f.write(f"{utterance.kaldi_id} {utterance.features}\n")
         else:
-            wav_path = os.path.join(self.working_directory, "wav.scp")
-            segment_path = os.path.join(self.working_directory, "segments.scp")
+            wav_path = self.working_directory.joinpath("wav.scp")
+            segment_path = self.working_directory.joinpath("segments.scp")
             with mfa_open(wav_path, "w") as f:
                 f.write(f"{utterance.file_id} {sox_string}\n")
             with mfa_open(segment_path, "w") as f:
                 f.write(
                     f"{utterance.kaldi_id} {utterance.file_id} {utterance.begin} {utterance.end} {utterance.channel}\n"
                 )
-        spk2utt_path = os.path.join(self.working_directory, "spk2utt.scp")
-        utt2spk_path = os.path.join(self.working_directory, "utt2spk.scp")
+        spk2utt_path = self.working_directory.joinpath("spk2utt.scp")
+        utt2spk_path = self.working_directory.joinpath("utt2spk.scp")
         with mfa_open(spk2utt_path, "w") as f:
             f.write(f"{utterance.speaker.id} {utterance.kaldi_id}\n")
         with mfa_open(utt2spk_path, "w") as f:
@@ -333,7 +327,7 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
         args = OnlineAlignmentArguments(
             0,
             self.db_string,
-            os.path.join(self.working_directory, "align.log"),
+            self.working_directory.joinpath("align.log"),
             self.working_directory,
             sox_string,
             utterance.to_data(),

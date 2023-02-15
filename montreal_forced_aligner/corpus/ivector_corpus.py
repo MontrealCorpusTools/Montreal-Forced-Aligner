@@ -49,12 +49,12 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
     @property
     def ie_path(self) -> str:
         """Ivector extractor ie path"""
-        return os.path.join(self.working_directory, "final.ie")
+        return self.working_directory.joinpath("final.ie")
 
     @property
     def dubm_path(self) -> str:
         """DUBM model path"""
-        return os.path.join(self.working_directory, "final.dubm")
+        return self.working_directory.joinpath("final.dubm")
 
     def extract_ivectors_arguments(self) -> List[ExtractIvectorsArguments]:
         """
@@ -71,7 +71,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                 ExtractIvectorsArguments(
                     j.id,
                     getattr(self, "db_string", ""),
-                    os.path.join(self.working_log_directory, f"extract_ivectors.{j.id}.log"),
+                    self.working_log_directory.joinpath(f"extract_ivectors.{j.id}.log"),
                     self.ivector_options,
                     self.ie_path,
                     j.construct_path(self.split_directory, "ivectors", "scp"),
@@ -89,19 +89,19 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
     @property
     def adapted_plda_path(self) -> str:
         """Path to adapted PLDA model"""
-        return os.path.join(self.working_directory, "plda_adapted")
+        return self.working_directory.joinpath("plda_adapted")
 
     @property
     def plda_path(self) -> str:
         """Path to trained PLDA model"""
-        return os.path.join(self.working_directory, "plda")
+        return self.working_directory.joinpath("plda")
 
     def adapt_plda(self) -> None:
         """Adapted a trained PLDA model with new ivectors"""
         if not os.path.exists(self.utterance_ivector_path):
             self.extract_ivectors()
 
-        log_path = os.path.join(self.working_log_directory, "adapt_plda.log")
+        log_path = self.working_log_directory.joinpath("adapt_plda.log")
         with mfa_open(log_path, "w") as log_file:
             proc = subprocess.Popen(
                 [
@@ -124,8 +124,8 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         self._write_spk2utt()
         spk2utt_path = os.path.join(self.corpus_output_directory, "spk2utt.scp")
 
-        log_path = os.path.join(self.working_log_directory, "speaker_ivectors.log")
-        num_utts_path = os.path.join(self.working_directory, "current_num_utts.ark")
+        log_path = self.working_log_directory.joinpath("speaker_ivectors.log")
+        num_utts_path = self.working_directory.joinpath("current_num_utts.ark")
         logger.info("Computing speaker ivectors...")
         self.stopped.reset()
         if self.stopped.stop_check():
@@ -180,8 +180,8 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         self._write_spk2utt()
         spk2utt_path = os.path.join(self.corpus_output_directory, "spk2utt.scp")
 
-        plda_path = os.path.join(self.working_directory, "plda")
-        log_path = os.path.join(self.working_log_directory, "plda.log")
+        plda_path = self.working_directory.joinpath("plda")
+        log_path = self.working_log_directory.joinpath("plda.log")
         logger.info("Computing PLDA...")
         self.stopped.reset()
         if self.stopped.stop_check():
@@ -269,7 +269,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         logger.debug(f"Ivector extraction took {time.time() - begin:.3f} seconds")
 
     def transform_ivectors(self):
-        plda_transform_path = os.path.join(self.working_directory, "plda.pkl")
+        plda_transform_path = self.working_directory.joinpath("plda.pkl")
         if os.path.exists(plda_transform_path):
             with open(plda_transform_path, "rb") as f:
                 self.plda = pickle.load(f)
@@ -379,7 +379,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         speaker_ivector_ark_path = os.path.join(
             self.working_directory, "current_speaker_ivectors.ark"
         )
-        num_utts_path = os.path.join(self.working_directory, "current_num_utts.ark")
+        num_utts_path = self.working_directory.joinpath("current_num_utts.ark")
         if not os.path.exists(speaker_ivector_ark_path):
             self.compute_speaker_ivectors()
         with self.session() as session, tqdm.tqdm(

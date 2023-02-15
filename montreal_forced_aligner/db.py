@@ -222,19 +222,19 @@ class Corpus(MfaSqlBase):
     num_jobs = Column(Integer, default=0)
 
     current_subset = Column(Integer, default=0)
-    data_directory = Column(String, nullable=False)
+    data_directory = Column(PathType, nullable=False)
 
     jobs = relationship("Job", back_populates="corpus")
 
     @property
     def split_directory(self):
-        return os.path.join(self.data_directory, f"split{self.num_jobs}")
+        return self.data_directory.joinpath(f"split{self.num_jobs}")
 
     @property
     def current_subset_directory(self):
         if not self.current_subset:
             return self.split_directory
-        return os.path.join(self.data_directory, f"subset_{self.current_subset}")
+        return self.data_directory.joinpath(f"subset_{self.current_subset}")
 
     @property
     def speaker_ivector_column(self):
@@ -286,7 +286,7 @@ class Dictionary(MfaSqlBase):
         Dictionary name
     dialect: str
         Dialect of dictionary if dictionary name is in MFA format
-    path: str
+    path: :class:`~pathlib.Path`
         Path to the dictionary
     phone_set_type: :class:`~montreal_forced_aligner.data.PhoneSetType`
         Phone set
@@ -388,85 +388,85 @@ class Dictionary(MfaSqlBase):
         return {x.word for x in self.words if x.word_type is WordType.clitic}
 
     @property
-    def word_boundary_int_path(self) -> str:
+    def word_boundary_int_path(self) -> Path:
         """Path to the word boundary integer IDs"""
-        return os.path.join(self.phones_directory, "word_boundary.int")
+        return self.phones_directory.joinpath("word_boundary.int")
 
     @property
-    def disambiguation_symbols_int_path(self) -> str:
+    def disambiguation_symbols_int_path(self) -> Path:
         """Path to the word boundary integer IDs"""
-        return os.path.join(self.phones_directory, "disambiguation_symbols.int")
+        return self.phones_directory.joinpath("disambiguation_symbols.int")
 
     @property
-    def phones_directory(self) -> str:
+    def phones_directory(self) -> Path:
         """
         Phones directory
         """
-        return os.path.join(str(self.root_temp_directory), "phones")
+        return self.root_temp_directory.joinpath("phones")
 
     @property
-    def phone_symbol_table_path(self) -> str:
+    def phone_symbol_table_path(self) -> Path:
         """Path to file containing phone symbols and their integer IDs"""
-        return os.path.join(self.phones_directory, "phones.txt")
+        return self.phones_directory.joinpath("phones.txt")
 
     @property
-    def grapheme_symbol_table_path(self) -> str:
+    def grapheme_symbol_table_path(self) -> Path:
         """Path to file containing grapheme symbols and their integer IDs"""
-        return os.path.join(self.phones_directory, "graphemes.txt")
+        return self.phones_directory.joinpath("graphemes.txt")
 
     @property
-    def phone_disambig_path(self) -> str:
+    def phone_disambig_path(self) -> Path:
         """Path to file containing phone symbols and their integer IDs"""
-        return os.path.join(self.phones_directory, "phone_disambig.txt")
+        return self.phones_directory.joinpath("phone_disambig.txt")
 
     @property
-    def temp_directory(self) -> str:
+    def temp_directory(self) -> Path:
         """
         Path of disambiguated lexicon fst (L.fst)
         """
-        return os.path.join(str(self.root_temp_directory), f"{self.id}_{self.name}")
+        return self.root_temp_directory.joinpath(f"{self.id}_{self.name}")
 
     @property
-    def lexicon_disambig_fst_path(self) -> str:
+    def lexicon_disambig_fst_path(self) -> Path:
         """
         Path of disambiguated lexicon fst (L.fst)
         """
-        return os.path.join(self.temp_directory, "L.disambig_fst")
+        return self.temp_directory.joinpath("L.disambig_fst")
 
     @property
-    def align_lexicon_path(self) -> str:
+    def align_lexicon_path(self) -> Path:
         """
         Path of lexicon file to use for aligning lattices
         """
-        return os.path.join(self.temp_directory, "align_lexicon.fst")
+        return self.temp_directory.joinpath("align_lexicon.fst")
 
     @property
-    def align_lexicon_disambig_path(self) -> str:
+    def align_lexicon_disambig_path(self) -> Path:
         """
         Path of lexicon file to use for aligning lattices
         """
-        return os.path.join(self.temp_directory, "align_lexicon.disambig_fst")
+        return self.temp_directory.joinpath("align_lexicon.disambig_fst")
 
     @property
-    def align_lexicon_int_path(self) -> str:
+    def align_lexicon_int_path(self) -> Path:
         """
         Path of lexicon file to use for aligning lattices
         """
-        return os.path.join(self.temp_directory, "align_lexicon.int")
+        return self.temp_directory.joinpath("align_lexicon.int")
 
     @property
-    def lexicon_fst_path(self) -> str:
+    def lexicon_fst_path(self) -> Path:
         """
         Path of disambiguated lexicon fst (L.fst)
         """
-        return os.path.join(self.temp_directory, "L.fst")
+        return self.temp_directory.joinpath("L.fst")
 
     @property
-    def words_symbol_path(self) -> str:
+    def words_symbol_path(self) -> Path:
         """
         Path of word to int mapping file for the dictionary
         """
-        return os.path.join(self.temp_directory, "words.txt")
+        return self.temp_directory.joinpath("words.txt")
 
     @property
     def data_source_identifier(self) -> str:
@@ -909,7 +909,7 @@ class File(MfaSqlBase):
         Primary key
     name: str
         Base name of the file
-    relative_path: str
+    relative_path: :class:`~pathlib.Path`
         Path of the file relative to the root corpus directory
     modified: bool
         Flag for whether the file has been changed in the database for exporting
@@ -1120,7 +1120,7 @@ class SoundFile(MfaSqlBase):
         Foreign key to :class:`~montreal_forced_aligner.db.File`
     file: :class:`~montreal_forced_aligner.db.File`
         Root file
-    sound_file_path: str
+    sound_file_path: :class:`~pathlib.Path`
         Path to the audio file
     format: str
         Format of the audio file (flac, wav, mp3, etc)
@@ -1192,7 +1192,7 @@ class TextFile(MfaSqlBase):
         Foreign key to :class:`~montreal_forced_aligner.db.File`
     file: :class:`~montreal_forced_aligner.db.File`
         Root file
-    text_file_path: str
+    text_file_path: :class:`~pathlib.Path`
         Path to the transcription file
     file_type: str
         Type of the transcription file (lab, TextGrid, etc)
@@ -1549,7 +1549,7 @@ class CorpusWorkflow(MfaSqlBase):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, unique=True, index=True)
     workflow_type = Column(Enum(WorkflowType), nullable=False, index=True)
-    working_directory = Column(String, nullable=False)
+    working_directory = Column(PathType, nullable=False)
     time_stamp = Column(DateTime, nullable=False, server_default=sqlalchemy.func.now(), index=True)
     current = Column(Boolean, nullable=False, default=False, index=True)
     done = Column(Boolean, nullable=False, default=False, index=True)
@@ -1575,7 +1575,7 @@ class CorpusWorkflow(MfaSqlBase):
 
     @property
     def lda_mat_path(self) -> str:
-        return os.path.join(self.working_directory, "lda.mat")
+        return self.working_directory.joinpath("lda.mat")
 
 
 class PhoneInterval(MfaSqlBase):
@@ -1852,23 +1852,23 @@ class Job(MfaSqlBase):
         return [x.id for x in self.dictionaries]
 
     @property
-    def wav_scp_path(self):
+    def wav_scp_path(self) -> Path:
         return self.construct_path(self.corpus.split_directory, "wav", "scp")
 
     @property
-    def segments_scp_path(self):
+    def segments_scp_path(self) -> Path:
         return self.construct_path(self.corpus.split_directory, "segments", "scp")
 
     @property
-    def feats_scp_path(self):
+    def feats_scp_path(self) -> Path:
         return self.construct_path(self.corpus.split_directory, "feats", "scp")
 
     @property
-    def feats_ark_path(self):
+    def feats_ark_path(self) -> Path:
         return self.construct_path(self.corpus.split_directory, "feats", "ark")
 
     @property
-    def per_dictionary_feats_scp_paths(self):
+    def per_dictionary_feats_scp_paths(self) -> typing.Dict[int, Path]:
         paths = {}
         for d in self.dictionaries:
             paths[d.id] = self.construct_path(
@@ -1877,7 +1877,7 @@ class Job(MfaSqlBase):
         return paths
 
     @property
-    def per_dictionary_utt2spk_scp_paths(self):
+    def per_dictionary_utt2spk_scp_paths(self) -> typing.Dict[int, Path]:
         paths = {}
         for d in self.dictionaries:
             paths[d.id] = self.construct_path(
@@ -1886,7 +1886,7 @@ class Job(MfaSqlBase):
         return paths
 
     @property
-    def per_dictionary_spk2utt_scp_paths(self):
+    def per_dictionary_spk2utt_scp_paths(self) -> typing.Dict[int, Path]:
         paths = {}
         for d in self.dictionaries:
             paths[d.id] = self.construct_path(
@@ -1895,7 +1895,7 @@ class Job(MfaSqlBase):
         return paths
 
     @property
-    def per_dictionary_cmvn_scp_paths(self):
+    def per_dictionary_cmvn_scp_paths(self) -> typing.Dict[int, Path]:
         paths = {}
         for d in self.dictionaries:
             paths[d.id] = self.construct_path(
@@ -1904,7 +1904,7 @@ class Job(MfaSqlBase):
         return paths
 
     @property
-    def per_dictionary_text_int_scp_paths(self):
+    def per_dictionary_text_int_scp_paths(self) -> typing.Dict[int, Path]:
         paths = {}
         for d in self.dictionaries:
             paths[d.id] = self.construct_path(
@@ -1913,8 +1913,8 @@ class Job(MfaSqlBase):
         return paths
 
     def construct_path(
-        self, directory: str, identifier: str, extension: str, dictionary_id: int = None
-    ) -> str:
+        self, directory: Path, identifier: str, extension: str, dictionary_id: int = None
+    ) -> Path:
         """
         Helper function for constructing dictionary-dependent paths for the Job
 
@@ -1929,28 +1929,28 @@ class Job(MfaSqlBase):
 
         Returns
         -------
-        str
+        Path
             Path
         """
         if dictionary_id is None:
-            return os.path.join(directory, f"{identifier}.{self.id}.{extension}")
-        return os.path.join(directory, f"{identifier}.{dictionary_id}.{self.id}.{extension}")
+            return directory.joinpath(f"{identifier}.{self.id}.{extension}")
+        return directory.joinpath(f"{identifier}.{dictionary_id}.{self.id}.{extension}")
 
-    def construct_path_dictionary(self, directory: str, identifier: str, extension: str):
+    def construct_path_dictionary(self, directory: Path, identifier: str, extension: str):
         paths = {}
         for d_id in self.dictionary_ids:
             paths[d_id] = self.construct_path(directory, identifier, extension, d_id)
         return paths
 
     def construct_dictionary_dependent_paths(
-        self, directory: str, identifier: str, extension: str
-    ) -> typing.Dict[int, str]:
+        self, directory: Path, identifier: str, extension: str
+    ) -> typing.Dict[int, Path]:
         """
         Helper function for constructing paths that depend only on the dictionaries of the job, and not the job name itself.
         These paths should be merged with all other jobs to get a full set of dictionary paths.
         Parameters
         ----------
-        directory: str
+        directory: :class:`~pathlib.Path`
             Directory to use as the root
         identifier: str
             Identifier for the path name, like ali or acc
@@ -1958,12 +1958,12 @@ class Job(MfaSqlBase):
             Extension of the path, like .scp or .ark
         Returns
         -------
-        dict[int, str]
+        dict[int, Path]
             Path for each dictionary
         """
         output = {}
         for dict_id in self.dictionary_ids:
-            output[dict_id] = os.path.join(directory, f"{identifier}.{dict_id}.{extension}")
+            output[dict_id] = directory.joinpath(f"{identifier}.{dict_id}.{extension}")
         return output
 
     def construct_online_feature_proc_string(self):

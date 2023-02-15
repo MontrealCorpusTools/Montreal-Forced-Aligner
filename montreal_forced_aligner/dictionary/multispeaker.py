@@ -118,7 +118,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         """
         if self.phone_groups_path is not None and self.phone_groups_path.exists():
             with mfa_open(self.phone_groups_path) as f:
-                self._phone_groups = yaml.safe_load(f)
+                self._phone_groups = yaml.load(f, Loader=yaml.Loader)
                 if isinstance(self._phone_groups, list):
                     self._phone_groups = {k: v for k, v in enumerate(self._phone_groups)}
                 for k, v in self._phone_groups.items():
@@ -614,7 +614,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         if not self.rules_path or not self.rules_path.exists():
             return
         with mfa_open(self.rules_path) as f:
-            rule_data = yaml.safe_load(f)
+            rule_data = yaml.load(f, Loader=yaml.Loader)
         with self.session() as session:
             num_words = session.query(Word).count()
             logger.info("Applying phonological rules...")
@@ -803,7 +803,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         session: sqlalchemy.orm.session.Session,
         dictionary: Dictionary,
         silence_disambiguation_symbol=None,
-        path: typing.Optional[str] = None,
+        path: typing.Optional[Path] = None,
         alignment: bool = False,
     ) -> None:
         """
@@ -817,7 +817,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             Dictionary for generating L.fst
         silence_disambiguation_symbol: str, optional
             Symbol to use for disambiguating silence for L_disambig.fst
-        path: str, optional
+        path: :class:`~pathlib.Path`, optional
             Full path to write L.fst to
         alignment: bool
             Flag for whether the FST will be used to align lattices
@@ -828,9 +828,9 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             base_ext = ".disambig_text_fst"
             disambiguation = True
         if path is not None:
-            path = path.replace(".fst", base_ext)
+            path = path.with_suffix(base_ext)
         else:
-            path = os.path.join(dictionary.temp_directory, "lexicon" + base_ext)
+            path = dictionary.temp_directory.joinpath("lexicon" + base_ext)
         start_state = 0
         non_silence_state = 1  # Also loop state
         silence_state = 2
@@ -1230,12 +1230,12 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             dialectal_rules["dialects"][dialect] = []
                         dialectal_rules["dialects"][dialect].append(d)
                 with mfa_open(output_rules_path, "w") as f:
-                    yaml.safe_dump(dict(dialectal_rules), f, allow_unicode=True)
+                    yaml.dump(dict(dialectal_rules), f, Dumper=yaml.Dumper, allow_unicode=True)
 
     def export_lexicon(
         self,
         dictionary_id: int,
-        path: str,
+        path: Path,
         write_disambiguation: typing.Optional[bool] = False,
         probability: typing.Optional[bool] = False,
     ) -> None:
@@ -1244,7 +1244,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
 
         Parameters
         ----------
-        path: str
+        path: :class:`~pathlib.Path`
             Path to save dictionary
         write_disambiguation: bool, optional
             Flag for whether to include disambiguation information
@@ -1307,7 +1307,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         self,
         dictionary: Dictionary,
         write_disambiguation: bool = False,
-        path: typing.Optional[str] = None,
+        path: typing.Optional[Path] = None,
     ) -> None:
         """
         Write the binary fst file to the temporary directory
@@ -1327,27 +1327,27 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             Dictionary object
         write_disambiguation: bool, optional
             Flag for including disambiguation symbols
-        path: str, optional
+        path: :class:`~pathlib.Path`, optional
             Full path to write compiled L.fst to
         """
         text_ext = ".text_fst"
         binary_ext = ".fst"
-        word_disambig_path = os.path.join(dictionary.temp_directory, "word_disambig.txt")
+        word_disambig_path = dictionary.temp_directory.joinpath("word_disambig.txt")
         with mfa_open(word_disambig_path, "w") as f:
             f.write(str(self.word_mapping(dictionary.id)["#0"]))
         if write_disambiguation:
             text_ext = ".disambig_text_fst"
             binary_ext = ".disambig_fst"
         if path is not None:
-            text_path = path.replace(".fst", text_ext)
-            binary_path = path.replace(".fst", binary_ext)
+            text_path = path.with_suffix(text_ext)
+            binary_path = path.with_suffix(binary_ext)
         else:
-            text_path = os.path.join(dictionary.temp_directory, "lexicon" + text_ext)
-            binary_path = os.path.join(dictionary.temp_directory, "L" + binary_ext)
+            text_path = dictionary.temp_directory.joinpath("lexicon" + text_ext)
+            binary_path = dictionary.temp_directory.joinpath("L" + binary_ext)
 
-        words_file_path = os.path.join(dictionary.temp_directory, "words.txt")
+        words_file_path = dictionary.temp_directory.joinpath("words.txt")
 
-        log_path = os.path.join(dictionary.temp_directory, os.path.basename(binary_path) + ".log")
+        log_path = dictionary.temp_directory.joinpath(binary_path.name + ".log")
         with mfa_open(log_path, "w") as log_file:
             log_file.write(f"Phone isymbols: {self.phone_symbol_table_path}\n")
             log_file.write(f"Word osymbols: {words_file_path}\n")
@@ -1360,7 +1360,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 "--keep_state_numbering=true",
                 text_path,
             ]
-            log_file.write(f"{' '.join(com)}\n")
+            log_file.write(f"{' '.join(map(str,com))}\n")
             log_file.flush()
             compile_proc = subprocess.Popen(
                 com,
@@ -1373,7 +1373,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     self.phone_disambig_path,
                     word_disambig_path,
                 ]
-                log_file.write(f"{' '.join(com)}\n")
+                log_file.write(f"{' '.join(map(str,com))}\n")
                 log_file.flush()
                 selfloop_proc = subprocess.Popen(
                     com,
@@ -1387,7 +1387,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     "-",
                     binary_path,
                 ]
-                log_file.write(f"{' '.join(com)}\n")
+                log_file.write(f"{' '.join(map(str,com))}\n")
                 log_file.flush()
                 arc_sort_proc = subprocess.Popen(
                     com,
@@ -1401,7 +1401,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     "-",
                     binary_path,
                 ]
-                log_file.write(f"{' '.join(com)}\n")
+                log_file.write(f"{' '.join(map(str,com))}\n")
                 log_file.flush()
                 arc_sort_proc = subprocess.Popen(
                     com,
@@ -1753,4 +1753,4 @@ class MultispeakerDictionary(MultispeakerDictionaryMixin):
     @property
     def output_directory(self) -> str:
         """Root temporary directory to store all dictionary information"""
-        return os.path.join(GLOBAL_CONFIG.temporary_directory, self.identifier)
+        return GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(self.identifier)

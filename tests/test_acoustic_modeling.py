@@ -1,4 +1,3 @@
-import os
 import shutil
 import time
 
@@ -36,7 +35,7 @@ def test_basic_mono(
     )
     a.train()
     a.export_model(mono_align_model_path)
-    assert os.path.exists(mono_align_model_path)
+    assert mono_align_model_path.exists()
     del a
     time.sleep(3)
     a = PretrainedAligner(
@@ -47,7 +46,7 @@ def test_basic_mono(
     )
     a.align()
     a.export_files(mono_output_directory)
-    assert os.path.exists(mono_output_directory)
+    assert mono_output_directory.exists()
 
 
 def test_pronunciation_training(
@@ -59,7 +58,7 @@ def test_pronunciation_training(
     groups_path,
     db_setup,
 ):
-    export_path = os.path.join(generated_dir, "pron_train_test_export", "model.zip")
+    export_path = generated_dir.joinpath("pron_train_test_export", "model.zip")
     a = TrainableAligner(
         corpus_directory=basic_corpus_dir,
         dictionary_path=mixed_dict_path,
@@ -77,10 +76,8 @@ def test_pronunciation_training(
         assert rule_query.probability < 1
 
     a.cleanup()
-    assert not os.path.exists(export_path)
-    assert not os.path.exists(
-        os.path.join(generated_dir, "pron_train_test_export", os.path.basename(mixed_dict_path))
-    )
+    assert not export_path.exists()
+    assert not (generated_dir.joinpath("pron_train_test_export", mixed_dict_path.name).exists())
 
     a = TrainableAligner(
         corpus_directory=basic_corpus_dir,
@@ -89,14 +86,10 @@ def test_pronunciation_training(
     )
     a.train()
     a.export_model(export_path)
-    assert os.path.exists(export_path)
-    assert os.path.exists(
-        os.path.join(
-            generated_dir,
-            "pron_train_test_export",
-            os.path.basename(mixed_dict_path).replace(".txt", ".dict"),
-        )
-    )
+    assert export_path.exists()
+    assert generated_dir.joinpath(
+        "pron_train_test_export", mixed_dict_path.with_suffix(".dict").name
+    ).exists()
 
 
 def test_pitch_feature_training(
@@ -131,8 +124,8 @@ def test_basic_lda(basic_dict_path, basic_corpus_dir, lda_train_config_path, db_
 def test_basic_sat(
     basic_dict_path, basic_corpus_dir, generated_dir, sat_train_config_path, db_setup
 ):
-    data_directory = os.path.join(generated_dir, "sat_test")
-    output_model_path = os.path.join(data_directory, "sat_model.zip")
+    data_directory = generated_dir.joinpath("sat_test")
+    output_model_path = data_directory.joinpath("sat_model.zip")
     shutil.rmtree(data_directory, ignore_errors=True)
     a = TrainableAligner(
         **TrainableAligner.parse_parameters(sat_train_config_path),
@@ -144,5 +137,5 @@ def test_basic_sat(
     assert len(a.training_configs[a.final_identifier].fmllr_iterations) > 1
     a.export_model(output_model_path)
 
-    assert os.path.exists(output_model_path)
-    assert os.path.exists(os.path.join(a.output_directory, "sat", "trans.1.1.ark"))
+    assert output_model_path.exists()
+    assert a.output_directory.joinpath("sat", "trans.1.1.ark").exists()

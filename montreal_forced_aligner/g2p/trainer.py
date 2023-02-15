@@ -12,6 +12,8 @@ import re
 import shutil
 import subprocess
 import time
+import typing
+from pathlib import Path
 from typing import Any, List, NamedTuple, Set
 
 import pynini
@@ -46,17 +48,17 @@ class RandomStart(NamedTuple):
 
     idx: int
     seed: int
-    input_far_path: str
-    output_far_path: str
-    cg_path: str
-    tempdir: str
+    input_far_path: Path
+    output_far_path: Path
+    cg_path: Path
+    tempdir: Path
     train_opts: List[str]
 
 
-def _get_far_labels(far_path: str) -> Set[int]:
+def _get_far_labels(far_path: typing.Union[Path, str]) -> Set[int]:
     """Extracts label set from acceptors in a FAR.
     Args:
-      far_path: path to FAR file.
+      far_path: :class:`~pathlib.Path` to FAR file.
     Returns:
       A set of integer labels found in the FAR.
     """
@@ -106,15 +108,15 @@ class RandomStartWorker(mp.Process):
                 try:
                     start = time.time()
                     # Randomize channel model.
-                    rfst_path = os.path.join(args.tempdir, f"random-{args.seed:05d}.fst")
-                    afst_path = os.path.join(args.tempdir, f"aligner-{args.seed:05d}.fst")
-                    likelihood_path = afst_path.replace(".fst", ".like")
-                    if not os.path.exists(afst_path):
+                    rfst_path = args.tempdir.joinpath(f"random-{args.seed:05d}.fst")
+                    afst_path = args.tempdir.joinpath(f"aligner-{args.seed:05d}.fst")
+                    likelihood_path = afst_path.with_suffix(".like")
+                    if not afst_path.exists():
                         cmd = [
                             thirdparty_binary("baumwelchrandomize"),
                             f"--seed={args.seed}",
-                            args.cg_path,
-                            rfst_path,
+                            str(args.cg_path),
+                            str(rfst_path),
                         ]
                         subprocess.check_call(cmd, stderr=log_file, env=os.environ)
                         random_end = time.time()
@@ -127,10 +129,10 @@ class RandomStartWorker(mp.Process):
                         cmd = [
                             thirdparty_binary("baumwelchtrain"),
                             *args.train_opts,
-                            args.input_far_path,
-                            args.output_far_path,
-                            rfst_path,
-                            afst_path,
+                            str(args.input_far_path),
+                            str(args.output_far_path),
+                            str(rfst_path),
+                            str(afst_path),
                         ]
                         log_file.write(f"{args.seed} train command: {' '.join(cmd)}\n")
                         log_file.flush()
@@ -306,39 +308,39 @@ class PyniniTrainerMixin:
         return "pynini"
 
     @property
-    def input_far_path(self) -> str:
+    def input_far_path(self) -> Path:
         """Path to store grapheme archive"""
-        return os.path.join(self.working_directory, f"{self.data_source_identifier}.g.far")
+        return self.working_directory.joinpath(f"{self.data_source_identifier}.g.far")
 
     @property
-    def output_far_path(self) -> str:
+    def output_far_path(self) -> Path:
         """Path to store phone archive"""
-        return os.path.join(self.working_directory, f"{self.data_source_identifier}.p.far")
+        return self.working_directory.joinpath(f"{self.data_source_identifier}.p.far")
 
     @property
-    def cg_path(self) -> str:
+    def cg_path(self) -> Path:
         """Path to covering grammar FST"""
-        return os.path.join(self.working_directory, f"{self.data_source_identifier}.cg.fst")
+        return self.working_directory.joinpath(f"{self.data_source_identifier}.cg.fst")
 
     @property
-    def align_path(self) -> str:
+    def align_path(self) -> Path:
         """Path to store alignment models"""
-        return os.path.join(self.working_directory, f"{self.data_source_identifier}.align.fst")
+        return self.working_directory.joinpath(f"{self.data_source_identifier}.align.fst")
 
     @property
-    def afst_path(self) -> str:
+    def afst_path(self) -> Path:
         """Path to store aligned FSTs"""
-        return os.path.join(self.working_directory, f"{self.data_source_identifier}.afst.far")
+        return self.working_directory.joinpath(f"{self.data_source_identifier}.afst.far")
 
     @property
-    def input_path(self) -> str:
+    def input_path(self) -> Path:
         """Path to temporary file to store grapheme training data"""
-        return os.path.join(self.working_directory, f"input_{self.data_source_identifier}.txt")
+        return self.working_directory.joinpath(f"input_{self.data_source_identifier}.txt")
 
     @property
-    def output_path(self) -> str:
+    def output_path(self) -> Path:
         """Path to temporary file to store phone training data"""
-        return os.path.join(self.working_directory, f"output_{self.data_source_identifier}.txt")
+        return self.working_directory.joinpath(f"output_{self.data_source_identifier}.txt")
 
     def generate_model(self) -> None:
         """
@@ -348,7 +350,7 @@ class PyniniTrainerMixin:
         if os.path.exists(self.fst_path):
             logger.info("Model building already done, skipping!")
             return
-        with mfa_open(os.path.join(self.working_log_directory, "model.log"), "w") as logf:
+        with mfa_open(self.working_log_directory.joinpath("model.log"), "w") as logf:
             ngramcount_proc = subprocess.Popen(
                 [
                     thirdparty_binary("ngramcount"),
@@ -401,28 +403,28 @@ class PyniniTrainerMixin:
             sort_proc.communicate()
 
     @property
-    def fst_path(self) -> str:
+    def fst_path(self) -> Path:
         """Internal temporary FST file"""
         if self._fst_path is not None:
             return self._fst_path
-        return os.path.join(self.working_directory, f"{self.data_source_identifier}.fst")
+        return self.working_directory.joinpath(f"{self.data_source_identifier}.fst")
 
     @property
-    def far_path(self) -> str:
+    def far_path(self) -> Path:
         """Internal temporary FAR file"""
-        return os.path.join(self.working_directory, f"{self.data_source_identifier}.far")
+        return self.working_directory.joinpath(f"{self.data_source_identifier}.far")
 
     @property
-    def encoder_path(self) -> str:
+    def encoder_path(self) -> Path:
         """Internal temporary encoder file"""
-        return os.path.join(self.working_directory, f"{self.data_source_identifier}.enc")
+        return self.working_directory.joinpath(f"{self.data_source_identifier}.enc")
 
     @property
-    def sym_path(self) -> str:
+    def sym_path(self) -> Path:
         """Internal temporary symbol file"""
         if self._sym_path is not None:
             return self._sym_path
-        return os.path.join(self.working_directory, "phones.txt")
+        return self.working_directory.joinpath("phones.txt")
 
     def align_g2p(self) -> None:
         """Runs the entire alignment regimen."""
@@ -439,7 +441,7 @@ class PyniniTrainerMixin:
         """Builds covering grammar and lexicon FARs."""
         # Sets of labels for the covering grammar.
         with mfa_open(
-            os.path.join(self.working_log_directory, "covering_grammar.log"), "w"
+            self.working_log_directory.joinpath("covering_grammar.log"), "w"
         ) as log_file:
             if input_path is None:
                 input_path = self.input_path
@@ -458,7 +460,7 @@ class PyniniTrainerMixin:
             else:
                 com.append("--token_type=utf8")
             com.extend([input_path, self.input_far_path])
-            print(" ".join(com), file=log_file)
+            print(" ".join(map(str, com)), file=log_file)
             subprocess.check_call(com, env=os.environ, stderr=log_file, stdout=log_file)
             com = [
                 thirdparty_binary("farcompilestrings"),
@@ -468,7 +470,7 @@ class PyniniTrainerMixin:
                 output_path,
                 self.output_far_path,
             ]
-            print(" ".join(com), file=log_file)
+            print(" ".join(map(str, com)), file=log_file)
             subprocess.check_call(com, env=os.environ, stderr=log_file, stdout=log_file)
             ilabels = _get_far_labels(self.input_far_path)
             print(ilabels, file=log_file)
@@ -545,7 +547,7 @@ class PyniniTrainerMixin:
                 return_queue = mp.Queue()
                 procs = []
                 for i in range(GLOBAL_CONFIG.num_jobs):
-                    log_path = os.path.join(self.working_log_directory, f"baumwelch.{i}.log")
+                    log_path = self.working_log_directory.joinpath(f"baumwelch.{i}.log")
                     p = RandomStartWorker(
                         i,
                         job_queue,
@@ -560,6 +562,7 @@ class PyniniTrainerMixin:
                     try:
                         result = return_queue.get(timeout=1)
                         if isinstance(result, Exception):
+
                             error_dict[getattr(result, "job_name", 0)] = result
                             continue
                         if stopped.stop_check():
@@ -595,6 +598,7 @@ class PyniniTrainerMixin:
         cmd.append(self.output_far_path)
         cmd.append(self.align_path)
         cmd.append(self.afst_path)
+        cmd = [str(x) for x in cmd]
         logger.debug(f"Subprocess call: {cmd}")
         subprocess.check_call(cmd, env=os.environ)
         logger.info("Completed computing alignments!")
@@ -726,7 +730,7 @@ class PyniniTrainer(
                 }
                 if GLOBAL_CONFIG.debug:
                     with mfa_open(
-                        os.path.join(self.working_directory, "validation_set.txt"),
+                        self.working_directory.joinpath("validation_set.txt"),
                         "w",
                         encoding="utf8",
                     ) as f:
@@ -771,32 +775,32 @@ class PyniniTrainer(
         if GLOBAL_CONFIG.debug:
             return
         for name in os.listdir(self.working_directory):
-            path = os.path.join(self.working_directory, name)
+            path = self.working_directory.joinpath(name)
             if os.path.isdir(path):
                 shutil.rmtree(path, ignore_errors=True)
             elif not name.endswith(".log"):
                 os.remove(path)
 
-    def export_model(self, output_model_path: str) -> None:
+    def export_model(self, output_model_path: Path) -> None:
         """
         Export G2P model to specified path
 
         Parameters
         ----------
-        output_model_path:str
+        output_model_path: :class:`~pathlib.Path`
             Path to export model
         """
-        directory, filename = os.path.split(output_model_path)
-        basename, _ = os.path.splitext(filename)
-        models_temp_dir = os.path.join(self.working_directory, "model_archive_temp")
-        model = G2PModel.empty(basename, root_directory=models_temp_dir)
+        directory = output_model_path.parent
+        directory.mkdir(parents=True, exist_ok=True)
+
+        models_temp_dir = self.working_directory.joinpath("model_archive_temp")
+        model = G2PModel.empty(output_model_path.stem, root_directory=models_temp_dir)
         model.add_meta_file(self)
         model.add_fst_model(self.working_directory)
         model.add_sym_path(self.working_directory)
         if directory:
             os.makedirs(directory, exist_ok=True)
-        basename, _ = os.path.splitext(output_model_path)
-        model.dump(basename)
+        model.dump(output_model_path)
         model.clean_up()
         # self.clean_up()
         logger.info(f"Saved model to {output_model_path}")
@@ -823,9 +827,9 @@ class PyniniTrainer(
 
     def finalize_training(self) -> None:
         """Finalize training"""
-        shutil.copyfile(self.fst_path, os.path.join(self.working_directory, "model.fst"))
+        shutil.copyfile(self.fst_path, self.working_directory.joinpath("model.fst"))
         shutil.copyfile(
-            self.phone_symbol_table_path, os.path.join(self.working_directory, "phones.txt")
+            self.phone_symbol_table_path, self.working_directory.joinpath("phones.txt")
         )
         if self.evaluation_mode:
             self.evaluate_g2p_model()
@@ -834,7 +838,7 @@ class PyniniTrainer(
         """
         Validate the G2P model against held out data
         """
-        temp_model_path = os.path.join(self.working_log_directory, "g2p_model.zip")
+        temp_model_path = self.working_log_directory.joinpath("g2p_model.zip")
         self.export_model(temp_model_path)
 
         gen = PyniniValidator(

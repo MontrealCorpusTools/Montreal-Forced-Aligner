@@ -144,7 +144,7 @@ class TemporaryDirectoryMixin(metaclass=abc.ABCMeta):
 
     @property
     @abc.abstractmethod
-    def output_directory(self) -> str:
+    def output_directory(self) -> Path:
         """Root temporary directory"""
         ...
 
@@ -153,52 +153,52 @@ class TemporaryDirectoryMixin(metaclass=abc.ABCMeta):
         shutil.rmtree(self.output_directory, ignore_errors=True)
 
     @property
-    def corpus_output_directory(self) -> str:
+    def corpus_output_directory(self) -> Path:
         """Temporary directory containing all corpus information"""
         if self._corpus_output_directory:
             return self._corpus_output_directory
-        return os.path.join(self.output_directory, f"{self.data_source_identifier}")
+        return self.output_directory.joinpath(f"{self.data_source_identifier}")
 
     @corpus_output_directory.setter
-    def corpus_output_directory(self, directory: str) -> None:
+    def corpus_output_directory(self, directory: Path) -> None:
         self._corpus_output_directory = directory
 
     @property
-    def dictionary_output_directory(self) -> str:
+    def dictionary_output_directory(self) -> Path:
         """Temporary directory containing all dictionary information"""
         if self._dictionary_output_directory:
             return self._dictionary_output_directory
-        return os.path.join(self.output_directory, "dictionary")
+        return self.output_directory.joinpath("dictionary")
 
     @property
-    def model_output_directory(self) -> str:
+    def model_output_directory(self) -> Path:
         """Temporary directory containing all dictionary information"""
-        return os.path.join(self.output_directory, "models")
+        return self.output_directory.joinpath("models")
 
     @dictionary_output_directory.setter
-    def dictionary_output_directory(self, directory: str) -> None:
+    def dictionary_output_directory(self, directory: Path) -> None:
         self._dictionary_output_directory = directory
 
     @property
-    def language_model_output_directory(self) -> str:
+    def language_model_output_directory(self) -> Path:
         """Temporary directory containing all dictionary information"""
         if self._language_model_output_directory:
             return self._language_model_output_directory
-        return os.path.join(self.model_output_directory, "language_model")
+        return self.model_output_directory.joinpath("language_model")
 
     @language_model_output_directory.setter
-    def language_model_output_directory(self, directory: str) -> None:
+    def language_model_output_directory(self, directory: Path) -> None:
         self._language_model_output_directory = directory
 
     @property
-    def acoustic_model_output_directory(self) -> str:
+    def acoustic_model_output_directory(self) -> Path:
         """Temporary directory containing all dictionary information"""
         if self._acoustic_model_output_directory:
             return self._acoustic_model_output_directory
-        return os.path.join(self.model_output_directory, "acoustic_model")
+        return self.model_output_directory.joinpath("acoustic_model")
 
     @acoustic_model_output_directory.setter
-    def acoustic_model_output_directory(self, directory: str) -> None:
+    def acoustic_model_output_directory(self, directory: Path) -> None:
         self._acoustic_model_output_directory = directory
 
 
@@ -459,18 +459,18 @@ class MfaWorker(metaclass=abc.ABCMeta):
 
     @property
     @abc.abstractmethod
-    def working_directory(self) -> str:
+    def working_directory(self) -> Path:
         """Current working directory"""
         ...
 
     @property
-    def working_log_directory(self) -> str:
+    def working_log_directory(self) -> Path:
         """Current working log directory"""
-        return os.path.join(self.working_directory, "log")
+        return self.working_directory.joinpath("log")
 
     @property
     @abc.abstractmethod
-    def data_directory(self) -> str:
+    def data_directory(self) -> Path:
         """Data directory"""
         ...
 
@@ -577,7 +577,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
     @classmethod
     def parse_parameters(
         cls,
-        config_path: Optional[str] = None,
+        config_path: Optional[Path] = None,
         args: Optional[Dict[str, Any]] = None,
         unknown_args: Optional[typing.Iterable[str]] = None,
     ) -> MetaDict:
@@ -586,7 +586,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
 
         Parameters
         ----------
-        config_path: str, optional
+        config_path: :class:`~pathlib.Path`, optional
             Path to yaml configuration file
         args: dict[str, Any]
             Parsed arguments
@@ -777,13 +777,13 @@ class ModelExporterMixin(ExporterMixin, metaclass=abc.ABCMeta):
         ...
 
     @abc.abstractmethod
-    def export_model(self, output_model_path: str) -> None:
+    def export_model(self, output_model_path: Path) -> None:
         """
         Abstract method to export an MFA model
 
         Parameters
         ----------
-        output_model_path: str
+        output_model_path: :class:`~pathlib.Path`
             Path to export model
         """
         ...

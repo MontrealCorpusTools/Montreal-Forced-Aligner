@@ -25,7 +25,7 @@ def test_align_no_speaker_adaptation(
     temp_dir,
     english_acoustic_model,
 ):
-    output_directory = os.path.join(generated_dir, "basic_output")
+    output_directory = generated_dir.joinpath("basic_output")
     command = [
         "align",
         basic_corpus_dir,
@@ -41,6 +41,7 @@ def test_align_no_speaker_adaptation(
         "--uses_speaker_adaptation",
         "False",
     ]
+    command = [str(x) for x in command]
     click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
     assert os.path.exists(output_directory)
 
@@ -53,7 +54,7 @@ def test_align_single_speaker(
     basic_align_config_path,
     english_acoustic_model,
 ):
-    output_directory = os.path.join(generated_dir, "basic_align_output")
+    output_directory = generated_dir.joinpath("basic_align_output")
     command = [
         "align",
         basic_corpus_dir,
@@ -69,6 +70,7 @@ def test_align_single_speaker(
         "--debug",
         "--single_speaker",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -102,7 +104,7 @@ def test_align_duplicated(
     basic_align_config_path,
     english_acoustic_model,
 ):
-    output_directory = os.path.join(generated_dir, "duplicated_align_output")
+    output_directory = generated_dir.joinpath("duplicated_align_output")
     command = [
         "align",
         duplicated_name_corpus_dir,
@@ -117,6 +119,7 @@ def test_align_duplicated(
         "--clean",
         "--no_debug",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -153,7 +156,7 @@ def test_align_multilingual(
         multilingual_ipa_corpus_dir,
         english_uk_mfa_dictionary,
         english_mfa_acoustic_model,
-        os.path.join(generated_dir, "multilingual"),
+        generated_dir.joinpath("multilingual"),
         "-t",
         os.path.join(temp_dir, "test_align_multilingual"),
         "--config_path",
@@ -164,6 +167,7 @@ def test_align_multilingual(
         "--output_format",
         "short_textgrid",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -189,7 +193,7 @@ def test_align_multilingual_speaker_dict(
         multilingual_ipa_corpus_dir,
         mfa_speaker_dict_path,
         english_mfa_acoustic_model,
-        os.path.join(generated_dir, "multilingual_speaker_dict"),
+        generated_dir.joinpath("multilingual_speaker_dict"),
         "-t",
         os.path.join(temp_dir, "test_align_multilingual_speaker_dict"),
         "--config_path",
@@ -200,6 +204,7 @@ def test_align_multilingual_speaker_dict(
         "--output_format",
         "json",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -225,7 +230,7 @@ def test_align_multilingual_tg_speaker_dict(
         multilingual_ipa_tg_corpus_dir,
         mfa_speaker_dict_path,
         english_mfa_acoustic_model,
-        os.path.join(generated_dir, "multilingual_speaker_dict_tg"),
+        generated_dir.joinpath("multilingual_speaker_dict_tg"),
         "-t",
         os.path.join(temp_dir, "test_align_multilingual_tg_speaker_dict"),
         "--config_path",
@@ -235,6 +240,7 @@ def test_align_multilingual_tg_speaker_dict(
         "--debug",
         "--include_original_text",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -262,7 +268,7 @@ def test_align_evaluation(
         basic_corpus_dir,
         english_us_mfa_dictionary,
         english_mfa_acoustic_model,
-        os.path.join(generated_dir, "align_eval_output"),
+        generated_dir.joinpath("align_eval_output"),
         "-t",
         os.path.join(temp_dir, "test_align_evaluation"),
         "--config_path",
@@ -278,6 +284,7 @@ def test_align_evaluation(
         "--custom_mapping_path",
         eval_mapping_path,
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -304,7 +311,7 @@ def test_align_split(
         text_dir,
         english_us_mfa_dictionary,
         english_mfa_acoustic_model,
-        os.path.join(generated_dir, "multilingual"),
+        generated_dir.joinpath("multilingual"),
         "-t",
         os.path.join(temp_dir, "test_align_split"),
         "--config_path",
@@ -317,6 +324,7 @@ def test_align_split(
         "--audio_directory",
         audio_dir,
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -336,7 +344,7 @@ def test_align_stereo(
     basic_align_config_path,
     english_acoustic_model,
 ):
-    output_dir = os.path.join(generated_dir, "stereo_output")
+    output_dir = generated_dir.joinpath("stereo_output")
     command = [
         "align",
         stereo_corpus_dir,
@@ -351,6 +359,7 @@ def test_align_stereo(
         "--clean",
         "--debug",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -375,7 +384,7 @@ def test_align_mp3s(
     basic_align_config_path,
     english_acoustic_model,
 ):
-    output_dir = os.path.join(generated_dir, "mp3_output")
+    output_dir = generated_dir.joinpath("mp3_output")
     command = [
         "align",
         mp3_corpus_dir,
@@ -390,6 +399,7 @@ def test_align_mp3s(
         "--clean",
         "--debug",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -414,7 +424,7 @@ def test_align_opus(
     basic_align_config_path,
     english_acoustic_model,
 ):
-    output_dir = os.path.join(generated_dir, "opus_output")
+    output_dir = generated_dir.joinpath("opus_output")
     command = [
         "align",
         opus_corpus_dir,
@@ -429,6 +439,7 @@ def test_align_opus(
         "--clean",
         "--debug",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -453,7 +464,7 @@ def test_swedish_cv(
     basic_align_config_path,
     swedish_cv_acoustic_model,
 ):
-    output_dir = os.path.join(generated_dir, "swedish_cv_output")
+    output_dir = generated_dir.joinpath("swedish_cv_output")
     command = [
         "align",
         swedish_dir,
@@ -468,6 +479,7 @@ def test_swedish_cv(
         "--clean",
         "--debug",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -500,7 +512,7 @@ def test_swedish_mfa(
     basic_align_config_path,
     swedish_cv_acoustic_model,
 ):
-    output_dir = os.path.join(generated_dir, "swedish_mfa_output")
+    output_dir = generated_dir.joinpath("swedish_mfa_output")
     command = [
         "align",
         swedish_dir,
@@ -515,6 +527,7 @@ def test_swedish_mfa(
         "--clean",
         "--debug",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -549,7 +562,7 @@ def test_acoustic_g2p_model(
 ):
     model_path = os.path.join(acoustic_model_dir, "acoustic_g2p_output_model.zip")
     dict_path = os.path.join(dict_dir, "acoustic_g2p_dictionary.yaml")
-    output_directory = os.path.join(generated_dir, "acoustic_g2p_output")
+    output_directory = generated_dir.joinpath("acoustic_g2p_output")
     command = [
         "align",
         basic_corpus_dir,
@@ -563,6 +576,7 @@ def test_acoustic_g2p_model(
         "--clean",
         "--debug",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )

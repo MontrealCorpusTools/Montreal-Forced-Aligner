@@ -98,7 +98,7 @@ def load_command_history() -> List[Dict[str, Any]]:
     history = []
     if path.exists():
         with mfa_open(path, "r") as f:
-            history = yaml.safe_load(f)
+            history = yaml.load(f, Loader=yaml.Loader)
             if not history:
                 history = []
     for h in history:
@@ -125,7 +125,7 @@ def update_command_history(command_data: Dict[str, Any]) -> None:
     history.append(command_data)
     history = history[-50:]
     with mfa_open(path, "w") as f:
-        yaml.safe_dump(history, f, allow_unicode=True)
+        yaml.dump(history, f, Dumper=yaml.Dumper, allow_unicode=True)
 
 
 @dataclass(slots=True)

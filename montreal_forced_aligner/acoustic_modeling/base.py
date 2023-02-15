@@ -8,6 +8,7 @@ import re
 import subprocess
 import time
 from abc import abstractmethod
+from pathlib import Path
 from queue import Empty
 from typing import TYPE_CHECKING, List
 
@@ -261,40 +262,40 @@ class AcousticModelTrainingMixin(
         }
 
     @property
-    def working_directory(self) -> str:
+    def working_directory(self) -> Path:
         """Training directory"""
-        return os.path.join(self.worker.output_directory, self.identifier)
+        return self.worker.output_directory.joinpath(self.identifier)
 
     @property
-    def working_log_directory(self) -> str:
+    def working_log_directory(self) -> Path:
         """Training log directory"""
-        return os.path.join(self.working_directory, "log")
+        return self.working_directory.joinpath("log")
 
     @property
-    def model_path(self) -> str:
+    def model_path(self) -> Path:
         """Current acoustic model path"""
         if self.workflow.done:
             return self.next_model_path
-        return os.path.join(self.working_directory, f"{self.iteration}.mdl")
+        return self.working_directory.joinpath(f"{self.iteration}.mdl")
 
     @property
-    def alignment_model_path(self) -> str:
+    def alignment_model_path(self) -> Path:
         """Alignment model path"""
         return self.model_path
 
     @property
-    def next_model_path(self) -> str:
+    def next_model_path(self) -> Path:
         """Next iteration's acoustic model path"""
         if self.workflow.done:
-            return os.path.join(self.working_directory, "final.mdl")
-        return os.path.join(self.working_directory, f"{self.iteration + 1}.mdl")
+            return self.working_directory.joinpath("final.mdl")
+        return self.working_directory.joinpath(f"{self.iteration + 1}.mdl")
 
     @property
-    def next_occs_path(self) -> str:
+    def next_occs_path(self) -> Path:
         """Next iteration's occs file path"""
         if self.workflow.done:
-            return os.path.join(self.working_directory, "final.occs")
-        return os.path.join(self.working_directory, f"{self.iteration + 1}.occs")
+            return self.working_directory.joinpath("final.occs")
+        return self.working_directory.joinpath(f"{self.iteration + 1}.occs")
 
     @abstractmethod
     def compute_calculated_properties(self) -> None:
@@ -365,7 +366,7 @@ class AcousticModelTrainingMixin(
                     for num_utterances, errors in function.run():
                         pbar.update(num_utterances + errors)
 
-        log_path = os.path.join(self.working_log_directory, f"update.{self.iteration}.log")
+        log_path = self.working_log_directory.joinpath(f"update.{self.iteration}.log")
         with mfa_open(log_path, "w") as log_file:
             acc_files = []
             for a in arguments:
@@ -449,9 +450,9 @@ class AcousticModelTrainingMixin(
     @property
     def initialized(self) -> bool:
         return (
-            os.path.exists(os.path.join(self.working_directory, "1.mdl"))
-            or os.path.exists(os.path.join(self.working_directory, "final.mdl"))
-            or os.path.exists(os.path.join(self.working_directory, "done"))
+            os.path.exists(self.working_directory.joinpath("1.mdl"))
+            or os.path.exists(self.working_directory.joinpath("final.mdl"))
+            or os.path.exists(self.working_directory.joinpath("done"))
         )
 
     def train_iteration(self) -> None:
@@ -507,9 +508,9 @@ class AcousticModelTrainingMixin(
         logger.debug(f"Training took {time.time() - begin:.3f} seconds")
 
     @property
-    def exported_model_path(self) -> str:
+    def exported_model_path(self) -> Path:
         """Model path to export to once training is complete"""
-        return os.path.join(self.working_log_directory, "acoustic_model.zip")
+        return self.working_log_directory.joinpath("acoustic_model.zip")
 
     def finalize_training(self) -> None:
         """
@@ -518,36 +519,36 @@ class AcousticModelTrainingMixin(
 
         """
         os.rename(
-            os.path.join(self.working_directory, f"{self.num_iterations+1}.mdl"),
-            os.path.join(self.working_directory, "final.mdl"),
+            self.working_directory.joinpath(f"{self.num_iterations+1}.mdl"),
+            self.working_directory.joinpath("final.mdl"),
         )
-        final_occs_path = os.path.join(self.working_directory, "final.occs")
+        final_occs_path = self.working_directory.joinpath("final.occs")
         if not os.path.exists(final_occs_path):
             os.rename(
-                os.path.join(self.working_directory, f"{self.num_iterations+1}.occs"),
+                self.working_directory.joinpath(f"{self.num_iterations+1}.occs"),
                 final_occs_path,
             )
-        ali_model_path = os.path.join(self.working_directory, f"{self.num_iterations+1}.alimdl")
+        ali_model_path = self.working_directory.joinpath(f"{self.num_iterations+1}.alimdl")
         if os.path.exists(ali_model_path):
             os.rename(
                 ali_model_path,
-                os.path.join(self.working_directory, "final.alimdl"),
+                self.working_directory.joinpath("final.alimdl"),
             )
         self.export_model(self.exported_model_path)
         if not GLOBAL_CONFIG.debug:
             for i in range(1, self.num_iterations + 1):
-                model_path = os.path.join(self.working_directory, f"{i}.mdl")
+                model_path = self.working_directory.joinpath(f"{i}.mdl")
                 try:
                     os.remove(model_path)
                 except FileNotFoundError:
                     pass
                 try:
-                    os.remove(os.path.join(self.working_directory, f"{i}.occs"))
+                    os.remove(self.working_directory.joinpath(f"{i}.occs"))
                 except FileNotFoundError:
                     pass
             for file in os.listdir(self.working_directory):
                 if any(file.startswith(x) for x in ["fsts.", "trans.", "ali."]):
-                    os.remove(os.path.join(self.working_directory, file))
+                    os.remove(self.working_directory.joinpath(file))
         wf = self.worker.current_workflow
         with self.session() as session:
             session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update({"done": True})
@@ -626,7 +627,7 @@ class AcousticModelTrainingMixin(
         }
         return data
 
-    def export_model(self, output_model_path: str) -> None:
+    def export_model(self, output_model_path: Path) -> None:
         """
         Export an acoustic model to the specified path
 
@@ -635,9 +636,11 @@ class AcousticModelTrainingMixin(
         output_model_path : str
             Path to save acoustic model
         """
-        directory, filename = os.path.split(output_model_path)
-        basename, _ = os.path.splitext(filename)
-        acoustic_model = AcousticModel.empty(basename, root_directory=self.working_log_directory)
+        directory = output_model_path.parent
+
+        acoustic_model = AcousticModel.empty(
+            output_model_path.stem, root_directory=self.working_log_directory
+        )
         acoustic_model.add_meta_file(self)
         acoustic_model.add_model(self.working_directory)
         acoustic_model.add_pronunciation_models(

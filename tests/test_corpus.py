@@ -13,19 +13,19 @@ from montreal_forced_aligner.db import Word
 
 
 def test_mp3(mp3_test_path):
-    info = get_wav_info(mp3_test_path)
+    info = get_wav_info(str(mp3_test_path))
     assert info.sox_string
     assert info.duration > 0
 
 
 def test_opus(opus_test_path):
-    info = get_wav_info(opus_test_path)
+    info = get_wav_info(str(opus_test_path))
     assert info.sox_string
     assert info.duration > 0
 
 
 def test_add(basic_corpus_dir, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+    output_directory = generated_dir.joinpath("corpus_tests")
     global_config.temporary_directory = output_directory
     corpus = AcousticCorpus(
         corpus_directory=basic_corpus_dir,
@@ -58,7 +58,7 @@ def test_add(basic_corpus_dir, generated_dir, global_config, db_setup):
 
 
 def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir, db_setup):
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+    output_directory = generated_dir.joinpath("corpus_tests")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
     corpus = AcousticCorpus(
@@ -73,7 +73,7 @@ def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir, db_setu
 def test_acoustic_from_temp(
     basic_corpus_txt_dir, basic_dict_path, generated_dir, global_config, db_setup
 ):
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+    output_directory = generated_dir.joinpath("corpus_tests")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
     global_config.temporary_directory = output_directory
@@ -97,7 +97,7 @@ def test_acoustic_from_temp(
 def test_text_corpus_from_temp(
     basic_corpus_txt_dir, basic_dict_path, generated_dir, global_config, db_setup
 ):
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+    output_directory = generated_dir.joinpath("corpus_tests")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
     global_config.temporary_directory = output_directory
@@ -117,7 +117,7 @@ def test_text_corpus_from_temp(
 
 
 def test_extra(basic_dict_path, extra_corpus_dir, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "corpus_tests", "extra")
+    output_directory = generated_dir.joinpath("corpus_tests", "extra")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
     global_config.temporary_directory = output_directory
@@ -133,7 +133,7 @@ def test_extra(basic_dict_path, extra_corpus_dir, generated_dir, global_config, 
 
 def test_stereo(basic_dict_path, stereo_corpus_dir, generated_dir, global_config, db_setup):
 
-    output_directory = os.path.join(generated_dir, "corpus_tests", "stereo")
+    output_directory = generated_dir.joinpath("corpus_tests", "stereo")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
     global_config.temporary_directory = output_directory
@@ -150,7 +150,7 @@ def test_stereo(basic_dict_path, stereo_corpus_dir, generated_dir, global_config
 def test_stereo_short_tg(
     basic_dict_path, stereo_corpus_short_tg_dir, generated_dir, global_config, db_setup
 ):
-    output_directory = os.path.join(generated_dir, "corpus_tests", "stereo_short")
+    output_directory = generated_dir.joinpath("corpus_tests", "stereo_short")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
     global_config.temporary_directory = output_directory
@@ -166,7 +166,7 @@ def test_stereo_short_tg(
 
 def test_audio_directory(basic_dict_path, basic_split_dir, generated_dir, global_config, db_setup):
     audio_dir, text_dir = basic_split_dir
-    output_directory = os.path.join(generated_dir, "corpus_tests", "audio_dir")
+    output_directory = generated_dir.joinpath("corpus_tests", "audio_dir")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
     global_config.temporary_directory = output_directory
@@ -182,7 +182,7 @@ def test_audio_directory(basic_dict_path, basic_split_dir, generated_dir, global
 
 
 def test_flac(basic_dict_path, flac_corpus_dir, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "corpus_tests", "flac")
+    output_directory = generated_dir.joinpath("corpus_tests", "flac")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
     global_config.temporary_directory = output_directory
@@ -197,7 +197,7 @@ def test_flac(basic_dict_path, flac_corpus_dir, generated_dir, global_config, db
 
 
 def test_flac_mp(basic_dict_path, flac_corpus_dir, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "corpus_tests", "flac_mp")
+    output_directory = generated_dir.joinpath("corpus_tests", "flac_mp")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
     global_config.use_mp = True
@@ -213,7 +213,7 @@ def test_flac_mp(basic_dict_path, flac_corpus_dir, generated_dir, global_config,
 
 
 def test_flac_tg(basic_dict_path, flac_tg_corpus_dir, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "corpus_tests", "flac_no_mp")
+    output_directory = generated_dir.joinpath("corpus_tests", "flac_no_mp")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
     global_config.temporary_directory = output_directory
@@ -229,7 +229,7 @@ def test_flac_tg(basic_dict_path, flac_tg_corpus_dir, generated_dir, global_conf
 
 
 def test_flac_tg_mp(basic_dict_path, flac_tg_corpus_dir, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "corpus_tests", "flac_tg_mp")
+    output_directory = generated_dir.joinpath("corpus_tests", "flac_tg_mp")
     global_config.temporary_directory = output_directory
     global_config.use_mp = True
     if os.path.exists(output_directory):
@@ -247,7 +247,7 @@ def test_flac_tg_mp(basic_dict_path, flac_tg_corpus_dir, generated_dir, global_c
 def test_24bit_wav(
     transcribe_corpus_24bit_dir, basic_dict_path, generated_dir, global_config, db_setup
 ):
-    output_directory = os.path.join(generated_dir, "corpus_tests", "24bit")
+    output_directory = generated_dir.joinpath("corpus_tests", "24bit")
     global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
@@ -262,7 +262,7 @@ def test_24bit_wav(
 
 
 def test_short_segments(shortsegments_corpus_dir, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "corpus_tests", "short_segments")
+    output_directory = generated_dir.joinpath("corpus_tests", "short_segments")
     global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
@@ -281,7 +281,7 @@ def test_short_segments(shortsegments_corpus_dir, generated_dir, global_config, 
 def test_speaker_groupings(
     multilingual_ipa_corpus_dir, generated_dir, english_us_mfa_dictionary, global_config, db_setup
 ):
-    output_directory = os.path.join(generated_dir, "corpus_tests", "speaker_groupings")
+    output_directory = generated_dir.joinpath("corpus_tests", "speaker_groupings")
     global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
@@ -322,7 +322,7 @@ def test_speaker_groupings(
 
 
 def test_subset(multilingual_ipa_corpus_dir, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "corpus_tests", "subset")
+    output_directory = generated_dir.joinpath("corpus_tests", "subset")
     global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
@@ -339,7 +339,7 @@ def test_subset(multilingual_ipa_corpus_dir, generated_dir, global_config, db_se
 
 
 def test_weird_words(weird_words_dir, generated_dir, basic_dict_path, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "corpus_tests", "weird_words")
+    output_directory = generated_dir.joinpath("corpus_tests", "weird_words")
     global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
@@ -432,7 +432,7 @@ def test_weird_words(weird_words_dir, generated_dir, basic_dict_path, global_con
 def test_punctuated(
     punctuated_dir, generated_dir, english_us_mfa_dictionary, global_config, db_setup
 ):
-    output_directory = os.path.join(generated_dir, "corpus_tests", "punctuated")
+    output_directory = generated_dir.joinpath("corpus_tests", "punctuated")
     global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
@@ -466,7 +466,7 @@ def test_alternate_punctuation(
 ):
     from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 
-    output_directory = os.path.join(generated_dir, "corpus_tests", "alternate")
+    output_directory = generated_dir.joinpath("corpus_tests", "alternate")
     global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
@@ -496,7 +496,7 @@ def test_no_punctuation(
 ):
     from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 
-    output_directory = os.path.join(generated_dir, "corpus_tests", "no_punctuation")
+    output_directory = generated_dir.joinpath("corpus_tests", "no_punctuation")
     global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
@@ -553,7 +553,7 @@ def test_xsampa_corpus(
 ):
     from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 
-    output_directory = os.path.join(generated_dir, "corpus_tests", "xsampa")
+    output_directory = generated_dir.joinpath("corpus_tests", "xsampa")
     global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
@@ -574,7 +574,7 @@ def test_xsampa_corpus(
 
 
 def test_japanese(japanese_dir, japanese_dict_path, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "corpus_tests", "japanese")
+    output_directory = generated_dir.joinpath("corpus_tests", "japanese")
     global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
@@ -592,7 +592,7 @@ def test_japanese(japanese_dir, japanese_dict_path, generated_dir, global_config
 
 
 def test_devanagari(devanagari_dir, hindi_dict_path, generated_dir, global_config, db_setup):
-    output_directory = os.path.join(generated_dir, "corpus_tests", "devanagari")
+    output_directory = generated_dir.joinpath("corpus_tests", "devanagari")
     global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
@@ -610,7 +610,7 @@ def test_devanagari(devanagari_dir, hindi_dict_path, generated_dir, global_confi
 def test_french_clitics(
     french_clitics_dir, frclitics_dict_path, generated_dir, global_config, db_setup
 ):
-    output_directory = os.path.join(generated_dir, "corpus_tests", "french_clitics")
+    output_directory = generated_dir.joinpath("corpus_tests", "french_clitics")
     global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)

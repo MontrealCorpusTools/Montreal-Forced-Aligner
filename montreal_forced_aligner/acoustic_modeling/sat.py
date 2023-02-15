@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import time
 import typing
+from pathlib import Path
 from queue import Empty
 from typing import Dict, List
 
@@ -38,9 +39,9 @@ class AccStatsTwoFeatsArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.sat.AccStatsTwoFeatsFunction`"""
 
     dictionaries: List[str]
-    ali_paths: Dict[str, str]
-    acc_paths: Dict[str, str]
-    model_path: str
+    ali_paths: Dict[str, Path]
+    acc_paths: Dict[str, Path]
+    model_path: Path
     feature_strings: Dict[str, str]
     si_feature_strings: Dict[str, str]
 
@@ -193,7 +194,7 @@ class SatTrainer(TriphoneTrainer):
                 AccStatsTwoFeatsArguments(
                     j.id,
                     getattr(self, "db_string", ""),
-                    os.path.join(self.working_log_directory, f"acc_stats_two_feats.{j.id}.log"),
+                    self.working_log_directory.joinpath(f"acc_stats_two_feats.{j.id}.log"),
                     j.dictionary_ids,
                     j.construct_path_dictionary(self.working_directory, "ali", "ark"),
                     j.construct_path_dictionary(self.working_directory, "two_feat_acc", "ark"),
@@ -233,7 +234,7 @@ class SatTrainer(TriphoneTrainer):
         if os.path.exists(os.path.join(self.previous_aligner.working_directory, "lda.mat")):
             shutil.copyfile(
                 os.path.join(self.previous_aligner.working_directory, "lda.mat"),
-                os.path.join(self.working_directory, "lda.mat"),
+                self.working_directory.joinpath("lda.mat"),
             )
         for j in self.jobs:
             for path in j.construct_path_dictionary(
@@ -281,8 +282,8 @@ class SatTrainer(TriphoneTrainer):
             self.create_align_model()
             self.uses_speaker_adaptation = True
             super().finalize_training()
-            assert self.alignment_model_path.endswith("final.alimdl")
-            assert os.path.exists(self.alignment_model_path)
+            assert self.alignment_model_path.name == "final.alimdl"
+            assert self.alignment_model_path.exists()
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs)
@@ -311,9 +312,9 @@ class SatTrainer(TriphoneTrainer):
         self.iteration += 1
 
     @property
-    def alignment_model_path(self) -> str:
+    def alignment_model_path(self) -> Path:
         """Alignment model path"""
-        path = self.model_path.replace(".mdl", ".alimdl")
+        path = self.model_path.with_suffix(".alimdl")
         if os.path.exists(path):
             return path
         return self.model_path
@@ -378,7 +379,7 @@ class SatTrainer(TriphoneTrainer):
                     for _ in function.run():
                         pbar.update(1)
 
-        log_path = os.path.join(self.working_log_directory, "align_model_est.log")
+        log_path = self.working_log_directory.joinpath("align_model_est.log")
         with mfa_open(log_path, "w") as log_file:
 
             acc_files = []
@@ -397,14 +398,12 @@ class SatTrainer(TriphoneTrainer):
             if not self.quick:
                 est_command.append(f"--power={self.power}")
             else:
-                est_command.append(
-                    f"--write-occs={os.path.join(self.working_directory, 'final.occs')}"
-                )
+                est_command.append(f"--write-occs={self.working_directory.joinpath('final.occs')}")
             est_command.extend(
                 [
                     self.model_path,
                     "-",
-                    self.model_path.replace(".mdl", ".alimdl"),
+                    self.model_path.with_suffix(".alimdl"),
                 ]
             )
             est_proc = subprocess.Popen(

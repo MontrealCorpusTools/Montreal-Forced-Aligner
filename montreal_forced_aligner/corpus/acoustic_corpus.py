@@ -9,6 +9,7 @@ import sys
 import time
 import typing
 from abc import ABCMeta
+from pathlib import Path
 from queue import Empty
 from typing import List, Optional
 
@@ -115,7 +116,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         self.transcription_done = False
         self.alignment_evaluation_done = False
 
-    def has_alignments(self, workflow_id: typing.Optional[int] = None):
+    def has_alignments(self, workflow_id: typing.Optional[int] = None) -> bool:
         with self.session() as session:
             if workflow_id is None:
                 check = session.query(PhoneInterval).limit(1).first() is not None
@@ -134,7 +135,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     )
         return check
 
-    def has_ivectors(self):
+    def has_ivectors(self) -> bool:
         with self.session() as session:
             check = (
                 session.query(Corpus)
@@ -145,7 +146,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             )
         return check
 
-    def has_xvectors(self):
+    def has_xvectors(self) -> bool:
         with self.session() as session:
             check = (
                 session.query(Corpus)
@@ -156,7 +157,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             )
         return check
 
-    def has_any_ivectors(self):
+    def has_any_ivectors(self) -> bool:
         with self.session() as session:
             check = (
                 session.query(Corpus)
@@ -208,13 +209,13 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 )
                 session.commit()
 
-    def load_reference_alignments(self, reference_directory: str) -> None:
+    def load_reference_alignments(self, reference_directory: Path) -> None:
         """
         Load reference alignments to use in alignment evaluation from a directory
 
         Parameters
         ----------
-        reference_directory: str
+        reference_directory: :class:`~pathlib.Path`
             Directory containing reference alignments
 
         """
@@ -381,7 +382,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         """
         logger.info("Generating final features...")
         time_begin = time.time()
-        log_directory = os.path.join(self.split_directory, "log")
+        log_directory = self.split_directory.joinpath("log")
         os.makedirs(log_directory, exist_ok=True)
         arguments = self.final_feature_arguments()
         with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
@@ -486,7 +487,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             super().create_corpus_split()
         else:
             logger.info("Creating corpus split for feature generation...")
-            os.makedirs(os.path.join(self.split_directory, "log"), exist_ok=True)
+            os.makedirs(self.split_directory.joinpath("log"), exist_ok=True)
             with self.session() as session, tqdm.tqdm(
                 total=self.num_utterances + self.num_files, disable=GLOBAL_CONFIG.quiet
             ) as pbar:
@@ -514,7 +515,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             VadArguments(
                 j.id,
                 getattr(self, "db_string", ""),
-                os.path.join(self.split_directory, "log", f"compute_vad.{j.id}.log"),
+                self.split_directory.joinpath("log", f"compute_vad.{j.id}.log"),
                 j.construct_path(self.split_directory, "feats", "scp"),
                 j.construct_path(self.split_directory, "vad", "scp"),
                 self.vad_options,
@@ -550,7 +551,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 CalcFmllrArguments(
                     j.id,
                     getattr(self, "db_string", ""),
-                    os.path.join(self.working_log_directory, f"{base_log}.{j.id}.log"),
+                    self.working_log_directory.joinpath(f"{base_log}.{j.id}.log"),
                     j.dictionary_ids,
                     feat_strings,
                     j.construct_path_dictionary(self.working_directory, "ali", "ark"),
@@ -576,7 +577,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             MfccArguments(
                 j.id,
                 self.db_string,
-                os.path.join(self.split_directory, "log", f"make_mfcc.{j.id}.log"),
+                self.split_directory.joinpath("log", f"make_mfcc.{j.id}.log"),
                 self.split_directory,
                 self.mfcc_options,
                 self.pitch_options,
@@ -597,7 +598,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             FinalFeatureArguments(
                 j.id,
                 self.db_string,
-                os.path.join(self.split_directory, "log", f"generate_final_features.{j.id}.log"),
+                self.split_directory.joinpath("log", f"generate_final_features.{j.id}.log"),
                 self.split_directory,
                 self.uses_cmvn,
                 self.uses_voiced,
@@ -619,7 +620,10 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             PitchRangeArguments(
                 j.id,
                 self.db_string,
-                os.path.join(self.split_directory, "log", f"compute_pitch_range.{j.id}.log"),
+                self.split_directory,
+                "log",
+                f"compute_pitch_range.{j.id}.log",
+            ).joinpath(
                 self.split_directory,
                 self.pitch_options,
             )
@@ -628,7 +632,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
     def compute_speaker_pitch_ranges(self):
         logger.info("Calculating per-speaker f0 ranges...")
-        log_directory = os.path.join(self.split_directory, "log")
+        log_directory = self.split_directory.joinpath("log")
         os.makedirs(log_directory, exist_ok=True)
         arguments = self.pitch_range_arguments()
         update_mapping = []
@@ -658,7 +662,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         """
         logger.info("Generating MFCCs...")
         begin = time.time()
-        log_directory = os.path.join(self.split_directory, "log")
+        log_directory = self.split_directory.joinpath("log")
         os.makedirs(log_directory, exist_ok=True)
         arguments = self.mfcc_arguments()
         with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
@@ -676,11 +680,11 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             Relevant Kaldi binary
         """
         self._write_spk2utt()
-        spk2utt = os.path.join(self.corpus_output_directory, "spk2utt.scp")
-        feats = os.path.join(self.corpus_output_directory, "feats.scp")
-        cmvn_ark = os.path.join(self.corpus_output_directory, "cmvn.ark")
-        cmvn_scp = os.path.join(self.corpus_output_directory, "cmvn.scp")
-        log_path = os.path.join(self.features_log_directory, "cmvn.log")
+        spk2utt = self.corpus_output_directory.joinpath("spk2utt.scp")
+        feats = self.corpus_output_directory.joinpath("feats.scp")
+        cmvn_ark = self.corpus_output_directory.joinpath("cmvn.ark")
+        cmvn_scp = self.corpus_output_directory.joinpath("cmvn.scp")
+        log_path = self.features_log_directory.joinpath("cmvn.log")
         with mfa_open(log_path, "w") as logf:
             subprocess.call(
                 [
@@ -844,7 +848,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             bulk_update(session, Utterance, utterance_mapping)
             session.query(Corpus).update({Corpus.vad_calculated: True})
             session.commit()
-        with mfa_open(os.path.join(self.corpus_output_directory, "vad.scp"), "w") as outf:
+        with mfa_open(self.corpus_output_directory.joinpath("vad.scp"), "w") as outf:
             for line in sorted(vad_lines, key=lambda x: x.split(maxsplit=1)[0]):
                 outf.write(line)
         logger.debug(f"VAD computation took {time.time() - begin:.3f} seconds")
@@ -858,16 +862,14 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             with mfa_open(j.feats_scp_path) as f:
                 for line in f:
                     lines.append(line)
-        with open(
-            os.path.join(self.corpus_output_directory, "feats.scp"), "w", encoding="utf8"
-        ) as f:
+        with open(self.corpus_output_directory.joinpath("feats.scp"), "w", encoding="utf8") as f:
             for line in sorted(lines):
                 f.write(line)
 
     def _write_feats(self) -> None:
         """Write feats scp file for Kaldi"""
         with self.session() as session, open(
-            os.path.join(self.corpus_output_directory, "feats.scp"), "w", encoding="utf8"
+            self.corpus_output_directory.joinpath("feats.scp"), "w", encoding="utf8"
         ) as f:
             utterances = (
                 session.query(Utterance.kaldi_id, Utterance.features)
@@ -889,7 +891,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         """
         job = self.jobs[0]
         dict_id = None
-        log_path = os.path.join(self.features_log_directory, "feat-to-dim.log")
+        log_path = self.features_log_directory.joinpath("feat-to-dim.log")
         if job.dictionary_ids:
             dict_id = self.jobs[0].dictionary_ids[0]
         feature_string = job.construct_feature_proc_string(
@@ -901,7 +903,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             self.feature_options["uses_speaker_adaptation"],
         )
         with mfa_open(log_path, "w") as log_file:
-            subset_ark_path = os.path.join(self.split_directory, "temp.ark")
+            subset_ark_path = self.split_directory.joinpath("temp.ark")
             subset_proc = subprocess.Popen(
                 [
                     thirdparty_binary("subset-feats"),
@@ -1230,12 +1232,12 @@ class AcousticCorpus(AcousticCorpusMixin, DictionaryMixin, MfaWorker):
         return self.data_source_identifier
 
     @property
-    def output_directory(self) -> str:
+    def output_directory(self) -> Path:
         """Root temporary directory to store corpus and dictionary files"""
-        return os.path.join(GLOBAL_CONFIG.temporary_directory, self.identifier)
+        return GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(self.identifier)
 
     @property
-    def working_directory(self) -> str:
+    def working_directory(self) -> Path:
         """Working directory to save temporary corpus and dictionary files"""
         return self.corpus_output_directory
 
@@ -1254,11 +1256,11 @@ class AcousticCorpusWithPronunciations(AcousticCorpusPronunciationMixin, MfaWork
         return self.data_source_identifier
 
     @property
-    def output_directory(self) -> str:
+    def output_directory(self) -> Path:
         """Root temporary directory to store corpus and dictionary files"""
-        return os.path.join(GLOBAL_CONFIG.temporary_directory, self.identifier)
+        return GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(self.identifier)
 
     @property
-    def working_directory(self) -> str:
+    def working_directory(self) -> Path:
         """Working directory to save temporary corpus and dictionary files"""
         return self.output_directory

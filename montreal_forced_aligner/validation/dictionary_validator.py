@@ -1,8 +1,8 @@
 """Classes for validating dictionaries"""
 import logging
-import os
 import shutil
 import typing
+from pathlib import Path
 
 from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import WorkflowType
@@ -18,7 +18,7 @@ class DictionaryValidator(PyniniTrainer):
 
     Parameters
     ----------
-    g2p_model_path: str, optional
+    g2p_model_path: :class:`~pathlib.Path`, optional
         Path to pretrained G2P model
     g2p_threshold: float, optional
         Threshold for pruning pronunciations, defaults to 1.5, which returns the optimal pronunciations and those with scores less than 1.5 times
@@ -38,7 +38,7 @@ class DictionaryValidator(PyniniTrainer):
 
     def __init__(
         self,
-        g2p_model_path: typing.Optional[str] = None,
+        g2p_model_path: typing.Optional[Path] = None,
         g2p_threshold: float = 1.5,
         **kwargs,
     ):
@@ -59,7 +59,7 @@ class DictionaryValidator(PyniniTrainer):
             logger.info("Not using a pretrained G2P model, training from the dictionary...")
             self.initialize_training()
             self.train()
-            self.g2p_model_path = os.path.join(self.working_log_directory, "g2p_model.zip")
+            self.g2p_model_path = self.working_log_directory.joinpath("g2p_model.zip")
             self.export_model(self.g2p_model_path)
             self.create_new_current_workflow(WorkflowType.g2p)
         else:
@@ -67,13 +67,13 @@ class DictionaryValidator(PyniniTrainer):
             self.initialize_training()
         self.initialized = True
 
-    def validate(self, output_path: typing.Optional[str] = None) -> None:
+    def validate(self, output_path: typing.Optional[Path] = None) -> None:
         """
         Validate the dictionary
 
         Parameters
         ----------
-        output_path: str, optional
+        output_path: :class:`~pathlib.Path`, optional
             Path to save scored CSV
         """
         self.setup()
@@ -81,7 +81,7 @@ class DictionaryValidator(PyniniTrainer):
         gen = PyniniValidator(
             g2p_model_path=self.g2p_model_path,
             word_list=list(self.g2p_training_dictionary.keys()),
-            temporary_directory=os.path.join(self.working_directory, "validation"),
+            temporary_directory=self.working_directory.joinpath("validation"),
             num_jobs=GLOBAL_CONFIG.num_jobs,
             num_pronunciations=self.num_pronunciations,
         )

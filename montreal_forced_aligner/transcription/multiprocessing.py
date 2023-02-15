@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import typing
+from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, TextIO
 
 import pynini
@@ -22,7 +23,6 @@ from montreal_forced_aligner.utils import thirdparty_binary
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
-
 else:
     from dataclassy import dataclass
 
@@ -55,27 +55,25 @@ class CreateHclgArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
-    working_directory: str
+    working_directory: :class:`~pathlib.Path`
         Current working directory
-    path_template: str
-        Path template for intermediate files
-    words_path: str
+    words_path: :class:`~pathlib.Path`
         Path to words symbol table
-    carpa_path: str
+    carpa_path: :class:`~pathlib.Path`
         Path to .carpa file
-    small_arpa_path: str
+    small_arpa_path: :class:`~pathlib.Path`
         Path to small ARPA file
-    medium_arpa_path: str
+    medium_arpa_path: :class:`~pathlib.Path`
         Path to medium ARPA file
-    big_arpa_path: str
+    big_arpa_path: :class:`~pathlib.Path`
         Path to big ARPA file
-    model_path: str
+    model_path: :class:`~pathlib.Path`
         Acoustic model path
-    disambig_L_path: str
+    disambig_L_path: :class:`~pathlib.Path`
         Path to disambiguated lexicon file
-    disambig_int_path: str
+    disambig_int_path: :class:`~pathlib.Path`
         Path to disambiguation symbol integer file
     hclg_options: dict[str, Any]
         HCLG options
@@ -83,23 +81,17 @@ class CreateHclgArguments(MfaArguments):
         Words mapping
     """
 
-    working_directory: str
-    path_template: str
-    words_path: str
-    carpa_path: str
-    small_arpa_path: str
-    medium_arpa_path: str
-    big_arpa_path: str
-    model_path: str
-    disambig_L_path: str
-    disambig_int_path: str
+    working_directory: Path
+    words_path: Path
+    carpa_path: Path
+    small_arpa_path: Path
+    medium_arpa_path: Path
+    big_arpa_path: Path
+    model_path: Path
+    disambig_L_path: Path
+    disambig_int_path: Path
     hclg_options: MetaDict
     words_mapping: Dict[str, int]
-
-    @property
-    def hclg_path(self) -> str:
-        """Path to HCLG FST file"""
-        return self.path_template.format(file_name="HCLG")
 
 
 @dataclass
@@ -113,7 +105,7 @@ class DecodeArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     dictionaries: list[int]
         List of dictionary ids
@@ -121,23 +113,23 @@ class DecodeArguments(MfaArguments):
         Mapping of dictionaries to feature generation strings
     decode_options: dict[str, Any]
         Decoding options
-    model_path: str
+    model_path: :class:`~pathlib.Path`
         Path to model file
-    lat_paths: dict[int, str]
+    lat_paths: dict[int, Path]
         Per dictionary lattice paths
-    word_symbol_paths: dict[int, str]
+    word_symbol_paths: dict[int, Path]
         Per dictionary word symbol table paths
-    hclg_paths: dict[int, str]
+    hclg_paths: dict[int, Path]
         Per dictionary HCLG.fst paths
     """
 
     dictionaries: List[int]
     feature_strings: Dict[int, str]
     decode_options: MetaDict
-    model_path: str
-    lat_paths: Dict[int, str]
-    word_symbol_paths: Dict[int, str]
-    hclg_paths: Dict[int, str]
+    model_path: Path
+    lat_paths: Dict[int, Path]
+    word_symbol_paths: Dict[int, Path]
+    hclg_paths: Dict[int, Path]
 
 
 @dataclass
@@ -151,7 +143,7 @@ class DecodePhoneArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     dictionaries: list[int]
         List of dictionary ids
@@ -159,23 +151,23 @@ class DecodePhoneArguments(MfaArguments):
         Mapping of dictionaries to feature generation strings
     decode_options: dict[str, Any]
         Decoding options
-    model_path: str
+    model_path: :class:`~pathlib.Path`
         Path to model file
-    lat_paths: dict[int, str]
+    lat_paths: dict[int, Path]
         Per dictionary lattice paths
-    phone_symbol_path: str
+    phone_symbol_path: :class:`~pathlib.Path`
         Phone symbol table paths
-    hclg_path: str
+    hclg_path: :class:`~pathlib.Path`
         HCLG.fst paths
     """
 
     dictionaries: List[int]
     feature_strings: Dict[int, str]
     decode_options: MetaDict
-    model_path: str
-    lat_paths: Dict[int, str]
-    phone_symbol_path: str
-    hclg_path: str
+    model_path: Path
+    lat_paths: Dict[int, Path]
+    phone_symbol_path: Path
+    hclg_path: Path
 
 
 @dataclass
@@ -189,28 +181,28 @@ class LmRescoreArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     dictionaries: list[int]
         List of dictionary ids
     lm_rescore_options: dict[str, Any]
         Rescoring options
-    lat_paths: dict[int, str]
+    lat_paths: dict[int, Path]
         Per dictionary lattice paths
-    rescored_lat_paths: dict[int, str]
+    rescored_lat_paths: dict[int, Path]
         Per dictionary rescored lattice paths
-    old_g_paths: dict[int, str]
+    old_g_paths: dict[int, Path]
         Mapping of dictionaries to small G.fst paths
-    new_g_paths: dict[int, str]
+    new_g_paths: dict[int, Path]
         Mapping of dictionaries to medium G.fst paths
     """
 
     dictionaries: List[int]
     lm_rescore_options: MetaDict
-    lat_paths: Dict[int, str]
-    rescored_lat_paths: Dict[int, str]
-    old_g_paths: Dict[int, str]
-    new_g_paths: Dict[int, str]
+    lat_paths: Dict[int, Path]
+    rescored_lat_paths: Dict[int, Path]
+    old_g_paths: Dict[int, Path]
+    new_g_paths: Dict[int, Path]
 
 
 @dataclass
@@ -224,25 +216,25 @@ class CarpaLmRescoreArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     dictionaries: list[int]
         List of dictionary ids
-    lat_paths: dict[int, str]
+    lat_paths: dict[int, Path]
         Per dictionary lattice paths
-    rescored_lat_paths: dict[int, str]
+    rescored_lat_paths: dict[int, Path]
         Per dictionary rescored lattice paths
-    old_g_paths: dict[int, str]
+    old_g_paths: dict[int, Path]
         Mapping of dictionaries to medium G.fst paths
-    new_g_paths: dict[int, str]
+    new_g_paths: dict[int, Path]
         Mapping of dictionaries to G.carpa paths
     """
 
     dictionaries: List[int]
-    lat_paths: Dict[int, str]
-    rescored_lat_paths: Dict[int, str]
-    old_g_paths: Dict[int, str]
-    new_g_paths: Dict[int, str]
+    lat_paths: Dict[int, Path]
+    rescored_lat_paths: Dict[int, Path]
+    old_g_paths: Dict[int, Path]
+    new_g_paths: Dict[int, Path]
 
 
 @dataclass
@@ -256,31 +248,31 @@ class InitialFmllrArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     dictionaries: list[int]
         List of dictionary ids
     feature_strings: dict[int, str]
         Mapping of dictionaries to feature generation strings
-    model_path: str
+    model_path: :class:`~pathlib.Path`
         Path to model file
     fmllr_options: dict[str, Any]
         fMLLR options
-    pre_trans_paths: dict[int, str]
+    pre_trans_paths: dict[int, Path]
         Per dictionary pre-fMLLR lattice paths
-    lat_paths: dict[int, str]
+    lat_paths: dict[int, Path]
         Per dictionary lattice paths
-    spk2utt_paths: dict[int, str]
+    spk2utt_paths: dict[int, Path]
         Per dictionary speaker to utterance mapping paths
     """
 
     dictionaries: List[int]
     feature_strings: Dict[int, str]
-    model_path: str
+    model_path: Path
     fmllr_options: MetaDict
-    pre_trans_paths: Dict[int, str]
-    lat_paths: Dict[int, str]
-    spk2utt_paths: Dict[int, str]
+    pre_trans_paths: Dict[int, Path]
+    lat_paths: Dict[int, Path]
+    spk2utt_paths: Dict[int, Path]
 
 
 @dataclass
@@ -294,29 +286,29 @@ class LatGenFmllrArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     dictionaries: list[int]
         List of dictionary ids
     feature_strings: dict[int, str]
         Mapping of dictionaries to feature generation strings
-    model_path: str
+    model_path: :class:`~pathlib.Path`
         Path to model file
     decode_options: dict[str, Any]
         Decoding options
-    hclg_paths: dict[int, str]
+    hclg_paths: dict[int, Path]
         Per dictionary HCLG.fst paths
-    tmp_lat_paths: dict[int, str]
+    tmp_lat_paths: dict[int, Path]
         Per dictionary temporary lattice paths
     """
 
     dictionaries: List[int]
     feature_strings: Dict[int, str]
-    model_path: str
+    model_path: Path
     decode_options: MetaDict
-    word_symbol_paths: Dict[int, str]
-    hclg_paths: typing.Union[Dict[int, str], str]
-    tmp_lat_paths: Dict[int, str]
+    word_symbol_paths: Dict[int, Path]
+    hclg_paths: typing.Union[Dict[int, Path], Path]
+    tmp_lat_paths: Dict[int, Path]
 
 
 @dataclass
@@ -330,31 +322,31 @@ class FinalFmllrArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     dictionaries: list[int]
         List of dictionary ids
     feature_strings: dict[int, str]
         Mapping of dictionaries to feature generation strings
-    model_path: str
+    model_path: :class:`~pathlib.Path`
         Path to model file
     fmllr_options: dict[str, Any]
         fMLLR options
-    trans_paths: dict[int, str]
+    trans_paths: dict[int, Path]
         Per dictionary transform paths
-    spk2utt_paths: dict[int, str]
+    spk2utt_paths: dict[int, Path]
         Per dictionary speaker to utterance mapping paths
-    tmp_lat_paths: dict[int, str]
+    tmp_lat_paths: dict[int, Path]
         Per dictionary temporary lattice paths
     """
 
     dictionaries: List[int]
     feature_strings: Dict[int, str]
-    model_path: str
+    model_path: Path
     fmllr_options: MetaDict
-    trans_paths: Dict[int, str]
-    spk2utt_paths: Dict[int, str]
-    tmp_lat_paths: Dict[int, str]
+    trans_paths: Dict[int, Path]
+    spk2utt_paths: Dict[int, Path]
+    tmp_lat_paths: Dict[int, Path]
 
 
 @dataclass
@@ -368,31 +360,31 @@ class FmllrRescoreArguments(MfaArguments):
         Integer ID of the job
     db_string: str
         String for database connections
-    log_path: str
+    log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     dictionaries: list[int]
         List of dictionary ids
     feature_strings: dict[int, str]
         Mapping of dictionaries to feature generation strings
-    model_path: str
+    model_path: :class:`~pathlib.Path`
         Path to model file
     fmllr_options: dict[str, Any]
         fMLLR options
-    tmp_lat_paths: dict[int, str]
+    tmp_lat_paths: dict[int, Path]
         Per dictionary temporary lattice paths
-    final_lat_paths: dict[int, str]
+    final_lat_paths: dict[int, Path]
         Per dictionary lattice paths
     """
 
     dictionaries: List[int]
     feature_strings: Dict[int, str]
-    model_path: str
+    model_path: Path
     fmllr_options: MetaDict
-    tmp_lat_paths: Dict[int, str]
-    final_lat_paths: Dict[int, str]
+    tmp_lat_paths: Dict[int, Path]
+    final_lat_paths: Dict[int, Path]
 
 
-def compose_lg(dictionary_path: str, small_g_path: str, lg_path: str, log_file: TextIO) -> None:
+def compose_lg(dictionary_path: Path, small_g_path: Path, lg_path: Path, log_file: TextIO) -> None:
     """
     Compose an LG.fst
 
@@ -410,11 +402,11 @@ def compose_lg(dictionary_path: str, small_g_path: str, lg_path: str, log_file: 
 
     Parameters
     ----------
-    dictionary_path: str
+    dictionary_path: :class:`~pathlib.Path`
         Path to a lexicon fst file
-    small_g_path: str
+    small_g_path: :class:`~pathlib.Path`
         Path to the small language model's G.fst
-    lg_path: str
+    lg_path: :class:`~pathlib.Path`
         Output path to LG.fst
     log_file: TextIO
         Log file handler to output logging info to
@@ -457,13 +449,13 @@ def compose_lg(dictionary_path: str, small_g_path: str, lg_path: str, log_file: 
 
 
 def compose_clg(
-    in_disambig: typing.Optional[str],
-    out_disambig: typing.Optional[str],
+    in_disambig: typing.Optional[Path],
+    out_disambig: typing.Optional[Path],
     context_width: int,
     central_pos: int,
-    ilabels_temp: str,
-    lg_path: str,
-    clg_path: str,
+    ilabels_temp: Path,
+    lg_path: Path,
+    clg_path: Path,
     log_file: TextIO,
 ) -> None:
     """
@@ -478,19 +470,19 @@ def compose_clg(
 
     Parameters
     ----------
-    in_disambig: str
+    in_disambig: :class:`~pathlib.Path`
         Path to read disambiguation symbols file
-    out_disambig: str
+    out_disambig: :class:`~pathlib.Path`
         Path to write disambiguation symbols file
     context_width: int
         Context width of the acoustic model
     central_pos: int
         Central position of the acoustic model
-    ilabels_temp:
+    ilabels_temp: :class:`~pathlib.Path`
         Temporary file for ilabels
-    lg_path: str
+    lg_path: :class:`~pathlib.Path`
         Path to a LG.fst file
-    clg_path:
+    clg_path: :class:`~pathlib.Path`
         Path to save CLG.fst file
     log_file: TextIO
         Log file handler to output logging info to
@@ -520,11 +512,11 @@ def compose_clg(
 
 
 def compose_hclg(
-    model_path: str,
-    ilabels_temp: str,
+    model_path: Path,
+    ilabels_temp: Path,
     transition_scale: float,
-    clg_path: str,
-    hclga_path: str,
+    clg_path: Path,
+    hclga_path: Path,
     log_file: TextIO,
 ) -> None:
     """
@@ -549,22 +541,22 @@ def compose_hclg(
 
     Parameters
     ----------
-    model_path: str
+    model_path: :class:`~pathlib.Path`
         Path to acoustic model
-    ilabels_temp: str
+    ilabels_temp: :class:`~pathlib.Path`
         Path to temporary ilabels file
     transition_scale: float
         Transition scale for the fst
-    clg_path: str
+    clg_path: :class:`~pathlib.Path`
         Path to CLG.fst file
-    hclga_path: str
+    hclga_path: :class:`~pathlib.Path`
         Path to save HCLGa.fst file
     log_file: TextIO
         Log file handler to output logging info to
     """
-    tree_path = model_path.replace("final.mdl", "tree")
-    ha_path = hclga_path.replace("HCLGa", "Ha")
-    ha_out_disambig = hclga_path.replace("HCLGa", "disambig_tid")
+    tree_path = model_path.with_name("tree")
+    ha_path = hclga_path.with_stem("Ha" + hclga_path.stem.split("_")[-1])
+    ha_out_disambig = hclga_path.with_stem("disambig_tid" + hclga_path.stem.split("_")[-1])
     make_h_proc = subprocess.Popen(
         [
             thirdparty_binary("make-h-transducer"),
@@ -618,7 +610,7 @@ def compose_hclg(
     minimize_proc.communicate()
 
 
-def compose_g(arpa_path: str, words_path: str, g_path: str, log_file: TextIO) -> None:
+def compose_g(arpa_path: Path, words_path: Path, g_path: Path, log_file: TextIO) -> None:
     """
     Create G.fst from an ARPA formatted language model
 
@@ -629,11 +621,11 @@ def compose_g(arpa_path: str, words_path: str, g_path: str, log_file: TextIO) ->
 
     Parameters
     ----------
-    arpa_path: str
+    arpa_path: :class:`~pathlib.Path`
         Path to ARPA file
-    words_path: str
+    words_path: :class:`~pathlib.Path`
         Path to words symbols file
-    g_path: str
+    g_path: :class:`~pathlib.Path`
         Path to output G.fst file
     log_file: TextIO
         Log file handler to output logging info to
@@ -653,10 +645,10 @@ def compose_g(arpa_path: str, words_path: str, g_path: str, log_file: TextIO) ->
 
 
 def compose_g_carpa(
-    in_carpa_path: str,
-    temp_carpa_path: str,
+    in_carpa_path: Path,
+    temp_carpa_path: Path,
     words_mapping: Dict[str, int],
-    carpa_path: str,
+    carpa_path: Path,
     log_file: TextIO,
 ):
     """
@@ -669,13 +661,13 @@ def compose_g_carpa(
 
     Parameters
     ----------
-    in_carpa_path: str
+    in_carpa_path: :class:`~pathlib.Path`
         Input ARPA model path
-    temp_carpa_path: str
+    temp_carpa_path: :class:`~pathlib.Path`
         Temporary CARPA model path
     words_mapping: dict[str, int]
         Words symbols mapping
-    carpa_path: str
+    carpa_path: :class:`~pathlib.Path`
         Path to save output G.carpa
     log_file: TextIO
         Log file handler to output logging info to
@@ -764,7 +756,6 @@ class CreateHclgFunction(KaldiFunction):
     def __init__(self, args: CreateHclgArguments):
         super().__init__(args)
         self.working_directory = args.working_directory
-        self.path_template = args.path_template
         self.words_path = args.words_path
         self.carpa_path = args.carpa_path
         self.small_arpa_path = args.small_arpa_path
@@ -778,24 +769,24 @@ class CreateHclgFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[bool, str]]:
         """Run the function"""
-        hclg_path = self.path_template.format(file_name="HCLG")
-        small_g_path = self.path_template.format(file_name="G.small")
-        medium_g_path = self.path_template.format(file_name="G.med")
-        lg_path = self.path_template.format(file_name="LG")
-        hclga_path = self.path_template.format(file_name="HCLGa")
+        hclg_path = self.working_directory.joinpath(f"HCLG.{self.job_name}.fst")
+        small_g_path = hclg_path.with_stem(f"G_small.{self.job_name}")
+        medium_g_path = hclg_path.with_stem(f"G_med.{self.job_name}")
+        lg_path = hclg_path.with_stem(f"LG.{self.job_name}")
+        hclga_path = hclg_path.with_stem(f"HCLGa.{self.job_name}")
         if os.path.exists(hclg_path):
             return
         with mfa_open(self.log_path, "w") as log_file:
             context_width = self.hclg_options["context_width"]
             central_pos = self.hclg_options["central_pos"]
 
-            clg_path = self.path_template.format(file_name=f"CLG_{context_width}_{central_pos}")
-            ilabels_temp = self.path_template.format(
-                file_name=f"ilabels_{context_width}_{central_pos}"
-            ).replace(".fst", "")
-            out_disambig = self.path_template.format(
-                file_name=f"disambig_ilabels_{context_width}_{central_pos}"
-            ).replace(".fst", ".int")
+            clg_path = hclg_path.with_stem(f"CLG_{context_width}_{central_pos}.{self.job_name}")
+            ilabels_temp = hclg_path.with_name(
+                f"ilabels_{context_width}_{central_pos}.{self.job_name}"
+            )
+            out_disambig = hclg_path.with_name(
+                f"disambig_ilabels_{context_width}_{central_pos}_{self.job_name}.int"
+            )
 
             log_file.write("Generating decoding graph...\n")
             if not os.path.exists(small_g_path):
@@ -808,7 +799,7 @@ class CreateHclgFunction(KaldiFunction):
                 yield 1
             if not os.path.exists(self.carpa_path):
                 log_file.write("Generating G.carpa...")
-                temp_carpa_path = self.carpa_path + ".temp"
+                temp_carpa_path = self.carpa_path.with_suffix(".temp")
                 compose_g_carpa(
                     self.big_arpa_path,
                     temp_carpa_path,
@@ -872,7 +863,7 @@ class CreateHclgFunction(KaldiFunction):
             )
             convert_proc.communicate()
             self.check_call(convert_proc)
-            if os.path.exists(hclg_path):
+            if hclg_path.exists():
                 yield True, hclg_path
             else:
                 yield False, hclg_path
@@ -1005,8 +996,6 @@ class LmRescoreFunction(KaldiFunction):
                 rescored_lat_path = self.rescored_lat_paths[dict_id]
                 old_g_path = self.old_g_paths[dict_id]
                 new_g_path = self.new_g_paths[dict_id]
-                if " " in new_g_path:
-                    new_g_path = f'"{new_g_path}"'
                 project_type_arg = "--project_type=output"
                 if os.path.exists(rescored_lat_path):
                     continue
@@ -1022,7 +1011,7 @@ class LmRescoreFunction(KaldiFunction):
                         thirdparty_binary("lattice-lmrescore-pruned"),
                         f"--acoustic-scale={self.lm_rescore_options['acoustic_scale']}",
                         "-",
-                        f"fstproject {project_type_arg} {new_g_path} |",
+                        f'fstproject {project_type_arg} "{new_g_path}" |',
                         f"ark,s,cs:{lat_path}",
                         f"ark:{rescored_lat_path}",
                     ],
@@ -1358,8 +1347,8 @@ class FinalFmllrFunction(KaldiFunction):
             for dict_id in self.dictionaries:
                 feature_string = self.feature_strings[dict_id]
                 trans_path = self.trans_paths[dict_id]
-                temp_trans_path = trans_path + ".temp"
-                temp_composed_trans_path = trans_path + ".temp_composed"
+                temp_trans_path = trans_path.with_suffix(".temp")
+                temp_composed_trans_path = trans_path.with_suffix(".temp_composed")
                 spk2utt_path = self.spk2utt_paths[dict_id]
                 tmp_lat_path = self.tmp_lat_paths[dict_id]
                 determinize_proc = subprocess.Popen(
@@ -1520,13 +1509,13 @@ class FmllrRescoreFunction(KaldiFunction):
 class PerSpeakerDecodeArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.validation.corpus_validator.PerSpeakerDecodeFunction`"""
 
-    model_directory: str
+    model_directory: Path
     feature_strings: Dict[int, str]
-    lat_paths: Dict[int, str]
-    model_path: str
-    disambiguation_symbols_int_path: str
+    lat_paths: Dict[int, Path]
+    model_path: Path
+    disambiguation_symbols_int_path: Path
     decode_options: MetaDict
-    tree_path: str
+    tree_path: Path
     order: int
     method: str
 

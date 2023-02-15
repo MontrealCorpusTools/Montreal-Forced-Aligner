@@ -15,7 +15,7 @@ def test_transcribe(
     temp_dir,
     transcribe_config_path,
 ):
-    output_path = os.path.join(generated_dir, "transcribe_test")
+    output_path = generated_dir.joinpath("transcribe_test")
     command = [
         "transcribe",
         basic_corpus_dir,
@@ -32,6 +32,7 @@ def test_transcribe(
         "--config_path",
         transcribe_config_path,
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -55,7 +56,7 @@ def test_transcribe_arpa(
     transcribe_config_path,
 ):
     temp_dir = os.path.join(temp_dir, "arpa_test_temp")
-    output_path = os.path.join(generated_dir, "transcribe_test_arpa")
+    output_path = generated_dir.joinpath("transcribe_test_arpa")
     command = [
         "transcribe",
         basic_corpus_dir,
@@ -74,6 +75,7 @@ def test_transcribe_arpa(
         "--config_path",
         transcribe_config_path,
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -95,7 +97,7 @@ def test_transcribe_speaker_dictionaries(
     temp_dir,
     transcribe_config_path,
 ):
-    output_path = os.path.join(generated_dir, "transcribe_test")
+    output_path = generated_dir.joinpath("transcribe_test")
     command = [
         "transcribe",
         multilingual_ipa_corpus_dir,
@@ -111,6 +113,7 @@ def test_transcribe_speaker_dictionaries(
         "--config_path",
         transcribe_config_path,
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
@@ -133,7 +136,7 @@ def test_transcribe_speaker_dictionaries_evaluate(
     temp_dir,
     transcribe_config_path,
 ):
-    output_path = os.path.join(generated_dir, "transcribe_test")
+    output_path = generated_dir.joinpath("transcribe_test")
     command = [
         "transcribe",
         multilingual_ipa_tg_corpus_dir,
@@ -155,6 +158,7 @@ def test_transcribe_speaker_dictionaries_evaluate(
         transcribe_config_path,
         "--evaluate",
     ]
+    command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )

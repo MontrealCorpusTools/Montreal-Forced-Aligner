@@ -7,6 +7,7 @@ import os
 import re
 import typing
 from collections import Counter
+from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from montreal_forced_aligner.abc import DatabaseMixin
@@ -839,9 +840,9 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
         self._lexicon_fst_paths = {}
 
     @property
-    def word_boundary_int_path(self) -> str:
+    def word_boundary_int_path(self) -> Path:
         """Path to the word boundary integer IDs"""
-        return os.path.join(self.dictionary_output_directory, "phones", "word_boundary.int")
+        return self.dictionary_output_directory.joinpath("phones", "word_boundary.int")
 
     def _write_word_boundaries(self) -> None:
         """
@@ -999,11 +1000,11 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
         Write phone symbol sets to the temporary directory
         """
 
-        sets_file = os.path.join(self.dictionary_output_directory, "phones", "sets.txt")
-        roots_file = os.path.join(self.dictionary_output_directory, "phones", "roots.txt")
+        sets_file = self.dictionary_output_directory.joinpath("phones", "sets.txt")
+        roots_file = self.dictionary_output_directory.joinpath("phones", "roots.txt")
 
-        sets_int_file = os.path.join(self.dictionary_output_directory, "phones", "sets.int")
-        roots_int_file = os.path.join(self.dictionary_output_directory, "phones", "roots.int")
+        sets_int_file = self.dictionary_output_directory.joinpath("phones", "sets.int")
+        roots_int_file = self.dictionary_output_directory.joinpath("phones", "roots.int")
 
         with mfa_open(sets_file, "w") as setf, mfa_open(roots_file, "w") as rootf, mfa_open(
             sets_int_file, "w"
@@ -1043,40 +1044,40 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
                 rootintf.write(f"shared split {phone_int_string}\n")
 
     @property
-    def phone_symbol_table_path(self) -> str:
+    def phone_symbol_table_path(self) -> Path:
         """Path to file containing phone symbols and their integer IDs"""
-        return os.path.join(self.phones_dir, "phones.txt")
+        return self.phones_dir.joinpath("phones.txt")
 
     @property
-    def grapheme_symbol_table_path(self) -> str:
+    def grapheme_symbol_table_path(self) -> Path:
         """Path to file containing grapheme symbols and their integer IDs"""
-        return os.path.join(self.phones_dir, "graphemes.txt")
+        return self.phones_dir.joinpath("graphemes.txt")
 
     @property
-    def disambiguation_symbols_txt_path(self) -> str:
+    def disambiguation_symbols_txt_path(self) -> Path:
         """Path to the file containing phone disambiguation symbols"""
-        return os.path.join(self.phones_dir, "disambiguation_symbols.txt")
+        return self.phones_dir.joinpath("disambiguation_symbols.txt")
 
     @property
-    def disambiguation_symbols_int_path(self) -> str:
+    def disambiguation_symbols_int_path(self) -> Path:
         """Path to the file containing integer IDs for phone disambiguation symbols"""
         if self._disambiguation_symbols_int_path is None:
-            self._disambiguation_symbols_int_path = os.path.join(
-                self.phones_dir, "disambiguation_symbols.int"
+            self._disambiguation_symbols_int_path = self.phones_dir.joinpath(
+                "disambiguation_symbols.int"
             )
         return self._disambiguation_symbols_int_path
 
     @property
-    def phones_dir(self) -> str:
+    def phones_dir(self) -> Path:
         """Directory for storing phone information"""
         if self._phones_dir is None:
-            self._phones_dir = os.path.join(self.dictionary_output_directory, "phones")
+            self._phones_dir = self.dictionary_output_directory.joinpath("phones")
         return self._phones_dir
 
     @property
-    def topo_path(self) -> str:
+    def topo_path(self) -> Path:
         """Path to the dictionary's topology file"""
-        return os.path.join(self.phones_dir, "topo")
+        return self.phones_dir.joinpath("topo")
 
     def _write_disambig(self) -> None:
         """
@@ -1093,6 +1094,6 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
             for p_id, p in disambiguation_symbols:
                 outf.write(f"{p}\n")
                 intf.write(f"{p_id}\n")
-        phone_disambig_path = os.path.join(self.phones_dir, "phone_disambig.txt")
+        phone_disambig_path = self.phones_dir.joinpath("phone_disambig.txt")
         with mfa_open(phone_disambig_path, "w") as f:
             f.write(str(self.phone_mapping["#0"]))
