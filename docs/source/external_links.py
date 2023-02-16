@@ -33,6 +33,7 @@ MODEL_TYPE_MAPPING = {
     "lm": "language model",
     "dictionary": "dictionary",
     "ivector": "ivector extractor",
+    "tokenizer": "tokenizer model",
 }
 
 

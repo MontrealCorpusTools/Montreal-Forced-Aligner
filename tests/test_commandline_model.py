@@ -4,7 +4,8 @@ import click.testing
 import pytest
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
-from montreal_forced_aligner.exceptions import RemoteModelNotFoundError
+from montreal_forced_aligner.dictionary import MultispeakerDictionary
+from montreal_forced_aligner.exceptions import PhoneMismatchError, RemoteModelNotFoundError
 from montreal_forced_aligner.models import AcousticModel, DictionaryModel, G2PModel, ModelManager
 
 
@@ -138,6 +139,88 @@ def test_inspect_model():
         print(result.exc_info)
         raise result.exception
     assert not result.return_value
+
+
+def test_add_pronunciations(
+    hindi_dict_path, japanese_dict_path, basic_dict_path, acoustic_dict_path
+):
+    command = [
+        "model",
+        "save",
+        "dictionary",
+        str(hindi_dict_path),
+        "--name",
+        "hindi",
+        "--overwrite",
+    ]
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+    assert os.path.exists(DictionaryModel.get_pretrained_path("hindi"))
+
+    with pytest.raises(PhoneMismatchError):
+        command = [
+            "model",
+            "add_words",
+            "hindi",
+            str(japanese_dict_path),
+        ]
+        result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+            mfa_cli, command, catch_exceptions=True
+        )
+        print(result.stdout)
+        print(result.stderr)
+        if result.exception:
+            print(result.exc_info)
+            raise result.exception
+        assert not result.return_value
+    command = [
+        "model",
+        "save",
+        "dictionary",
+        str(acoustic_dict_path),
+        "--name",
+        "acoustic",
+        "--overwrite",
+    ]
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+    assert os.path.exists(DictionaryModel.get_pretrained_path("acoustic"))
+    command = [
+        "model",
+        "add_words",
+        "acoustic",
+        str(basic_dict_path),
+    ]
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+
+    pretrained_acoustic_path = DictionaryModel.get_pretrained_path("acoustic")
+    assert pretrained_acoustic_path.exists()
+    d = MultispeakerDictionary(pretrained_acoustic_path)
+    d.dictionary_setup()
+
+    assert "hopefully" in d.word_mapping()
 
 
 def test_list_model():

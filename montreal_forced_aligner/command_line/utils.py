@@ -326,6 +326,7 @@ def check_databases(db_name=None) -> None:
 
 def cleanup_databases() -> None:
     """Stop current database"""
+    sqlalchemy.orm.session.close_all_sessions()
     GLOBAL_CONFIG.load()
 
     db_directory = os.path.join(

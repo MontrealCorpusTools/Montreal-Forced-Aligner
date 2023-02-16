@@ -10,10 +10,15 @@ from montreal_forced_aligner.command_line.utils import (
     check_databases,
     cleanup_databases,
     common_options,
+    validate_dictionary,
     validate_g2p_model,
 )
 from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
-from montreal_forced_aligner.g2p.generator import PyniniCorpusGenerator, PyniniWordListGenerator
+from montreal_forced_aligner.g2p.generator import (
+    PyniniCorpusGenerator,
+    PyniniDictionaryCorpusGenerator,
+    PyniniWordListGenerator,
+)
 
 __all__ = ["g2p_cli"]
 
@@ -39,6 +44,12 @@ __all__ = ["g2p_cli"]
     type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
+    "--dictionary_path",
+    help="Path to existing pronunciation dictionary to use to find OOVs.",
+    type=click.UNPROCESSED,
+    callback=validate_dictionary,
+)
+@click.option(
     "--include_bracketed",
     is_flag=True,
     help="Included words enclosed by brackets, job_name.e. [...], (...), <...>.",
@@ -61,13 +72,26 @@ def g2p_cli(context, **kwargs) -> None:
     input_path = kwargs["input_path"]
     g2p_model_path = kwargs["g2p_model_path"]
     output_path = kwargs["output_path"]
+    dictionary_path = kwargs.get("dictionary_path", None)
 
     if os.path.isdir(input_path):
-        g2p = PyniniCorpusGenerator(
-            corpus_directory=input_path,
-            g2p_model_path=g2p_model_path,
-            **PyniniCorpusGenerator.parse_parameters(config_path, context.params, context.args),
-        )
+        if dictionary_path is not None:
+            g2p = PyniniDictionaryCorpusGenerator(
+                corpus_directory=input_path,
+                dictionary_path=dictionary_path,
+                g2p_model_path=g2p_model_path,
+                **PyniniDictionaryCorpusGenerator.parse_parameters(
+                    config_path, context.params, context.args
+                ),
+            )
+        else:
+            g2p = PyniniCorpusGenerator(
+                corpus_directory=input_path,
+                g2p_model_path=g2p_model_path,
+                **PyniniCorpusGenerator.parse_parameters(
+                    config_path, context.params, context.args
+                ),
+            )
     else:
         g2p = PyniniWordListGenerator(
             word_list_path=input_path,

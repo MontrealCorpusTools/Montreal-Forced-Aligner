@@ -39,7 +39,44 @@ def test_generate_pretrained(
     check_databases()
     d = MultispeakerDictionary(output_path)
     d.dictionary_setup()
-    assert len(d.word_mapping(list(d.dictionary_lookup.values())[0])) > 0
+    assert d.num_speech_words > 0
+
+
+def test_generate_pretrained_dictionary(
+    english_g2p_model, combined_corpus_dir, english_dictionary, temp_dir, generated_dir, db_setup
+):
+    output_path = generated_dir.joinpath("filtered_g2p_out.txt")
+    command = [
+        "g2p",
+        combined_corpus_dir,
+        english_g2p_model,
+        output_path,
+        "-t",
+        os.path.join(temp_dir, "dict_g2p_cli"),
+        "-q",
+        "--clean",
+        "--dictionary_path",
+        english_dictionary,
+        "--num_pronunciations",
+        "1",
+        "--use_mp",
+        "False",
+    ]
+    command = [str(x) for x in command]
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+    assert os.path.exists(output_path)
+    check_databases()
+    d = MultispeakerDictionary(output_path)
+    d.dictionary_setup()
+    assert d.num_speech_words == 2
 
 
 def test_generate_pretrained_threshold(
@@ -69,11 +106,10 @@ def test_generate_pretrained_threshold(
         raise result.exception
     assert not result.return_value
     assert os.path.exists(output_path)
-    check_databases()
     d = MultispeakerDictionary(output_path)
     d.dictionary_setup()
 
-    assert len(d.word_mapping(list(d.dictionary_lookup.values())[0])) > 0
+    assert d.num_speech_words > 0
 
 
 def test_train_g2p(
@@ -175,7 +211,7 @@ def test_generate_dict(
     check_databases()
     d = MultispeakerDictionary(dictionary_path=g2p_basic_output)
     d.dictionary_setup()
-    assert len(d.word_mapping(list(d.dictionary_lookup.values())[0])) > 0
+    assert d.num_speech_words > 0
 
 
 def test_generate_dict_phonetisaurus(
@@ -213,7 +249,7 @@ def test_generate_dict_phonetisaurus(
     check_databases()
     d = MultispeakerDictionary(dictionary_path=g2p_basic_phonetisaurus_output)
     d.dictionary_setup()
-    assert len(d.word_mapping(list(d.dictionary_lookup.values())[0])) > 0
+    assert d.num_speech_words > 0
 
 
 def test_generate_dict_text_only(
@@ -252,7 +288,7 @@ def test_generate_dict_text_only(
     check_databases()
     d = MultispeakerDictionary(dictionary_path=g2p_basic_output)
     d.dictionary_setup()
-    assert len(d.word_mapping(list(d.dictionary_lookup.values())[0])) > 0
+    assert d.num_speech_words > 0
 
 
 def test_generate_dict_textgrid(
@@ -291,4 +327,4 @@ def test_generate_dict_textgrid(
     check_databases()
     d = MultispeakerDictionary(dictionary_path=output_file)
     d.dictionary_setup()
-    assert len(d.word_mapping(list(d.dictionary_lookup.values())[0])) > 0
+    assert d.num_speech_words > 0
