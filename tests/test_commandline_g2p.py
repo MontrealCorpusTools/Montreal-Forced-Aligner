@@ -106,6 +106,7 @@ def test_generate_pretrained_threshold(
         raise result.exception
     assert not result.return_value
     assert os.path.exists(output_path)
+    check_databases()
     d = MultispeakerDictionary(output_path)
     d.dictionary_setup()
 
