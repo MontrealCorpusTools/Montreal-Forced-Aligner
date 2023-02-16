@@ -28,7 +28,7 @@ from montreal_forced_aligner.data import MfaArguments, TextgridFormats
 from montreal_forced_aligner.db import File, Utterance, bulk_update
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 from montreal_forced_aligner.exceptions import PyniniGenerationError
-from montreal_forced_aligner.g2p.generator import Rewriter, RewriterWorker
+from montreal_forced_aligner.g2p.generator import PhonetisaurusRewriter, Rewriter, RewriterWorker
 from montreal_forced_aligner.helper import edit_distance, mfa_open
 from montreal_forced_aligner.models import TokenizerModel
 from montreal_forced_aligner.utils import Stopped, run_kaldi_function
@@ -97,6 +97,94 @@ class TokenizerRewriter(Rewriter):
         return "".join(hypothesis)
 
 
+class TokenizerPhonetisaurusRewriter(PhonetisaurusRewriter):
+    """
+    Helper function for rewriting
+
+    Parameters
+    ----------
+    fst: pynini.Fst
+        G2P FST model
+    input_token_type: pynini.SymbolTable
+        Grapheme symbol table
+    output_token_type: pynini.SymbolTable
+    num_pronunciations: int
+        Number of pronunciations, default to 0.  If this is 0, thresholding is used
+    threshold: float
+        Threshold to use for pruning rewrite lattice, defaults to 1.5, only used if num_pronunciations is 0
+    grapheme_order: int
+        Maximum number of graphemes to consider single segment
+    seq_sep: str
+        Separator to use between grapheme symbols
+    """
+
+    def __init__(
+        self,
+        fst: Fst,
+        input_token_type: SymbolTable,
+        output_token_type: SymbolTable,
+        input_order: int = 2,
+        seq_sep: str = "|",
+    ):
+        self.fst = fst
+        self.seq_sep = seq_sep
+        self.input_token_type = input_token_type
+        self.output_token_type = output_token_type
+        self.input_order = input_order
+        self.rewrite = functools.partial(
+            rewrite.top_rewrite,
+            rule=fst,
+            input_token_type=None,
+            output_token_type=output_token_type,
+        )
+
+    def __call__(self, graphemes: str) -> str:  # pragma: no cover
+        """Call the rewrite function"""
+        graphemes = graphemes.replace(" ", "")
+        original = list(graphemes)
+        unks = []
+        normalized = []
+        for c in original:
+            if self.output_token_type.member(c):
+                normalized.append(c)
+            else:
+                unks.append(c)
+                normalized.append("<unk>")
+        fst = pynini.Fst()
+        one = pynini.Weight.one(fst.weight_type())
+        max_state = 0
+        for i in range(len(normalized)):
+            start_state = fst.add_state()
+            for j in range(1, self.input_order + 1):
+                if i + j <= len(normalized):
+                    substring = self.seq_sep.join(normalized[i : i + j])
+                    ilabel = self.input_token_type.find(substring)
+                    if ilabel != pynini.NO_LABEL:
+                        fst.add_arc(start_state, pynini.Arc(ilabel, ilabel, one, i + j))
+                    if i + j >= max_state:
+                        max_state = i + j
+        for _ in range(fst.num_states(), max_state + 1):
+            fst.add_state()
+        fst.set_start(0)
+        fst.set_final(len(normalized), one)
+        fst.set_input_symbols(self.input_token_type)
+        fst.set_output_symbols(self.input_token_type)
+        hypothesis = self.rewrite(fst).split()
+        unk_index = 0
+        output = []
+        for i, w in enumerate(hypothesis):
+            if w == "<unk>":
+                output.append(unks[unk_index])
+                unk_index += 1
+            elif w == "<space>":
+                if i > 0 and hypothesis[i - 1] == " ":
+                    continue
+                output.append(" ")
+            else:
+                output.append(w)
+        return "".join(output).strip()
+
+
 @dataclass
 class TokenizerArguments(MfaArguments):
     rewriter: Rewriter
@@ -142,12 +230,27 @@ class CorpusTokenizer(TextCorpusMixin, TopLevelMfaWorker, DictionaryMixin):
         self._create_dummy_dictionary()
         self.normalize_text()
         self.fst = pynini.Fst.read(self.tokenizer_model.fst_path)
-        self.grapheme_symbols = pywrapfst.SymbolTable.read_text(self.tokenizer_model.sym_path)
 
-        self.rewriter = TokenizerRewriter(
-            self.fst,
-            self.grapheme_symbols,
-        )
+        if self.tokenizer_model.meta["architecture"] == "phonetisaurus":
+            self.output_token_type = pywrapfst.SymbolTable.read_text(
+                self.tokenizer_model.output_sym_path
+            )
+            self.input_token_type = pywrapfst.SymbolTable.read_text(
+                self.tokenizer_model.input_sym_path
+            )
+            self.rewriter = TokenizerPhonetisaurusRewriter(
+                self.fst,
+                self.input_token_type,
+                self.output_token_type,
+                input_order=self.tokenizer_model.meta["input_order"],
+            )
+        else:
+            self.grapheme_symbols = pywrapfst.SymbolTable.read_text(self.tokenizer_model.sym_path)
+
+            self.rewriter = TokenizerRewriter(
+                self.fst,
+                self.grapheme_symbols,
+            )
         self.initialized = True
 
     def export_files(self, output_directory: Path) -> None:
@@ -236,6 +339,8 @@ class TokenizerValidator(CorpusTokenizer):
         if utterances_to_tokenize is None:
             utterances_to_tokenize = []
         self.utterances_to_tokenize = utterances_to_tokenize
+        self.uer = None
+        self.cer = None
 
     def setup(self):
         TopLevelMfaWorker.setup(self)
@@ -244,15 +349,28 @@ class TokenizerValidator(CorpusTokenizer):
         self._current_workflow = "validation"
         os.makedirs(self.working_log_directory, exist_ok=True)
         self.fst = pynini.Fst.read(self.tokenizer_model.fst_path)
-        self.grapheme_symbols = pywrapfst.SymbolTable.read_text(self.tokenizer_model.sym_path)
 
-        self.rewriter = TokenizerRewriter(
-            self.fst,
-            self.grapheme_symbols,
-        )
+        if self.tokenizer_model.meta["architecture"] == "phonetisaurus":
+            self.output_token_type = pywrapfst.SymbolTable.read_text(
+                self.tokenizer_model.output_sym_path
+            )
+            self.input_token_type = pywrapfst.SymbolTable.read_text(
+                self.tokenizer_model.input_sym_path
+            )
+            self.rewriter = TokenizerPhonetisaurusRewriter(
+                self.fst,
+                self.input_token_type,
+                self.output_token_type,
+                input_order=self.tokenizer_model.meta["input_order"],
+            )
+        else:
+            self.grapheme_symbols = pywrapfst.SymbolTable.read_text(self.tokenizer_model.sym_path)
+
+            self.rewriter = TokenizerRewriter(
+                self.fst,
+                self.grapheme_symbols,
+            )
         self.initialized = True
-        self.uer = None
-        self.cer = None
 
     def tokenize_utterances(self) -> typing.Dict[str, str]:
         """
@@ -269,7 +387,7 @@ class TokenizerValidator(CorpusTokenizer):
             self.setup()
         logger.info("Tokenizing utterances...")
         to_return = {}
-        if True or num_utterances < 30 or GLOBAL_CONFIG.num_jobs == 1:
+        if num_utterances < 30 or GLOBAL_CONFIG.num_jobs == 1:
             with tqdm.tqdm(total=num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
                 for utterance in self.utterances_to_tokenize:
                     pbar.update(1)

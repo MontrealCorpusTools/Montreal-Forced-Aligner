@@ -1,6 +1,6 @@
 """Mixin module for G2P functionality"""
 import typing
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta
 from pathlib import Path
 from typing import Dict, List
 
@@ -36,7 +36,6 @@ class G2PMixin(metaclass=ABCMeta):
         self.g2p_threshold = g2p_threshold
         self.include_bracketed = include_bracketed
 
-    @abstractmethod
     def generate_pronunciations(self) -> Dict[str, List[str]]:
         """
         Generate pronunciations
@@ -46,13 +45,12 @@ class G2PMixin(metaclass=ABCMeta):
         dict[str, list[str]]
             Mappings of keys to their generated pronunciations
         """
-        ...
+        raise NotImplementedError
 
     @property
-    @abstractmethod
     def words_to_g2p(self) -> List[str]:
         """Words to produce pronunciations"""
-        ...
+        raise NotImplementedError
 
 
 class G2PTopLevelMixin(MfaWorker, DictionaryMixin, G2PMixin):

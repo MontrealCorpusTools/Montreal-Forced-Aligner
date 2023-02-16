@@ -345,7 +345,7 @@ html_theme_options = {
         # "image_dark": "logo-dark.svg",
     },
     "analytics": {
-        "google_analytics_id": "UA-73068199-4",
+        "google_analytics_id": "353930198",
     },
     # "show_nav_level": 1,
     # "navigation_depth": 4,

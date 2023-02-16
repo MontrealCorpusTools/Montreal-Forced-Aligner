@@ -931,7 +931,26 @@ class TokenizerModel(Archive):
         path = self.dirname.joinpath("graphemes.txt")
         if path.exists():
             return path
-        return self.dirname.joinpath("graphemes.sym")
+        path = self.dirname.joinpath("graphemes.sym")
+        if path.exists():
+            return path
+        return self.dirname.joinpath("graphemes.syms")
+
+    @property
+    def input_sym_path(self) -> Path:
+        """Tokenizer model's input symbols path"""
+        path = self.dirname.joinpath("input.txt")
+        if path.exists():
+            return path
+        return self.dirname.joinpath("input.syms")
+
+    @property
+    def output_sym_path(self) -> Path:
+        """Tokenizer model's output symbols path"""
+        path = self.dirname.joinpath("output.txt")
+        if path.exists():
+            return path
+        return self.dirname.joinpath("output.syms")
 
     def add_graphemes_path(self, source_directory: Path) -> None:
         """
@@ -942,8 +961,10 @@ class TokenizerModel(Archive):
         source_directory: :class:`~pathlib.Path`
             Source directory path
         """
-        if not self.sym_path.exists():
-            copyfile(source_directory.joinpath("graphemes.txt"), self.sym_path)
+        for p in [self.sym_path, self.output_sym_path, self.input_sym_path]:
+            source_p = source_directory.joinpath(p.name)
+            if not p.exists() and source_p.exists():
+                copyfile(source_p, p)
 
     def add_tokenizer_model(self, source_directory: Path) -> None:
         """
