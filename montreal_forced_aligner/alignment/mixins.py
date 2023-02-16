@@ -551,7 +551,7 @@ class AlignMixin(DictionaryMixin):
                 average_logdet_frames += data["logdet_frames"]
                 average_logdet_sum += data["logdet"] * data["logdet_frames"]
 
-        if hasattr(self, "db_engine"):
+        if hasattr(self, "session"):
             csv_path = self.working_directory.joinpath("alignment_log_likelihood.csv")
             with mfa_open(csv_path, "w") as f, self.session() as session:
                 writer = csv.writer(f)

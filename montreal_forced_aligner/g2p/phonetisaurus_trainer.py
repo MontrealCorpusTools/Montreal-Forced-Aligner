@@ -92,8 +92,8 @@ class AlignmentInitArguments:
     deletions: bool
     insertions: bool
     restrict: bool
-    phone_order: int
-    grapheme_order: int
+    output_order: int
+    input_order: int
     eps: str
     s1s2_sep: str
     seq_sep: str
@@ -136,8 +136,8 @@ class AlignmentInitWorker(mp.Process):
         self.deletions = args.deletions
         self.insertions = args.insertions
         self.restrict = args.restrict
-        self.phone_order = args.phone_order
-        self.grapheme_order = args.grapheme_order
+        self.output_order = args.output_order
+        self.input_order = args.input_order
         self.eps = args.eps
         self.s1s2_sep = args.s1s2_sep
         self.seq_sep = args.seq_sep
@@ -147,6 +147,19 @@ class AlignmentInitWorker(mp.Process):
         self.log_path = args.log_path
         self.db_string = args.db_string
         self.batch_size = args.batch_size
+
+    def data_generator(self, session):
+        query = (
+            session.query(Word.word, Pronunciation.pronunciation)
+            .join(Pronunciation.word)
+            .join(Word.job)
+            .filter(Word2Job.training == True)  # noqa
+            .filter(Word2Job.job_id == self.job_name)
+        )
+        for w, p in query:
+            w = list(w)
+            p = p.split()
+            yield w, p
 
     def run(self) -> None:
         """Run the function"""
@@ -160,59 +173,51 @@ class AlignmentInitWorker(mp.Process):
         try:
             symbol_table = pynini.SymbolTable()
             symbol_table.add_symbol(self.eps)
-            Session = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
-            valid_phone_ngrams = set()
+            valid_output_ngrams = set()
             base_dir = os.path.dirname(self.far_path)
-            with mfa_open(os.path.join(base_dir, "phone_ngram.ngrams"), "r") as f:
+            with mfa_open(os.path.join(base_dir, "output_ngram.ngrams"), "r") as f:
                 for line in f:
                     line = line.strip()
-                    valid_phone_ngrams.add(line)
-            valid_grapheme_ngrams = set()
-            with mfa_open(os.path.join(base_dir, "grapheme_ngram.ngrams"), "r") as f:
+                    valid_output_ngrams.add(line)
+            valid_input_ngrams = set()
+            with mfa_open(os.path.join(base_dir, "input_ngram.ngrams"), "r") as f:
                 for line in f:
                     line = line.strip()
-                    valid_grapheme_ngrams.add(line)
+                    valid_input_ngrams.add(line)
             count = 0
             data = {}
-            with mfa_open(self.log_path, "w") as log_file, Session() as session:
+            with mfa_open(self.log_path, "w") as log_file, sqlalchemy.orm.Session(
+                engine
+            ) as session:
                 far_writer = pywrapfst.FarWriter.create(self.far_path, arc_type="log")
-                query = (
-                    session.query(Pronunciation.pronunciation, Word.word)
-                    .join(Pronunciation.word)
-                    .join(Word.job)
-                    .filter(Word2Job.training == True)  # noqa
-                    .filter(Word2Job.job_id == self.job_name)
-                )
-                for current_index, (phones, graphemes) in enumerate(query):
-                    graphemes = list(graphemes)
-                    phones = phones.split()
+                for current_index, (input, output) in enumerate(self.data_generator(session)):
                     if self.stopped.stop_check():
                         continue
                     try:
                         key = f"{current_index:08x}"
                         fst = pynini.Fst(arc_type="log")
-                        final_state = ((len(graphemes) + 1) * (len(phones) + 1)) - 1
+                        final_state = ((len(input) + 1) * (len(output) + 1)) - 1
 
                         for _ in range(final_state + 1):
                             fst.add_state()
-                        for i in range(len(graphemes) + 1):
-                            for j in range(len(phones) + 1):
-                                istate = i * (len(phones) + 1) + j
+                        for i in range(len(input) + 1):
+                            for j in range(len(output) + 1):
+                                istate = i * (len(output) + 1) + j
                                 if self.deletions:
-                                    for phone_range in range(1, self.phone_order + 1):
-                                        if j + phone_range <= len(phones):
-                                            subseq_phones = phones[j : j + phone_range]
-                                            phone_string = self.seq_sep.join(subseq_phones)
+                                    for output_range in range(1, self.output_order + 1):
+                                        if j + output_range <= len(output):
+                                            subseq_output = output[j : j + output_range]
+                                            output_string = self.seq_sep.join(subseq_output)
                                             if (
-                                                phone_range > 1
-                                                and phone_string not in valid_phone_ngrams
+                                                output_range > 1
+                                                and output_string not in valid_output_ngrams
                                             ):
                                                 continue
-                                            symbol = self.s1s2_sep.join([self.skip, phone_string])
+                                            symbol = self.s1s2_sep.join([self.skip, output_string])
                                             ilabel = symbol_table.find(symbol)
                                             if ilabel == pynini.NO_LABEL:
                                                 ilabel = symbol_table.add_symbol(symbol)
-                                            ostate = i * (len(phones) + 1) + (j + phone_range)
+                                            ostate = i * (len(output) + 1) + (j + output_range)
                                             fst.add_arc(
                                                 istate,
                                                 pywrapfst.Arc(
@@ -223,22 +228,20 @@ class AlignmentInitWorker(mp.Process):
                                                 ),
                                             )
                                 if self.insertions:
-                                    for grapheme_range in range(1, self.grapheme_order + 1):
-                                        if i + grapheme_range <= len(graphemes):
-                                            subseq_graphemes = graphemes[i : i + grapheme_range]
-                                            grapheme_string = self.seq_sep.join(subseq_graphemes)
+                                    for input_range in range(1, self.input_order + 1):
+                                        if i + input_range <= len(input):
+                                            subseq_input = input[i : i + input_range]
+                                            input_string = self.seq_sep.join(subseq_input)
                                             if (
-                                                grapheme_range > 1
-                                                and grapheme_string not in valid_grapheme_ngrams
+                                                input_range > 1
+                                                and input_string not in valid_input_ngrams
                                             ):
                                                 continue
-                                            symbol = self.s1s2_sep.join(
-                                                [grapheme_string, self.skip]
-                                            )
+                                            symbol = self.s1s2_sep.join([input_string, self.skip])
                                             ilabel = symbol_table.find(symbol)
                                             if ilabel == pynini.NO_LABEL:
                                                 ilabel = symbol_table.add_symbol(symbol)
-                                            ostate = (i + grapheme_range) * (len(phones) + 1) + j
+                                            ostate = (i + input_range) * (len(output) + 1) + j
                                             fst.add_arc(
                                                 istate,
                                                 pywrapfst.Arc(
@@ -249,39 +252,39 @@ class AlignmentInitWorker(mp.Process):
                                                 ),
                                             )
 
-                                for grapheme_range in range(1, self.grapheme_order + 1):
-                                    for phone_range in range(1, self.phone_order + 1):
-                                        if i + grapheme_range <= len(
-                                            graphemes
-                                        ) and j + phone_range <= len(phones):
+                                for input_range in range(1, self.input_order + 1):
+                                    for output_range in range(1, self.output_order + 1):
+                                        if i + input_range <= len(
+                                            input
+                                        ) and j + output_range <= len(output):
                                             if (
                                                 self.restrict
-                                                and grapheme_range > 1
-                                                and phone_range > 1
+                                                and input_range > 1
+                                                and output_range > 1
                                             ):
                                                 continue
-                                            subseq_phones = phones[j : j + phone_range]
-                                            phone_string = self.seq_sep.join(subseq_phones)
+                                            subseq_output = output[j : j + output_range]
+                                            output_string = self.seq_sep.join(subseq_output)
                                             if (
-                                                phone_range > 1
-                                                and phone_string not in valid_phone_ngrams
+                                                output_range > 1
+                                                and output_string not in valid_output_ngrams
                                             ):
                                                 continue
-                                            subseq_graphemes = graphemes[i : i + grapheme_range]
-                                            grapheme_string = self.seq_sep.join(subseq_graphemes)
+                                            subseq_input = input[i : i + input_range]
+                                            input_string = self.seq_sep.join(subseq_input)
                                             if (
-                                                grapheme_range > 1
-                                                and grapheme_string not in valid_grapheme_ngrams
+                                                input_range > 1
+                                                and input_string not in valid_input_ngrams
                                             ):
                                                 continue
                                             symbol = self.s1s2_sep.join(
-                                                [grapheme_string, phone_string]
+                                                [input_string, output_string]
                                             )
                                             ilabel = symbol_table.find(symbol)
                                             if ilabel == pynini.NO_LABEL:
                                                 ilabel = symbol_table.add_symbol(symbol)
-                                            ostate = (i + grapheme_range) * (len(phones) + 1) + (
-                                                j + phone_range
+                                            ostate = (i + input_range) * (len(output) + 1) + (
+                                                j + output_range
                                             )
                                             fst.add_arc(
                                                 istate,
@@ -289,7 +292,7 @@ class AlignmentInitWorker(mp.Process):
                                                     ilabel,
                                                     ilabel,
                                                     pynini.Weight(
-                                                        "log", float(grapheme_range * phone_range)
+                                                        "log", float(input_range * output_range)
                                                     ),
                                                     ostate,
                                                 ),
@@ -705,6 +708,8 @@ class PhonetisaurusTrainerMixin:
         Threshold of minimum change for early stopping of EM training
     """
 
+    alignment_init_function = AlignmentInitWorker
+
     def __init__(
         self,
         order: int = 8,
@@ -741,6 +746,8 @@ class PhonetisaurusTrainerMixin:
         self.deletions = deletions
         self.grapheme_order = grapheme_order
         self.phone_order = phone_order
+        self.input_order = self.grapheme_order
+        self.output_order = self.phone_order
         self.sequence_separator = sequence_separator
         self.alignment_separator = alignment_separator
         self.skip = skip
@@ -774,7 +781,7 @@ class PhonetisaurusTrainerMixin:
         stopped = Stopped()
         finished_adding = Stopped()
         procs = []
-        for i in range(GLOBAL_CONFIG.num_jobs):
+        for i in range(1, GLOBAL_CONFIG.num_jobs + 1):
             args = AlignmentInitArguments(
                 self.db_string,
                 self.working_log_directory.joinpath(f"alignment_init.{i}.log"),
@@ -791,7 +798,7 @@ class PhonetisaurusTrainerMixin:
                 self.batch_size,
             )
             procs.append(
-                AlignmentInitWorker(
+                self.alignment_init_function(
                     i,
                     return_queue,
                     stopped,
@@ -799,7 +806,7 @@ class PhonetisaurusTrainerMixin:
                     args,
                 )
             )
-            procs[i].start()
+            procs[-1].start()
 
         finished_adding.stop()
         error_list = []
@@ -903,7 +910,7 @@ class PhonetisaurusTrainerMixin:
         return_queue = mp.Queue()
         stopped = Stopped()
         procs = []
-        for i in range(GLOBAL_CONFIG.num_jobs):
+        for i in range(1, GLOBAL_CONFIG.num_jobs + 1):
             args = MaximizationArguments(
                 self.db_string,
                 self.working_directory.joinpath(f"{i}.far"),
@@ -911,7 +918,7 @@ class PhonetisaurusTrainerMixin:
                 self.batch_size,
             )
             procs.append(MaximizationWorker(i, return_queue, stopped, args))
-            procs[i].start()
+            procs[-1].start()
 
         error_list = []
         with tqdm.tqdm(
@@ -957,14 +964,14 @@ class PhonetisaurusTrainerMixin:
         stopped = Stopped()
         error_list = []
         procs = []
-        for i in range(GLOBAL_CONFIG.num_jobs):
+        for i in range(1, GLOBAL_CONFIG.num_jobs + 1):
             args = ExpectationArguments(
                 self.db_string,
                 self.working_directory.joinpath(f"{i}.far"),
                 self.batch_size,
             )
             procs.append(ExpectationWorker(i, return_queue, stopped, args))
-            procs[i].start()
+            procs[-1].start()
         mappings = {}
         zero = pynini.Weight.zero("log")
         with tqdm.tqdm(
@@ -1019,7 +1026,7 @@ class PhonetisaurusTrainerMixin:
         error_list = []
         procs = []
         count_paths = []
-        for i in range(GLOBAL_CONFIG.num_jobs):
+        for i in range(1, GLOBAL_CONFIG.num_jobs + 1):
             args = NgramCountArguments(
                 self.working_log_directory.joinpath(f"ngram_count.{i}.log"),
                 self.working_directory.joinpath(f"{i}.far"),
@@ -1028,7 +1035,7 @@ class PhonetisaurusTrainerMixin:
             )
             procs.append(NgramCountWorker(return_queue, stopped, args))
             count_paths.append(args.far_path.with_suffix(".cnts"))
-            procs[i].start()
+            procs[-1].start()
 
         with tqdm.tqdm(
             total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet
@@ -1296,7 +1303,7 @@ class PhonetisaurusTrainerMixin:
         error_list = []
         procs = []
         count_paths = []
-        for i in range(GLOBAL_CONFIG.num_jobs):
+        for i in range(1, GLOBAL_CONFIG.num_jobs + 1):
             args = AlignmentExportArguments(
                 self.db_string,
                 self.working_log_directory.joinpath(f"ngram_count.{i}.log"),
@@ -1305,7 +1312,7 @@ class PhonetisaurusTrainerMixin:
             )
             procs.append(AlignmentExporter(return_queue, stopped, args))
             count_paths.append(args.far_path.with_suffix(".cnts"))
-            procs[i].start()
+            procs[-1].start()
 
         with tqdm.tqdm(
             total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet
@@ -1345,8 +1352,8 @@ class PhonetisaurusTrainerMixin:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
         )
-        for j in range(GLOBAL_CONFIG.num_jobs):
-            text_path = self.working_directory.joinpath(f"{j}.far.strings")
+        for j in range(1, GLOBAL_CONFIG.num_jobs + 1):
+            text_path = self.working_directory.joinpath(f"{j}.strings")
             with mfa_open(text_path, "r") as f:
                 for line in f:
                     symbols_proc.stdin.write(line)
@@ -1355,6 +1362,179 @@ class PhonetisaurusTrainerMixin:
         symbols_proc.wait()
         self.symbol_table = pynini.SymbolTable.read_text(self.alignment_symbols_path)
         logger.info("Done exporting alignments!")
+
+    def compute_initial_ngrams(self) -> None:
+        logger.info("Computing initial ngrams...")
+        input_path = self.working_directory.joinpath("input.txt")
+        input_ngram_path = self.working_directory.joinpath("input_ngram.fst")
+        input_symbols_path = self.working_directory.joinpath("input_ngram.syms")
+        symbols_proc = subprocess.Popen(
+            [
+                thirdparty_binary("ngramsymbols"),
+                "--OOV_symbol=<unk>",
+                "--epsilon_symbol=<eps>",
+                input_path,
+                input_symbols_path,
+            ],
+            encoding="utf8",
+        )
+        symbols_proc.communicate()
+        farcompile_proc = subprocess.Popen(
+            [
+                thirdparty_binary("farcompilestrings"),
+                "--token_type=symbol",
+                f"--symbols={input_symbols_path}",
+                input_path,
+            ],
+            stdout=subprocess.PIPE,
+            env=os.environ,
+        )
+        ngramcount_proc = subprocess.Popen(
+            [
+                thirdparty_binary("ngramcount"),
+                "--require_symbols=false",
+                "--round_to_int",
+                f"--order={self.input_order}",
+            ],
+            stdin=farcompile_proc.stdout,
+            stdout=subprocess.PIPE,
+            env=os.environ,
+        )
+        ngrammake_proc = subprocess.Popen(
+            [
+                thirdparty_binary("ngrammake"),
+                f"--method={self.smoothing_method}",
+            ],
+            stdin=ngramcount_proc.stdout,
+            stdout=subprocess.PIPE,
+            env=os.environ,
+        )
+
+        ngramshrink_proc = subprocess.Popen(
+            [
+                thirdparty_binary("ngramshrink"),
+                f"--method={self.pruning_method}",
+                f"--theta={self.initial_prune_threshold}",
+            ],
+            stdin=ngrammake_proc.stdout,
+            stdout=subprocess.PIPE,
+            env=os.environ,
+        )
+        print_proc = subprocess.Popen(
+            [
+                thirdparty_binary("ngramprint"),
+                f"--symbols={input_symbols_path}",
+            ],
+            env=os.environ,
+            stdin=ngramshrink_proc.stdout,
+            stdout=subprocess.PIPE,
+            encoding="utf8",
+        )
+        ngrams = set()
+        for line in print_proc.stdout:
+            line = line.strip().split()[:-1]
+            ngram = self.sequence_separator.join(x for x in line if x not in {"<s>", "</s>"})
+            if self.sequence_separator not in ngram:
+                continue
+            ngrams.add(ngram)
+
+        print_proc.wait()
+        with mfa_open(input_ngram_path.with_suffix(".ngrams"), "w") as f:
+            for ngram in sorted(ngrams):
+                f.write(f"{ngram}\n")
+
+        output_path = self.working_directory.joinpath("output.txt")
+        output_ngram_path = self.working_directory.joinpath("output_ngram.fst")
+        output_symbols_path = self.working_directory.joinpath("output_ngram.syms")
+        symbols_proc = subprocess.Popen(
+            [
+                thirdparty_binary("ngramsymbols"),
+                "--OOV_symbol=<unk>",
+                "--epsilon_symbol=<eps>",
+                output_path,
+                output_symbols_path,
+            ],
+            encoding="utf8",
+        )
+        symbols_proc.communicate()
+        farcompile_proc = subprocess.Popen(
+            [
+                thirdparty_binary("farcompilestrings"),
+                "--token_type=symbol",
+                f"--symbols={output_symbols_path}",
+                output_path,
+            ],
+            stdout=subprocess.PIPE,
+            env=os.environ,
+        )
+        ngramcount_proc = subprocess.Popen(
+            [
+                thirdparty_binary("ngramcount"),
+                "--require_symbols=false",
+                "--round_to_int",
+                f"--order={self.output_order}",
+            ],
+            stdin=farcompile_proc.stdout,
+            stdout=subprocess.PIPE,
+            env=os.environ,
+        )
+        ngrammake_proc = subprocess.Popen(
+            [
+                thirdparty_binary("ngrammake"),
+                f"--method={self.smoothing_method}",
+            ],
+            stdin=ngramcount_proc.stdout,
+            stdout=subprocess.PIPE,
+            env=os.environ,
+        )
+
+        ngramshrink_proc = subprocess.Popen(
+            [
+                thirdparty_binary("ngramshrink"),
+                f"--method={self.pruning_method}",
+                f"--theta={self.initial_prune_threshold}",
+            ],
+            stdin=ngrammake_proc.stdout,
+            stdout=subprocess.PIPE,
+            env=os.environ,
+        )
+        print_proc = subprocess.Popen(
+            [thirdparty_binary("ngramprint"), f"--symbols={output_symbols_path}"],
+            env=os.environ,
+            stdin=ngramshrink_proc.stdout,
+            stdout=subprocess.PIPE,
+            encoding="utf8",
+        )
+        ngrams = set()
+        for line in print_proc.stdout:
+            line = line.strip().split()[:-1]
+            ngram = self.sequence_separator.join(x for x in line if x not in {"<s>", "</s>"})
+            if self.sequence_separator not in ngram:
+                continue
+            ngrams.add(ngram)
+
+        print_proc.wait()
+        with mfa_open(output_ngram_path.with_suffix(".ngrams"), "w") as f:
+            for ngram in sorted(ngrams):
+                f.write(f"{ngram}\n")
+
+    def train(self) -> None:
+        """
+        Train a G2P model
+        """
+        os.makedirs(self.working_log_directory, exist_ok=True)
+        begin = time.time()
+        self.train_alignments()
+        logger.debug(
+            f"Aligning {len(self.g2p_training_dictionary)} words took {time.time() - begin:.3f} seconds"
+        )
+        self.export_alignments()
+        begin = time.time()
+        self.train_ngram_model()
+        logger.debug(
+            f"Generating model for {len(self.g2p_training_dictionary)} words took {time.time() - begin:.3f} seconds"
+        )
+        self.finalize_training()
 
 
 class PhonetisaurusTrainer(
@@ -1397,24 +1577,6 @@ class PhonetisaurusTrainer(
         os.makedirs(self.phones_dir, exist_ok=True)
         self.initialize_training()
         self.initialized = True
-
-    def train(self) -> None:
-        """
-        Train a G2P model
-        """
-        os.makedirs(self.working_log_directory, exist_ok=True)
-        begin = time.time()
-        self.train_alignments()
-        logger.debug(
-            f"Aligning {len(self.g2p_training_dictionary)} words took {time.time() - begin:.3f} seconds"
-        )
-        self.export_alignments()
-        begin = time.time()
-        self.train_ngram_model()
-        logger.debug(
-            f"Generating model for {len(self.g2p_training_dictionary)} words took {time.time() - begin:.3f} seconds"
-        )
-        self.finalize_training()
 
     def finalize_training(self) -> None:
         """Finalize training and run evaluation if specified"""
@@ -1485,160 +1647,6 @@ class PhonetisaurusTrainer(
                     f.write(f"{orthography}\t{p}\n")
         gen.compute_validation_errors(validation_set, output)
 
-    def compute_initial_ngrams(self) -> None:
-        word_path = self.working_directory.joinpath("words.txt")
-        word_ngram_path = self.working_directory.joinpath("grapheme_ngram.fst")
-        word_symbols_path = self.working_directory.joinpath("grapheme_ngram.syms")
-        symbols_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngramsymbols"),
-                "--OOV_symbol=<unk>",
-                "--epsilon_symbol=<eps>",
-                word_path,
-                word_symbols_path,
-            ],
-            encoding="utf8",
-        )
-        symbols_proc.communicate()
-        farcompile_proc = subprocess.Popen(
-            [
-                thirdparty_binary("farcompilestrings"),
-                "--token_type=symbol",
-                f"--symbols={word_symbols_path}",
-                word_path,
-            ],
-            stdout=subprocess.PIPE,
-            env=os.environ,
-        )
-        ngramcount_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngramcount"),
-                "--require_symbols=false",
-                "--round_to_int",
-                f"--order={self.grapheme_order}",
-            ],
-            stdin=farcompile_proc.stdout,
-            stdout=subprocess.PIPE,
-            env=os.environ,
-        )
-        ngrammake_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngrammake"),
-                f"--method={self.smoothing_method}",
-            ],
-            stdin=ngramcount_proc.stdout,
-            stdout=subprocess.PIPE,
-            env=os.environ,
-        )
-
-        ngramshrink_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngramshrink"),
-                f"--method={self.pruning_method}",
-                f"--theta={self.initial_prune_threshold}",
-            ],
-            stdin=ngrammake_proc.stdout,
-            stdout=subprocess.PIPE,
-            env=os.environ,
-        )
-        print_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngramprint"),
-                f"--symbols={word_symbols_path}",
-            ],
-            env=os.environ,
-            stdin=ngramshrink_proc.stdout,
-            stdout=subprocess.PIPE,
-            encoding="utf8",
-        )
-        ngrams = set()
-        for line in print_proc.stdout:
-            line = line.strip().split()[:-1]
-            ngram = self.sequence_separator.join(x for x in line if x not in {"<s>", "</s>"})
-            if self.sequence_separator not in ngram:
-                continue
-            ngrams.add(ngram)
-
-        print_proc.wait()
-        with mfa_open(word_ngram_path.with_suffix(".ngrams"), "w") as f:
-            for ngram in sorted(ngrams):
-                f.write(f"{ngram}\n")
-
-        phone_path = self.working_directory.joinpath("pronunciations.txt")
-        phone_ngram_path = self.working_directory.joinpath("phone_ngram.fst")
-        phone_symbols_path = self.working_directory.joinpath("phone_ngram.syms")
-        symbols_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngramsymbols"),
-                "--OOV_symbol=<unk>",
-                "--epsilon_symbol=<eps>",
-                phone_path,
-                phone_symbols_path,
-            ],
-            encoding="utf8",
-        )
-        symbols_proc.communicate()
-        farcompile_proc = subprocess.Popen(
-            [
-                thirdparty_binary("farcompilestrings"),
-                "--token_type=symbol",
-                f"--symbols={phone_symbols_path}",
-                phone_path,
-            ],
-            stdout=subprocess.PIPE,
-            env=os.environ,
-        )
-        ngramcount_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngramcount"),
-                "--require_symbols=false",
-                "--round_to_int",
-                f"--order={self.phone_order}",
-            ],
-            stdin=farcompile_proc.stdout,
-            stdout=subprocess.PIPE,
-            env=os.environ,
-        )
-        ngrammake_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngrammake"),
-                f"--method={self.smoothing_method}",
-            ],
-            stdin=ngramcount_proc.stdout,
-            stdout=subprocess.PIPE,
-            env=os.environ,
-        )
-
-        ngramshrink_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngramshrink"),
-                f"--method={self.pruning_method}",
-                f"--theta={self.initial_prune_threshold}",
-            ],
-            stdin=ngrammake_proc.stdout,
-            stdout=subprocess.PIPE,
-            env=os.environ,
-        )
-        print_proc = subprocess.Popen(
-            [thirdparty_binary("ngramprint"), f"--symbols={phone_symbols_path}"],
-            env=os.environ,
-            stdin=ngramshrink_proc.stdout,
-            stdout=subprocess.PIPE,
-            encoding="utf8",
-        )
-        ngrams = set()
-        for line in print_proc.stdout:
-            line = line.strip().split()[:-1]
-            ngram = self.sequence_separator.join(x for x in line if x not in {"<s>", "</s>"})
-            if self.sequence_separator not in ngram:
-                continue
-            ngrams.add(ngram)
-
-        print_proc.wait()
-        with mfa_open(phone_ngram_path.with_suffix(".ngrams"), "w") as f:
-            for ngram in sorted(ngrams):
-                f.write(f"{ngram}\n")
-
     def initialize_training(self) -> None:
         """Initialize training G2P model"""
         with self.session() as session:
@@ -1648,7 +1656,7 @@ class PhonetisaurusTrainer(
             session.query(Job).delete()
             session.commit()
 
-            job_objs = [{"id": j} for j in range(GLOBAL_CONFIG.num_jobs)]
+            job_objs = [{"id": j} for j in range(1, GLOBAL_CONFIG.num_jobs + 1)]
             self.g2p_num_training_pronunciations = 0
             self.g2p_num_validation_pronunciations = 0
             self.g2p_num_training_words = 0
@@ -1657,15 +1665,15 @@ class PhonetisaurusTrainer(
             # so they're not completely overlapping and using more memory
             num_words = session.query(Word.id).count()
             words_per_job = int(num_words / GLOBAL_CONFIG.num_jobs) + 1
-            current_job = 0
+            current_job = 1
             words = session.query(Word.id).filter(
                 Word.word_type.in_([WordType.speech, WordType.clitic])
             )
             mappings = []
             for i, (w,) in enumerate(words):
                 if (
-                    i >= (current_job + 1) * words_per_job
-                    and current_job != GLOBAL_CONFIG.num_jobs
+                    i >= (current_job) * words_per_job
+                    and current_job != GLOBAL_CONFIG.num_jobs + 1
                 ):
                     current_job += 1
                 mappings.append({"word_id": w, "job_id": current_job, "training": 1})
@@ -1717,8 +1725,8 @@ class PhonetisaurusTrainer(
                 .join(Word.job)
                 .filter(Word2Job.training == True)  # noqa
             )
-            with mfa_open(self.working_directory.joinpath("words.txt"), "w") as word_f, mfa_open(
-                self.working_directory.joinpath("pronunciations.txt"), "w"
+            with mfa_open(self.working_directory.joinpath("input.txt"), "w") as word_f, mfa_open(
+                self.working_directory.joinpath("output.txt"), "w"
             ) as phone_f:
                 for pronunciation, word in query:
                     word = list(word)

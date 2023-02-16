@@ -494,11 +494,8 @@ class NormalizeTextFunction(KaldiFunction):
                 text.append(w)
                 if character_text:
                     character_text.append("<space>")
-                if self.bracket_regex.match(w):
-                    character_text.append(self.bracketed_word)
-                else:
-                    for g in w:
-                        character_text.append(g)
+                for g in w:
+                    character_text.append(g)
             text = " ".join(text)
             character_text = " ".join(character_text)
             yield {

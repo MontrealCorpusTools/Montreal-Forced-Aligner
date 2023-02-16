@@ -12,7 +12,10 @@ from montreal_forced_aligner.command_line.utils import (
     common_options,
 )
 from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
-from montreal_forced_aligner.tokenization.trainer import TokenizerTrainer
+from montreal_forced_aligner.tokenization.trainer import (
+    PhonetisaurusTokenizerTrainer,
+    TokenizerTrainer,
+)
 
 __all__ = ["train_tokenizer_cli"]
 
@@ -48,6 +51,12 @@ __all__ = ["train_tokenizer_cli"]
     "most of the data and validating on an unseen subset.",
     default=False,
 )
+@click.option(
+    "--phonetisaurus",
+    is_flag=True,
+    help="Flag for using Phonetisaurus-style models.",
+    default=False,
+)
 @common_options
 @click.help_option("-h", "--help")
 @click.pass_context
@@ -63,10 +72,19 @@ def train_tokenizer_cli(context, **kwargs) -> None:
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"]
     output_model_path = kwargs["output_model_path"]
-    trainer = TokenizerTrainer(
-        corpus_directory=corpus_directory,
-        **TokenizerTrainer.parse_parameters(config_path, context.params, context.args),
-    )
+    phonetisaurus = kwargs["phonetisaurus"]
+    if phonetisaurus:
+        trainer = PhonetisaurusTokenizerTrainer(
+            corpus_directory=corpus_directory,
+            **PhonetisaurusTokenizerTrainer.parse_parameters(
+                config_path, context.params, context.args
+            ),
+        )
+    else:
+        trainer = TokenizerTrainer(
+            corpus_directory=corpus_directory,
+            **TokenizerTrainer.parse_parameters(config_path, context.params, context.args),
+        )
 
     try:
         trainer.setup()

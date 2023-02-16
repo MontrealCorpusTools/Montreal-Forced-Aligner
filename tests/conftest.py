@@ -266,6 +266,11 @@ def test_tokenizer_model(tokenizer_model_dir):
 
 
 @pytest.fixture(scope="session")
+def test_tokenizer_model_phonetisaurus(tokenizer_model_dir):
+    return tokenizer_model_dir.joinpath("test_tokenizer_model_phonetisaurus.zip")
+
+
+@pytest.fixture(scope="session")
 def transcription_language_model(language_model_dir, generated_dir):
     return language_model_dir.joinpath("test_lm.zip")
 
