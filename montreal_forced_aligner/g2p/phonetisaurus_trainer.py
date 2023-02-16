@@ -1066,17 +1066,20 @@ class PhonetisaurusTrainerMixin:
 
         logger.info("Training ngram model...")
         with mfa_open(self.working_log_directory.joinpath("model.log"), "w") as logf:
-            ngrammerge_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("ngrammerge"),
-                    f'--ofile={self.ngram_path.with_suffix(".cnts")}',
-                    *count_paths,
-                ],
-                stderr=logf,
-                # stdout=subprocess.PIPE,
-                env=os.environ,
-            )
-            ngrammerge_proc.communicate()
+            if len(count_paths) > 1:
+                ngrammerge_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("ngrammerge"),
+                        f'--ofile={self.ngram_path.with_suffix(".cnts")}',
+                        *count_paths,
+                    ],
+                    stderr=logf,
+                    # stdout=subprocess.PIPE,
+                    env=os.environ,
+                )
+                ngrammerge_proc.communicate()
+            else:
+                os.rename(count_paths[0], self.ngram_path.with_suffix(".cnts"))
             ngrammake_proc = subprocess.Popen(
                 [
                     thirdparty_binary("ngrammake"),
