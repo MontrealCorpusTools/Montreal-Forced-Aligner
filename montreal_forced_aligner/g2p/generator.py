@@ -20,7 +20,9 @@ from pywrapfst import SymbolTable
 
 from montreal_forced_aligner.abc import DatabaseMixin, TopLevelMfaWorker
 from montreal_forced_aligner.config import GLOBAL_CONFIG
-from montreal_forced_aligner.corpus.text_corpus import TextCorpusMixin
+from montreal_forced_aligner.corpus.text_corpus import DictionaryTextCorpusMixin, TextCorpusMixin
+from montreal_forced_aligner.data import WordType
+from montreal_forced_aligner.db import Word
 from montreal_forced_aligner.exceptions import PyniniGenerationError
 from montreal_forced_aligner.g2p.mixins import G2PTopLevelMixin
 from montreal_forced_aligner.helper import comma_join, mfa_open, score_g2p
@@ -759,3 +761,46 @@ class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker)
         if not self.include_bracketed:
             word_list = [x for x in word_list if not self.check_bracketed(x)]
         return word_list
+
+
+class PyniniDictionaryCorpusGenerator(
+    PyniniGenerator, DictionaryTextCorpusMixin, TopLevelMfaWorker
+):
+    """
+    Top-level worker for generating pronunciations from a corpus and a Pynini G2P model
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.g2p.generator.PyniniGenerator`
+        For Pynini G2P generation parameters
+    :class:`~montreal_forced_aligner.corpus.text_corpus.TextCorpusMixin`
+        For corpus parsing parameters
+    :class:`~montreal_forced_aligner.abc.TopLevelMfaWorker`
+        For top-level parameters
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._word_list = None
+
+    def setup(self) -> None:
+        """Set up the pronunciation generator"""
+        if self.initialized:
+            return
+        self.load_corpus()
+        super().setup()
+        self.g2p_model.validate(self.words_to_g2p)
+        self.initialized = True
+
+    @property
+    def words_to_g2p(self) -> List[str]:
+        """Words to produce pronunciations"""
+        if self._word_list is None:
+            with self.session() as session:
+                query = (
+                    session.query(Word.word)
+                    .filter(Word.word_type == WordType.oov, Word.word != self.oov_word)
+                    .order_by(Word.word)
+                )
+                self._word_list = [x for x, in query]
+        return self._word_list

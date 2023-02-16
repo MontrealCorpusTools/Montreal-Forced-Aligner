@@ -308,14 +308,17 @@ class PhonetisaurusTokenizerTrainer(PhonetisaurusTrainerMixin, TokenizerMixin):
 
     def train(self) -> None:
         if os.path.exists(self.fst_path):
+            self.finalize_training()
             return
         super().train()
 
     def initialize_training(self) -> None:
         """Initialize training tokenizer model"""
-        logger.info("Initializing training...")
 
         self.create_new_current_workflow(WorkflowType.tokenizer_training)
+        if self.fst_path.exists():
+            return
+        logger.info("Initializing training...")
         with self.session() as session:
             session.query(M2M2Job).delete()
             session.query(M2MSymbol).delete()

@@ -5,7 +5,6 @@ import functools
 import os
 import shutil
 import subprocess
-import time
 import typing
 from pathlib import Path
 
@@ -262,7 +261,7 @@ def check_databases(db_name=None) -> None:
                 isolation_level="AUTOCOMMIT",
             ).execution_options(logging_token="check_databases_engine")
             with engine.connect():
-                time.sleep(1)
+                pass
             return
         except sqlalchemy.exc.OperationalError:
             if not os.listdir(db_directory):
@@ -343,7 +342,6 @@ def cleanup_databases() -> None:
 
 def remove_databases() -> None:
     """Remove database"""
-    time.sleep(1)
     GLOBAL_CONFIG.load()
 
     db_directory = os.path.join(

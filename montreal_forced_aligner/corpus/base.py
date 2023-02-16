@@ -696,13 +696,17 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             continue
                         if (w, dict_id) not in word_insert_mappings:
                             max_mapping_ids[dict_id] += 1
+                            word_type = WordType.oov
+                            if hasattr(self, "brackets"):
+                                if any(w.startswith(b) for b, _ in self.brackets):
+                                    word_type = WordType.bracketed
                             word_insert_mappings[(w, dict_id)] = {
                                 "id": word_key,
                                 "mapping_id": max_mapping_ids[d_id],
                                 "word": w,
                                 "count": 0,
                                 "dictionary_id": dict_id,
-                                "word_type": WordType.oov,
+                                "word_type": word_type,
                             }
                             pronunciation_insert_mappings.append(
                                 {

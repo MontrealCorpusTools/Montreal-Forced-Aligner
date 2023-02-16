@@ -9,13 +9,21 @@ from pathlib import Path
 
 import click
 
-from montreal_forced_aligner.config import GLOBAL_CONFIG
+from montreal_forced_aligner.command_line.utils import (
+    check_databases,
+    cleanup_databases,
+    common_options,
+    validate_dictionary,
+)
+from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.data import PhoneSetType
+from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionary
 from montreal_forced_aligner.exceptions import (
     ModelLoadError,
     ModelSaveError,
     ModelTypeNotSupportedError,
     MultipleModelTypesFoundError,
+    PhoneMismatchError,
     PretrainedModelNotFoundError,
 )
 from montreal_forced_aligner.models import MODEL_TYPES, Archive, ModelManager, guess_model_type
@@ -26,6 +34,7 @@ __all__ = [
     "download_model_cli",
     "list_model_cli",
     "inspect_model_cli",
+    "add_words_cli",
 ]
 
 
@@ -136,6 +145,50 @@ def inspect_model_cli(model_type: str, model: str) -> None:
         if not m:
             raise ModelLoadError(path)
     m.pretty_print()
+
+
+@model_cli.command(name="add_words", short_help="Add words to a dictionary")
+@click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
+@click.argument("new_pronunciations_path", type=click.UNPROCESSED, callback=validate_dictionary)
+@click.help_option("-h", "--help")
+@common_options
+@click.pass_context
+def add_words_cli(context, **kwargs) -> None:
+    """
+    Add words from one pronunciation dictionary to another pronunciation dictionary,
+    so long as the new pronunciations do not contain any new phones
+    """
+    if kwargs.get("profile", None) is not None:
+        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+    GLOBAL_CONFIG.current_profile.update(kwargs)
+    GLOBAL_CONFIG.save()
+    check_databases()
+
+    dictionary_path = kwargs.get("dictionary_path", None)
+    new_pronunciations_path = kwargs.get("new_pronunciations_path", None)
+    base_dictionary = MultispeakerDictionary(dictionary_path=dictionary_path)
+    base_dictionary.dictionary_setup()
+    new_pronunciations = MultispeakerDictionary(dictionary_path=new_pronunciations_path)
+    new_pronunciations.dictionary_setup()
+    new_phones = set()
+    for phone in new_pronunciations.non_silence_phones:
+        if phone not in base_dictionary.non_silence_phones:
+            new_phones.add(phone)
+    if new_phones:
+        raise PhoneMismatchError(new_phones)
+
+    try:
+        new_words = new_pronunciations.words_for_export(probability=True)
+        base_dictionary.add_words(new_words)
+        base_dictionary.export_lexicon(
+            base_dictionary._default_dictionary_id,
+            base_dictionary.dictionary_model.path,
+            probability=True,
+        )
+    except Exception:
+        raise
+    finally:
+        cleanup_databases()
 
 
 @model_cli.command(name="save", short_help="Save a model")

@@ -778,15 +778,6 @@ def groups_path(config_directory):
 
 
 @pytest.fixture(scope="session")
-def speaker_dictionary_path(basic_dict_path, acoustic_dict_path, generated_dir):
-    data = {"default": acoustic_dict_path, "sickmichael": basic_dict_path}
-    speaker_dict_path = generated_dir.joinpath("test_basic_acoustic_dicts.yaml")
-    with mfa_open(speaker_dict_path, "w") as f:
-        yaml.dump(data, f, Dumper=yaml.Dumper, allow_unicode=True)
-    return speaker_dict_path
-
-
-@pytest.fixture(scope="session")
 def mono_output_directory(generated_dir):
     return generated_dir.joinpath("mono_output")
 

@@ -40,3 +40,6 @@ should	sh uh d
 be	b iy
 all	aa l
 thanks	th ae ng k s
+just	jh ah s t
+sound	s aw n d
+environment	eh n v ay r ah n m eh n t

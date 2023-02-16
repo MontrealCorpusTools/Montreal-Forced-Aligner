@@ -1,7 +1,7 @@
 """Helper functions for corpus parsing and loading"""
 from __future__ import annotations
 
-import datetime
+import re
 import subprocess
 import typing
 
@@ -127,11 +127,12 @@ def get_wav_info(
                 elif line.startswith("Sample Rate"):
                     sample_rate = int(line.split(":")[-1].strip())
                 elif line.startswith("Duration"):
-                    duration_string = line.split(":", maxsplit=1)[-1].split("=")[0].strip()
-                    duration = (
-                        datetime.datetime.strptime(duration_string, "%H:%M:%S.%f")
-                        - datetime.datetime(1900, 1, 1)
-                    ).total_seconds()
+                    m = re.search(r"= (?P<num_samples>\d+) samples", line)
+                    if m:
+                        num_samples = int(m.group("num_samples"))
+                        duration = round(num_samples / sample_rate, 6)
+                    else:
+                        raise SoundFileError(file_path, "Could not parse number of samples")
                     break
             sample_rate_string = ""
             if enforce_sample_rate is not None:

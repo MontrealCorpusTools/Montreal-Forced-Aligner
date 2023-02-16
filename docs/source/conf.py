@@ -86,6 +86,10 @@ xref_links = {
         "MFA acoustic models",
         "https://mfa-models.readthedocs.io/en/latest/acoustic/index.html",
     ),
+    "pretrained_tokenizer_models": (
+        "MFA tokenizer models",
+        "https://mfa-models.readthedocs.io/en/latest/tokenizer/index.html",
+    ),
     "pretrained_dictionaries": (
         "MFA dictionaries",
         "https://mfa-models.readthedocs.io/en/latest/dictionary/index.html",
@@ -93,6 +97,10 @@ xref_links = {
     "pretrained_g2p": (
         "MFA G2P models",
         "https://mfa-models.readthedocs.io/en/latest/g2p/index.html",
+    ),
+    "pretrained_ivector_extractor": (
+        "MFA G2P models",
+        "https://mfa-models.readthedocs.io/en/latest/ivector/index.html",
     ),
     "pretrained_language_models": (
         "MFA language models",

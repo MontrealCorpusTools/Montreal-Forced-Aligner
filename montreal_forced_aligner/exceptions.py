@@ -268,6 +268,22 @@ class DictionaryError(MFAError):
     pass
 
 
+class PhoneMismatchError(DictionaryError):
+    """
+    Exception class for when a dictionary receives a new phone
+
+    Parameters
+    ----------
+    missing_phones: Collection[str]
+        Phones that are not in the acoustic model
+    """
+
+    def __init__(self, missing_phones: Collection[str]):
+        super().__init__("There were extra phones that were not in the dictionary: ")
+        missing_phones = [f"{self.printer.error_text(x)}" for x in sorted(missing_phones)]
+        self.message_lines.append(comma_join(missing_phones))
+
+
 class NoDefaultSpeakerDictionaryError(DictionaryError):
     """
     Exception class for errors in creating MultispeakerDictionary objects

@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from montreal_forced_aligner.abc import DatabaseMixin
-from montreal_forced_aligner.data import PhoneSetType, PhoneType
-from montreal_forced_aligner.db import Phone
+from montreal_forced_aligner.data import PhoneSetType, PhoneType, WordType
+from montreal_forced_aligner.db import Phone, Word
 from montreal_forced_aligner.helper import mfa_open
 
 if TYPE_CHECKING:
@@ -838,6 +838,28 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
         self._disambiguation_symbols_int_path = None
         self._phones_dir = None
         self._lexicon_fst_paths = {}
+        self._num_words = None
+        self._num_speech_words = None
+
+    @property
+    def num_words(self) -> int:
+        """Number of words (including OOVs and special symbols) in the dictionary"""
+        if self._num_words is None:
+            with self.session() as session:
+                self._num_words = session.query(Word).count()
+        return self._num_words
+
+    @property
+    def num_speech_words(self) -> int:
+        """Number of speech words in the dictionary"""
+        if self._num_speech_words is None:
+            with self.session() as session:
+                self._num_speech_words = (
+                    session.query(Word)
+                    .filter(Word.word_type.in_([WordType.speech, WordType.clitic]))
+                    .count()
+                )
+        return self._num_speech_words
 
     @property
     def word_boundary_int_path(self) -> Path:

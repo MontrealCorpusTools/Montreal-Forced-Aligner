@@ -166,7 +166,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     self._dictionary_base_names[d_id] = base_name
         return self._dictionary_base_names
 
-    def word_mapping(self, dictionary_id: int = 1) -> Dict[str, int]:
+    def word_mapping(self, dictionary_id: int = None) -> Dict[str, int]:
         """
         Get the word mapping for a specified dictionary id
 
@@ -180,6 +180,8 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         dict[str, int]
             Mapping from words to their integer IDs for Kaldi processing
         """
+        if dictionary_id is None:
+            dictionary_id = self._default_dictionary_id
         if dictionary_id not in self._words_mappings:
             self._words_mappings[dictionary_id] = {}
             with self.session() as session:
@@ -1232,29 +1234,95 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 with mfa_open(output_rules_path, "w") as f:
                     yaml.dump(dict(dialectal_rules), f, Dumper=yaml.Dumper, allow_unicode=True)
 
-    def export_lexicon(
-        self,
-        dictionary_id: int,
-        path: Path,
-        write_disambiguation: typing.Optional[bool] = False,
-        probability: typing.Optional[bool] = False,
+    def add_words(
+        self, new_word_data: typing.List[typing.Dict[str, typing.Any]], dictionary_id: int = None
     ) -> None:
         """
-        Export pronunciation dictionary to a text file
+        Add word data to a dictionary in the form exported from
+        :meth:`~montreal_forced_aligner.dictionary.multispeaker.MultispeakerDictionaryMixin.words_for_export`
 
         Parameters
         ----------
-        path: :class:`~pathlib.Path`
-            Path to save dictionary
+        new_word_data: list[dict[str,Any]]
+            Word data to add
+        dictionary_id: int, optional
+            Dictionary id to add words, defaults to the default dictionary
+        """
+        if dictionary_id is None:
+            dictionary_id = self._default_dictionary_id
+        word_mapping = {}
+        pronunciation_mapping = []
+        word_index = self.get_next_primary_key(Word)
+        pronunciation_index = self.get_next_primary_key(Word)
+        with self.session() as session:
+            word_mapping_index = (
+                session.query(sqlalchemy.func.max(Word.mapping_id))
+                .filter(Word.dictionary_id == dictionary_id)
+                .scalar()
+                + 1
+            )
+            for data in new_word_data:
+                word = data["word"]
+                if word in self.word_mapping(dictionary_id):
+                    continue
+                if word not in word_mapping:
+                    word_mapping[word] = {
+                        "id": word_index,
+                        "mapping_id": word_mapping_index,
+                        "word": word,
+                        "word_type": WordType.speech,
+                        "count": 0,
+                        "dictionary_id": dictionary_id,
+                    }
+                    word_index += 1
+                    word_mapping_index += 1
+                phones = data["pronunciation"]
+                d = {
+                    "id": pronunciation_index,
+                    "base_pronunciation_id": pronunciation_index,
+                    "word_id": word_mapping[word]["id"],
+                    "pronunciation": phones,
+                }
+                pronunciation_index += 1
+                if "probability" in data and data["probability"] is not None:
+                    d["probability"] = data["probability"]
+                    d["silence_after_probability"] = data["silence_after_probability"]
+                    d["silence_before_correction"] = data["silence_before_correction"]
+                    d["non_silence_before_correction"] = data["non_silence_before_correction"]
+
+                pronunciation_mapping.append(d)
+            self._num_speech_words = None
+            session.bulk_insert_mappings(Word, list(word_mapping.values()))
+            session.flush()
+            session.bulk_insert_mappings(Pronunciation, pronunciation_mapping)
+            session.commit()
+
+    def words_for_export(
+        self,
+        dictionary_id: int = None,
+        write_disambiguation: typing.Optional[bool] = False,
+        probability: typing.Optional[bool] = False,
+    ) -> typing.List[typing.Dict[str, typing.Any]]:
+        """
+        Generate exportable pronunciations
+
+        Parameters
+        ----------
+        dictionary_id: int, optional
+            Dictionary id to export, defaults to the default dictionary
         write_disambiguation: bool, optional
             Flag for whether to include disambiguation information
         probability: bool, optional
             Flag for whether to include probabilities
-        silence_probabilities: bool, optional
-            Flag for whether to include per pronunciation silence probabilities, only valid
-            when ``probability`` is set to True
+
+        Returns
+        -------
+        list[dict[str,Any]]
+            List of pronunciations as dictionaries
         """
-        with mfa_open(path, "w") as f, self.session() as session:
+        if dictionary_id is None:
+            dictionary_id = self._default_dictionary_id
+        with self.session() as session:
             columns = [Word.word, Pronunciation.pronunciation]
             if write_disambiguation:
                 columns.append(Pronunciation.disambiguation)
@@ -1273,8 +1341,30 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 )
                 .order_by(Word.word)
             )
-            for row in pronunciations:
-                data = row.pronunciation_data
+            data = [row for row, in pronunciations]
+        return data
+
+    def export_lexicon(
+        self,
+        dictionary_id: int,
+        path: Path,
+        write_disambiguation: typing.Optional[bool] = False,
+        probability: typing.Optional[bool] = False,
+    ) -> None:
+        """
+        Export pronunciation dictionary to a text file
+
+        Parameters
+        ----------
+        path: :class:`~pathlib.Path`
+            Path to save dictionary
+        write_disambiguation: bool, optional
+            Flag for whether to include disambiguation information
+        probability: bool, optional
+            Flag for whether to include probabilities
+        """
+        with mfa_open(path, "w") as f:
+            for data in self.words_for_export(dictionary_id, write_disambiguation, probability):
                 phones = data["pronunciation"]
                 if write_disambiguation and data["disambiguation"] is not None:
                     phones += f" #{data['disambiguation']}"
