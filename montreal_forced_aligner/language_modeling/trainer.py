@@ -352,9 +352,6 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
                 if m:
                     perplexity = float(m.group("perplexity"))
             self.large_perplexity = perplexity
-            self.num_sentences = num_sentences
-            self.num_words = num_words
-            self.num_oovs = num_oovs
             logger.info(f"{num_sentences}, {num_words}, {num_oovs}")
             logger.info(f"Perplexity of large model: {perplexity}")
 
