@@ -387,7 +387,7 @@ class TokenizerValidator(CorpusTokenizer):
             self.setup()
         logger.info("Tokenizing utterances...")
         to_return = {}
-        if True or num_utterances < 30 or GLOBAL_CONFIG.num_jobs == 1:
+        if num_utterances < 30 or GLOBAL_CONFIG.num_jobs == 1:
             with tqdm.tqdm(total=num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
                 for utterance in self.utterances_to_tokenize:
                     pbar.update(1)
