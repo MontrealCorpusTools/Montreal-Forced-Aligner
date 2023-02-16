@@ -140,8 +140,6 @@ class TokenizerPhonetisaurusRewriter(PhonetisaurusRewriter):
 
     def __call__(self, graphemes: str) -> str:  # pragma: no cover
         """Call the rewrite function"""
-        print(self.input_token_type)
-        print(self.output_token_type)
         graphemes = graphemes.replace(" ", "")
         original = list(graphemes)
         unks = []

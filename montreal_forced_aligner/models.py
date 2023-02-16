@@ -963,8 +963,6 @@ class TokenizerModel(Archive):
         """
         for p in [self.sym_path, self.output_sym_path, self.input_sym_path]:
             source_p = source_directory.joinpath(p.name)
-            print(source_p, source_p.exists())
-            print(p, p.exists())
             if not p.exists() and source_p.exists():
                 copyfile(source_p, p)
 
@@ -978,11 +976,6 @@ class TokenizerModel(Archive):
             Source directory path
         """
         if not self.fst_path.exists():
-            print(self.fst_path, self.fst_path.exists())
-            print(
-                source_directory.joinpath("tokenizer.fst"),
-                source_directory.joinpath("tokenizer.fst").exists(),
-            )
             copyfile(source_directory.joinpath("tokenizer.fst"), self.fst_path)
 
     def export_fst_model(self, destination: Path) -> None:

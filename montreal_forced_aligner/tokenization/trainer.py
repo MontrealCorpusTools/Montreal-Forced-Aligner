@@ -398,8 +398,6 @@ class PhonetisaurusTokenizerTrainer(PhonetisaurusTrainerMixin, TokenizerMixin):
 
         models_temp_dir = self.working_directory.joinpath("model_archive_temp")
         model = TokenizerModel.empty(output_model_path.stem, root_directory=models_temp_dir)
-        print(output_model_path)
-        print(self.working_directory)
         model.add_meta_file(self)
         model.add_tokenizer_model(self.working_directory)
         model.add_graphemes_path(self.working_directory)
@@ -597,8 +595,6 @@ class TokenizerTrainer(PyniniTrainerMixin, TokenizerMixin):
 
         models_temp_dir = self.working_directory.joinpath("model_archive_temp")
         model = TokenizerModel.empty(output_model_path.stem, root_directory=models_temp_dir)
-        print(output_model_path)
-        print(self.working_directory)
         model.add_meta_file(self)
         model.add_tokenizer_model(self.working_directory)
         model.add_graphemes_path(self.working_directory)
