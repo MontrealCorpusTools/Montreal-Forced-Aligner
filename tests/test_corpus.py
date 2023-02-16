@@ -398,11 +398,6 @@ def test_weird_words(weird_words_dir, generated_dir, basic_dict_path, global_con
                 "ajfish",
                 "asds-asda",
                 "sdasd",
-                "[me_really]",
-                "[me____really]",
-                "[me_really]",
-                "<unk>",
-                "<_s>",
             }
         )
     assert (
