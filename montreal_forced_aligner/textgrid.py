@@ -225,10 +225,13 @@ def export_textgrid(
                     tier_name = annotation_type
                 if tier_name not in tg.tierNames:
                     tg.addTier(tgio.IntervalTier(tier_name, [], minT=0, maxT=duration))
-                for a in sorted(intervals, key=lambda x: x.begin):
+                tier = tg.getTier(tier_name)
+                for i, a in enumerate(sorted(intervals, key=lambda x: x.begin)):
                     if duration - a.end < (frame_shift * 2):  # Fix rounding issues
                         a.end = duration
-                    tg.getTier(tier_name).insertEntry(a.to_tg_interval())
+                    if i > 0 and a.to_tg_interval().start > tier.entries[-1].end:
+                        a.begin = tier.entries[-1].end
+                    tier.insertEntry(a.to_tg_interval())
         if has_data:
             for tier in tg.tiers:
                 if len(tier.entries) > 0 and tier.entries[-1][1] > tg.maxTimestamp:
