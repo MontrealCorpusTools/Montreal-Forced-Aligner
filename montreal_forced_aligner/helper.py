@@ -51,7 +51,7 @@ __all__ = [
 console = Console(
     theme=Theme(
         {
-            "logging.level.debug": "dim cyan",
+            "logging.level.debug": "cyan",
             "logging.level.info": "green",
             "logging.level.warning": "yellow",
             "logging.level.error": "red",
@@ -194,7 +194,9 @@ def configure_logger(identifier: str, log_file: Optional[Path] = None) -> None:
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
     elif not config.current_profile.quiet:
-        handler = RichHandler(rich_tracebacks=True, log_time_format="", console=console)
+        handler = RichHandler(
+            rich_tracebacks=True, log_time_format="", console=console, show_path=False
+        )
         if config.current_profile.verbose:
             handler.setLevel(logging.DEBUG)
             logging.getLogger("sqlalchemy.engine").setLevel(logging.DEBUG)
