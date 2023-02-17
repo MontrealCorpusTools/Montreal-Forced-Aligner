@@ -16,8 +16,8 @@ from queue import Empty
 from typing import Dict, List, Optional
 
 import sqlalchemy
-import tqdm
 from sqlalchemy.orm import joinedload, subqueryload
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import FileExporterMixin
 from montreal_forced_aligner.alignment.mixins import AlignMixin
@@ -327,7 +327,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         }
         logger.info("Generating pronunciations...")
         arguments = self.generate_pronunciations_arguments()
-        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
@@ -696,7 +696,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             if max_word_interval_id is None:
                 max_word_interval_id = 0
 
-        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             logger.info(f"Collecting phone and word alignments from {workflow.name} lattices...")
 
             arguments = self.alignment_extraction_arguments()
@@ -867,7 +867,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         """
         logger.info("Fine tuning alignments...")
         begin = time.time()
-        with self.session() as session, tqdm.tqdm(
+        with self.session() as session, tqdm(
             total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar:
             update_mappings = []
@@ -1027,7 +1027,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         begin = time.time()
         error_dict = {}
 
-        with tqdm.tqdm(total=self.num_files, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_files, disable=GLOBAL_CONFIG.quiet) as pbar:
             with self.session() as session:
                 files = (
                     session.query(

@@ -15,8 +15,8 @@ from pathlib import Path
 from queue import Empty
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-import tqdm
 from sqlalchemy.orm import Session, joinedload, subqueryload
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import KaldiFunction, ModelExporterMixin, TopLevelMfaWorker
 from montreal_forced_aligner.config import GLOBAL_CONFIG
@@ -583,7 +583,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             log_directory = self.working_log_directory
             os.makedirs(log_directory, exist_ok=True)
             arguments = self.transition_acc_arguments()
-            with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
                 if GLOBAL_CONFIG.use_mp:
                     error_dict = {}
                     return_queue = mp.Queue()

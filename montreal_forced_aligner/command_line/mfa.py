@@ -8,7 +8,7 @@ import time
 import warnings
 from datetime import datetime
 
-import click
+import rich_click as click
 
 from montreal_forced_aligner.command_line.adapt import adapt_model_cli
 from montreal_forced_aligner.command_line.align import align_corpus_cli
@@ -107,17 +107,14 @@ def mfa_cli(ctx: click.Context) -> None:
     GLOBAL_CONFIG.load()
     from montreal_forced_aligner.helper import configure_logger
 
-    if not GLOBAL_CONFIG.current_profile.debug:
-        warnings.simplefilter("ignore")
+    warnings.simplefilter("ignore")
     configure_logger("mfa")
     check_third_party()
     if ctx.invoked_subcommand != "anchor":
         hooks = ExitHooks()
         hooks.hook()
         atexit.register(hooks.history_save_handler)
-    from colorama import init
 
-    init()
     mp.freeze_support()
 
 

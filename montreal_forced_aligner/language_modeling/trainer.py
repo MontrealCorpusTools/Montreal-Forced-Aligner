@@ -11,11 +11,11 @@ from pathlib import Path
 from queue import Empty
 
 import sqlalchemy
-import tqdm
+from tqdm.rich import tqdm
 
-from montreal_forced_aligner.abc import DatabaseMixin, TopLevelMfaWorker, TrainerMixin
+from montreal_forced_aligner.abc import DatabaseMixin, MfaWorker, TopLevelMfaWorker, TrainerMixin
 from montreal_forced_aligner.config import GLOBAL_CONFIG
-from montreal_forced_aligner.corpus.text_corpus import MfaWorker, TextCorpusMixin
+from montreal_forced_aligner.corpus.text_corpus import TextCorpusMixin
 from montreal_forced_aligner.data import WordType, WorkflowType
 from montreal_forced_aligner.db import Dictionary, Utterance, Word
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
@@ -421,7 +421,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
             procs.append(p)
             p.start()
             count_paths.append(self.working_directory.joinpath(f"{j.id}.cnts"))
-        with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             while True:
                 try:
                     result = return_queue.get(timeout=1)

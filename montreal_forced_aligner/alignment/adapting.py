@@ -11,7 +11,7 @@ from pathlib import Path
 from queue import Empty
 from typing import TYPE_CHECKING, List
 
-import tqdm
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import AdapterMixin
 from montreal_forced_aligner.alignment.multiprocessing import AccStatsArguments, AccStatsFunction
@@ -124,7 +124,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
             initial_mdl_path = self.working_directory.joinpath("unadapted.mdl")
             final_mdl_path = self.working_directory.joinpath("final.mdl")
         logger.info("Accumulating statistics...")
-        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()

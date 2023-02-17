@@ -14,9 +14,9 @@ import numpy
 import pynini
 import pywrapfst
 import sqlalchemy
-import tqdm
 from pynini.lib import rewrite
 from sqlalchemy.orm import scoped_session, sessionmaker
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import MetaDict, TopLevelMfaWorker
 from montreal_forced_aligner.config import GLOBAL_CONFIG
@@ -813,7 +813,7 @@ class PhonetisaurusTrainerMixin:
         symbols = {}
         job_symbols = {}
         symbol_id = 1
-        with tqdm.tqdm(
+        with tqdm(
             total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet
         ) as pbar, self.session(autoflush=False, autocommit=False) as session:
             while True:
@@ -921,9 +921,7 @@ class PhonetisaurusTrainerMixin:
             procs[-1].start()
 
         error_list = []
-        with tqdm.tqdm(
-            total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet
-        ) as pbar:
+        with tqdm(total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet) as pbar:
             while True:
                 try:
                     result = return_queue.get(timeout=1)
@@ -974,9 +972,7 @@ class PhonetisaurusTrainerMixin:
             procs[-1].start()
         mappings = {}
         zero = pynini.Weight.zero("log")
-        with tqdm.tqdm(
-            total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet
-        ) as pbar:
+        with tqdm(total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet) as pbar:
             while True:
                 try:
                     result = return_queue.get(timeout=1)
@@ -1037,9 +1033,7 @@ class PhonetisaurusTrainerMixin:
             count_paths.append(args.far_path.with_suffix(".cnts"))
             procs[-1].start()
 
-        with tqdm.tqdm(
-            total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet
-        ) as pbar:
+        with tqdm(total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet) as pbar:
             while True:
                 try:
                     result = return_queue.get(timeout=1)
@@ -1317,9 +1311,7 @@ class PhonetisaurusTrainerMixin:
             count_paths.append(args.far_path.with_suffix(".cnts"))
             procs[-1].start()
 
-        with tqdm.tqdm(
-            total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet
-        ) as pbar:
+        with tqdm(total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet) as pbar:
             while True:
                 try:
                     result = return_queue.get(timeout=1)

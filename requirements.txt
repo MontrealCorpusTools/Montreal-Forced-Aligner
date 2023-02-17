@@ -3,8 +3,8 @@ tqdm
 pyyaml
 librosa
 requests
-colorama
 biopython
 dataclassy
 sqlalchemy
-ansiwrap
+rich
+rich-click

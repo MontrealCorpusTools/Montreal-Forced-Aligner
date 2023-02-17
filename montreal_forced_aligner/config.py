@@ -11,9 +11,9 @@ import re
 import typing
 from typing import Any, Dict, List, Union
 
-import click
 import dataclassy
 import joblib
+import rich_click as click
 import yaml
 from dataclassy import dataclass
 
@@ -52,8 +52,8 @@ def get_temporary_directory() -> pathlib.Path:
         :class:`~montreal_forced_aligner.exceptions.RootDirectoryError`
     """
     TEMP_DIR = pathlib.Path(
-        os.environ.get(MFA_ROOT_ENVIRONMENT_VARIABLE, os.path.expanduser("~/Documents/MFA"))
-    )
+        os.environ.get(MFA_ROOT_ENVIRONMENT_VARIABLE, "~/Documents/MFA")
+    ).expanduser()
     try:
         TEMP_DIR.mkdir(parents=True, exist_ok=True)
     except OSError:

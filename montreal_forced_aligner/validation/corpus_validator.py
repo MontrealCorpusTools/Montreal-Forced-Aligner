@@ -22,12 +22,7 @@ from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import WorkflowType
 from montreal_forced_aligner.db import Corpus, File, SoundFile, Speaker, TextFile, Utterance
 from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
-from montreal_forced_aligner.helper import (
-    TerminalPrinter,
-    comma_join,
-    load_configuration,
-    mfa_open,
-)
+from montreal_forced_aligner.helper import comma_join, load_configuration, mfa_open
 from montreal_forced_aligner.utils import log_kaldi_errors, run_mp, run_non_mp
 
 if TYPE_CHECKING:
@@ -59,10 +54,6 @@ class ValidationMixin:
     :class:`~montreal_forced_aligner.alignment.base.CorpusAligner`
         For corpus, dictionary, and alignment parameters
 
-    Attributes
-    ----------
-    printer: TerminalPrinter
-        Printer for output messages
     """
 
     def __init__(
@@ -80,7 +71,6 @@ class ValidationMixin:
         self.target_num_ngrams = target_num_ngrams
         self.order = order
         self.method = method
-        self.printer = TerminalPrinter(print_function=logger.info)
 
     @property
     def working_log_directory(self) -> str:
@@ -107,25 +97,21 @@ class ValidationMixin:
         ignored_count += len(self.decode_error_files)
         logger.debug(f"Ignored count calculation took {time.time() - begin:.3f} seconds")
 
-        self.printer.print_header("Corpus")
-        self.printer.print_green_stat(sound_file_count, "sound files")
-        self.printer.print_green_stat(text_file_count, "text files")
+        logger.info("Corpus")
+        logger.info(f"{sound_file_count} sound files")
+        logger.info(f"{text_file_count} text files")
         if len(self.no_transcription_files):
-            self.printer.print_yellow_stat(
-                len(self.no_transcription_files),
-                "sound files without corresponding transcriptions",
+            logger.warning(
+                f"{len(self.no_transcription_files)} sound files without corresponding transcriptions",
             )
         if len(self.decode_error_files):
-            self.printer.print_red_stat(len(self.decode_error_files), "read errors for lab files")
+            logger.error(f"{len(self.decode_error_files)} read errors for lab files")
         if len(self.textgrid_read_errors):
-            self.printer.print_red_stat(
-                len(self.textgrid_read_errors), "read errors for TextGrid files"
-            )
+            logger.error(f"{len(self.textgrid_read_errors)} read errors for TextGrid files")
 
-        self.printer.print_green_stat(self.num_speakers, "speakers")
-        self.printer.print_green_stat(self.num_utterances, "utterances")
-        self.printer.print_green_stat(total_duration, "seconds total duration")
-        print()
+        logger.info(f"{self.num_speakers} speakers")
+        logger.info(f"{self.num_utterances} utterances")
+        logger.info(f"{total_duration} seconds total duration")
         self.analyze_wav_errors()
         self.analyze_missing_features()
         self.analyze_files_with_no_transcription()
@@ -136,14 +122,14 @@ class ValidationMixin:
         if len(self.textgrid_read_errors):
             self.analyze_textgrid_read_errors()
 
-        self.printer.print_header("Dictionary")
+        logger.info("Dictionary")
         self.analyze_oovs()
 
     def analyze_oovs(self) -> None:
         """
         Analyzes OOVs in the corpus and constructs message
         """
-        self.printer.print_sub_header("Out of vocabulary words")
+        logger.info("Out of vocabulary words")
         output_dir = self.output_directory
         oov_path = os.path.join(output_dir, "oovs_found.txt")
         utterance_oov_path = os.path.join(output_dir, "utterance_oovs.txt")
@@ -173,33 +159,24 @@ class ValidationMixin:
                 self.oovs_found.update(oovs)
         if self.oovs_found:
             self.save_oovs_found(self.output_directory)
-            self.printer.print_yellow_stat(len(self.oovs_found), "OOV word types")
-            self.printer.print_yellow_stat(total_instances, "total OOV tokens")
-            lines = [
-                "",
-                "For a full list of the word types, please see:",
-                "",
-                self.printer.indent_string + self.printer.colorize(oov_path, "bright"),
-                "",
-                "For a by-utterance breakdown of missing words, see:",
-                "",
-                self.printer.indent_string + self.printer.colorize(utterance_oov_path, "bright"),
-                "",
-            ]
-            self.printer.print_info_lines(lines)
+            logger.warning(f"{len(self.oovs_found)} OOV word types")
+            logger.warning(f"{total_instances}total OOV tokens")
+            logger.warning(
+                f"For a full list of the word types, please see: {oov_path}. "
+                f"For a by-utterance breakdown of missing words, see: {utterance_oov_path}"
+            )
         else:
-            self.printer.print_info_lines(
-                f"There were {self.printer.colorize('no', 'yellow')} missing words from the dictionary. If you plan on using the a model trained "
+            logger.info(
+                "There were no missing words from the dictionary. If you plan on using the a model trained "
                 "on this dataset to align other datasets in the future, it is recommended that there be at "
                 "least some missing words."
             )
-        self.printer.print_end_section()
 
     def analyze_wav_errors(self) -> None:
         """
         Analyzes any sound file issues in the corpus and constructs message
         """
-        self.printer.print_sub_header("Sound file read errors")
+        logger.info("Sound file read errors")
 
         output_dir = self.output_directory
         wav_read_errors = self.sound_file_errors
@@ -209,25 +186,20 @@ class ValidationMixin:
                 for p in wav_read_errors:
                     f.write(f"{p}\n")
 
-            self.printer.print_info_lines(
-                f"There were {self.printer.colorize(len(wav_read_errors), 'red')} issues reading sound files. "
-                f"Please see {self.printer.colorize(path, 'bright')} for a list."
+            logger.error(
+                f"There were {len(wav_read_errors)} issues reading sound files. "
+                f"Please see {path} for a list."
             )
         else:
-            self.printer.print_info_lines(
-                f"There were {self.printer.colorize('no', 'green')} issues reading sound files."
-            )
-
-        self.printer.print_end_section()
+            logger.info("There were no issues reading sound files.")
 
     def analyze_missing_features(self) -> None:
         """
         Analyzes issues in feature generation in the corpus and constructs message
         """
-        self.printer.print_sub_header("Feature generation")
+        logger.info("Feature generation")
         if self.ignore_acoustics:
-            self.printer.print_info_lines("Acoustic feature generation was skipped.")
-            self.printer.print_end_section()
+            logger.info("Acoustic feature generation was skipped.")
             return
         output_dir = self.output_directory
         with self.session() as session:
@@ -243,66 +215,57 @@ class ValidationMixin:
 
                         f.write(f"{relative_path + '/' + file_name},{begin},{end}\n")
 
-                self.printer.print_info_lines(
-                    f"There were {self.printer.colorize(utterances.count(), 'red')} utterances missing features. "
-                    f"Please see {self.printer.colorize(path, 'bright')} for a list."
+                logger.error(
+                    f"There were {utterances.count()} utterances missing features. "
+                    f"Please see {path} for a list."
                 )
             else:
-                self.printer.print_info_lines(
-                    f"There were {self.printer.colorize('no', 'green')} utterances missing features."
-                )
-            self.printer.print_end_section()
+                logger.info("There were no utterances missing features.")
 
     def analyze_files_with_no_transcription(self) -> None:
         """
         Analyzes issues with sound files that have no transcription files
         in the corpus and constructs message
         """
-        self.printer.print_sub_header("Files without transcriptions")
+        logger.info("Files without transcriptions")
         output_dir = self.output_directory
         if self.no_transcription_files:
             path = os.path.join(output_dir, "missing_transcriptions.csv")
             with mfa_open(path, "w") as f:
                 for file_path in self.no_transcription_files:
                     f.write(f"{file_path}\n")
-            self.printer.print_info_lines(
-                f"There were {self.printer.colorize(len(self.no_transcription_files), 'red')} sound files missing transcriptions. "
-                f"Please see {self.printer.colorize(path, 'bright')} for a list."
+            logger.error(
+                f"There were {len(self.no_transcription_files)} sound files missing transcriptions."
             )
+            logger.error(f"Please see {path} for a list.")
         else:
-            self.printer.print_info_lines(
-                f"There were {self.printer.colorize('no', 'green')} sound files missing transcriptions."
-            )
-        self.printer.print_end_section()
+            logger.info("There were no sound files missing transcriptions.")
 
     def analyze_transcriptions_with_no_wavs(self) -> None:
         """
         Analyzes issues with transcription that have no sound files
         in the corpus and constructs message
         """
-        self.printer.print_sub_header("Transcriptions without sound files")
+        logger.info("Transcriptions without sound files")
         output_dir = self.output_directory
         if self.transcriptions_without_wavs:
             path = os.path.join(output_dir, "transcriptions_missing_sound_files.csv")
             with mfa_open(path, "w") as f:
                 for file_path in self.transcriptions_without_wavs:
                     f.write(f"{file_path}\n")
-            self.printer.print_info_lines(
-                f"There were {self.printer.colorize(len(self.transcriptions_without_wavs), 'red')} transcription files missing sound files. "
-                f"Please see {self.printer.colorize(path, 'bright')} for a list."
+            logger.error(
+                f"There were {len(self.transcriptions_without_wavs)} transcription files missing sound files. "
+                f"Please see {path} for a list."
             )
         else:
-            self.printer.print_info_lines(
-                f"There were {self.printer.colorize('no', 'green')} transcription files missing sound files."
-            )
-        self.printer.print_end_section()
+            logger.info("There were no transcription files missing sound files.")
 
     def analyze_textgrid_read_errors(self) -> None:
         """
         Analyzes issues with reading TextGrid files
         in the corpus and constructs message
         """
-        self.printer.print_sub_header("TextGrid read errors")
+        logger.info("TextGrid read errors")
         output_dir = self.output_directory
         if self.textgrid_read_errors:
             path = os.path.join(output_dir, "textgrid_read_errors.txt")
@@ -311,43 +274,31 @@ class ValidationMixin:
                     f.write(
                         f"The TextGrid file {e.file_name} gave the following error on load:\n\n{e}\n\n\n"
                     )
-            self.printer.print_info_lines(
-                [
-                    f"There were {self.printer.colorize(len(self.textgrid_read_errors), 'red')} TextGrid files that could not be loaded. "
-                    "For details, please see:",
-                    "",
-                    self.printer.indent_string + self.printer.colorize(path, "bright"),
-                ]
+            logger.error(
+                f"There were {len(self.textgrid_read_errors)} TextGrid files that could not be loaded. "
+                f"For details, please see: {path}",
             )
         else:
-            self.printer.print_info_lines(
-                f"There were {self.printer.colorize('no', 'green')} issues reading TextGrids."
-            )
-
-        self.printer.print_end_section()
+            logger.info("There were no issues reading TextGrids.")
 
     def analyze_unreadable_text_files(self) -> None:
         """
         Analyzes issues with reading text files
         in the corpus and constructs message
         """
-        self.printer.print_sub_header("Text file read errors")
+        logger.info("Text file read errors")
         output_dir = self.output_directory
         if self.decode_error_files:
             path = os.path.join(output_dir, "utf8_read_errors.csv")
             with mfa_open(path, "w") as f:
                 for file_path in self.decode_error_files:
                     f.write(f"{file_path}\n")
-            self.printer.print_info_lines(
-                f"There were {self.printer.colorize(len(self.decode_error_files), 'red')} text files that could not be read. "
-                f"Please see {self.printer.colorize(path, 'bright')} for a list."
+            logger.error(
+                f"There were {len(self.decode_error_files)} text files that could not be read. "
+                f"Please see {path} for a list."
             )
         else:
-            self.printer.print_info_lines(
-                f"There were {self.printer.colorize('no', 'green')} issues reading text files."
-            )
-
-        self.printer.print_end_section()
+            logger.info("There were no issues reading text files.")
 
     def compile_information(self) -> None:
         """
@@ -392,29 +343,22 @@ class ValidationMixin:
                 average_logdet_frames += data["logdet_frames"]
                 average_logdet_sum += data["logdet"] * data["logdet_frames"]
 
-        self.printer.print_header("Alignment")
+        logger.info("Alignment")
         if not avg_like_frames:
-            logger.debug(
-                "No utterances were aligned, this likely indicates serious problems with the aligner."
-            )
-            self.printer.print_red_stat(0, f"of {self.num_utterances} utterances were aligned")
+            logger.error(f"0 of {self.num_utterances} utterances were aligned")
         else:
             if too_short_count:
-                self.printer.print_red_stat(
-                    too_short_count, "utterances were too short to be aligned"
+                logger.error(
+                    too_short_count, f"{too_short_count} utterances were too short to be aligned"
                 )
             else:
-                self.printer.print_green_stat(0, "utterances were too short to be aligned")
+                logger.info("0 utterances were too short to be aligned")
             if beam_too_narrow_count:
-                logger.debug(
-                    f"There were {beam_too_narrow_count} utterances that could not be aligned with "
-                    f"the current beam settings."
-                )
-                self.printer.print_yellow_stat(
-                    beam_too_narrow_count, "utterances that need a larger beam to align"
+                logger.warning(
+                    f"{beam_too_narrow_count} utterances that need a larger beam to align"
                 )
             else:
-                self.printer.print_green_stat(0, "utterances that need a larger beam to align")
+                logger.info("0 utterances that need a larger beam to align")
 
             num_utterances = self.num_utterances
             with self.session() as session:
@@ -433,18 +377,13 @@ class ValidationMixin:
                             f.write(
                                 f"{u.file.name},{u.begin},{u.end},{u.duration},{utt_length_words}\n"
                             )
-                    self.printer.print_info_lines(
-                        [
-                            f"There were {self.printer.colorize(unaligned_count, 'red')} unaligned utterances out of {self.printer.colorize(self.num_utterances, 'bright')} after initial training. "
-                            f"For details, please see:",
-                            "",
-                            self.printer.indent_string + self.printer.colorize(path, "bright"),
-                        ]
+                    logger.error(
+                        f"There were {unaligned_count} unaligned utterances out of {self.num_utterances} after initial training. "
+                        f"For details, please see: {path}",
                     )
-
-            self.printer.print_green_stat(
-                num_utterances - beam_too_narrow_count - too_short_count,
-                "utterances were successfully aligned",
+            successful_utterances = num_utterances - beam_too_narrow_count - too_short_count
+            logger.info(
+                f"{successful_utterances} utterances were successfully aligned",
             )
             average_log_like = avg_like_sum / avg_like_frames
             if average_logdet_sum:
@@ -462,39 +401,38 @@ class ValidationMixin:
         :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
-        logger.info("Checking utterance transcriptions...")
 
         try:
             self.train_speaker_lms()
 
             self.transcribe(WorkflowType.per_speaker_transcription)
 
-            self.printer.print_header("Test transcriptions")
+            logger.info("Test transcriptions")
             ser, wer, cer = self.compute_wer()
             if ser < 0.3:
-                self.printer.print_green_stat(f"{ser*100:.2f}%", "sentence error rate")
+                logger.info(f"{ser*100:.2f}% sentence error rate")
             elif ser < 0.8:
-                self.printer.print_yellow_stat(f"{ser*100:.2f}%", "sentence error rate")
+                logger.warning(f"{ser*100:.2f}% sentence error rate")
             else:
-                self.printer.print_red_stat(f"{ser*100:.2f}%", "sentence error rate")
+                logger.error(f"{ser*100:.2f}% sentence error rate")
 
             if wer < 0.25:
-                self.printer.print_green_stat(f"{wer*100:.2f}%", "word error rate")
+                logger.info(f"{wer*100:.2f}% word error rate")
             elif wer < 0.75:
-                self.printer.print_yellow_stat(f"{wer*100:.2f}%", "word error rate")
+                logger.warning(f"{wer*100:.2f}% word error rate")
             else:
-                self.printer.print_red_stat(f"{wer*100:.2f}%", "word error rate")
+                logger.error(f"{wer*100:.2f}% word error rate")
 
             if cer < 0.25:
-                self.printer.print_green_stat(f"{cer*100:.2f}%", "character error rate")
+                logger.info(f"{cer*100:.2f}% character error rate")
             elif cer < 0.75:
-                self.printer.print_yellow_stat(f"{cer*100:.2f}%", "character error rate")
+                logger.warning(f"{cer*100:.2f}% character error rate")
             else:
-                self.printer.print_red_stat(f"{cer*100:.2f}%", "character error rate")
+                logger.error(f"{cer*100:.2f}% character error rate")
 
             self.save_transcription_evaluation(self.output_directory)
             out_path = os.path.join(self.output_directory, "transcription_evaluation.csv")
-            print(f"See {self.printer.colorize(out_path, 'bright')} for more details.")
+            logger.info(f"See {out_path} for more details.")
 
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
@@ -658,9 +596,9 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
         self.analyze_setup()
         logger.debug(f"Setup took {time.time() - begin:.3f} seconds")
         if self.ignore_acoustics:
-            self.printer.print_info_lines("Skipping test alignments.")
+            logger.info("Skipping test alignments.")
             return
-        self.printer.print_header("Training")
+        logger.info("Training")
         self.train()
         if self.test_transcriptions:
             self.test_utterance_transcriptions()
@@ -756,26 +694,13 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
 
     def analyze_missing_phones(self) -> None:
         """Analyzes dictionary and acoustic model for phones in the dictionary that don't have acoustic models"""
-        self.printer.print_sub_header("Acoustic model compatibility")
+        logger.info("Acoustic model compatibility")
         if self.excluded_pronunciation_count:
-            self.printer.print_yellow_stat(
-                len(self.excluded_phones), "phones not in acoustic model"
-            )
-            self.printer.print_yellow_stat(
-                self.excluded_pronunciation_count, "ignored pronunciations"
-            )
+            logger.warning(len(self.excluded_phones), "phones not in acoustic model")
+            logger.warning(self.excluded_pronunciation_count, "ignored pronunciations")
 
-            phone_string = [self.printer.colorize(x, "red") for x in sorted(self.excluded_phones)]
-            self.printer.print_info_lines(
-                [
-                    "",
-                    "Phones missing acoustic models:",
-                    "",
-                    self.printer.indent_string + comma_join(phone_string),
-                ]
+            logger.error(
+                f"Phones missing acoustic models: {comma_join(sorted(self.excluded_phones))}"
             )
         else:
-            self.printer.print_info_lines(
-                f"There were {self.printer.colorize('no', 'green')} phones in the dictionary without acoustic models."
-            )
-        self.printer.print_end_section()
+            logger.info("There were no phones in the dictionary without acoustic models.")

@@ -6,8 +6,6 @@ dependencies:
   - librosa
   - tqdm
   - requests
-  - colorama
-  - ansiwrap
   - pyyaml
   - praatio=6.0.0
   - dataclassy
@@ -35,6 +33,8 @@ dependencies:
   - kneed
   - matplotlib
   - seaborn
+  - rich
+  - rich-click
   - pip:
       - sphinx-needs
       - sphinxcontrib-plantuml

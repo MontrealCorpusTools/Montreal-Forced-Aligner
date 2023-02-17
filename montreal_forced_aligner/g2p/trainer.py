@@ -18,8 +18,8 @@ from typing import Any, List, NamedTuple, Set
 
 import pynini
 import pywrapfst
-import tqdm
 from pynini import Fst
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import MetaDict, MfaWorker, TopLevelMfaWorker, TrainerMixin
 from montreal_forced_aligner.config import GLOBAL_CONFIG
@@ -538,7 +538,7 @@ class PyniniTrainerMixin:
             # Actually runs starts.
             logger.info("Calculating alignments...")
             begin = time.time()
-            with tqdm.tqdm(
+            with tqdm(
                 total=num_commands * self.num_iterations, disable=GLOBAL_CONFIG.quiet
             ) as pbar:
                 for start in starts:

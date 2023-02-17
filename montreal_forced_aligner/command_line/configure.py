@@ -1,6 +1,6 @@
 import os
 
-import click
+import rich_click as click
 
 from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 

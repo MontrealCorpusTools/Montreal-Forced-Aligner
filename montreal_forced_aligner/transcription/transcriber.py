@@ -19,9 +19,9 @@ from queue import Empty
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import pywrapfst
-import tqdm
 from praatio import textgrid
 from sqlalchemy.orm import joinedload, selectinload
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import TopLevelMfaWorker
 from montreal_forced_aligner.alignment.base import CorpusAligner
@@ -205,7 +205,7 @@ class TranscriberMixin(CorpusAligner):
         os.makedirs(log_directory, exist_ok=True)
         logger.info("Compiling per speaker biased language models...")
         arguments = self.train_speaker_lm_arguments()
-        with tqdm.tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
@@ -276,7 +276,7 @@ class TranscriberMixin(CorpusAligner):
                 p = KaldiProcessWorker(i, return_queue, function, stopped)
                 procs.append(p)
                 p.start()
-            with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
@@ -304,7 +304,7 @@ class TranscriberMixin(CorpusAligner):
         else:
             for args in self.lm_rescore_arguments():
                 function = LmRescoreFunction(args)
-                with tqdm.tqdm(total=GLOBAL_CONFIG.num_jobs, disable=GLOBAL_CONFIG.quiet) as pbar:
+                with tqdm(total=GLOBAL_CONFIG.num_jobs, disable=GLOBAL_CONFIG.quiet) as pbar:
                     for succeeded, failed in function.run():
                         if failed:
                             logger.warning("Some lattices failed to be rescored")
@@ -332,7 +332,7 @@ class TranscriberMixin(CorpusAligner):
                 p = KaldiProcessWorker(i, return_queue, function, stopped)
                 procs.append(p)
                 p.start()
-            with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
@@ -360,7 +360,7 @@ class TranscriberMixin(CorpusAligner):
         else:
             for args in self.carpa_lm_rescore_arguments():
                 function = CarpaLmRescoreFunction(args)
-                with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+                with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
                     for succeeded, failed in function.run():
                         if failed:
                             logger.warning("Some lattices failed to be rescored")
@@ -387,7 +387,7 @@ class TranscriberMixin(CorpusAligner):
         procs = []
         count_paths = []
         allowed_bigrams = collections.defaultdict(set)
-        with self.session() as session, tqdm.tqdm(
+        with self.session() as session, tqdm(
             total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar:
 
@@ -878,7 +878,7 @@ class TranscriberMixin(CorpusAligner):
             Arguments for function
         """
         logger.info("Generating lattices...")
-        with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             workflow = self.current_workflow
             arguments = self.decode_arguments(workflow.workflow_type)
             log_likelihood_sum = 0
@@ -912,7 +912,7 @@ class TranscriberMixin(CorpusAligner):
         """
         logger.info("Calculating initial fMLLR transforms...")
         sum_errors = 0
-        with tqdm.tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
@@ -966,7 +966,7 @@ class TranscriberMixin(CorpusAligner):
         logger.info("Regenerating lattices with fMLLR transforms...")
         workflow = self.current_workflow
         arguments = self.lat_gen_fmllr_arguments(workflow.workflow_type)
-        with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar, mfa_open(
+        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar, mfa_open(
             self.working_log_directory.joinpath("lat_gen_fmllr_log_like.csv"),
             "w",
             encoding="utf8",
@@ -1025,7 +1025,7 @@ class TranscriberMixin(CorpusAligner):
         """
         logger.info("Calculating final fMLLR transforms...")
         sum_errors = 0
-        with tqdm.tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
@@ -1078,7 +1078,7 @@ class TranscriberMixin(CorpusAligner):
         """
         logger.info("Rescoring fMLLR lattices with final transform...")
         sum_errors = 0
-        with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
@@ -1549,7 +1549,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
                 p = KaldiProcessWorker(i, return_queue, function, stopped)
                 procs.append(p)
                 p.start()
-            with tqdm.tqdm(total=len(dict_arguments) * 7, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=len(dict_arguments) * 7, disable=GLOBAL_CONFIG.quiet) as pbar:
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
@@ -1582,7 +1582,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
         else:
             for args in dict_arguments:
                 function = CreateHclgFunction(args)
-                with tqdm.tqdm(total=len(dict_arguments), disable=GLOBAL_CONFIG.quiet) as pbar:
+                with tqdm(total=len(dict_arguments), disable=GLOBAL_CONFIG.quiet) as pbar:
                     for result in function.run():
                         if not isinstance(result, tuple):
                             pbar.update(1)

@@ -13,7 +13,7 @@ import sqlalchemy
 
 from montreal_forced_aligner.abc import MetaDict, TopLevelMfaWorker
 from montreal_forced_aligner.config import GLOBAL_CONFIG
-from montreal_forced_aligner.corpus.text_corpus import TextCorpusMixin
+from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
 from montreal_forced_aligner.data import WorkflowType
 from montreal_forced_aligner.db import M2M2Job, M2MSymbol, Utterance
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
@@ -194,7 +194,7 @@ class TokenizerAlignmentInitWorker(AlignmentInitWorker):
             del far_writer
 
 
-class TokenizerMixin(TextCorpusMixin, G2PTrainer, DictionaryMixin, TopLevelMfaWorker):
+class TokenizerMixin(AcousticCorpusMixin, G2PTrainer, DictionaryMixin, TopLevelMfaWorker):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.training_graphemes = set()

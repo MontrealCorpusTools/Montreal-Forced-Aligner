@@ -9,8 +9,8 @@ from abc import ABCMeta, abstractmethod
 from pathlib import Path
 
 import sqlalchemy.engine
-import tqdm
 from sqlalchemy.orm import Session, joinedload, selectinload, subqueryload
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import DatabaseMixin, MfaWorker
 from montreal_forced_aligner.config import GLOBAL_CONFIG
@@ -302,7 +302,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
     def create_corpus_split(self) -> None:
         """Create split directory and output information from Jobs"""
         os.makedirs(self.split_directory.joinpath("log"), exist_ok=True)
-        with self.session() as session, tqdm.tqdm(
+        with self.session() as session, tqdm(
             total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar:
             jobs = session.query(Job)
@@ -662,7 +662,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         update_mapping = []
         word_key = self.get_next_primary_key(Word)
         pronunciation_key = self.get_next_primary_key(Pronunciation)
-        with tqdm.tqdm(
+        with tqdm(
             total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar, self.session() as session:
             dictionaries: typing.Dict[int, Dictionary] = {
@@ -1169,7 +1169,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             session.commit()
 
             logger.debug(f"Setting subset flags took {time.time()-begin} seconds")
-            with self.session() as session, tqdm.tqdm(
+            with self.session() as session, tqdm(
                 total=subset, disable=GLOBAL_CONFIG.quiet
             ) as pbar:
                 jobs = (

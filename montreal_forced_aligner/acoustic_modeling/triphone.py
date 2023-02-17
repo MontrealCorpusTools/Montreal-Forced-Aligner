@@ -11,7 +11,7 @@ from pathlib import Path
 from queue import Empty
 from typing import TYPE_CHECKING, Dict, List
 
-import tqdm
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
 from montreal_forced_aligner.config import GLOBAL_CONFIG
@@ -294,7 +294,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         """
         logger.info("Converting alignments...")
         arguments = self.convert_alignments_arguments()
-        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()

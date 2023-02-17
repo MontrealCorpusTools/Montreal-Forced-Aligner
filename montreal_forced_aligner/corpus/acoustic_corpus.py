@@ -14,7 +14,7 @@ from queue import Empty
 from typing import List, Optional
 
 import sqlalchemy
-import tqdm
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import MfaWorker
 from montreal_forced_aligner.config import GLOBAL_CONFIG
@@ -228,7 +228,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         indices = []
         jobs = []
         reference_intervals = []
-        with tqdm.tqdm(
+        with tqdm(
             total=self.num_files, disable=GLOBAL_CONFIG.quiet
         ) as pbar, self.session() as session:
             phone_mapping = {}
@@ -385,7 +385,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         log_directory = self.split_directory.joinpath("log")
         os.makedirs(log_directory, exist_ok=True)
         arguments = self.final_feature_arguments()
-        with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             for _ in run_kaldi_function(FinalFeatureFunction, arguments, pbar.update):
                 pass
         with self.session() as session:
@@ -488,7 +488,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         else:
             logger.info("Creating corpus split for feature generation...")
             os.makedirs(self.split_directory.joinpath("log"), exist_ok=True)
-            with self.session() as session, tqdm.tqdm(
+            with self.session() as session, tqdm(
                 total=self.num_utterances + self.num_files, disable=GLOBAL_CONFIG.quiet
             ) as pbar:
                 jobs = session.query(Job)
@@ -636,7 +636,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         os.makedirs(log_directory, exist_ok=True)
         arguments = self.pitch_range_arguments()
         update_mapping = []
-        with tqdm.tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
             for speaker_id, min_f0, max_f0 in run_kaldi_function(
                 PitchRangeFunction, arguments, pbar.update
             ):
@@ -665,7 +665,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         log_directory = self.split_directory.joinpath("log")
         os.makedirs(log_directory, exist_ok=True)
         arguments = self.mfcc_arguments()
-        with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             for _ in run_kaldi_function(MfccFunction, arguments, pbar.update):
                 pass
         logger.debug(f"Generating MFCCs took {time.time() - begin:.3f} seconds")
@@ -736,7 +736,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         logger.info("Calculating fMLLR for speaker adaptation...")
 
         arguments = self.calc_fmllr_arguments(iteration=iteration)
-        with tqdm.tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
@@ -797,7 +797,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         logger.info("Computing VAD...")
 
         arguments = self.compute_vad_arguments()
-        with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
@@ -967,9 +967,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             p.start()
         last_poll = time.time() - 30
         try:
-            with self.session() as session, tqdm.tqdm(
-                total=100, disable=GLOBAL_CONFIG.quiet
-            ) as pbar:
+            with self.session() as session, tqdm(total=100, disable=GLOBAL_CONFIG.quiet) as pbar:
                 import_data = DatabaseImportData()
                 while True:
                     try:

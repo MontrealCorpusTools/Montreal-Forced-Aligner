@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Tuple, Union
 
 import requests
 import yaml
+from rich.pretty import pprint
 
 from montreal_forced_aligner.abc import MfaModel, ModelExporterMixin
 from montreal_forced_aligner.data import PhoneSetType
@@ -26,7 +27,7 @@ from montreal_forced_aligner.exceptions import (
     PronunciationAcousticMismatchError,
     RemoteModelNotFoundError,
 )
-from montreal_forced_aligner.helper import EnhancedJSONEncoder, TerminalPrinter, mfa_open
+from montreal_forced_aligner.helper import EnhancedJSONEncoder, mfa_open
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
@@ -241,11 +242,9 @@ class Archive(MfaModel):
 
     def pretty_print(self) -> None:
         """
-        Pretty print the archive's meta data using TerminalPrinter
+        Pretty print the archive's meta data using rich
         """
-        printer = TerminalPrinter()
-        configuration_data = {"Archive": {"name": (self.name, "green"), "data": self.meta}}
-        printer.print_config(configuration_data)
+        pprint({"Archive": {"name": self.name, "data": self.meta}})
 
     @property
     def meta(self) -> dict:
@@ -527,17 +526,9 @@ class AcousticModel(Archive):
         """
         Prints the metadata information to the terminal
         """
-        from .utils import get_mfa_version
 
-        printer = TerminalPrinter()
-        configuration_data = {"Acoustic model": {"name": (self.name, "green"), "data": {}}}
-        version_color = "green"
-        if self.meta["version"] != get_mfa_version():
-            version_color = "red"
-        configuration_data["Acoustic model"]["data"]["Version"] = (
-            self.meta["version"],
-            version_color,
-        )
+        configuration_data = {"Acoustic model": {"name": self.name, "data": {}}}
+        configuration_data["Acoustic model"]["data"]["Version"] = (self.meta["version"],)
 
         if "citation" in self.meta:
             configuration_data["Acoustic model"]["data"]["Citation"] = self.meta["citation"]
@@ -554,9 +545,9 @@ class AcousticModel(Archive):
         if self.meta["phones"]:
             configuration_data["Acoustic model"]["data"]["Phones"] = self.meta["phones"]
         else:
-            configuration_data["Acoustic model"]["data"]["Phones"] = ("None found!", "red")
+            configuration_data["Acoustic model"]["data"]["Phones"] = "None found!"
 
-        printer.print_config(configuration_data)
+        pprint(configuration_data)
 
     def add_model(self, source: str) -> None:
         """
@@ -1233,12 +1224,11 @@ class DictionaryModel(MfaModel):
 
     def pretty_print(self) -> None:
         """
-        Pretty print the dictionary's metadata using TerminalPrinter
+        Pretty print the dictionary's metadata
         """
         from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionary
 
-        printer = TerminalPrinter()
-        configuration_data = {"Dictionary": {"name": (self.name, "green"), "data": self.meta}}
+        configuration_data = {"Dictionary": {"name": self.name, "data": self.meta}}
         temp_directory = self.dirname.joinpath("temp")
         if temp_directory.exists():
             shutil.rmtree(temp_directory)
@@ -1266,7 +1256,7 @@ class DictionaryModel(MfaModel):
             configuration_data["Dictionary"]["data"]["graphemes"] = sorted(graphemes)
         else:
             configuration_data["Dictionary"]["data"]["graphemes"] = f"{len(graphemes)} graphemes"
-        printer.print_config(configuration_data)
+        pprint(configuration_data)
 
     @classmethod
     def valid_extension(cls, filename: Path) -> bool:
@@ -1418,7 +1408,6 @@ class ModelManager:
         if self.token is not None:
             self.token = environment_token
         self.synced_remote = False
-        self.printer = TerminalPrinter()
         self._cache_info = {}
         self.refresh_local()
 
@@ -1534,28 +1523,19 @@ class ModelManager:
         """
         self.refresh_local()
         if model_type is None:
-            self.printer.print_information_line("Available local models", "", level=0)
+            logger.info("Available local models")
+            data = {}
             for model_type, model_class in MODEL_TYPES.items():
-                names = model_class.get_available_models()
-                if names:
-                    self.printer.print_information_line(model_type, names, value_color="green")
-                else:
-                    self.printer.print_information_line(
-                        model_type, "No models found", value_color="yellow"
-                    )
+                data[model_type] = model_class.get_available_models()
+            pprint(data)
         else:
-            self.printer.print_information_line(
-                f"Available local {model_type} models", "", level=0
-            )
+            logger.info(f"Available local {model_type} models")
             model_class = MODEL_TYPES[model_type]
             names = model_class.get_available_models()
             if names:
-                for name in names:
-                    self.printer.print_information_line("", name, value_color="green", level=1)
+                pprint(names)
             else:
-                self.printer.print_information_line(
-                    "", "No models found", value_color="yellow", level=1
-                )
+                logger.error("No models found")
 
     def print_remote_models(self, model_type: typing.Optional[str] = None) -> None:
         """
@@ -1569,27 +1549,18 @@ class ModelManager:
         if not self.synced_remote:
             self.refresh_remote()
         if model_type is None:
-            self.printer.print_information_line("Available models for download", "", level=0)
+            logger.info("Available models for download")
+            data = {}
             for model_type, release_data in self.remote_models.items():
-                names = sorted(release_data.keys())
-                if names:
-                    self.printer.print_information_line(model_type, names, value_color="green")
-                else:
-                    self.printer.print_information_line(
-                        model_type, "No models found", value_color="red"
-                    )
+                data[model_type] = sorted(release_data.keys())
+            pprint(data)
         else:
-            self.printer.print_information_line(
-                f"Available {model_type} models for download", "", level=0
-            )
+            logger.info(f"Available {model_type} models for download")
             names = sorted(self.remote_models[model_type].keys())
             if names:
-                for name in names:
-                    self.printer.print_information_line("", name, value_color="green", level=1)
+                pprint(names)
             else:
-                self.printer.print_information_line(
-                    "", "No models found", value_color="yellow", level=1
-                )
+                logger.error("No models found")
 
     def download_model(
         self, model_type: str, model_name=typing.Optional[str], ignore_cache=False

@@ -11,7 +11,7 @@ import typing
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import tqdm
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import MetaDict, ModelExporterMixin, TopLevelMfaWorker
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
@@ -240,7 +240,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
         begin = time.time()
         logger.info("Selecting gaussians...")
         arguments = self.gmm_gselect_arguments()
-        with tqdm.tqdm(
+        with tqdm(
             total=int(self.num_current_utterances / 10), disable=GLOBAL_CONFIG.quiet
         ) as pbar:
             for _ in run_kaldi_function(GmmGselectFunction, arguments, pbar.update):
@@ -323,7 +323,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
         logger.info("Accumulating global stats...")
         arguments = self.acc_global_stats_arguments()
 
-        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             for _ in run_kaldi_function(AccGlobalStatsFunction, arguments, pbar.update):
                 pass
 
@@ -539,7 +539,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         logger.info("Extracting posteriors...")
         arguments = self.gauss_to_post_arguments()
 
-        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             for _ in run_kaldi_function(GaussToPostFunction, arguments, pbar.update):
                 pass
 
@@ -612,7 +612,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         logger.info("Accumulating ivector stats...")
         arguments = self.acc_ivector_stats_arguments()
 
-        with tqdm.tqdm(total=self.worker.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.worker.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             for _ in run_kaldi_function(AccIvectorStatsFunction, arguments, pbar.update):
                 pass
 
@@ -719,9 +719,9 @@ class PldaTrainer(IvectorTrainer):
         lda_path = self.working_directory.joinpath("ivector_lda.mat")
         log_path = self.working_log_directory.joinpath("lda.log")
         utt2spk_path = os.path.join(self.corpus_output_directory, "utt2spk.scp")
-        with tqdm.tqdm(
-            total=self.worker.num_utterances, disable=GLOBAL_CONFIG.quiet
-        ) as pbar, mfa_open(log_path, "w") as log_file:
+        with tqdm(total=self.worker.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar, mfa_open(
+            log_path, "w"
+        ) as log_file:
             normalize_proc = subprocess.Popen(
                 [
                     thirdparty_binary("ivector-normalize-length"),

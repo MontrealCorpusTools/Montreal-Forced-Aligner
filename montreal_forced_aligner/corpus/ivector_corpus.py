@@ -10,7 +10,7 @@ from typing import List
 
 import numpy as np
 import sqlalchemy
-import tqdm
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.config import GLOBAL_CONFIG, IVECTOR_DIMENSION
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
@@ -187,7 +187,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         if self.stopped.stop_check():
             logger.debug("PLDA computation stopped early.")
             return
-        with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar, mfa_open(
+        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar, mfa_open(
             log_path, "w"
         ) as log_file:
 
@@ -262,7 +262,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                 return
         logger.info("Extracting ivectors...")
         arguments = self.extract_ivectors_arguments()
-        with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             for _ in run_kaldi_function(ExtractIvectorsFunction, arguments, pbar.update):
                 pass
         self.collect_utterance_ivectors()
@@ -314,7 +314,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                 for line in f:
                     scp_line = line.strip().split(maxsplit=1)
                     ivector_arks[int(scp_line[0].split("-")[-1])] = scp_line[-1]
-        with self.session() as session, tqdm.tqdm(
+        with self.session() as session, tqdm(
             total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar:
             update_mapping = {}
@@ -382,7 +382,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         num_utts_path = self.working_directory.joinpath("current_num_utts.ark")
         if not os.path.exists(speaker_ivector_ark_path):
             self.compute_speaker_ivectors()
-        with self.session() as session, tqdm.tqdm(
+        with self.session() as session, tqdm(
             total=self.num_speakers, disable=GLOBAL_CONFIG.quiet
         ) as pbar:
             utterance_counts = {}

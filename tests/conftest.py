@@ -598,6 +598,27 @@ def swedish_dir(corpus_root_dir, wav_dir, lab_dir):
 
 
 @pytest.fixture()
+def japanese_cv_dir(corpus_root_dir, wav_dir, lab_dir):
+    path = corpus_root_dir.joinpath("test_japanese_cv")
+    path.mkdir(parents=True, exist_ok=True)
+    names = [
+        (
+            "02a8841a00d7624",
+            [
+                "common_voice_ja_24511055",
+            ],
+        )
+    ]
+    for s, files in names:
+        s_dir = path.joinpath(s)
+        s_dir.mkdir(parents=True, exist_ok=True)
+        for name in files:
+            shutil.copyfile(wav_dir.joinpath(name + ".mp3"), s_dir.joinpath(name + ".mp3"))
+            shutil.copyfile(lab_dir.joinpath(name + ".lab"), s_dir.joinpath(name + ".lab"))
+    return path
+
+
+@pytest.fixture()
 def basic_corpus_txt_dir(corpus_root_dir, wav_dir, lab_dir):
     path = corpus_root_dir.joinpath("test_basic_txt")
     os.makedirs(path, exist_ok=True)
