@@ -13,8 +13,8 @@ from queue import Empty
 from typing import TYPE_CHECKING, List
 
 import sqlalchemy.engine
-import tqdm
 from sqlalchemy.orm import Session
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import MfaWorker, ModelExporterMixin, TrainerMixin
 from montreal_forced_aligner.alignment import AlignMixin
@@ -327,7 +327,7 @@ class AcousticModelTrainingMixin(
         """
         logger.info("Accumulating statistics...")
         arguments = self.acc_stats_arguments()
-        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()

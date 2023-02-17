@@ -10,19 +10,18 @@ import itertools
 import json
 import logging
 import re
-import shutil
-import sys
 import typing
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
 
-import ansiwrap
 import dataclassy
 import numpy
 import yaml
 from Bio import pairwise2
-from colorama import Fore, Style
+from rich.console import Console
+from rich.logging import RichHandler
+from rich.theme import Theme
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
@@ -30,7 +29,6 @@ if TYPE_CHECKING:
 
 
 __all__ = [
-    "TerminalPrinter",
     "comma_join",
     "make_safe",
     "make_scp_safe",
@@ -44,11 +42,22 @@ __all__ = [
     "overlap_scoring",
     "align_phones",
     "split_phone_position",
-    "CustomFormatter",
     "configure_logger",
     "mfa_open",
     "load_configuration",
 ]
+
+
+console = Console(
+    theme=Theme(
+        {
+            "logging.level.debug": "cyan",
+            "logging.level.info": "green",
+            "logging.level.warning": "yellow",
+            "logging.level.error": "red",
+        }
+    )
+)
 
 
 @contextmanager
@@ -185,420 +194,17 @@ def configure_logger(identifier: str, log_file: Optional[Path] = None) -> None:
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
     elif not config.current_profile.quiet:
-        handler = logging.StreamHandler(sys.stdout)
+        handler = RichHandler(
+            rich_tracebacks=True, log_time_format="", console=console, show_path=False
+        )
         if config.current_profile.verbose:
             handler.setLevel(logging.DEBUG)
             logging.getLogger("sqlalchemy.engine").setLevel(logging.DEBUG)
             logging.getLogger("sqlalchemy.pool").setLevel(logging.DEBUG)
         else:
             handler.setLevel(logging.INFO)
-        handler.setFormatter(CustomFormatter())
+        handler.setFormatter(logging.Formatter("%(message)s"))
         logger.addHandler(handler)
-
-
-class CustomFormatter(logging.Formatter):
-    """
-    Custom log formatter class for MFA to highlight messages and incorporate terminal options from
-    the global configuration
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        from montreal_forced_aligner.config import GLOBAL_CONFIG
-
-        use_colors = GLOBAL_CONFIG.terminal_colors
-        red = ""
-        green = ""
-        yellow = ""
-        blue = ""
-        reset = ""
-        if use_colors:
-            red = Fore.RED
-            green = Fore.GREEN
-            yellow = Fore.YELLOW
-            blue = Fore.CYAN
-            reset = Style.RESET_ALL
-
-        self.FORMATS = {
-            logging.DEBUG: (f"{blue}DEBUG{reset} - ", "%(message)s"),
-            logging.INFO: (f"{green}INFO{reset} - ", "%(message)s"),
-            logging.WARNING: (f"{yellow}WARNING{reset} - ", "%(message)s"),
-            logging.ERROR: (f"{red}ERROR{reset} - ", "%(message)s"),
-            logging.CRITICAL: (f"{red}CRITICAL{reset} - ", "%(message)s"),
-        }
-
-    def format(self, record: logging.LogRecord):
-        """
-        Format a given log message
-
-        Parameters
-        ----------
-        record: logging.LogRecord
-            Log record to format
-
-        Returns
-        -------
-        str
-            Formatted log message
-        """
-        log_fmt = self.FORMATS.get(record.levelno)
-        return ansiwrap.fill(
-            record.getMessage(),
-            initial_indent=log_fmt[0],
-            subsequent_indent=" " * len(log_fmt[0]),
-            width=shutil.get_terminal_size().columns,
-        )
-
-
-class TerminalPrinter:
-    """
-    Helper class to output colorized text
-
-    Parameters
-    ----------
-    print_function: Callable, optional
-        Function to print information, defaults to :func:`print`
-
-    Attributes
-    ----------
-    colors: dict[str, str]
-        Mapping of color names to terminal codes in colorama (or empty strings
-        if the global terminal_colors flag is set to False)
-    """
-
-    def __init__(self, print_function: typing.Callable = None):
-        if print_function is not None:
-            self.print_function = print_function
-        else:
-            self.print_function = print
-        from montreal_forced_aligner.config import GLOBAL_CONFIG
-
-        self.colors = {}
-        self.colors["bright"] = ""
-        self.colors["green"] = ""
-        self.colors["red"] = ""
-        self.colors["blue"] = ""
-        self.colors["cyan"] = ""
-        self.colors["yellow"] = ""
-        self.colors["reset"] = ""
-        self.colors["normal"] = ""
-        self.indent_level = 0
-        self.indent_size = 2
-        if GLOBAL_CONFIG.terminal_colors:
-            self.colors["bright"] = Style.BRIGHT
-            self.colors["green"] = Fore.GREEN
-            self.colors["red"] = Fore.RED
-            self.colors["blue"] = Fore.BLUE
-            self.colors["cyan"] = Fore.CYAN
-            self.colors["yellow"] = Fore.YELLOW
-            self.colors["reset"] = Style.RESET_ALL
-            self.colors["normal"] = Style.NORMAL
-
-    def error_text(self, text: Any) -> str:
-        """
-        Highlight text as an error
-
-        Parameters
-        ----------
-        text: Any
-            Text to highlight
-
-        Returns
-        -------
-        str
-            Highlighted text
-        """
-        return self.colorize(str(text), "red")
-
-    def emphasized_text(self, text: Any) -> str:
-        """
-        Highlight text as emphasis
-
-        Parameters
-        ----------
-        text: Any
-            Text to highlight
-
-        Returns
-        -------
-        str
-            Highlighted text
-        """
-        return self.colorize(str(text), "bright")
-
-    def pass_text(self, text: Any) -> str:
-        """
-        Highlight text as good
-
-        Parameters
-        ----------
-        text: Any
-            Text to highlight
-
-        Returns
-        -------
-        str
-            Highlighted text
-        """
-        return self.colorize(str(text), "green")
-
-    def warning_text(self, text: Any) -> str:
-        """
-        Highlight text as a warning
-
-        Parameters
-        ----------
-        text: Any
-            Text to highlight
-
-        Returns
-        -------
-        str
-            Highlighted text
-        """
-        return self.colorize(str(text), "yellow")
-
-    @property
-    def indent_string(self) -> str:
-        """Indent string to use in formatting the output messages"""
-        return " " * self.indent_size * self.indent_level
-
-    def print_header(self, header: str) -> None:
-        """
-        Print a section header
-
-        Parameters
-        ----------
-        header: str
-            Section header string
-        """
-        self.indent_level = 0
-        self.print_function("")
-        underline = "*" * len(header)
-        self.print_function(self.colorize(underline, "bright"))
-        self.print_function(self.colorize(header, "bright"))
-        self.print_function(self.colorize(underline, "bright"))
-        self.print_function("")
-        self.indent_level += 1
-
-    def print_sub_header(self, header: str) -> None:
-        """
-        Print a subsection header
-
-        Parameters
-        ----------
-        header: str
-            Subsection header string
-        """
-        underline = "=" * len(header)
-        self.print_function(self.indent_string + self.colorize(header, "bright"))
-        self.print_function(self.indent_string + self.colorize(underline, "bright"))
-        self.print_function("")
-        self.indent_level += 1
-
-    def print_end_section(self) -> None:
-        """Mark the end of a section"""
-        self.indent_level -= 1
-        self.print_function("")
-
-    def format_info_lines(self, lines: Union[list[str], str]) -> List[str]:
-        """
-        Format lines
-
-        Parameters
-        ----------
-        lines: Union[list[str], str
-            Lines to format
-
-        Returns
-        -------
-        str
-            Formatted string
-        """
-        if isinstance(lines, str):
-            lines = [lines]
-
-        for i, line in enumerate(lines):
-            lines[i] = ansiwrap.fill(
-                str(line),
-                initial_indent=self.indent_string,
-                subsequent_indent=" " * self.indent_size * (self.indent_level + 1),
-                width=shutil.get_terminal_size().columns,
-                break_on_hyphens=False,
-                break_long_words=False,
-                drop_whitespace=False,
-            )
-        return lines
-
-    def print_info_lines(self, lines: Union[list[str], str]) -> None:
-        """
-        Print formatted information lines
-
-        Parameters
-        ----------
-        lines: Union[list[str], str
-            Lines to format
-        """
-        if isinstance(lines, str):
-            lines = [lines]
-        lines = self.format_info_lines(lines)
-        for line in lines:
-            self.print_function(line)
-
-    def print_green_stat(self, stat: Any, text: str) -> None:
-        """
-        Print a statistic in green
-
-        Parameters
-        ----------
-        stat: Any
-            Statistic to print
-        text: str
-            Other text to follow statistic
-        """
-        self.print_function(self.indent_string + f"{self.colorize(stat, 'green')} {text}")
-
-    def print_yellow_stat(self, stat, text) -> None:
-        """
-        Print a statistic in yellow
-
-        Parameters
-        ----------
-        stat: Any
-            Statistic to print
-        text: str
-            Other text to follow statistic
-        """
-        self.print_function(self.indent_string + f"{self.colorize(stat, 'yellow')} {text}")
-
-    def print_red_stat(self, stat, text) -> None:
-        """
-        Print a statistic in red
-
-        Parameters
-        ----------
-        stat: Any
-            Statistic to print
-        text: str
-            Other text to follow statistic
-        """
-        self.print_function(self.indent_string + f"{self.colorize(stat, 'red')} {text}")
-
-    def colorize(self, text: Any, color: str) -> str:
-        """
-        Colorize a string
-
-        Parameters
-        ----------
-        text: Any
-            Text to colorize
-        color: str
-            Colorama code or empty string to wrap the text
-
-        Returns
-        -------
-        str
-            Colorized string
-        """
-        return f"{self.colors[color]}{text}{self.colors['reset']}"
-
-    def print_block(self, block: dict, starting_level: int = 1) -> None:
-        """
-        Print a configuration block
-
-        Parameters
-        ----------
-        block: dict
-            Configuration options to output
-        starting_level: int
-            Starting indentation level
-        """
-        for k, v in block.items():
-            value_color = None
-            key_color = None
-            value = ""
-            if isinstance(k, tuple):
-                k, key_color = k
-
-            if isinstance(v, tuple):
-                value, value_color = v
-            elif not isinstance(v, dict):
-                value = v
-            self.print_information_line(k, value, key_color, value_color, starting_level)
-            if isinstance(v, dict):
-                self.print_block(v, starting_level=starting_level + 1)
-        self.print_function("")
-
-    def print_config(self, configuration: MetaDict) -> None:
-        """
-        Pretty print a configuration
-
-        Parameters
-        ----------
-        configuration: dict[str, Any]
-            Configuration to print
-        """
-        for k, v in configuration.items():
-            if "name" in v:
-                name = v["name"]
-                name_color = None
-                if isinstance(name, tuple):
-                    name, name_color = name
-                self.print_information_line(k, name, value_color=name_color, level=0)
-            if "data" in v:
-                self.print_block(v["data"])
-
-    def print_information_line(
-        self,
-        key: str,
-        value: Any,
-        key_color: Optional[str] = None,
-        value_color: Optional[str] = None,
-        level: int = 1,
-    ) -> None:
-        """
-        Pretty print a given configuration line
-
-        Parameters
-        ----------
-        key: str
-            Configuration key
-        value: Any
-            Configuration value
-        key_color: str
-            Key color
-        value_color: str
-            Value color
-        level: int
-            Indentation level
-        """
-        if key_color is None:
-            key_color = "bright"
-        if value_color is None:
-            value_color = "cyan"
-            if isinstance(value, bool):
-                if value:
-                    value_color = "green"
-                else:
-                    value_color = "red"
-        if isinstance(value, (list, tuple, set)):
-            value = comma_join([self.colorize(x, value_color) for x in sorted(value)])
-        else:
-            value = self.colorize(str(value), value_color)
-        indent = ("  " * level) + "-"
-        subsequent_indent = "  " * (level + 1)
-        if key:
-            key = f" {key}:"
-            subsequent_indent += " " * (len(key))
-
-        self.print_function(
-            ansiwrap.fill(
-                f"{self.colorize(key, key_color)} {value}",
-                width=shutil.get_terminal_size().columns,
-                initial_indent=indent,
-                subsequent_indent=subsequent_indent,
-            )
-        )
 
 
 def comma_join(sequence: List[Any]) -> str:

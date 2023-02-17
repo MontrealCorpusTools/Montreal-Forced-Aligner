@@ -699,7 +699,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
             return True
         conf = load_configuration(self.worker_config_path)
         clean = self._validate_previous_configuration(conf)
-        if not clean:
+        if not GLOBAL_CONFIG.current_profile.clean and not clean:
             logger.warning(
                 "The previous run had a different configuration than the current, which may cause issues."
                 " Please see the log for details or use --clean flag if issues are encountered."

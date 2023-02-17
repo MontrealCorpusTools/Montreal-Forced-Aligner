@@ -10,8 +10,8 @@ import typing
 from pathlib import Path
 from queue import Empty
 
-import tqdm
 from sqlalchemy.orm import Session, joinedload, subqueryload
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
@@ -240,7 +240,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
 
         logger.info("Generating initial alignments...")
         arguments = self.mono_align_equal_arguments()
-        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()

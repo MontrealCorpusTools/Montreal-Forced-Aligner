@@ -8,8 +8,6 @@ dependencies:
   - librosa
   - tqdm
   - requests
-  - colorama
-  - ansiwrap
   - pyyaml
   - dataclassy
   - kaldi=*=*cpu*
@@ -42,6 +40,8 @@ dependencies:
   - matplotlib
   - seaborn
   - pip
+  - rich
+  - rich-click
   - pip:
       - build
       - twine

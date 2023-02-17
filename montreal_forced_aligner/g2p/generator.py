@@ -13,10 +13,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 import pynini
-import tqdm
 from pynini import Fst, TokenType
 from pynini.lib import rewrite
 from pywrapfst import SymbolTable
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import DatabaseMixin, TopLevelMfaWorker
 from montreal_forced_aligner.config import GLOBAL_CONFIG
@@ -412,7 +412,7 @@ class PyniniGenerator(G2PTopLevelMixin):
         to_return = {}
         skipped_words = 0
         if num_words < 30 or GLOBAL_CONFIG.num_jobs == 1:
-            with tqdm.tqdm(total=num_words, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=num_words, disable=GLOBAL_CONFIG.quiet) as pbar:
                 for word in self.words_to_g2p:
                     w, m = clean_up_word(word, self.g2p_model.meta["graphemes"])
                     pbar.update(1)
@@ -462,7 +462,7 @@ class PyniniGenerator(G2PTopLevelMixin):
                 procs.append(p)
                 p.start()
             num_words -= skipped_words
-            with tqdm.tqdm(total=num_words, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=num_words, disable=GLOBAL_CONFIG.quiet) as pbar:
                 while True:
                     try:
                         word, result = return_queue.get(timeout=1)

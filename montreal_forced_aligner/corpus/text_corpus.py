@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from queue import Empty
 
-import tqdm
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import MfaWorker, TemporaryDirectoryMixin
 from montreal_forced_aligner.config import GLOBAL_CONFIG
@@ -65,9 +65,7 @@ class TextCorpusMixin(CorpusMixin):
         import_data = DatabaseImportData()
         try:
             file_count = 0
-            with tqdm.tqdm(
-                total=1, disable=GLOBAL_CONFIG.quiet
-            ) as pbar, self.session() as session:
+            with tqdm(total=1, disable=GLOBAL_CONFIG.quiet) as pbar, self.session() as session:
                 for root, _, files in os.walk(self.corpus_directory, followlinks=True):
                     exts = find_exts(files)
                     relative_path = (

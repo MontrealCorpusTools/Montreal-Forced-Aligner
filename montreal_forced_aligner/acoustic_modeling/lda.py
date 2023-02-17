@@ -12,7 +12,7 @@ from pathlib import Path
 from queue import Empty
 from typing import TYPE_CHECKING, Dict, List
 
-import tqdm
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
@@ -412,7 +412,7 @@ class LdaTrainer(TriphoneTrainer):
         if os.path.exists(worker_lda_path):
             os.remove(worker_lda_path)
         arguments = self.lda_acc_stats_arguments()
-        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
@@ -509,7 +509,7 @@ class LdaTrainer(TriphoneTrainer):
         """
         logger.info("Re-calculating LDA...")
         arguments = self.calc_lda_mllt_arguments()
-        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()

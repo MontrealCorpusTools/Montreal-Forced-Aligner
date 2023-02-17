@@ -8,8 +8,8 @@ import time
 import typing
 from pathlib import Path
 
-import tqdm
 from sqlalchemy.orm import joinedload
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
 from montreal_forced_aligner.alignment.multiprocessing import (
@@ -186,7 +186,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                 )
                 for x in self.worker.dictionary_lookup.values()
             }
-            with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
                 for dict_id, utt_id, phones in run_kaldi_function(
                     GeneratePronunciationsFunction, arguments, pbar.update
                 ):

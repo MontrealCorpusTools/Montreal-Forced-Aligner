@@ -5,11 +5,11 @@ import click.testing
 from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
-def test_tokenize_pretrained(japanese_tokenizer_model, japanese_dir, temp_dir, generated_dir):
+def test_tokenize_pretrained(japanese_tokenizer_model, japanese_cv_dir, temp_dir, generated_dir):
     out_directory = generated_dir.joinpath("japanese_tokenized")
     command = [
         "tokenize",
-        japanese_dir,
+        japanese_cv_dir,
         japanese_tokenizer_model,
         out_directory,
         "-t",

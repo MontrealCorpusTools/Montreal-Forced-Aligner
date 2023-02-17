@@ -7,7 +7,7 @@ import shutil
 import typing
 from pathlib import Path
 
-import click
+import rich_click as click
 
 from montreal_forced_aligner.command_line.utils import (
     check_databases,
@@ -42,7 +42,7 @@ __all__ = [
 @click.help_option("-h", "--help")
 def model_cli() -> None:
     """
-    Inspect, download, and save pretrained MFA models
+    Inspect, download, and save pretrained MFA models and dictionaries
     """
     pass
 
@@ -100,8 +100,8 @@ def inspect_model_cli(model_type: str, model: str) -> None:
     from montreal_forced_aligner.config import GLOBAL_CONFIG, get_temporary_directory
 
     GLOBAL_CONFIG.current_profile.clean = True
-    GLOBAL_CONFIG.current_profile.temporary_directory = os.path.join(
-        get_temporary_directory(), "model_inspect"
+    GLOBAL_CONFIG.current_profile.temporary_directory = get_temporary_directory().joinpath(
+        "model_inspect"
     )
     shutil.rmtree(GLOBAL_CONFIG.current_profile.temporary_directory, ignore_errors=True)
     if model_type and model_type not in MODEL_TYPES:
@@ -130,8 +130,8 @@ def inspect_model_cli(model_type: str, model: str) -> None:
             if path is None:
                 raise PretrainedModelNotFoundError(model)
         model = path
-    working_dir = os.path.join(get_temporary_directory(), "models", "inspect")
-    ext = os.path.splitext(model)[1]
+    working_dir = get_temporary_directory().joinpath("models", "inspect")
+    ext = model.suffix
     if model_type:
         if model_type == MODEL_TYPES["dictionary"]:
             m = MODEL_TYPES[model_type](model, working_dir, phone_set_type=PhoneSetType.AUTO)
@@ -218,13 +218,13 @@ def save_model_cli(path: Path, model_type: str, name: str, overwrite: bool) -> N
         Type of model
     """
     logger = logging.getLogger("mfa")
-    model_name = os.path.splitext(os.path.basename(path))[0]
+    model_name = path.stem
     model_class = MODEL_TYPES[model_type]
     if name:
         out_path = model_class.get_pretrained_path(name, enforce_existence=False)
     else:
         out_path = model_class.get_pretrained_path(model_name, enforce_existence=False)
-    if not overwrite and os.path.exists(out_path):
+    if not overwrite and out_path.exists():
         raise ModelSaveError(out_path)
     shutil.copyfile(path, out_path)
     logger.info(

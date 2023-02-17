@@ -16,9 +16,9 @@ from typing import Dict, Optional, Tuple
 import pynini
 import pywrapfst
 import sqlalchemy.orm.session
-import tqdm
 import yaml
 from sqlalchemy.orm import selectinload
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import PhoneType, WordType
@@ -620,7 +620,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         with self.session() as session:
             num_words = session.query(Word).count()
             logger.info("Applying phonological rules...")
-            with tqdm.tqdm(total=num_words, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=num_words, disable=GLOBAL_CONFIG.quiet) as pbar:
                 new_pron_objs = []
                 rule_application_objs = []
                 dialect_ids = {d.name: d.id for d in session.query(Dialect).all()}

@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import sqlalchemy
-import tqdm
 from sqlalchemy.orm import joinedload, selectinload
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import FileExporterMixin, MetaDict, TopLevelMfaWorker
 from montreal_forced_aligner.config import GLOBAL_CONFIG
@@ -230,7 +230,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         new_utts = []
         kwargs = self.segmentation_options
         kwargs.pop("frame_shift")
-        with tqdm.tqdm(
+        with tqdm(
             total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar, self.session() as session:
             utt_index = session.query(sqlalchemy.func.max(Utterance.id)).scalar()
@@ -293,7 +293,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         old_utts = set()
         new_utts = []
 
-        with tqdm.tqdm(
+        with tqdm(
             total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar, self.session() as session:
             utterances = session.query(

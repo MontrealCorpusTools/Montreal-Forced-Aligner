@@ -13,17 +13,17 @@ from pathlib import Path
 import pynini
 import pywrapfst
 import sqlalchemy
-import tqdm
 from praatio import textgrid
 from pynini import Fst
 from pynini.lib import rewrite
 from pywrapfst import SymbolTable
 from sqlalchemy.orm import joinedload, selectinload
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import KaldiFunction, TopLevelMfaWorker
 from montreal_forced_aligner.alignment.multiprocessing import construct_output_path
 from montreal_forced_aligner.config import GLOBAL_CONFIG
-from montreal_forced_aligner.corpus.text_corpus import TextCorpusMixin
+from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
 from montreal_forced_aligner.data import MfaArguments, TextgridFormats
 from montreal_forced_aligner.db import File, Utterance, bulk_update
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
@@ -207,7 +207,7 @@ class TokenizerFunction(KaldiFunction):
                 yield u_id, tokenized_text
 
 
-class CorpusTokenizer(TextCorpusMixin, TopLevelMfaWorker, DictionaryMixin):
+class CorpusTokenizer(AcousticCorpusMixin, TopLevelMfaWorker, DictionaryMixin):
     """
     Top-level worker for generating pronunciations from a corpus and a Pynini tokenizer model
     """
@@ -322,7 +322,7 @@ class CorpusTokenizer(TextCorpusMixin, TopLevelMfaWorker, DictionaryMixin):
             self.setup()
         logger.info("Tokenizing utterances...")
         args = self.tokenize_arguments()
-        with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             update_mapping = []
             for utt_id, tokenized in run_kaldi_function(TokenizerFunction, args, pbar.update):
                 update_mapping.append({"id": utt_id, "text": tokenized})
@@ -388,7 +388,7 @@ class TokenizerValidator(CorpusTokenizer):
         logger.info("Tokenizing utterances...")
         to_return = {}
         if num_utterances < 30 or GLOBAL_CONFIG.num_jobs == 1:
-            with tqdm.tqdm(total=num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
                 for utterance in self.utterances_to_tokenize:
                     pbar.update(1)
                     result = self.rewriter(utterance)
@@ -410,7 +410,7 @@ class TokenizerValidator(CorpusTokenizer):
                 )
                 procs.append(p)
                 p.start()
-            with tqdm.tqdm(total=num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
                 while True:
                     try:
                         utterance, result = return_queue.get(timeout=1)

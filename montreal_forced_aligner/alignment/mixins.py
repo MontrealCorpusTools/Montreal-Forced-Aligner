@@ -12,7 +12,7 @@ from pathlib import Path
 from queue import Empty
 from typing import TYPE_CHECKING, Dict, List
 
-import tqdm
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner.alignment.multiprocessing import (
     AlignArguments,
@@ -298,7 +298,7 @@ class AlignMixin(DictionaryMixin):
         logger.info("Compiling training graphs...")
         error_sum = 0
         arguments = self.compile_train_graphs_arguments()
-        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
@@ -351,7 +351,7 @@ class AlignMixin(DictionaryMixin):
         begin = time.time()
 
         with self.session() as session:
-            with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
                 arguments = self.phone_confidence_arguments()
                 interval_update_mappings = []
                 if GLOBAL_CONFIG.use_mp:
@@ -416,7 +416,7 @@ class AlignMixin(DictionaryMixin):
         """
         begin = time.time()
         logger.info("Generating alignments...")
-        with tqdm.tqdm(
+        with tqdm(
             total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar, self.session() as session:
             if not training:

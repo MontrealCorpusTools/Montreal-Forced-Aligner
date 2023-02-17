@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import click
+import rich_click as click
 import yaml
 
 from montreal_forced_aligner.alignment import PretrainedAligner
