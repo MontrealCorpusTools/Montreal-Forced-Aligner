@@ -353,7 +353,7 @@ html_theme_options = {
         # "image_dark": "logo-dark.svg",
     },
     "analytics": {
-        "google_analytics_id": "353930198",
+        "google_analytics_id": "G-5NGNLY0CWX",
     },
     # "show_nav_level": 1,
     # "navigation_depth": 4,

@@ -410,7 +410,7 @@ class SoundFileError(CorpusReadError):
         Error in TextGrid file
     """
 
-    def __init__(self, file_name: str, error: str):
+    def __init__(self, file_name: typing.Union[str, Path], error: str):
         super().__init__("")
         self.file_name = file_name
         self.error = error

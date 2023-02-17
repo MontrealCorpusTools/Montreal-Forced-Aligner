@@ -603,7 +603,7 @@ def japanese_cv_dir(corpus_root_dir, wav_dir, lab_dir):
     path.mkdir(parents=True, exist_ok=True)
     names = [
         (
-            "02a8841a00d7624",
+            "02a8841a00d762472a4797b56ee01643e8d9ece5a225f2e91c007ab1f94c49c99e50d19986ff3fefb18190257323f34238828114aa607f84fbe9764ecf5aaeaa",
             [
                 "common_voice_ja_24511055",
             ],

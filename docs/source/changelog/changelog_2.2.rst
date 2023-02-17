@@ -5,6 +5,17 @@
 2.2 Changelog
 *************
 
+2.2.4
+=====
+
+- Fixes an issue where some directories in Common Voice Japanese were causing FileNotFound errors for sound files
+
+2.2.3
+=====
+
+- Update terminal printing to use :mod:`rich` rather than custom logic
+- Prevented the tokenizer utility from processing of text files that don't have a corresponding sound file
+
 2.2.2
 =====
 
