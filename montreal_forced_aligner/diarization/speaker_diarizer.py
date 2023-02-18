@@ -676,7 +676,6 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
     def initialize_mfa_clustering(self):
 
         with self.session() as session:
-
             next_speaker_id = self.get_next_primary_key(Speaker)
             speaker_mapping = {}
             existing_speakers = {

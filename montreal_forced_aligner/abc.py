@@ -630,11 +630,6 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
                 logger.error("There was an error in the run, please see the log.")
             else:
                 logger.info(f"Done! Everything took {time.time() - self.start_time:.3f} seconds")
-            handlers = logger.handlers[:]
-            for handler in handlers:
-                if isinstance(handler, logging.FileHandler):
-                    handler.close()
-                    logger.removeHandler(handler)
             self.save_worker_config()
         except (NameError, ValueError):  # already cleaned up
             pass
