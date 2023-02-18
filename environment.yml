@@ -30,7 +30,8 @@ dependencies:
   - torchaudio
   - setuptools_scm
   - pytest
-  - pytest-mypy
+  - pytest-mypygit a
+  - pytest-cov
   - mock
   - coverage
   - coveralls

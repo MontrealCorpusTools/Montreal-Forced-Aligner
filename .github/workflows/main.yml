@@ -43,37 +43,20 @@ jobs:
         env:
           cache-name: cache-mfa-models
         with:
-          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-build-${{ env.cache-name }}-
-            ${{ runner.os }}-build-
-            ${{ runner.os }}-
-          path: |
-            ~/Documents/MFA
+          path: ~/Documents/MFA/pretrained_models
+          key: ${{ runner.os }}-build-${{ env.cache-name }}
 
-      - name: Setup Mambaforge
-        uses: conda-incubator/setup-miniconda@v2
+      - name: Install Conda environment with Micromamba
+        uses: mamba-org/provision-with-micromamba@main
         with:
-          miniforge-variant: Mambaforge
-          miniforge-version: latest
-          activate-environment: my-env
-          use-mamba: true
-      - name: Set cache date
-        run: echo "DATE=$(date +'%Y%m%d')" >> $GITHUB_ENV
-
-      - uses: actions/cache@v3
-        with:
-          path: ${{ matrix.prefix }}
-          key: ${{ matrix.label }}-conda-${{ hashFiles('environment.yml') }}-${{ env.DATE }}-${{ env.CACHE_NUMBER }}
-        id: cache
-
-      - name: Update environment
-        run: mamba env update -n my-env -f environment.yml
-        if: steps.cache.outputs.cache-hit != 'true'
+          environment-file: environment.yaml
+          environment-name: mfa
+          extra-specs: |
+            python=3.9
 
       - name: Run tests
         shell: bash -l {0}
-        run: pytest -x ./tests
+        run: pytest -x --cov ./tests
 
       - name: "Upload coverage to Codecov"
         uses: "codecov/codecov-action@v3"
