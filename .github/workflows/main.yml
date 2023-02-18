@@ -72,8 +72,6 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
 
       - name: Run tests
-        env:
-          GITHUB_TOKEN: ${{ secrets.MFA_GITHUB_TOKEN }}
         shell: bash -l {0}
         run: pytest -x ./tests
 
