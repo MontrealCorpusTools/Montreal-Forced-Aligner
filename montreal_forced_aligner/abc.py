@@ -219,6 +219,14 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         self._session = None
         self.database_initialized = False
 
+    def delete_database(self) -> None:
+        """
+        Reset all schemas
+        """
+        sqlalchemy.orm.session.close_all_sessions()
+
+        MfaSqlBase.metadata.drop_all(self.db_engine)
+
     def initialize_database(self) -> None:
         """
         Initialize the database with database schema
@@ -244,9 +252,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         if exist_check:
             if GLOBAL_CONFIG.current_profile.clean:
                 self.clean_working_directory()
-                sqlalchemy.orm.session.close_all_sessions()
-
-                MfaSqlBase.metadata.drop_all(self.db_engine)
+                self.delete_database()
             else:
                 return
 
