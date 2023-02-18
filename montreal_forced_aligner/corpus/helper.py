@@ -115,8 +115,8 @@ def get_wav_info(
     sample_rate = 0
     duration = 0
     sox_string = ""
-    if format in {"mp3", "opus"}:
-        if format == "mp3":
+    if format in {".mp3", ".opus"}:
+        if format == ".mp3":
             sox_proc = subprocess.Popen(
                 ["soxi", file_path], stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True
             )

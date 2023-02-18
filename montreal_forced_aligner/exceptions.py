@@ -882,7 +882,7 @@ class KaldiProcessingError(MFAError):
             "See the log files below for more information.",
         ]
         for error_log in self.error_logs:
-            self.message_lines.append(error_log)
+            self.message_lines.append(str(error_log))
             if GLOBAL_CONFIG.current_profile.verbose:
                 with open(error_log, "r", encoding="utf8") as f:
                     for line in f:
