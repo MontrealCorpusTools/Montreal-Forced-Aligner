@@ -344,7 +344,8 @@ def remove_databases() -> None:
     """Remove database"""
     GLOBAL_CONFIG.load()
 
-    db_directory = os.path.join(
-        GLOBAL_CONFIG["temporary_directory"], f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
+    db_directory = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+        f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
-    shutil.rmtree(db_directory)
+    if db_directory.exists():
+        shutil.rmtree(db_directory)

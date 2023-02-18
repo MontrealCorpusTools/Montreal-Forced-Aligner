@@ -1772,6 +1772,7 @@ class AlignmentExtractionFunction(KaldiFunction):
         self.model_path = args.model_path
         self.frame_shift = args.frame_shift
         self.utterance_begins = {}
+        self.utterance_durations = {}
         self.reversed_phone_mapping = {}
         self.reversed_word_mapping = {}
         self.pronunciation_mapping = {}
@@ -1812,6 +1813,9 @@ class AlignmentExtractionFunction(KaldiFunction):
         actual_word_intervals = []
         phone_word_mapping = []
         utterance_begin = self.utterance_begins[utterance_name]
+        utterance_duration = self.utterance_durations[utterance_name]
+        if utterance_duration - intervals[-1].end < 0.05:
+            intervals[-1].end = utterance_duration
         current_word_begin = None
         words_index = 0
         current_phones = []
@@ -1989,7 +1993,7 @@ class AlignmentExtractionFunction(KaldiFunction):
                 self.phone_mapping[phone] = mapping_id
 
             for d in job.dictionaries:
-                columns = [Utterance.id, Utterance.begin]
+                columns = [Utterance.id, Utterance.begin, Utterance.duration]
                 if d.use_g2p:
                     columns.append(Utterance.normalized_character_text)
                 else:
@@ -2002,8 +2006,9 @@ class AlignmentExtractionFunction(KaldiFunction):
                 )
                 self.utterance_begins = {}
                 self.utterance_texts = {}
-                for u_id, begin, text in utts:
+                for u_id, begin, duration, text in utts:
                     self.utterance_begins[u_id] = begin
+                    self.utterance_durations[u_id] = duration
                     self.utterance_texts[u_id] = text
                 if self.phone_symbol_table is None:
                     self.phone_symbol_table = pywrapfst.SymbolTable.read_text(
