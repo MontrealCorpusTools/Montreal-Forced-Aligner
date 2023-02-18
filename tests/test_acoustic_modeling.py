@@ -36,6 +36,7 @@ def test_basic_mono(
     a.train()
     a.export_model(mono_align_model_path)
     assert mono_align_model_path.exists()
+    a.clean_working_directory()
     del a
     time.sleep(3)
     a = PretrainedAligner(
@@ -47,6 +48,7 @@ def test_basic_mono(
     a.align()
     a.export_files(mono_output_directory)
     assert mono_output_directory.exists()
+    a.clean_working_directory()
 
 
 def test_pronunciation_training(
@@ -75,7 +77,7 @@ def test_pronunciation_training(
         assert rule_query.probability > 0
         assert rule_query.probability < 1
 
-    a.cleanup()
+    a.clean_working_directory()
     assert not export_path.exists()
     assert not (generated_dir.joinpath("pron_train_test_export", mixed_dict_path.name).exists())
 
@@ -90,6 +92,7 @@ def test_pronunciation_training(
     assert generated_dir.joinpath(
         "pron_train_test_export", mixed_dict_path.with_suffix(".dict").name
     ).exists()
+    a.clean_working_directory()
 
 
 def test_pitch_feature_training(
@@ -105,6 +108,7 @@ def test_pitch_feature_training(
     assert a.use_pitch
     a.train()
     assert a.get_feat_dim() == 45
+    a.clean_working_directory()
 
 
 def test_basic_lda(basic_dict_path, basic_corpus_dir, lda_train_config_path, db_setup):
@@ -118,6 +122,7 @@ def test_basic_lda(basic_dict_path, basic_corpus_dir, lda_train_config_path, db_
     a.train()
     assert len(a.training_configs[a.final_identifier].realignment_iterations) > 0
     assert len(a.training_configs[a.final_identifier].mllt_iterations) > 1
+    a.clean_working_directory()
 
 
 @pytest.mark.skip("Inconsistent failing")
@@ -139,3 +144,4 @@ def test_basic_sat(
 
     assert output_model_path.exists()
     assert a.output_directory.joinpath("sat", "trans.1.1.ark").exists()
+    a.clean_working_directory()

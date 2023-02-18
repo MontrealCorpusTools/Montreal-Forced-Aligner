@@ -29,6 +29,7 @@ def test_align_sick(
     assert "AY_S" in a.phone_mapping
     a.export_files(export_directory)
     assert os.path.exists(os.path.join(export_directory, "michael", "acoustic_corpus.TextGrid"))
+    a.clean_working_directory()
 
 
 def test_align_one(
@@ -83,3 +84,4 @@ def test_align_one(
         assert utterance.alignment_log_likelihood is not None
         assert utterance.features is None
         assert len(utterance.phone_intervals) > 0
+    a.clean_working_directory()

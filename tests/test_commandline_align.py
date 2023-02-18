@@ -1,21 +1,10 @@
 import os
+import shutil
 
 import click.testing
 from praatio import textgrid as tgio
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
-
-
-def assert_export_exist(old_directory, new_directory):
-    for root, dirs, files in os.walk(old_directory):
-        new_root = root.replace(old_directory, new_directory)
-        for d in dirs:
-            assert os.path.exists(os.path.join(new_root, d))
-        for f in files:
-            if not f.endswith(".wav"):
-                continue
-            new_f = f.replace(".wav", ".TextGrid")
-            assert os.path.exists(os.path.join(new_root, new_f))
 
 
 def test_align_no_speaker_adaptation(
@@ -44,6 +33,7 @@ def test_align_no_speaker_adaptation(
     command = [str(x) for x in command]
     click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
     assert os.path.exists(output_directory)
+    shutil.rmtree(os.path.join(temp_dir, "test_align_no_speaker_adaptation"))
 
 
 def test_align_single_speaker(
@@ -94,6 +84,7 @@ def test_align_single_speaker(
 
     for path in output_paths:
         assert os.path.exists(path)
+    shutil.rmtree(os.path.join(temp_dir, "test_align_single_speaker"))
 
 
 def test_align_duplicated(
@@ -140,6 +131,7 @@ def test_align_duplicated(
 
     for path in output_paths:
         assert os.path.exists(path)
+    shutil.rmtree(os.path.join(temp_dir, "test_align_duplicated"))
 
 
 def test_align_multilingual(
@@ -177,6 +169,7 @@ def test_align_multilingual(
         print(result.exc_info)
         raise result.exception
     assert not result.return_value
+    shutil.rmtree(os.path.join(temp_dir, "test_align_multilingual"))
 
 
 def test_align_multilingual_speaker_dict(
@@ -214,6 +207,7 @@ def test_align_multilingual_speaker_dict(
         print(result.exc_info)
         raise result.exception
     assert not result.return_value
+    shutil.rmtree(os.path.join(temp_dir, "test_align_multilingual_speaker_dict"))
 
 
 def test_align_multilingual_tg_speaker_dict(
@@ -250,6 +244,7 @@ def test_align_multilingual_tg_speaker_dict(
         print(result.exc_info)
         raise result.exception
     assert not result.return_value
+    shutil.rmtree(os.path.join(temp_dir, "test_align_multilingual_tg_speaker_dict"))
 
 
 def test_align_evaluation(
@@ -294,6 +289,7 @@ def test_align_evaluation(
         print(result.exc_info)
         raise result.exception
     assert not result.return_value
+    shutil.rmtree(os.path.join(temp_dir, "test_align_evaluation"))
 
 
 def test_align_split(
@@ -334,6 +330,7 @@ def test_align_split(
         print(result.exc_info)
         raise result.exception
     assert not result.return_value
+    shutil.rmtree(os.path.join(temp_dir, "test_align_split"))
 
 
 def test_align_stereo(
@@ -374,6 +371,7 @@ def test_align_stereo(
         os.path.join(output_dir, "michaelandsickmichael.TextGrid"), includeEmptyIntervals=False
     )
     assert len(tg.tierNames) == 4
+    shutil.rmtree(os.path.join(temp_dir, "test_align_stereo"))
 
 
 def test_align_mp3s(
@@ -415,6 +413,8 @@ def test_align_mp3s(
     )
     assert len(tg.tierNames) == 2
 
+    shutil.rmtree(os.path.join(temp_dir, "test_align_mp3s"))
+
 
 def test_align_opus(
     opus_corpus_dir,
@@ -454,6 +454,7 @@ def test_align_opus(
         os.path.join(output_dir, "13697_11991_000000.TextGrid"), includeEmptyIntervals=False
     )
     assert len(tg.tierNames) == 2
+    shutil.rmtree(os.path.join(temp_dir, "test_align_opus"))
 
 
 def test_swedish_cv(
@@ -503,6 +504,8 @@ def test_swedish_cv(
         tg = tgio.openTextgrid(tg_path, includeEmptyIntervals=False)
         assert len(tg.tierNames) == 2
 
+    shutil.rmtree(os.path.join(temp_dir, "test_swedish_cv"))
+
 
 def test_swedish_mfa(
     swedish_dir,
@@ -550,6 +553,8 @@ def test_swedish_mfa(
         assert os.path.exists(tg_path)
         tg = tgio.openTextgrid(tg_path, includeEmptyIntervals=False)
         assert len(tg.tierNames) == 2
+
+    shutil.rmtree(os.path.join(temp_dir, "test_swedish_mfa"))
 
 
 def test_acoustic_g2p_model(
@@ -600,3 +605,4 @@ def test_acoustic_g2p_model(
 
     for path in output_paths:
         assert os.path.exists(path)
+    shutil.rmtree(os.path.join(temp_dir, "test_acoustic_g2p_model"))
