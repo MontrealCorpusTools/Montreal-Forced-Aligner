@@ -36,15 +36,9 @@ jobs:
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
-
-      - name: Cache MFA models
-        uses: actions/cache@v3
-        env:
-          cache-name: cache-mfa-models
+      - uses: actions/checkout@main
         with:
-          path: ~/Documents/MFA/pretrained_models
-          key: ${{ runner.os }}-build-${{ env.cache-name }}
+          fetch-depth: 0
 
       - name: Install Conda environment with Micromamba
         uses: mamba-org/provision-with-micromamba@main
@@ -58,7 +52,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.MFA_GITHUB_TOKEN }}
         shell: bash -l {0}
-        run: pytest -x --cov ./tests
+        run: pytest ./tests
 
       - name: "Upload coverage to Codecov"
         uses: "codecov/codecov-action@v3"
