@@ -32,6 +32,35 @@ def test_tokenize_pretrained(japanese_tokenizer_model, japanese_cv_dir, temp_dir
     assert os.path.exists(out_directory)
 
 
+def test_tokenize_unicode(
+    japanese_tokenizer_model, japanese_cv_japanese_name_dir, temp_dir, generated_dir
+):
+    out_directory = generated_dir.joinpath("japanese_tokenized")
+    command = [
+        "tokenize",
+        japanese_cv_japanese_name_dir,
+        japanese_tokenizer_model,
+        out_directory,
+        "-t",
+        os.path.join(temp_dir, "tokenize_unicode_cli"),
+        "-q",
+        "--clean",
+        "--use_mp",
+        "False",
+    ]
+    command = [str(x) for x in command]
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+    assert os.path.exists(out_directory)
+
+
 def test_train_tokenizer(combined_corpus_dir, temp_dir, generated_dir):
     output_path = generated_dir.joinpath("test_tokenizer.zip")
     command = [

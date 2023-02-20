@@ -109,8 +109,8 @@ def db_setup(temp_dir, global_config, request):
         cleanup_databases()
         remove_databases()
 
+    yield True
     request.addfinalizer(fin)
-    return True
 
 
 @pytest.fixture(scope="session")
@@ -550,7 +550,7 @@ def punctuated_dir(corpus_root_dir, wav_dir, lab_dir):
 def japanese_dir(corpus_root_dir, wav_dir, lab_dir):
     path = corpus_root_dir.joinpath("test_japanese")
     os.makedirs(path, exist_ok=True)
-    name = "japanese"
+    name = "日本語"
     shutil.copyfile(lab_dir.joinpath(name + ".lab"), path.joinpath(name + ".lab"))
     return path
 
@@ -604,6 +604,27 @@ def japanese_cv_dir(corpus_root_dir, wav_dir, lab_dir):
     names = [
         (
             "02a8841a00d762472a4797b56ee01643e8d9ece5a225f2e91c007ab1f94c49c99e50d19986ff3fefb18190257323f34238828114aa607f84fbe9764ecf5aaeaa",
+            [
+                "common_voice_ja_24511055",
+            ],
+        )
+    ]
+    for s, files in names:
+        s_dir = path.joinpath(s)
+        s_dir.mkdir(parents=True, exist_ok=True)
+        for name in files:
+            shutil.copyfile(wav_dir.joinpath(name + ".mp3"), s_dir.joinpath(name + ".mp3"))
+            shutil.copyfile(lab_dir.joinpath(name + ".lab"), s_dir.joinpath(name + ".lab"))
+    return path
+
+
+@pytest.fixture()
+def japanese_cv_japanese_name_dir(corpus_root_dir, wav_dir, lab_dir):
+    path = corpus_root_dir.joinpath("test_japanese_cv")
+    path.mkdir(parents=True, exist_ok=True)
+    names = [
+        (
+            "だれか",
             [
                 "common_voice_ja_24511055",
             ],
