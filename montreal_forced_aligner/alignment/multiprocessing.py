@@ -1486,6 +1486,7 @@ class PhoneConfidenceFunction(KaldiFunction):
                         frame_end = int(((pi.end - utt_begin) * 1000) / 10)
                         if frame_begin == frame_end:
                             frame_end += 1
+                        frame_end = min(frame_end, top_phone_inds.shape[0])
                         alternate_labels = collections.Counter()
                         scores = []
 

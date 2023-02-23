@@ -581,7 +581,7 @@ def test_japanese(japanese_dir, japanese_dict_path, generated_dir, global_config
     print(corpus.files())
     print(corpus.utterances())
 
-    punctuated = corpus.get_utterances(file="japanese")[0]
+    punctuated = corpus.get_utterances(file="日本語")[0]
     assert punctuated.text == "「はい」、。！ 『何 でしょう』"
     assert punctuated.normalized_text == "はい 何 でしょう"
 

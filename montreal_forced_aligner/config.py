@@ -143,6 +143,7 @@ class MfaProfile:
     cleanup_textgrids: bool = True
     database_backend: str = "psycopg2"
     database_port: int = 5433
+    database_limited_mode: bool = False
     bytes_limit: int = 100e6
     seed: int = 0
     num_jobs: int = 3

@@ -27,6 +27,7 @@ from montreal_forced_aligner.command_line.train_ivector_extractor import train_i
 from montreal_forced_aligner.command_line.train_lm import train_lm_cli
 from montreal_forced_aligner.command_line.train_tokenizer import train_tokenizer_cli
 from montreal_forced_aligner.command_line.transcribe import transcribe_corpus_cli
+from montreal_forced_aligner.command_line.utils import cleanup_logger
 from montreal_forced_aligner.command_line.validate import (
     validate_corpus_cli,
     validate_dictionary_cli,
@@ -114,6 +115,7 @@ def mfa_cli(ctx: click.Context) -> None:
         hooks = ExitHooks()
         hooks.hook()
         atexit.register(hooks.history_save_handler)
+        atexit.register(cleanup_logger)
 
     mp.freeze_support()
 

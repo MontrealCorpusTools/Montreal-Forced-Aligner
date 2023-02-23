@@ -110,6 +110,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         self.lattice_beam = lattice_beam
         self.phone_lm_order = 2
         self.phone_lm_method = "unsmoothed"
+        self.alignment_mode = True
 
     @property
     def hclg_options(self) -> MetaDict:
@@ -239,6 +240,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
     def align(self, workflow_name=None) -> None:
         """Run the aligner"""
+        self.alignment_mode = True
         self.initialize_database()
         self.create_new_current_workflow(WorkflowType.alignment, workflow_name)
         wf = self.current_workflow

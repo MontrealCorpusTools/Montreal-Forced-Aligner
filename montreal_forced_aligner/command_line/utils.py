@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import functools
+import logging
 import os
 import shutil
 import subprocess
@@ -217,16 +218,40 @@ def validate_ivector_extractor(ctx, param, value):
     return validate_model_arg(value, "ivector")
 
 
+def cleanup_logger():
+    logger = logging.getLogger("mfa")
+    handlers = logger.handlers[:]
+    for handler in handlers:
+        if isinstance(handler, logging.FileHandler):
+            handler.close()
+            logger.removeHandler(handler)
+
+
 def configure_pg(directory):
     configuration_updates = {
         "#log_min_duration_statement = -1": "log_min_duration_statement = 5000",
         "#enable_partitionwise_join = off": "enable_partitionwise_join = on",
         "#enable_partitionwise_aggregate = off": "enable_partitionwise_aggregate = on",
-        "#maintenance_work_mem = 64MB": "maintenance_work_mem = 500MB",
-        "#work_mem = 4MB": "work_mem = 128MB",
-        "shared_buffers = 128MB": "shared_buffers = 256MB",
-        "max_connections = 100": "max_connections = 10000",
     }
+    if not GLOBAL_CONFIG.current_profile.database_limited_mode:
+        configuration_updates.update(
+            {
+                "#maintenance_work_mem = 64MB": "maintenance_work_mem = 500MB",
+                "#work_mem = 4MB": "work_mem = 128MB",
+                "shared_buffers = 128MB": "shared_buffers = 256MB",
+                "max_connections = 100": "max_connections = 10000",
+            }
+        )
+    else:
+        configuration_updates.update(
+            {
+                "#wal_level = replica": "wal_level = minimal",
+                "#fsync = on": "fsync = off",
+                "#synchronous_commit = on": "synchronous_commit = off",
+                "#full_page_writes = on": "full_page_writes = off",
+                "#max_wal_senders = 10": "max_wal_senders = 0",
+            }
+        )
     with mfa_open(os.path.join(directory, "postgresql.conf"), "r") as f:
         config = f.read()
     for query, rep in configuration_updates.items():
@@ -323,16 +348,21 @@ def check_databases(db_name=None) -> None:
                 pass
 
 
-def cleanup_databases() -> None:
+def cleanup_databases(force: bool = False) -> None:
     """Stop current database"""
     GLOBAL_CONFIG.load()
+    sqlalchemy.orm.session.close_all_sessions()
 
     db_directory = os.path.join(
         GLOBAL_CONFIG["temporary_directory"], f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
+    if force:
+        mode = "immediate"
+    else:
+        mode = "smart"
     try:
         subprocess.check_call(
-            ["pg_ctl", "-D", db_directory, "stop"],
+            ["pg_ctl", "-D", db_directory, "-m", mode, "stop"],
             stdout=subprocess.DEVNULL if not GLOBAL_CONFIG.current_profile.verbose else None,
             stderr=subprocess.DEVNULL if not GLOBAL_CONFIG.current_profile.verbose else None,
         )

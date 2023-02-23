@@ -83,6 +83,7 @@ def global_config():
     GLOBAL_CONFIG.current_profile.verbose = True
     GLOBAL_CONFIG.current_profile.num_jobs = 2
     GLOBAL_CONFIG.current_profile.use_mp = False
+    GLOBAL_CONFIG.current_profile.database_limited_mode = True
     GLOBAL_CONFIG.save()
     yield GLOBAL_CONFIG
 
@@ -100,17 +101,22 @@ def db_setup(temp_dir, global_config, request):
     from montreal_forced_aligner.command_line.utils import (
         check_databases,
         cleanup_databases,
+        cleanup_logger,
         remove_databases,
     )
 
     check_databases()
 
     def fin():
-        cleanup_databases()
+        import time
+
+        cleanup_logger()
+        cleanup_databases(force=True)
+        time.sleep(5)
         remove_databases()
 
     yield True
-    request.addfinalizer(fin)
+    # request.addfinalizer(fin)
 
 
 @pytest.fixture(scope="session")

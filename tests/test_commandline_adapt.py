@@ -1,5 +1,4 @@
 import os
-import shutil
 
 import click.testing
 
@@ -38,7 +37,6 @@ def test_adapt_basic(
         print(result.exc_info)
         raise result.exception
     assert os.path.exists(adapted_model_path)
-    shutil.rmtree(temp_dir.joinpath("adapt_cli"))
 
 
 def test_adapt_multilingual(
@@ -77,4 +75,3 @@ def test_adapt_multilingual(
         print(result.exc_info)
         raise result.exception
     assert os.path.exists(adapted_model_path)
-    shutil.rmtree(temp_dir.joinpath("multilingual_adapt"))

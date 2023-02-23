@@ -151,6 +151,7 @@ class TranscriberMixin(CorpusAligner):
         self.language_model_weight = language_model_weight
         self.word_insertion_penalty = word_insertion_penalty
         self.evaluation_mode = evaluation_mode
+        self.alignment_mode = False
 
     def train_speaker_lm_arguments(
         self,
@@ -1208,6 +1209,9 @@ class TranscriberMixin(CorpusAligner):
                     )
                 )
             else:
+                decode_options = self.decode_options
+                decode_options["max_active"] = decode_options["first_max_active"]
+                decode_options["beam"] = decode_options["first_beam"]
                 arguments.append(
                     DecodeArguments(
                         j.id,
@@ -1215,7 +1219,7 @@ class TranscriberMixin(CorpusAligner):
                         self.working_log_directory.joinpath(f"decode.{j.id}.log"),
                         j.dictionary_ids,
                         feat_strings,
-                        self.decode_options,
+                        decode_options,
                         self.alignment_model_path,
                         j.construct_path_dictionary(self.working_directory, "lat", "ark"),
                         j.construct_dictionary_dependent_paths(
@@ -1727,7 +1731,8 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
 
     def setup(self) -> None:
         """Set up transcription"""
-        super().setup()
+        self.alignment_mode = False
+        TopLevelMfaWorker.setup(self)
         if self.initialized:
             return
         self.create_new_current_workflow(WorkflowType.transcription)
