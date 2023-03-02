@@ -52,6 +52,14 @@ jobs:
         shell: bash -l {0}
         run: python -m montreal_forced_aligner server init -p test
 
+      - name: Check init database log
+        shell: bash -l {0}
+        run: cat ~/Documents/MFA/pg_init_log_test.txt
+
+      - name: Check database start log
+        shell: bash -l {0}
+        run: cat ~/Documents/MFA/pg_log_test.txt
+
       - name: Run tests
         env:
           GITHUB_TOKEN: ${{ secrets.MFA_GITHUB_TOKEN }}
