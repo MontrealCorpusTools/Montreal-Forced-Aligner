@@ -28,6 +28,8 @@ def test_align_no_speaker_adaptation(
         "--verbose",
         "--uses_speaker_adaptation",
         "False",
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
@@ -57,6 +59,9 @@ def test_align_single_speaker(
         "--clean",
         "--debug",
         "--single_speaker",
+        "--no_use_mp",
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
@@ -106,6 +111,8 @@ def test_align_duplicated(
         "-q",
         "--clean",
         "--no_debug",
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
@@ -154,6 +161,8 @@ def test_align_multilingual(
         "--debug",
         "--output_format",
         "short_textgrid",
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
@@ -191,6 +200,8 @@ def test_align_multilingual_speaker_dict(
         "--debug",
         "--output_format",
         "json",
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
@@ -227,6 +238,8 @@ def test_align_multilingual_tg_speaker_dict(
         "--clean",
         "--debug",
         "--include_original_text",
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
@@ -271,6 +284,8 @@ def test_align_evaluation(
         basic_reference_dir,
         "--custom_mapping_path",
         eval_mapping_path,
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
@@ -311,6 +326,8 @@ def test_align_split(
         "json",
         "--audio_directory",
         audio_dir,
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
@@ -346,6 +363,8 @@ def test_align_stereo(
         "-q",
         "--clean",
         "--debug",
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
@@ -386,6 +405,8 @@ def test_align_mp3s(
         "-q",
         "--clean",
         "--debug",
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
@@ -426,6 +447,8 @@ def test_align_opus(
         "-q",
         "--clean",
         "--debug",
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
@@ -466,6 +489,8 @@ def test_swedish_cv(
         "-q",
         "--clean",
         "--debug",
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
@@ -514,6 +539,8 @@ def test_swedish_mfa(
         "-q",
         "--clean",
         "--debug",
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
@@ -563,6 +590,8 @@ def test_acoustic_g2p_model(
         basic_align_config_path,
         "--clean",
         "--debug",
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(

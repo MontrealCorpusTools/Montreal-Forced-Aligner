@@ -26,6 +26,8 @@ def test_adapt_basic(
         temp_dir.joinpath("adapt_cli"),
         "--clean",
         "--no_debug",
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
@@ -64,6 +66,8 @@ def test_adapt_multilingual(
         "-q",
         "--clean",
         "--no_debug",
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
