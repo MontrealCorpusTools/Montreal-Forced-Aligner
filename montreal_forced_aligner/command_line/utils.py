@@ -331,10 +331,7 @@ def initialize_server() -> None:
                 stderr=log_file,
             )
         except Exception:
-            logger.error(
-                f"There was an issue initializing the server, please refer to {init_log_path} for more details"
-            )
-            raise
+            pass
 
 
 def start_server() -> None:
