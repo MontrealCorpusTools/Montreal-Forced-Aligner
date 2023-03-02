@@ -65,7 +65,6 @@ jobs:
         run: cat ~/Documents/MFA/pg_log_test.txt
 
       - name: Run tests
-        env:
         shell: bash -l {0}
         run: pytest -x ./tests
 
