@@ -547,6 +547,7 @@ class ExportKaldiFilesFunction(KaldiFunction):
         )
         wav_scp_path = job.wav_scp_path
         segments_scp_path = job.segments_scp_path
+        utt2spk_scp_path = job.utt2spk_scp_path
         if os.path.exists(segments_scp_path):
             return
         with mfa_open(wav_scp_path, "w") as wav_file:
@@ -564,11 +565,14 @@ class ExportKaldiFilesFunction(KaldiFunction):
                 wav_file.write(f"{f_id} {sox_string}\n")
                 yield 1
 
-        with mfa_open(segments_scp_path, "w") as segments_file:
+        with mfa_open(segments_scp_path, "w") as segments_file, mfa_open(
+            utt2spk_scp_path, "w"
+        ) as utt2spk_file:
             utterances = (
                 session.query(
                     Utterance.kaldi_id,
                     Utterance.file_id,
+                    Utterance.speaker_id,
                     Utterance.begin,
                     Utterance.end,
                     Utterance.channel,
@@ -576,8 +580,9 @@ class ExportKaldiFilesFunction(KaldiFunction):
                 .filter(Utterance.job_id == job.id)
                 .order_by(Utterance.kaldi_id)
             )
-            for u_id, f_id, begin, end, channel in utterances:
+            for u_id, f_id, s_id, begin, end, channel in utterances:
                 segments_file.write(f"{u_id} {f_id} {begin} {end} {channel}\n")
+                utt2spk_file.write(f"{u_id} {s_id}\n")
                 yield 1
 
     def output_to_directory(self, session) -> None:

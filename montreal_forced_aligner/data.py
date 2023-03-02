@@ -245,6 +245,7 @@ class WordType(enum.Enum):
     noise = 8  #: Words that represent non-speech noise
     music = 9  #: Words that represent music
     disambiguation = 10  #: Disambiguation symbols internal to Kaldi
+    interjection = 11  #: Set of words that can be added on the fly to transcripts
 
 
 class DistanceMetric(enum.Enum):

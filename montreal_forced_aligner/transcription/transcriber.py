@@ -1729,6 +1729,12 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
             global_params["word_insertion_penalties"] = [args["word_insertion_penalty"]]
         return global_params
 
+    def setup_acoustic_model(self):
+        self.acoustic_model.validate(self)
+        self.acoustic_model.export_model(self.model_directory)
+        self.acoustic_model.export_model(self.working_directory)
+        self.acoustic_model.log_details()
+
     def setup(self) -> None:
         """Set up transcription"""
         self.alignment_mode = False
@@ -1749,10 +1755,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
             shutil.rmtree(self.model_directory)
         log_dir = os.path.join(self.model_directory, "log")
         os.makedirs(log_dir, exist_ok=True)
-        self.acoustic_model.validate(self)
-        self.acoustic_model.export_model(self.model_directory)
-        self.acoustic_model.export_model(self.working_directory)
-        self.acoustic_model.log_details()
+        self.setup_acoustic_model()
         self.create_decoding_graph()
         self.initialized = True
         logger.debug(f"Setup for transcription in {time.time() - begin:.3f} seconds")

@@ -363,10 +363,10 @@ def compute_pitch_process(
 def compute_transform_process(
     log_file: io.FileIO,
     feat_proc: typing.Union[subprocess.Popen, Path],
-    utt2spk_path: Path,
     lda_mat_path: typing.Optional[Path],
-    fmllr_path: typing.Optional[Path],
     lda_options: MetaDict,
+    fmllr_path: Path = None,
+    utt2spk_path: Path = None,
 ) -> subprocess.Popen:
     """
     Construct feature transformation process
@@ -377,21 +377,21 @@ def compute_transform_process(
         File for logging stderr
     feat_proc: subprocess.Popen
         Feature generation process
-    utt2spk_path: :class:`~pathlib.Path`
-        Utterance to speaker SCP file path
     lda_mat_path: :class:`~pathlib.Path`
         LDA matrix file path
-    fmllr_path: :class:`~pathlib.Path`
-        fMLLR transform file path
     lda_options: dict[str, Any]
         Options for LDA
+    fmllr_path: :class:`~pathlib.Path`, optional
+        fMLLR transform file path
+    utt2spk_path: :class:`~pathlib.Path`, optional
+        Utterance to speaker SCP file path
 
     Returns
     -------
     subprocess.Popen
         Processing for transforming features
     """
-    if isinstance(feat_proc, str):
+    if isinstance(feat_proc, (str, Path)):
         feat_input = f"ark,s,cs:{feat_proc}"
         use_stdin = False
     else:
@@ -426,14 +426,17 @@ def compute_transform_process(
             stdout=subprocess.PIPE,
             stderr=log_file,
         )
-    if fmllr_path is None:
+    if fmllr_path is None or not fmllr_path.exists():
         return delta_proc
-
+    if fmllr_path.suffix == ".scp":
+        fmllr_ark = f"scp:{fmllr_path}"
+    else:
+        fmllr_ark = f"ark:{fmllr_path}"
     fmllr_proc = subprocess.Popen(
         [
             "transform-feats",
             f"--utt2spk=ark:{utt2spk_path}",
-            f"ark:{fmllr_path}",
+            fmllr_ark,
             "ark,s,cs:-",
             "ark,t:-",
         ],
@@ -1318,6 +1321,8 @@ class FeatureConfigMixin:
     @property
     def lda_options(self) -> MetaDict:
         """Options for computing LDA"""
+        if getattr(self, "acoustic_model", None) is not None:
+            return self.acoustic_model.lda_options
         return {
             "splice_left_context": self.splice_left_context,
             "splice_right_context": self.splice_right_context,
@@ -1326,6 +1331,8 @@ class FeatureConfigMixin:
     @property
     def mfcc_options(self) -> MetaDict:
         """Parameters to use in computing MFCC features."""
+        if getattr(self, "acoustic_model", None) is not None:
+            return self.acoustic_model.mfcc_options
         return {
             "use-energy": self.use_energy,
             "dither": self.dither,
@@ -1347,6 +1354,8 @@ class FeatureConfigMixin:
     @property
     def pitch_options(self) -> MetaDict:
         """Parameters to use in computing MFCC features."""
+        if getattr(self, "acoustic_model", None) is not None:
+            return self.acoustic_model.pitch_options
         return {
             "use-pitch": self.use_pitch,
             "use-voicing": self.use_voicing,
@@ -2214,3 +2223,114 @@ class ExportIvectorsFunction(KaldiFunction):
                     utt_id, ark_path = line.split(maxsplit=1)
                     utt_id = int(utt_id.split("-")[1])
                     yield utt_id, ark_path
+
+
+def online_feature_proc(
+    working_directory: Path,
+    wav_path: Path,
+    segment_path: Path,
+    mfcc_options: MetaDict,
+    pitch_options: MetaDict,
+    lda_options: MetaDict,
+    log_file,
+) -> subprocess.Popen:
+    mfcc_ark_path = working_directory.joinpath("mfcc.ark")
+    pitch_ark_path = working_directory.joinpath("pitch.ark")
+    feats_ark_path = working_directory.joinpath("feats.ark")
+    lda_mat_path = working_directory.joinpath("lda.mat")
+    trans_scp_path = working_directory.joinpath("trans.scp")
+    cmvn_scp_path = working_directory.joinpath("cmvn.scp")
+    utt2spk_scp_path = working_directory.joinpath("utt2spk.scp")
+    seg_proc = subprocess.Popen(
+        [
+            thirdparty_binary("extract-segments"),
+            "--min-segment-length=0.1",
+            f"scp:{wav_path}",
+            segment_path,
+            "ark:-",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=log_file,
+        env=os.environ,
+    )
+    mfcc_proc = compute_mfcc_process(log_file, wav_path, subprocess.PIPE, mfcc_options)
+    if cmvn_scp_path.exists():
+        cmvn_proc = subprocess.Popen(
+            [
+                thirdparty_binary("apply-cmvn"),
+                f"--utt2spk=ark:{utt2spk_scp_path}",
+                f"scp:{cmvn_scp_path}",
+                "ark:-",
+                f"ark:{mfcc_ark_path}",
+            ],
+            stdin=mfcc_proc.stdout,
+            stderr=log_file,
+            env=os.environ,
+        )
+
+    else:
+        cmvn_proc = subprocess.Popen(
+            [
+                "apply-cmvn-sliding",
+                "--norm-vars=false",
+                "--center=true",
+                "--cmn-window=300",
+                "ark:-",
+                f"ark:{mfcc_ark_path}",
+            ],
+            env=os.environ,
+            stdin=mfcc_proc.stdout,
+            stderr=log_file,
+        )
+
+    use_pitch = pitch_options["use-pitch"] or pitch_options["use-voicing"]
+    if use_pitch:
+        pitch_proc = compute_pitch_process(log_file, wav_path, subprocess.PIPE, pitch_options)
+        pitch_copy_proc = subprocess.Popen(
+            [
+                thirdparty_binary("copy-feats"),
+                "--compress=true",
+                "ark:-",
+                f"ark:{pitch_ark_path}",
+            ],
+            stdin=pitch_proc.stdout,
+            stderr=log_file,
+            env=os.environ,
+        )
+    for line in seg_proc.stdout:
+        mfcc_proc.stdin.write(line)
+        mfcc_proc.stdin.flush()
+        if use_pitch:
+            pitch_proc.stdin.write(line)
+            pitch_proc.stdin.flush()
+    mfcc_proc.stdin.close()
+    if use_pitch:
+        pitch_proc.stdin.close()
+    cmvn_proc.wait()
+    if use_pitch:
+        pitch_copy_proc.wait()
+    if use_pitch:
+        paste_proc = subprocess.Popen(
+            [
+                thirdparty_binary("paste-feats"),
+                "--length-tolerance=2",
+                f"ark:{mfcc_ark_path}",
+                f"ark:{pitch_ark_path}",
+                f"ark:{feats_ark_path}",
+            ],
+            stderr=log_file,
+            env=os.environ,
+        )
+        paste_proc.wait()
+    else:
+        feats_ark_path = mfcc_ark_path
+
+    trans_proc = compute_transform_process(
+        log_file,
+        feats_ark_path,
+        lda_mat_path,
+        lda_options,
+        fmllr_path=trans_scp_path,
+        utt2spk_path=utt2spk_scp_path,
+    )
+    return trans_proc

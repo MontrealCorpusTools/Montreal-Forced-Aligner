@@ -712,7 +712,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     .filter(Speaker.cmvn != None, Utterance.job_id == j.id)  # noqa
                     .distinct()
                 )
-                with mfa_open(j.construct_path(self.split_directory, "cmvn", ".scp"), "w") as f:
+                with mfa_open(j.construct_path(self.split_directory, "cmvn", "scp"), "w") as f:
                     for s_id, cmvn in query:
                         f.write(f"{s_id} {cmvn}\n")
 
@@ -775,6 +775,31 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                         pbar.update(1)
 
         self.uses_speaker_adaptation = True
+        update_mapping = []
+        if not GLOBAL_CONFIG.current_profile.single_speaker:
+            for args in arguments:
+                for p in args.trans_paths.values():
+                    ark_p = self.split_directory.joinpath(p.name)
+                    scp_p = ark_p.with_suffix(".scp")
+                    compose_proc = subprocess.Popen(
+                        [
+                            thirdparty_binary("copy-matrix"),
+                            f"ark:{p}",
+                            f"ark,scp:{ark_p},{scp_p}",
+                        ],
+                        stderr=subprocess.DEVNULL,
+                        env=os.environ,
+                    )
+                    compose_proc.communicate()
+                    with mfa_open(scp_p) as f:
+                        for line in f:
+                            line = line.strip()
+                            speaker, ark = line.split(maxsplit=1)
+                            speaker = int(speaker)
+                            update_mapping.append({"id": speaker, "fmllr": ark})
+            with self.session() as session:
+                bulk_update(session, Speaker, update_mapping)
+                session.commit()
         logger.debug(f"Fmllr calculation took {time.time() - begin:.3f} seconds")
 
     def compute_vad(self) -> None:

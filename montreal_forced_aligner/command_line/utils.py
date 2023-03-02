@@ -232,6 +232,8 @@ def configure_pg(directory):
         "#log_min_duration_statement = -1": "log_min_duration_statement = 5000",
         "#enable_partitionwise_join = off": "enable_partitionwise_join = on",
         "#enable_partitionwise_aggregate = off": "enable_partitionwise_aggregate = on",
+        "#unix_socket_directories = ''": f"unix_socket_directories = '{GLOBAL_CONFIG.database_socket}'",
+        "#listen_addresses = 'localhost'": "listen_addresses = ''",
     }
     if not GLOBAL_CONFIG.current_profile.database_limited_mode:
         configuration_updates.update(
@@ -279,7 +281,7 @@ def check_databases(db_name=None) -> None:
     if not create:
         try:
             engine = sqlalchemy.create_engine(
-                f"postgresql+psycopg2://localhost:{GLOBAL_CONFIG.current_profile.database_port}/{db_name}",
+                f"postgresql+psycopg2://@/{db_name}?host={GLOBAL_CONFIG.database_socket}",
                 poolclass=sqlalchemy.NullPool,
                 pool_reset_on_return=None,
                 logging_name="check_databases_engine",
@@ -308,8 +310,6 @@ def check_databases(db_name=None) -> None:
                         db_directory,
                         "-l",
                         log_path,
-                        "-o",
-                        f"-F -p {GLOBAL_CONFIG.current_profile.database_port}",
                         "start",
                     ],
                     stdout=log_file,
@@ -318,8 +318,8 @@ def check_databases(db_name=None) -> None:
                 subprocess.check_call(
                     [
                         "createuser",
-                        "-p",
-                        str(GLOBAL_CONFIG.current_profile.database_port),
+                        "-h",
+                        GLOBAL_CONFIG.database_socket,
                         "-s",
                         "postgres",
                     ],
@@ -337,8 +337,6 @@ def check_databases(db_name=None) -> None:
                         db_directory,
                         "-l",
                         log_path,
-                        "-o",
-                        f"-F -p {GLOBAL_CONFIG.current_profile.database_port}",
                         "start",
                     ],
                     stdout=log_file,
@@ -357,7 +355,7 @@ def cleanup_databases(force: bool = False) -> None:
         GLOBAL_CONFIG["temporary_directory"], f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
     if force:
-        mode = "immediate"
+        mode = "fast"
     else:
         mode = "smart"
     try:

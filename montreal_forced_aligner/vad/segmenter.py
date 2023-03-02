@@ -24,6 +24,8 @@ from montreal_forced_aligner.data import TextFileType, WorkflowType
 from montreal_forced_aligner.db import CorpusWorkflow, File, Utterance
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.helper import load_configuration
+from montreal_forced_aligner.models import AcousticModel
+from montreal_forced_aligner.transcription.transcriber import TranscriberMixin
 from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
 from montreal_forced_aligner.vad.multiprocessing import (
     FOUND_SPEECHBRAIN,
@@ -39,7 +41,86 @@ __all__ = ["Segmenter"]
 logger = logging.getLogger("mfa")
 
 
-class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevelMfaWorker):
+class SpeechbrainSegmenterMixin:
+    def __init__(
+        self,
+        segment_padding: float = 0.01,
+        large_chunk_size: float = 30,
+        small_chunk_size: float = 0.05,
+        overlap_small_chunk: bool = False,
+        apply_energy_VAD: bool = False,
+        double_check: bool = True,
+        close_th: float = 0.250,
+        len_th: float = 0.250,
+        activation_th: float = 0.5,
+        deactivation_th: float = 0.25,
+        en_activation_th: float = 0.5,
+        en_deactivation_th: float = 0.0,
+        speech_th: float = 0.50,
+        cuda: bool = False,
+        speechbrain: bool = False,
+        **kwargs,
+    ):
+        if speechbrain and not FOUND_SPEECHBRAIN:
+            logger.error(
+                "Could not import speechbrain, please ensure it is installed via `pip install speechbrain`"
+            )
+            sys.exit(1)
+        super().__init__(**kwargs)
+        self.large_chunk_size = large_chunk_size
+        self.small_chunk_size = small_chunk_size
+        self.overlap_small_chunk = overlap_small_chunk
+        self.apply_energy_VAD = apply_energy_VAD
+        self.double_check = double_check
+        self.close_th = close_th
+        self.len_th = len_th
+        self.activation_th = activation_th
+        self.deactivation_th = deactivation_th
+        self.en_activation_th = en_activation_th
+        self.en_deactivation_th = en_deactivation_th
+        self.speech_th = speech_th
+        self.cuda = cuda
+        self.speechbrain = speechbrain
+        self.segment_padding = segment_padding
+        if self.speechbrain:
+            model_dir = os.path.join(
+                GLOBAL_CONFIG.current_profile.temporary_directory, "models", "VAD"
+            )
+            os.makedirs(model_dir, exist_ok=True)
+            run_opts = None
+            if self.cuda:
+                run_opts = {"device": "cuda"}
+            self.vad_model = VAD.from_hparams(
+                source="speechbrain/vad-crdnn-libriparty", savedir=model_dir, run_opts=run_opts
+            )
+
+    @property
+    def segmentation_options(self) -> MetaDict:
+        """Options for segmentation"""
+        return {
+            "large_chunk_size": self.large_chunk_size,
+            "frame_shift": getattr(self, "export_frame_shift", 0.01),
+            "small_chunk_size": self.small_chunk_size,
+            "overlap_small_chunk": self.overlap_small_chunk,
+            "apply_energy_VAD": self.apply_energy_VAD,
+            "double_check": self.double_check,
+            "activation_th": self.activation_th,
+            "deactivation_th": self.deactivation_th,
+            "en_activation_th": self.en_activation_th,
+            "en_deactivation_th": self.en_deactivation_th,
+            "speech_th": self.speech_th,
+            "close_th": self.close_th,
+            "len_th": self.len_th,
+        }
+
+
+class Segmenter(
+    VadConfigMixin,
+    AcousticCorpusMixin,
+    FileExporterMixin,
+    SpeechbrainSegmenterMixin,
+    TopLevelMfaWorker,
+):
     """
     Class for performing speaker classification, parameters are passed to
     `speechbrain.pretrained.interfaces.VAD.get_speech_segments
@@ -96,44 +177,9 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
 
     def __init__(
         self,
-        segment_padding: float = 0.01,
-        large_chunk_size: float = 30,
-        small_chunk_size: float = 0.05,
-        overlap_small_chunk: bool = False,
-        apply_energy_VAD: bool = False,
-        double_check: bool = True,
-        close_th: float = 0.250,
-        len_th: float = 0.250,
-        activation_th: float = 0.5,
-        deactivation_th: float = 0.25,
-        en_activation_th: float = 0.5,
-        en_deactivation_th: float = 0.0,
-        speech_th: float = 0.50,
-        cuda: bool = False,
-        speechbrain: bool = False,
         **kwargs,
     ):
-        if speechbrain and not FOUND_SPEECHBRAIN:
-            logger.error(
-                "Could not import speechbrain, please ensure it is installed via `pip install speechbrain`"
-            )
-            sys.exit(1)
         super().__init__(**kwargs)
-        self.large_chunk_size = large_chunk_size
-        self.small_chunk_size = small_chunk_size
-        self.overlap_small_chunk = overlap_small_chunk
-        self.apply_energy_VAD = apply_energy_VAD
-        self.double_check = double_check
-        self.close_th = close_th
-        self.len_th = len_th
-        self.activation_th = activation_th
-        self.deactivation_th = deactivation_th
-        self.en_activation_th = en_activation_th
-        self.en_deactivation_th = en_deactivation_th
-        self.speech_th = speech_th
-        self.cuda = cuda
-        self.speechbrain = speechbrain
-        self.segment_padding = segment_padding
 
     @classmethod
     def parse_parameters(
@@ -194,25 +240,6 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
             )
             for j in self.jobs
         ]
-
-    @property
-    def segmentation_options(self) -> MetaDict:
-        """Options for segmentation"""
-        return {
-            "large_chunk_size": self.large_chunk_size,
-            "frame_shift": self.export_frame_shift,
-            "small_chunk_size": self.small_chunk_size,
-            "overlap_small_chunk": self.overlap_small_chunk,
-            "apply_energy_VAD": self.apply_energy_VAD,
-            "double_check": self.double_check,
-            "activation_th": self.activation_th,
-            "deactivation_th": self.deactivation_th,
-            "en_activation_th": self.en_activation_th,
-            "en_deactivation_th": self.en_deactivation_th,
-            "speech_th": self.speech_th,
-            "close_th": self.close_th,
-            "len_th": self.len_th,
-        }
 
     def segment_vad_speechbrain(self) -> None:
         """
@@ -335,16 +362,6 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         os.makedirs(log_dir, exist_ok=True)
         try:
             if self.speechbrain:
-                model_dir = os.path.join(
-                    GLOBAL_CONFIG.current_profile.temporary_directory, "models", "VAD"
-                )
-                os.makedirs(model_dir, exist_ok=True)
-                run_opts = None
-                if self.cuda:
-                    run_opts = {"device": "cuda"}
-                self.vad_model = VAD.from_hparams(
-                    source="speechbrain/vad-crdnn-libriparty", savedir=model_dir, run_opts=run_opts
-                )
                 self.initialize_database()
                 self._load_corpus()
             else:
@@ -411,3 +428,31 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
                 joinedload(File.text_file),
             ):
                 f.save(output_directory, output_format=output_format)
+
+
+class TranscriptionSegmenter(TranscriberMixin, SpeechbrainSegmenterMixin, TopLevelMfaWorker):
+    def __init__(self, acoustic_model_path: Path = None, **kwargs):
+        self.acoustic_model = AcousticModel(acoustic_model_path)
+        kw = self.acoustic_model.parameters
+        kw.update(kwargs)
+        super().__init__(**kw)
+
+    def setup(self) -> None:
+        TopLevelMfaWorker.setup(self)
+        self.setup_acoustic_model()
+
+        self.dictionary_setup()
+
+        self._load_corpus()
+
+        self.initialize_jobs()
+
+        self.normalize_text()
+
+        self.write_lexicon_information()
+
+    def setup_acoustic_model(self):
+        self.acoustic_model.validate(self)
+        self.acoustic_model.export_model(self.model_directory)
+        self.acoustic_model.export_model(self.working_directory)
+        self.acoustic_model.log_details()

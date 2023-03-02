@@ -1293,10 +1293,10 @@ class FineTuneFunction(KaldiFunction):
                 trans_proc = compute_transform_process(
                     log_file,
                     extract_proc,
-                    utt2spk_path,
                     workflow.lda_mat_path,
-                    fmllr_path,
                     self.lda_options,
+                    fmllr_path=fmllr_path,
+                    utt2spk_path=utt2spk_path,
                 )
                 align_proc = subprocess.Popen(
                     [

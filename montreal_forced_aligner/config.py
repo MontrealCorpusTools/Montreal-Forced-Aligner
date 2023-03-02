@@ -204,6 +204,12 @@ class MfaConfiguration:
             return getattr(self.current_profile, item)
 
     @property
+    def database_socket(self):
+        p = get_temporary_directory().joinpath(f"pg_mfa_{self.current_profile_name}_socket")
+        p.mkdir(parents=True, exist_ok=True)
+        return p.as_posix()
+
+    @property
     def current_profile(self) -> MfaProfile:
         """Name of the current :class:`~montreal_forced_aligner.config.MfaProfile`"""
         self.current_profile_name = os.getenv(MFA_PROFILE_VARIABLE, "global")

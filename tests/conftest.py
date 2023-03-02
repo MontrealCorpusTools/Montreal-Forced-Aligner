@@ -108,6 +108,7 @@ def db_setup(temp_dir, global_config, request):
     check_databases()
 
     def fin():
+        print("RUNNING FIN")
         import time
 
         cleanup_logger()
@@ -115,8 +116,10 @@ def db_setup(temp_dir, global_config, request):
         time.sleep(5)
         remove_databases()
 
-    yield True
-    # request.addfinalizer(fin)
+    try:
+        yield True
+    finally:
+        request.addfinalizer(fin)
 
 
 @pytest.fixture(scope="session")
