@@ -7,8 +7,6 @@ from pathlib import Path
 import rich_click as click
 
 from montreal_forced_aligner.command_line.utils import (
-    check_databases,
-    cleanup_databases,
     common_options,
     validate_dictionary,
     validate_g2p_model,
@@ -63,10 +61,9 @@ def g2p_cli(context, **kwargs) -> None:
     Generate a pronunciation dictionary using a G2P model.
     """
     if kwargs.get("profile", None) is not None:
-        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
     GLOBAL_CONFIG.save()
-    check_databases()
 
     config_path = kwargs.get("config_path", None)
     input_path = kwargs["input_path"]
@@ -107,4 +104,3 @@ def g2p_cli(context, **kwargs) -> None:
         raise
     finally:
         g2p.cleanup()
-        cleanup_databases()

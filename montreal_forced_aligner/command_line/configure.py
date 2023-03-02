@@ -15,6 +15,7 @@ __all__ = ["configure_cli"]
 @click.option(
     "-p",
     "--profile",
+    "profile",
     help='Configuration profile to use, defaults to "global"',
     type=str,
     default=None,
@@ -97,12 +98,6 @@ __all__ = ["configure_cli"]
     type=str,
 )
 @click.option(
-    "--database_port",
-    default=None,
-    help="Port for postgresql database.",
-    type=int,
-)
-@click.option(
     "--bytes_limit",
     default=None,
     help="Bytes limit for Joblib Memory caching on disk.",
@@ -121,6 +116,6 @@ def configure_cli(**kwargs) -> None:
 
     """
     if kwargs.get("profile", None) is not None:
-        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
     GLOBAL_CONFIG.save()

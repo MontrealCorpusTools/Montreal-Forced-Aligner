@@ -6,12 +6,7 @@ from pathlib import Path
 
 import rich_click as click
 
-from montreal_forced_aligner.command_line.utils import (
-    check_databases,
-    cleanup_databases,
-    common_options,
-    validate_ivector_extractor,
-)
+from montreal_forced_aligner.command_line.utils import common_options, validate_ivector_extractor
 from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.data import ClusterType
 from montreal_forced_aligner.diarization.speaker_diarizer import SpeakerDiarizer
@@ -100,10 +95,9 @@ def diarize_speakers_cli(context, **kwargs) -> None:
     the ``--num_jobs`` parameter will be used as a the batch size for any parallel computation.
     """
     if kwargs.get("profile", None) is not None:
-        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
     GLOBAL_CONFIG.save()
-    check_databases()
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"]
     ivector_extractor_path = kwargs["ivector_extractor_path"]
@@ -126,4 +120,3 @@ def diarize_speakers_cli(context, **kwargs) -> None:
         raise
     finally:
         classifier.cleanup()
-        cleanup_databases()

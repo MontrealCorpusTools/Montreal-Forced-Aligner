@@ -78,7 +78,6 @@ def global_config():
     GLOBAL_CONFIG.current_profile_name = "test"
     GLOBAL_CONFIG.current_profile.clean = True
     GLOBAL_CONFIG.current_profile.database_backend = "psycopg2"
-    GLOBAL_CONFIG.current_profile.database_port = 65432
     GLOBAL_CONFIG.current_profile.debug = True
     GLOBAL_CONFIG.current_profile.verbose = True
     GLOBAL_CONFIG.current_profile.num_jobs = 2
@@ -98,28 +97,7 @@ def temp_dir(generated_dir, global_config):
 
 @pytest.fixture(scope="session")
 def db_setup(temp_dir, global_config, request):
-    from montreal_forced_aligner.command_line.utils import (
-        check_databases,
-        cleanup_databases,
-        cleanup_logger,
-        remove_databases,
-    )
-
-    check_databases()
-
-    def fin():
-        print("RUNNING FIN")
-        import time
-
-        cleanup_logger()
-        cleanup_databases(force=True)
-        time.sleep(5)
-        remove_databases()
-
-    try:
-        yield True
-    finally:
-        request.addfinalizer(fin)
+    return True
 
 
 @pytest.fixture(scope="session")

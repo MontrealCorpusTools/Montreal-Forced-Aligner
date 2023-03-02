@@ -233,16 +233,22 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         """
         if self.database_initialized:
             return
-        retcode = subprocess.call(
-            [
-                "createdb",
-                f"--host={GLOBAL_CONFIG.database_socket}",
-                self.identifier,
-            ],
-            stderr=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-        )
-        exist_check = retcode != 0
+        from montreal_forced_aligner.command_line.utils import check_databases
+
+        exist_check = True
+        try:
+            check_databases(self.identifier)
+        except Exception:
+            subprocess.check_call(
+                [
+                    "createdb",
+                    f"--host={GLOBAL_CONFIG.database_socket}",
+                    self.identifier,
+                ],
+                stderr=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+            )
+            exist_check = False
         with self.db_engine.connect() as conn:
             conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS vector"))
             conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))

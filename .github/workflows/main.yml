@@ -48,11 +48,19 @@ jobs:
           extra-specs: |
             python=3.9
 
+      - name: Initialize database
+        shell: bash -l {0}
+        run: python -m montreal_forced_aligner server init -p test
+
       - name: Run tests
         env:
           GITHUB_TOKEN: ${{ secrets.MFA_GITHUB_TOKEN }}
         shell: bash -l {0}
-        run: pytest ./tests
+        run: pytest -x ./tests
+
+      - name: Stop database
+        shell: bash -l {0}
+        run: python -m montreal_forced_aligner server stop -p test
 
       - name: "Upload coverage to Codecov"
         uses: "codecov/codecov-action@v3"
