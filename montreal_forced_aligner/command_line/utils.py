@@ -281,14 +281,13 @@ def check_databases(db_name=None) -> None:
             pass
         logger.debug(f"Connected to {GLOBAL_CONFIG.current_profile_name} MFA database server!")
     except Exception:
-        raise
-    finally:
         logger.error(
             f"There was an error connecting to the {GLOBAL_CONFIG.current_profile_name} MFA database server."
         )
         logger.error(
             "Please ensure the server is initialized (mfa server init) or running (mfa server start)"
         )
+        raise
 
 
 def initialize_server() -> None:
