@@ -1,7 +1,6 @@
 import os
 
 import click.testing
-import sqlalchemy.orm
 from praatio import textgrid as tgio
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
@@ -34,7 +33,6 @@ def test_align_no_speaker_adaptation(
     command = [str(x) for x in command]
     click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
     assert os.path.exists(output_directory)
-    sqlalchemy.orm.close_all_sessions()
 
 
 def test_align_single_speaker(

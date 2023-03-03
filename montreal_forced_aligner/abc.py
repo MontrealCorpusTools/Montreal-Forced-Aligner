@@ -223,7 +223,6 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         """
         Reset all schemas
         """
-        sqlalchemy.orm.session.close_all_sessions()
 
         MfaSqlBase.metadata.drop_all(self.db_engine)
 
@@ -630,7 +629,6 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         """
         Clean up loggers and output final message for top-level workers
         """
-        sqlalchemy.orm.session.close_all_sessions()
         try:
             if getattr(self, "_session", None) is not None:
                 del self._session

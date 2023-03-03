@@ -368,7 +368,6 @@ def stop_server(mode: str = "fast") -> None:
     logger = logging.getLogger("mfa")
     logger.info(f"Stopping the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
     GLOBAL_CONFIG.load()
-    sqlalchemy.orm.session.close_all_sessions()
 
     db_directory = os.path.join(
         GLOBAL_CONFIG["temporary_directory"], f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
