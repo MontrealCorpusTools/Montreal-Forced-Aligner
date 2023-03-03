@@ -2,6 +2,7 @@ import shutil
 import time
 
 import pytest
+import sqlalchemy.orm
 
 from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 from montreal_forced_aligner.alignment import PretrainedAligner
@@ -36,8 +37,10 @@ def test_basic_mono(
     a.train()
     a.export_model(mono_align_model_path)
     assert mono_align_model_path.exists()
+    a.cleanup()
     a.clean_working_directory()
     del a
+    sqlalchemy.orm.close_all_sessions()
     time.sleep(3)
     a = PretrainedAligner(
         corpus_directory=basic_corpus_dir,
@@ -81,6 +84,7 @@ def test_pronunciation_training(
     assert not export_path.exists()
     assert not (generated_dir.joinpath("pron_train_test_export", mixed_dict_path.name).exists())
 
+    sqlalchemy.orm.close_all_sessions()
     a = TrainableAligner(
         corpus_directory=basic_corpus_dir,
         dictionary_path=mixed_dict_path,

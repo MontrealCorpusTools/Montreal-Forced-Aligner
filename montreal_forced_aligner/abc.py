@@ -248,11 +248,6 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
                 stdout=subprocess.DEVNULL,
             )
             exist_check = False
-        with self.db_engine.connect() as conn:
-            conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS vector"))
-            conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
-            conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"))
-            conn.commit()
         self.database_initialized = True
         if exist_check:
             if GLOBAL_CONFIG.current_profile.clean:
@@ -262,6 +257,11 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
                 return
 
         os.makedirs(self.output_directory, exist_ok=True)
+        with self.db_engine.connect() as conn:
+            conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS vector"))
+            conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+            conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"))
+            conn.commit()
 
         MfaSqlBase.metadata.create_all(self.db_engine)
 

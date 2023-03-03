@@ -6,6 +6,7 @@ import shutil
 
 import mock
 import pytest
+import sqlalchemy.orm
 import yaml
 
 from montreal_forced_aligner.config import GLOBAL_CONFIG
@@ -95,8 +96,9 @@ def temp_dir(generated_dir, global_config):
     yield temp_dir
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def db_setup(temp_dir, global_config, request):
+    sqlalchemy.orm.close_all_sessions()
     return True
 
 
