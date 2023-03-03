@@ -11,6 +11,7 @@ def test_basic_ivector(
     temp_dir,
     train_ivector_config_path,
     ivector_output_model_path,
+    db_setup,
 ):
     command = [
         "train_ivector",

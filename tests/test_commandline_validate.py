@@ -10,6 +10,7 @@ def test_validate_corpus(
     english_mfa_acoustic_model,
     english_us_mfa_dictionary,
     temp_dir,
+    db_setup,
 ):
     command = [
         "validate",
@@ -44,6 +45,7 @@ def test_validate_training_corpus(
     english_dictionary,
     temp_dir,
     mono_train_config_path,
+    db_setup,
 ):
 
     command = [
@@ -77,6 +79,7 @@ def test_validate_xsampa(
     xsampa_dict_path,
     temp_dir,
     xsampa_train_config_path,
+    db_setup,
 ):
 
     command = [
@@ -107,6 +110,7 @@ def test_validate_dictionary(
     english_us_mfa_g2p_model,
     english_us_mfa_dictionary_subset,
     temp_dir,
+    db_setup,
 ):
 
     command = [
@@ -134,6 +138,7 @@ def test_validate_dictionary(
 def test_validate_dictionary_train(
     basic_dict_path,
     temp_dir,
+    db_setup,
 ):
 
     command = [

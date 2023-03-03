@@ -7,11 +7,7 @@ from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
 def test_align_no_speaker_adaptation(
-    basic_corpus_dir,
-    generated_dir,
-    english_dictionary,
-    temp_dir,
-    english_acoustic_model,
+    basic_corpus_dir, generated_dir, english_dictionary, temp_dir, english_acoustic_model, db_setup
 ):
     output_directory = generated_dir.joinpath("basic_output")
     command = [
@@ -42,6 +38,7 @@ def test_align_single_speaker(
     temp_dir,
     basic_align_config_path,
     english_acoustic_model,
+    db_setup,
 ):
     output_directory = generated_dir.joinpath("basic_align_output")
     command = [
@@ -95,6 +92,7 @@ def test_align_duplicated(
     temp_dir,
     basic_align_config_path,
     english_acoustic_model,
+    db_setup,
 ):
     output_directory = generated_dir.joinpath("duplicated_align_output")
     command = [
@@ -143,6 +141,7 @@ def test_align_multilingual(
     temp_dir,
     basic_align_config_path,
     english_mfa_acoustic_model,
+    db_setup,
 ):
 
     command = [
@@ -182,6 +181,7 @@ def test_align_multilingual_speaker_dict(
     temp_dir,
     basic_align_config_path,
     english_mfa_acoustic_model,
+    db_setup,
 ):
 
     command = [
@@ -221,6 +221,7 @@ def test_align_multilingual_tg_speaker_dict(
     temp_dir,
     basic_align_config_path,
     english_mfa_acoustic_model,
+    db_setup,
 ):
 
     command = [
@@ -261,6 +262,7 @@ def test_align_evaluation(
     english_mfa_acoustic_model,
     basic_reference_dir,
     eval_mapping_path,
+    db_setup,
 ):
 
     command = [
@@ -306,6 +308,7 @@ def test_align_split(
     basic_align_config_path,
     english_acoustic_model,
     english_mfa_acoustic_model,
+    db_setup,
 ):
     audio_dir, text_dir = basic_split_dir
     command = [
@@ -347,6 +350,7 @@ def test_align_stereo(
     temp_dir,
     basic_align_config_path,
     english_acoustic_model,
+    db_setup,
 ):
     output_dir = generated_dir.joinpath("stereo_output")
     command = [
@@ -389,6 +393,7 @@ def test_align_mp3s(
     temp_dir,
     basic_align_config_path,
     english_acoustic_model,
+    db_setup,
 ):
     output_dir = generated_dir.joinpath("mp3_output")
     command = [
@@ -431,6 +436,7 @@ def test_align_opus(
     temp_dir,
     basic_align_config_path,
     english_acoustic_model,
+    db_setup,
 ):
     output_dir = generated_dir.joinpath("opus_output")
     command = [
@@ -473,6 +479,7 @@ def test_swedish_cv(
     temp_dir,
     basic_align_config_path,
     swedish_cv_acoustic_model,
+    db_setup,
 ):
     output_dir = generated_dir.joinpath("swedish_cv_output")
     command = [
@@ -523,6 +530,7 @@ def test_swedish_mfa(
     temp_dir,
     basic_align_config_path,
     swedish_cv_acoustic_model,
+    db_setup,
 ):
     output_dir = generated_dir.joinpath("swedish_mfa_output")
     command = [
@@ -573,6 +581,7 @@ def test_acoustic_g2p_model(
     generated_dir,
     temp_dir,
     basic_align_config_path,
+    db_setup,
 ):
     model_path = os.path.join(acoustic_model_dir, "acoustic_g2p_output_model.zip")
     dict_path = os.path.join(dict_dir, "acoustic_g2p_dictionary.yaml")

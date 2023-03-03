@@ -10,6 +10,7 @@ def test_train_lm(
     temp_dir,
     generated_dir,
     basic_train_lm_config_path,
+    db_setup,
 ):
     temp_dir = os.path.join(temp_dir, "train_lm")
     output_model_path = generated_dir.joinpath("test_basic_lm.zip")
@@ -42,6 +43,7 @@ def test_train_lm_text(
     temp_dir,
     generated_dir,
     basic_train_lm_config_path,
+    db_setup,
 ):
     temp_dir = os.path.join(temp_dir, "train_lm_text")
     text_dir = basic_split_dir[1]
@@ -68,6 +70,7 @@ def test_train_lm_dictionary(
     temp_dir,
     generated_dir,
     basic_train_lm_config_path,
+    db_setup,
 ):
     temp_dir = os.path.join(temp_dir, "train_lm_dictionary")
     text_dir = basic_split_dir[1]
@@ -95,6 +98,7 @@ def test_train_lm_arpa(
     temp_dir,
     generated_dir,
     basic_train_lm_config_path,
+    db_setup,
 ):
     temp_dir = os.path.join(temp_dir, "train_lm_arpa")
     output_model_path = generated_dir.joinpath("test_basic_lm_split.zip")
@@ -119,6 +123,7 @@ def test_train_lm_text_no_mp(
     temp_dir,
     generated_dir,
     basic_train_lm_config_path,
+    db_setup,
 ):
     text_dir = basic_split_dir[1]
     output_model_path = generated_dir.joinpath("test_basic_lm_split.zip")

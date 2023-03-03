@@ -14,6 +14,7 @@ def test_transcribe(
     transcription_language_model,
     temp_dir,
     transcribe_config_path,
+    db_setup,
 ):
     output_path = generated_dir.joinpath("transcribe_test")
     command = [
@@ -54,6 +55,7 @@ def test_transcribe_arpa(
     transcription_language_model_arpa,
     temp_dir,
     transcribe_config_path,
+    db_setup,
 ):
     temp_dir = os.path.join(temp_dir, "arpa_test_temp")
     output_path = generated_dir.joinpath("transcribe_test_arpa")
@@ -96,6 +98,7 @@ def test_transcribe_speaker_dictionaries(
     transcription_language_model,
     temp_dir,
     transcribe_config_path,
+    db_setup,
 ):
     output_path = generated_dir.joinpath("transcribe_test")
     command = [
@@ -135,6 +138,7 @@ def test_transcribe_speaker_dictionaries_evaluate(
     transcription_language_model,
     temp_dir,
     transcribe_config_path,
+    db_setup,
 ):
     output_path = generated_dir.joinpath("transcribe_test")
     command = [

@@ -12,6 +12,7 @@ def test_train_acoustic_with_g2p(
     temp_dir,
     train_g2p_acoustic_config_path,
     acoustic_g2p_model_path,
+    db_setup,
 ):
     if os.path.exists(acoustic_g2p_model_path):
         os.remove(acoustic_g2p_model_path)
@@ -53,6 +54,7 @@ def test_train_and_align_basic_speaker_dict(
     temp_dir,
     basic_train_config_path,
     textgrid_output_model_path,
+    db_setup,
 ):
     if os.path.exists(textgrid_output_model_path):
         os.remove(textgrid_output_model_path)

@@ -14,6 +14,7 @@ def test_cluster_mfa(
     transcription_acoustic_model,
     transcription_language_model,
     temp_dir,
+    db_setup,
 ):
     output_path = generated_dir.joinpath("cluster_test_mfa")
     command = [
@@ -51,6 +52,7 @@ def test_classify_mfa(
     transcription_acoustic_model,
     transcription_language_model,
     temp_dir,
+    db_setup,
 ):
     output_path = generated_dir.joinpath("classify_test_mfa")
     command = [
@@ -83,6 +85,7 @@ def test_cluster_speechbrain(
     transcription_acoustic_model,
     transcription_language_model,
     temp_dir,
+    db_setup,
 ):
     if not FOUND_SPEECHBRAIN:
         pytest.skip("SpeechBrain not installed")
@@ -123,6 +126,7 @@ def test_classify_speechbrain(
     transcription_acoustic_model,
     transcription_language_model,
     temp_dir,
+    db_setup,
 ):
     if not FOUND_SPEECHBRAIN:
         pytest.skip("SpeechBrain not installed")

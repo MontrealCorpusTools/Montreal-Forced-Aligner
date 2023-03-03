@@ -2,6 +2,7 @@ import os
 
 import click.testing
 import pytest
+import sqlalchemy.orm
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
 from montreal_forced_aligner.dictionary import MultispeakerDictionary
@@ -142,7 +143,7 @@ def test_inspect_model():
 
 
 def test_add_pronunciations(
-    hindi_dict_path, japanese_dict_path, basic_dict_path, acoustic_dict_path
+    hindi_dict_path, japanese_dict_path, basic_dict_path, acoustic_dict_path, db_setup
 ):
     command = [
         "model",
@@ -164,6 +165,7 @@ def test_add_pronunciations(
     assert not result.return_value
     assert os.path.exists(DictionaryModel.get_pretrained_path("hindi"))
 
+    sqlalchemy.orm.close_all_sessions()
     with pytest.raises(PhoneMismatchError):
         command = [
             "model",
@@ -199,6 +201,7 @@ def test_add_pronunciations(
         raise result.exception
     assert not result.return_value
     assert os.path.exists(DictionaryModel.get_pretrained_path("acoustic"))
+    sqlalchemy.orm.close_all_sessions()
     command = [
         "model",
         "add_words",

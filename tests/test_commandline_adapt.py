@@ -12,6 +12,7 @@ def test_adapt_basic(
     temp_dir,
     test_align_config,
     english_acoustic_model,
+    db_setup,
 ):
     adapted_model_path = generated_dir.joinpath("basic_adapted.zip")
     command = [
@@ -49,6 +50,7 @@ def test_adapt_multilingual(
     basic_align_config_path,
     english_acoustic_model,
     english_mfa_acoustic_model,
+    db_setup,
 ):
     adapted_model_path = generated_dir.joinpath("multilingual_adapted.zip")
     output_path = generated_dir.joinpath("multilingual_output")
