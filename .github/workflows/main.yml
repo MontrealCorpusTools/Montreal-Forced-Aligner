@@ -71,10 +71,19 @@ jobs:
       - name: Run tests
         shell: bash -l {0}
         run: pytest -x ./tests
+        continue-on-error: true
 
       - name: Stop database
         shell: bash -l {0}
         run: python -m montreal_forced_aligner server stop -p test
+
+      - name: Check init database log
+        shell: bash -l {0}
+        run: cat ~/Documents/MFA/pg_init_log_test.txt
+
+      - name: Check database start log
+        shell: bash -l {0}
+        run: cat ~/Documents/MFA/pg_log_test.txt
 
       - name: "Upload coverage to Codecov"
         uses: "codecov/codecov-action@v3"

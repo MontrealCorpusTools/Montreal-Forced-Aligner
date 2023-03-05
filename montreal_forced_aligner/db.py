@@ -1244,7 +1244,11 @@ class Utterance(MfaSqlBase):
     ignored: bool
         Flag for if the utterance is ignored due to lacking features
     alignment_log_likelihood: float
-        Log likelihood for the alignment of the utterance
+        Log likelihood for the alignment of the utterance, taking both speech and silence phones into consideration
+    speech_log_likelihood: float
+        Log likelihood for the alignment of the utterance, taking only the speech phones into consideration
+    duration_deviation: float
+        Average of absolute z-score of speech phone duration
     phone_error_rate: float
         Phone error rate for alignment evaluation
     alignment_score: float
@@ -1598,6 +1602,8 @@ class PhoneInterval(MfaSqlBase):
         Beginning timestamp of the interval
     end: float
         Ending timestamp of the interval
+    duration: float
+        Calculated duration of the interval
     phone_goodness: float
         Confidence score, log-likelihood, etc for the phone interval
     phone_id: int
