@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import functools
 import logging
-import os
 import shutil
 import subprocess
 import typing
@@ -235,6 +234,7 @@ def configure_pg(directory):
         "#unix_socket_directories = ''": f"unix_socket_directories = '{GLOBAL_CONFIG.database_socket}'",
         "#unix_socket_directories = '/tmp'": f"unix_socket_directories = '{GLOBAL_CONFIG.database_socket}'",
         "#listen_addresses = 'localhost'": "listen_addresses = ''",
+        "max_connections = 100": "max_connections = 1000",
     }
     if not GLOBAL_CONFIG.current_profile.database_limited_mode:
         configuration_updates.update(
@@ -242,7 +242,6 @@ def configure_pg(directory):
                 "#maintenance_work_mem = 64MB": "maintenance_work_mem = 500MB",
                 "#work_mem = 4MB": "work_mem = 128MB",
                 "shared_buffers = 128MB": "shared_buffers = 256MB",
-                "max_connections = 100": "max_connections = 10000",
             }
         )
     else:
@@ -255,11 +254,11 @@ def configure_pg(directory):
                 "#max_wal_senders = 10": "max_wal_senders = 0",
             }
         )
-    with mfa_open(os.path.join(directory, "postgresql.conf"), "r") as f:
+    with mfa_open(directory.joinpath("postgresql.conf"), "r") as f:
         config = f.read()
     for query, rep in configuration_updates.items():
         config = config.replace(query, rep)
-    with mfa_open(os.path.join(directory, "postgresql.conf"), "w") as f:
+    with mfa_open(directory.joinpath("postgresql.conf"), "w") as f:
         f.write(config)
 
 
@@ -296,14 +295,13 @@ def initialize_server() -> None:
     logger = logging.getLogger("mfa")
     logger.info(f"Initializing the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
 
-    db_directory = os.path.join(
-        GLOBAL_CONFIG["temporary_directory"], f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
+    db_directory = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+        f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
-    init_log_path = os.path.join(
-        GLOBAL_CONFIG["temporary_directory"],
-        f"pg_init_log_{GLOBAL_CONFIG.current_profile_name}.txt",
+    init_log_path = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+        f"pg_init_log_{GLOBAL_CONFIG.current_profile_name}.txt"
     )
-    os.makedirs(GLOBAL_CONFIG["temporary_directory"], exist_ok=True)
+    GLOBAL_CONFIG.current_profile.temporary_directory.mkdir(parents=True, exist_ok=True)
     with open(init_log_path, "w") as log_file:
         try:
             subprocess.check_call(
@@ -338,15 +336,18 @@ def start_server() -> None:
     """Start the MFA server for the current profile"""
     GLOBAL_CONFIG.load()
     logger = logging.getLogger("mfa")
-    logger.info(f"Starting the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
 
-    db_directory = os.path.join(
-        GLOBAL_CONFIG["temporary_directory"], f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
+    db_directory = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+        f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
-    log_path = os.path.join(
-        GLOBAL_CONFIG["temporary_directory"], f"pg_log_{GLOBAL_CONFIG.current_profile_name}.txt"
+    if not db_directory.exists():
+        logger.info(f"Stopping the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
+        initialize_server()
+        return
+    logger.info(f"Starting the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
+    log_path = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+        f"pg_log_{GLOBAL_CONFIG.current_profile_name}.txt"
     )
-    os.makedirs(GLOBAL_CONFIG["temporary_directory"], exist_ok=True)
     subprocess.check_call(
         [
             "pg_ctl",
@@ -363,14 +364,25 @@ def start_server() -> None:
 
 
 def stop_server(mode: str = "fast") -> None:
-    """Stop the MFA server for the current profile"""
+    """
+    Stop the MFA server for the current profile.
+
+    Parameters
+    ----------
+    mode: str, optional
+        Mode to to be passed to `pg_ctl`, defaults to "fast"
+    """
     logger = logging.getLogger("mfa")
-    logger.info(f"Stopping the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
     GLOBAL_CONFIG.load()
 
-    db_directory = os.path.join(
-        GLOBAL_CONFIG["temporary_directory"], f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
+    db_directory = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+        f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
+    if not db_directory.exists():
+
+        logger.error(f"There was no database found at {db_directory}.")
+        return
+    logger.info(f"Stopping the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
     try:
         subprocess.check_call(
             ["pg_ctl", "-D", db_directory, "-m", mode, "stop"],
@@ -381,15 +393,17 @@ def stop_server(mode: str = "fast") -> None:
         pass
 
 
-def remove_server() -> None:
+def delete_server() -> None:
     """Remove the MFA server for the current profile"""
     stop_server(mode="immediate")
     logger = logging.getLogger("mfa")
-    logger.info(f"Deleting the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
     GLOBAL_CONFIG.load()
 
     db_directory = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
         f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
     if db_directory.exists():
+        logger.info(f"Deleting the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
         shutil.rmtree(db_directory)
+    else:
+        logger.error(f"There was no database found at {db_directory}.")

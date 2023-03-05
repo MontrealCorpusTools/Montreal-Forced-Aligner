@@ -48,6 +48,10 @@ jobs:
           extra-specs: |
             python=3.9
 
+      - name: Configure mfa
+        shell: bash -l {0}
+        run: python -m montreal_forced_aligner configure --disable_auto_server
+
       - name: Initialize database
         shell: bash -l {0}
         run: python -m montreal_forced_aligner server init -p test

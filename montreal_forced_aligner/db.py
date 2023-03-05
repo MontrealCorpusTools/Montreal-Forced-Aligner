@@ -513,6 +513,8 @@ class Phone(MfaSqlBase):
     kaldi_label = Column(String(10), unique=True, nullable=False)
     position = Column(String(2), nullable=True)
     phone_type = Column(Enum(PhoneType), nullable=False, index=True)
+    mean_duration = Column(Float, nullable=True)
+    sd_duration = Column(Float, nullable=True)
 
     phone_intervals = relationship(
         "PhoneInterval",
@@ -1288,6 +1290,8 @@ class Utterance(MfaSqlBase):
     in_subset = Column(Boolean, nullable=False, default=False, index=True)
     ignored = Column(Boolean, nullable=False, default=False, index=True)
     alignment_log_likelihood = Column(Float)
+    speech_log_likelihood = Column(Float)
+    duration_deviation = Column(Float)
     phone_error_rate = Column(Float)
     alignment_score = Column(Float)
     word_error_rate = Column(Float)
@@ -1620,6 +1624,7 @@ class PhoneInterval(MfaSqlBase):
     begin = Column(Float, nullable=False, index=True)
     end = Column(Float, nullable=False)
     phone_goodness = Column(Float, nullable=True)
+    duration = Column(Float, sqlalchemy.Computed('"end" - "begin"'))
 
     phone_id = Column(
         Integer, ForeignKey("phone.id", ondelete="CASCADE"), index=True, nullable=False

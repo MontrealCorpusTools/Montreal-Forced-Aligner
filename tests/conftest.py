@@ -84,6 +84,7 @@ def global_config():
     GLOBAL_CONFIG.current_profile.num_jobs = 2
     GLOBAL_CONFIG.current_profile.use_mp = False
     GLOBAL_CONFIG.current_profile.database_limited_mode = True
+    GLOBAL_CONFIG.current_profile.auto_server = False
     GLOBAL_CONFIG.save()
     yield GLOBAL_CONFIG
 

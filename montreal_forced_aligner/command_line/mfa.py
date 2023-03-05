@@ -107,8 +107,24 @@ def mfa_cli(ctx: click.Context) -> None:
     Main function for the MFA command line interface
     """
     GLOBAL_CONFIG.load()
+    from montreal_forced_aligner.command_line.utils import start_server, stop_server
     from montreal_forced_aligner.helper import configure_logger
 
+    auto_server = False
+    if "--help" in sys.argv or ctx.invoked_subcommand in [
+        "configure",
+        "version",
+        "history",
+        "server",
+    ]:
+        auto_server = False
+    elif ctx.invoked_subcommand in ["model", "models"]:
+        if "add_words" in sys.argv or "inspect" in sys.argv:
+            auto_server = getattr(GLOBAL_CONFIG.global_profile, "auto_server", True)
+    else:
+        auto_server = getattr(GLOBAL_CONFIG.global_profile, "auto_server", True)
+    if auto_server:
+        start_server()
     warnings.simplefilter("ignore")
     configure_logger("mfa")
     check_third_party()
@@ -117,6 +133,8 @@ def mfa_cli(ctx: click.Context) -> None:
         hooks.hook()
         atexit.register(hooks.history_save_handler)
         atexit.register(cleanup_logger)
+        if auto_server:
+            atexit.register(stop_server)
 
     mp.freeze_support()
 

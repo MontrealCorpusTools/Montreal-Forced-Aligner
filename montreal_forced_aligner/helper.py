@@ -56,7 +56,8 @@ console = Console(
             "logging.level.warning": "yellow",
             "logging.level.error": "red",
         }
-    )
+    ),
+    stderr=True,
 )
 
 

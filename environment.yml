@@ -32,6 +32,7 @@ dependencies:
   - pytest
   - pytest-mypy
   - pytest-cov
+  - pytest-timeout
   - mock
   - coverage
   - coveralls

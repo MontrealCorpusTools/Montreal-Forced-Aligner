@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import pathlib
+import sys
 from pathlib import Path
 
 import rich_click as click
@@ -13,6 +15,7 @@ from montreal_forced_aligner.command_line.utils import (
 )
 from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.g2p.generator import (
+    PyniniConsoleGenerator,
     PyniniCorpusGenerator,
     PyniniDictionaryCorpusGenerator,
     PyniniWordListGenerator,
@@ -31,10 +34,13 @@ __all__ = ["g2p_cli"]
     short_help="Generate pronunciations",
 )
 @click.argument(
-    "input_path", type=click.Path(exists=True, file_okay=True, dir_okay=True, path_type=Path)
+    "input_path",
+    type=click.Path(exists=True, file_okay=True, dir_okay=True, path_type=Path, allow_dash=True),
 )
 @click.argument("g2p_model_path", type=click.UNPROCESSED, callback=validate_g2p_model)
-@click.argument("output_path", type=click.Path(file_okay=True, dir_okay=False, path_type=Path))
+@click.argument(
+    "output_path", type=click.Path(file_okay=True, dir_okay=False, path_type=Path, allow_dash=True)
+)
 @click.option(
     "--config_path",
     "-c",
@@ -70,6 +76,8 @@ def g2p_cli(context, **kwargs) -> None:
     g2p_model_path = kwargs["g2p_model_path"]
     output_path = kwargs["output_path"]
     dictionary_path = kwargs.get("dictionary_path", None)
+    use_stdin = input_path == pathlib.Path("-")
+    use_stdout = output_path == pathlib.Path("-")
 
     if os.path.isdir(input_path):
         if dictionary_path is not None:
@@ -89,6 +97,8 @@ def g2p_cli(context, **kwargs) -> None:
                     config_path, context.params, context.args
                 ),
             )
+    elif use_stdin:
+        g2p = PyniniConsoleGenerator(g2p_model_path=g2p_model_path)
     else:
         g2p = PyniniWordListGenerator(
             word_list_path=input_path,
@@ -98,7 +108,25 @@ def g2p_cli(context, **kwargs) -> None:
 
     try:
         g2p.setup()
-        g2p.export_pronunciations(output_path)
+        if use_stdin:
+            if use_stdout:
+                output = sys.stdout
+            else:
+                output = open(output_path, "w", encoding="utf8")
+            try:
+                for line in sys.stdin:
+                    word = line.strip().lower()
+                    if not word:
+                        continue
+                    word = "".join([x for x in word if x in g2p.g2p_model.meta["graphemes"]])
+                    pronunciations = g2p.rewriter(word)
+                    for p in pronunciations:
+                        output.write(f"{word}\t{p}\n")
+                    output.flush()
+            finally:
+                output.close()
+        else:
+            g2p.export_pronunciations(output_path)
     except Exception:
         g2p.dirty = True
         raise

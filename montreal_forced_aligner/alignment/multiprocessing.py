@@ -34,6 +34,7 @@ from montreal_forced_aligner.corpus.features import (
 from montreal_forced_aligner.data import (
     CtmInterval,
     MfaArguments,
+    PhoneType,
     PronunciationProbabilityCounter,
     TextgridFormats,
     WordCtmInterval,
@@ -370,6 +371,29 @@ class AlignArguments(MfaArguments):
     align_options: MetaDict
     feature_options: MetaDict
     confidence: bool
+
+
+@dataclass
+class CalculateSpeechPostArguments(MfaArguments):
+    """
+    Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: :class:`~pathlib.Path`
+        Path to save logging information during the run
+    model_path: :class:`~pathlib.Path`
+        Path to model file
+    align_options: dict[str, Any]
+        Alignment options
+    """
+
+    model_path: Path
+    align_options: MetaDict
 
 
 @dataclass
@@ -835,6 +859,7 @@ class AlignFunction(KaldiFunction):
                     workflow.working_directory, "trans", "ark", dict_id
                 )
                 ali_path = job.construct_path(workflow.working_directory, "ali", "ark", dict_id)
+                like_path = job.construct_path(workflow.working_directory, "like", "ark", dict_id)
                 if (
                     self.confidence
                     and self.feature_options["uses_speaker_adaptation"]
@@ -850,6 +875,7 @@ class AlignFunction(KaldiFunction):
                         f"--max-active={self.align_options['max_active']}",
                         f"--lattice-beam={self.align_options['lattice_beam']}",
                         f"--word-symbol-table={word_symbols_path}",
+                        "--allow-partial=true",
                         self.model_path,
                         f"ark,s,cs:{fst_path}",
                         feature_string,
@@ -868,6 +894,7 @@ class AlignFunction(KaldiFunction):
                         f"--beam={self.align_options['beam']}",
                         f"--retry-beam={self.align_options['retry_beam']}",
                         "--careful=false",
+                        f"--write-per-frame-acoustic-loglikes=ark:{like_path}",
                         "-",
                         f"ark,s,cs:{fst_path}",
                         feature_string,
@@ -906,6 +933,7 @@ class AlignFunction(KaldiFunction):
                         and self.feature_options["uses_speaker_adaptation"]
                         and os.path.exists(fmllr_path)
                     ):
+                        log_file.write(line + "\n")
                         m = self.progress_pattern.match(line)
                         if m:
                             utterance = m.group("utterance")
@@ -924,6 +952,89 @@ class AlignFunction(KaldiFunction):
                         f"or downgrade MFA to the version that the model was trained on."
                     )
                 self.check_call(align_proc)
+
+
+class CalculateSpeechPostFunction(KaldiFunction):
+    """
+    Multiprocessing function for alignment.
+
+    See Also
+    --------
+    :meth:`.CorpusAligner.analyze_alignments`
+        Main function that calls this function in parallel
+    :meth:`.CorpusAligner.calculate_speech_post_arguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`lattice-to-post`
+        Relevant Kaldi binary
+    :kaldi_src:`weight-silence-post`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.alignment.multiprocessing.CalculateSpeechPostArguments`
+        Arguments for the function
+    """
+
+    progress_pattern = re.compile(
+        r"^LOG.*Log-like per frame for utterance (?P<utterance>.*) is (?P<loglike>[-\d.]+) over (?P<num_frames>\d+) frames."
+    )
+
+    def __init__(self, args: CalculateSpeechPostArguments):
+        super().__init__(args)
+        self.model_path = args.model_path
+        self.align_options = args.align_options
+
+    def _run(self) -> typing.Generator[typing.Tuple[int, float]]:
+        """Run the function"""
+
+        with Session(self.db_engine()) as session:
+            job: Job = (
+                session.query(Job)
+                .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
+                .filter(Job.id == self.job_name)
+                .first()
+            )
+            workflow = (
+                session.query(CorpusWorkflow)
+                .filter(CorpusWorkflow.current == True)  # noqa
+                .first()
+            )
+            phones = {
+                k: (m, sd)
+                for k, m, sd in session.query(
+                    Phone.id, Phone.mean_duration, Phone.sd_duration
+                ).filter(
+                    Phone.phone_type == PhoneType.non_silence,
+                    Phone.sd_duration != None,  # noqa
+                    Phone.sd_duration != 0,
+                )
+            }
+            query = session.query(Utterance).filter(
+                Utterance.job_id == job.id, Utterance.alignment_log_likelihood != None  # noqa
+            )
+            for utterance in query:
+                phone_intervals = (
+                    session.query(PhoneInterval)
+                    .join(PhoneInterval.phone)
+                    .filter(
+                        PhoneInterval.utterance_id == utterance.id,
+                        PhoneInterval.workflow_id == workflow.id,
+                        Phone.id.in_(list(phones.keys())),
+                    )
+                    .all()
+                )
+                if not phone_intervals:
+                    continue
+                interval_count = len(phone_intervals)
+                log_like_sum = 0
+                duration_zscore_sum = 0
+                for pi in phone_intervals:
+                    log_like_sum += pi.phone_goodness
+                    m, sd = phones[pi.phone_id]
+                    duration_zscore_sum += abs((pi.duration - m) / sd)
+                utterance_speech_log_likelihood = log_like_sum / interval_count
+                utterance_duration_deviation = duration_zscore_sum / interval_count
+                yield utterance.id, utterance_speech_log_likelihood, utterance_duration_deviation
 
 
 class FineTuneFunction(KaldiFunction):
@@ -2063,6 +2174,7 @@ class AlignmentExtractionFunction(KaldiFunction):
                 if not os.path.exists(lat_path):
                     lat_path = job.construct_path(workflow.working_directory, "lat", "ark", d.id)
                 ali_path = job.construct_path(workflow.working_directory, "ali", "ark", d.id)
+                like_path = job.construct_path(workflow.working_directory, "like", "ark", d.id)
                 if self.transcription:
                     self.utterance_texts = {}
                     lat_align_proc = subprocess.Popen(
@@ -2168,9 +2280,29 @@ class AlignmentExtractionFunction(KaldiFunction):
                         env=os.environ,
                         encoding="utf8",
                     )
+                    like_proc = subprocess.Popen(
+                        [
+                            thirdparty_binary("copy-vector"),
+                            f"ark,s,cs:{like_path}",
+                            "ark,t:-",
+                        ],
+                        stderr=log_file,
+                        stdout=subprocess.PIPE,
+                        env=os.environ,
+                    )
+                    like_gen = read_feats(like_proc)
                     for utterance, intervals in parse_ctm_output(
                         ctm_proc, self.reversed_phone_mapping
                     ):
+                        utt, loglikes = next(like_gen)
+                        for interval in intervals:
+                            begin_frame = int(round(interval.begin / self.frame_shift))
+                            end_frame = int(round(interval.end / self.frame_shift))
+                            if begin_frame == end_frame:
+                                end_frame += 1
+                            interval.confidence = round(
+                                float(np.mean(loglikes[begin_frame:end_frame])), 6
+                            )
                         if not d.use_g2p:
 
                             (

@@ -111,6 +111,7 @@ def align_corpus_cli(context, **kwargs) -> None:
     )
     try:
         aligner.align()
+        aligner.analyze_alignments()
         if aligner.use_phone_model:
             aligner.export_files(
                 output_directory,

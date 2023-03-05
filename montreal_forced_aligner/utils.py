@@ -335,7 +335,9 @@ def log_kaldi_errors(error_logs: List[str]) -> None:
                 logger.debug("\t" + line.strip())
 
 
-def read_feats(proc: subprocess.Popen, raw_id=False) -> Dict[str, np.array]:
+def read_feats(
+    proc: subprocess.Popen, raw_id=False
+) -> typing.Generator[typing.Union[str, int], np.array]:
     """
     Inspired by https://github.com/it-muslim/kaldi-helpers/blob/master/kaldi-helpers/kaldi_io.py#L87
 
@@ -359,10 +361,12 @@ def read_feats(proc: subprocess.Popen, raw_id=False) -> Dict[str, np.array]:
     proc : subprocess.Popen
         A process that generates features or feature-like specifications
 
-    Returns
+    Yields
     -------
-    feats : numpy.array
-        A dict of pairs {utterance: feats}
+    int or str
+        Utterance ID
+    numpy.array
+        features
     """
     feats = []
     # current_row = 0

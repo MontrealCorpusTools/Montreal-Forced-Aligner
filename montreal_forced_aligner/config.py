@@ -139,7 +139,6 @@ class MfaProfile:
     debug: bool = False
     quiet: bool = False
     overwrite: bool = False
-    terminal_colors: bool = True
     cleanup_textgrids: bool = True
     database_backend: str = "psycopg2"
     database_limited_mode: bool = False
@@ -149,6 +148,7 @@ class MfaProfile:
     blas_num_threads: int = 1
     use_mp: bool = True
     single_speaker: bool = False
+    auto_server: bool = False
     temporary_directory: pathlib.Path = get_temporary_directory()
     github_token: typing.Optional[str] = None
 
@@ -168,10 +168,10 @@ class MfaProfile:
         for k, v in data.items():
             if k == "temp_directory":
                 k = "temporary_directory"
-            if k == "temporary_directory":
-                v = pathlib.Path(v)
             if v is None:
                 continue
+            if k == "temporary_directory":
+                v = pathlib.Path(v)
             if hasattr(self, k):
                 setattr(self, k, v)
 

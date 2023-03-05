@@ -30,6 +30,17 @@ See :ref:`dict_generating_example` for an example of how to use G2P functionalit
 
    As of version 2.0.6, users on Windows can run this command natively without requiring :xref:`wsl`, see :ref:`installation` for more details.
 
+Piping stdin/stdout
+-------------------
+
+If you specify the input path as ``-`` instead of a file path, the g2p command will run through each line in the stdin and G2P each word with minimal processing.  Words will be lower cased and any graphemes that were not in the model's training data will be removed.
+
+If you specify the output path as ``-`` instead of a file path, the g2p command will send pronunciations as stdout rather than writing to a file.
+
+.. note::
+
+   Using stdin will also bypass database set up (though the database server will still be started and stopped, so be sure to run :code:`mfa configure --no_auto_server` if speed is of necessity.
+
 Command reference
 -----------------
 

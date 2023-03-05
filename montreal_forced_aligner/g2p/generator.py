@@ -489,6 +489,19 @@ class PyniniGenerator(G2PTopLevelMixin):
         return to_return
 
 
+class PyniniConsoleGenerator(PyniniGenerator):
+    @property
+    def data_directory(self) -> Path:
+        return Path("-")
+
+    @property
+    def working_directory(self) -> Path:
+        return GLOBAL_CONFIG.current_profile.temporary_directory.joinpath("g2p_stdin")
+
+    def cleanup(self) -> None:
+        pass
+
+
 class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
     """
     Class for running validation for G2P model training

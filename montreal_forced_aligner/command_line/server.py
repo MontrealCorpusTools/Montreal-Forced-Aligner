@@ -4,8 +4,8 @@ import os
 import rich_click as click
 
 from montreal_forced_aligner.command_line.utils import (
+    delete_server,
     initialize_server,
-    remove_server,
     start_server,
     stop_server,
 )
@@ -95,4 +95,4 @@ def delete_cli(context, **kwargs):
         os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
     GLOBAL_CONFIG.save()
-    remove_server()
+    delete_server()
