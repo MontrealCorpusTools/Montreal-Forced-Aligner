@@ -8,10 +8,10 @@ This is the primary workflow of MFA, where you can use pretrained :term:`acousti
 
 .. seealso::
 
-   * :doc:`alignment_evaluation` for details on how to evaluate alignments against a gold standard.
-   * :doc:`fine_tune_alignments` for implementation details on how alignments are fine tuned.
-   * :doc:`phone_models` for implementation details on using phone bigram models for generating alignments.
-   * :doc:`alignment_analysis` for details on the fields generated in the ``alignment_analysis.csv`` file in the output folder
+   * :ref:`alignment_evaluation` for details on how to evaluate alignments against a gold standard.
+   * :ref:`fine_tune_alignments` for implementation details on how alignments are fine tuned.
+   * :ref:`phone_models` for implementation details on using phone bigram models for generating alignments.
+   * :ref:`alignment_analysis` for details on the fields generated in the ``alignment_analysis.csv`` file in the output folder
 
 Command reference
 -----------------

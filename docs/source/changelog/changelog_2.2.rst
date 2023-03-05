@@ -13,7 +13,7 @@
 - Added the ability to manage MFA database servers (:ref:`server`), along with the configuration flag to disable automatic starting/stopping of databases
 - Disabled starting servers for subcommands like ``configure``, ``version``, ``history`` or ``--help`` invocations
 - Added the ability to pipe words via stdin/stdout when :ref:`g2p_dictionary_generating`
-- Added a first pass at providing estimations of alignment quality through the ``alignment_analysis.csv`` file exported with alignments, see :doc:`alignment_analysis` for more details.
+- Added a first pass at providing estimations of alignment quality through the ``alignment_analysis.csv`` file exported with alignments, see :ref:`alignment_analysis` for more details.
 
 2.2.3
 =====

@@ -1,4 +1,5 @@
 
+(alignment_analysis)=
 # Analyzing alignment quality
 
 When exporting textgrids following alignment, an additional file named `alignment_analysis.csv` will be exported.  I am still currently working to refine what are the best measures for analyzing alignments as it's not entirely as straightforward as taking the overall alignment log-likelihood.

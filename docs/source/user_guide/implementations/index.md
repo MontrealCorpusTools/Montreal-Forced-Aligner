@@ -11,6 +11,7 @@ This section is under construction!
 phone_groups
 phonological_rules
 lexicon_probabilities
+alignment_analysis
 alignment_evaluation
 fine_tune
 phone_models

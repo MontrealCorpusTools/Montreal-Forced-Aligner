@@ -2280,29 +2280,31 @@ class AlignmentExtractionFunction(KaldiFunction):
                         env=os.environ,
                         encoding="utf8",
                     )
-                    like_proc = subprocess.Popen(
-                        [
-                            thirdparty_binary("copy-vector"),
-                            f"ark,s,cs:{like_path}",
-                            "ark,t:-",
-                        ],
-                        stderr=log_file,
-                        stdout=subprocess.PIPE,
-                        env=os.environ,
-                    )
-                    like_gen = read_feats(like_proc)
+                    if like_path.exists():
+                        like_proc = subprocess.Popen(
+                            [
+                                thirdparty_binary("copy-vector"),
+                                f"ark,s,cs:{like_path}",
+                                "ark,t:-",
+                            ],
+                            stderr=log_file,
+                            stdout=subprocess.PIPE,
+                            env=os.environ,
+                        )
+                        like_gen = read_feats(like_proc)
                     for utterance, intervals in parse_ctm_output(
                         ctm_proc, self.reversed_phone_mapping
                     ):
-                        utt, loglikes = next(like_gen)
-                        for interval in intervals:
-                            begin_frame = int(round(interval.begin / self.frame_shift))
-                            end_frame = int(round(interval.end / self.frame_shift))
-                            if begin_frame == end_frame:
-                                end_frame += 1
-                            interval.confidence = round(
-                                float(np.mean(loglikes[begin_frame:end_frame])), 6
-                            )
+                        if like_path.exists():
+                            utt, loglikes = next(like_gen)
+                            for interval in intervals:
+                                begin_frame = int(round(interval.begin / self.frame_shift))
+                                end_frame = int(round(interval.end / self.frame_shift))
+                                if begin_frame == end_frame:
+                                    end_frame += 1
+                                interval.confidence = round(
+                                    float(np.mean(loglikes[begin_frame:end_frame])), 6
+                                )
                         if not d.use_g2p:
 
                             (
