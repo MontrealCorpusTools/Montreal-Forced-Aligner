@@ -90,11 +90,8 @@ def global_config():
 
 
 @pytest.fixture(scope="session")
-def temp_dir(generated_dir, global_config):
-    temp_dir = generated_dir.joinpath("temp")
-    global_config.current_profile.temporary_directory = temp_dir
-    global_config.save()
-    yield temp_dir
+def temp_dir(global_config):
+    yield global_config.current_profile.temporary_directory
 
 
 @pytest.fixture(scope="function")

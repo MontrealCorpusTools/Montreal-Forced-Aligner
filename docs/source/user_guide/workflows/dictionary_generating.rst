@@ -2,8 +2,8 @@
 
 .. _g2p_dictionary_generating:
 
-Generate a new pronunciation dictionary ``(mfa g2p)``
-=====================================================
+Generate pronunciations for words ``(mfa g2p)``
+===============================================
 
 We have trained several G2P models that are available for download (:xref:`pretrained_g2p`).
 
@@ -40,6 +40,15 @@ If you specify the output path as ``-`` instead of a file path, the g2p command 
 .. note::
 
    Using stdin will also bypass database set up (though the database server will still be started and stopped, so be sure to run :code:`mfa configure --no_auto_server` if speed is of necessity.
+
+Per-utterance G2P
+-----------------
+
+The primary use case for G2P is in generating new pronunciation dictionaries, however there is limited support for generating pronunciations over an entire utterance.  If the ``OUTPUT_PATH`` specified for ``mfa g2p`` is a directory (i.e., no periods to mark a file extension), then MFA will generate a pronunciation for each word and then concatenate them together and save the resulting transcript in the output directory.
+
+.. warning::
+
+   This method is largely not recommended as the output is only the top hypothesis per word in isolation as MFA does not have access to necessary higher order information, so homographs may often have the wrong pronunciation (i.e., English present tense :ipa_inline:`read [ɹ iː d]` vs English past tense :ipa_inline:`read [ɹ ɛ d]`). Use at your own risk.
 
 Command reference
 -----------------

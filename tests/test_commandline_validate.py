@@ -1,5 +1,3 @@
-import os
-
 import click.testing
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
@@ -18,8 +16,6 @@ def test_validate_corpus(
         english_us_mfa_dictionary,
         "--acoustic_model_path",
         english_mfa_acoustic_model,
-        "-t",
-        os.path.join(temp_dir, "validate_cli"),
         "-q",
         "--oov_count_threshold",
         "0",
@@ -52,8 +48,6 @@ def test_validate_training_corpus(
         "validate",
         multilingual_ipa_tg_corpus_dir,
         english_dictionary,
-        "-t",
-        os.path.join(temp_dir, "validation"),
         "-q",
         "--clean",
         "--no_debug",
@@ -86,8 +80,6 @@ def test_validate_xsampa(
         "validate",
         xsampa_corpus_dir,
         xsampa_dict_path,
-        "-t",
-        os.path.join(temp_dir, "validation_xsampa"),
         "-q",
         "--clean",
         "--ignore_acoustics",
@@ -118,8 +110,6 @@ def test_validate_dictionary(
         english_us_mfa_dictionary_subset,
         "--g2p_model_path",
         english_us_mfa_g2p_model,
-        "-t",
-        os.path.join(temp_dir, "dictionary_validation"),
         "-j",
         "1",
     ]
@@ -144,8 +134,6 @@ def test_validate_dictionary_train(
     command = [
         "validate_dictionary",
         basic_dict_path,
-        "-t",
-        os.path.join(temp_dir, "dictionary_validation_train"),
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(

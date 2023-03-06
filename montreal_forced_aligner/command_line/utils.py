@@ -5,6 +5,7 @@ import functools
 import logging
 import shutil
 import subprocess
+import sys
 import typing
 from pathlib import Path
 
@@ -302,6 +303,11 @@ def initialize_server() -> None:
         f"pg_init_log_{GLOBAL_CONFIG.current_profile_name}.txt"
     )
     GLOBAL_CONFIG.current_profile.temporary_directory.mkdir(parents=True, exist_ok=True)
+    if db_directory.exists():
+        logger.error(
+            "The server directory already exists, if you would like to make a new server, please run `mfa server delete` first, or run `mfa server start` to start the existing one."
+        )
+        sys.exit(1)
     with open(init_log_path, "w") as log_file:
         try:
             subprocess.check_call(
@@ -341,7 +347,9 @@ def start_server() -> None:
         f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
     if not db_directory.exists():
-        logger.info(f"Stopping the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
+        logger.warning(
+            f"The {GLOBAL_CONFIG.current_profile_name} MFA database server does not exist, initializing it first."
+        )
         initialize_server()
         return
     logger.info(f"Starting the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
@@ -381,7 +389,7 @@ def stop_server(mode: str = "fast") -> None:
     if not db_directory.exists():
 
         logger.error(f"There was no database found at {db_directory}.")
-        return
+        sys.exit(1)
     logger.info(f"Stopping the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
     try:
         subprocess.check_call(
@@ -407,3 +415,4 @@ def delete_server() -> None:
         shutil.rmtree(db_directory)
     else:
         logger.error(f"There was no database found at {db_directory}.")
+        sys.exit(1)

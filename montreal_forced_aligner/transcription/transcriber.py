@@ -25,7 +25,6 @@ from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import TopLevelMfaWorker
 from montreal_forced_aligner.alignment.base import CorpusAligner
-from montreal_forced_aligner.alignment.multiprocessing import construct_output_path
 from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import (
     ArpaNgramModel,
@@ -57,6 +56,7 @@ from montreal_forced_aligner.language_modeling.multiprocessing import (
     TrainSpeakerLmFunction,
 )
 from montreal_forced_aligner.models import AcousticModel, LanguageModel
+from montreal_forced_aligner.textgrid import construct_output_path
 from montreal_forced_aligner.transcription.multiprocessing import (
     CarpaLmRescoreArguments,
     CarpaLmRescoreFunction,

@@ -17,8 +17,6 @@ def test_basic_ivector(
         "train_ivector",
         basic_corpus_dir,
         ivector_output_model_path,
-        "-t",
-        os.path.join(temp_dir, "train_ivector_cli"),
         "--config_path",
         train_ivector_config_path,
         "-q",

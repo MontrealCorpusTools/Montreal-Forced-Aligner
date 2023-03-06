@@ -39,7 +39,7 @@ __all__ = ["g2p_cli"]
 )
 @click.argument("g2p_model_path", type=click.UNPROCESSED, callback=validate_g2p_model)
 @click.argument(
-    "output_path", type=click.Path(file_okay=True, dir_okay=False, path_type=Path, allow_dash=True)
+    "output_path", type=click.Path(file_okay=True, dir_okay=True, path_type=Path, allow_dash=True)
 )
 @click.option(
     "--config_path",
@@ -79,7 +79,10 @@ def g2p_cli(context, **kwargs) -> None:
     use_stdin = input_path == pathlib.Path("-")
     use_stdout = output_path == pathlib.Path("-")
 
-    if os.path.isdir(input_path):
+    if input_path.is_dir():
+        per_utterance = False
+        if not output_path.suffix:
+            per_utterance = True
         if dictionary_path is not None:
             g2p = PyniniDictionaryCorpusGenerator(
                 corpus_directory=input_path,
@@ -93,10 +96,13 @@ def g2p_cli(context, **kwargs) -> None:
             g2p = PyniniCorpusGenerator(
                 corpus_directory=input_path,
                 g2p_model_path=g2p_model_path,
+                per_utterance=per_utterance,
                 **PyniniCorpusGenerator.parse_parameters(
                     config_path, context.params, context.args
                 ),
             )
+            if per_utterance:
+                g2p.num_pronunciations = 1
     elif use_stdin:
         g2p = PyniniConsoleGenerator(g2p_model_path=g2p_model_path)
     else:
@@ -118,7 +124,6 @@ def g2p_cli(context, **kwargs) -> None:
                     word = line.strip().lower()
                     if not word:
                         continue
-                    word = "".join([x for x in word if x in g2p.g2p_model.meta["graphemes"]])
                     pronunciations = g2p.rewriter(word)
                     for p in pronunciations:
                         output.write(f"{word}\t{p}\n")

@@ -36,10 +36,8 @@ from montreal_forced_aligner.data import (
     MfaArguments,
     PhoneType,
     PronunciationProbabilityCounter,
-    TextgridFormats,
     WordCtmInterval,
     WordType,
-    WorkflowType,
 )
 from montreal_forced_aligner.db import (
     CorpusWorkflow,
@@ -53,11 +51,14 @@ from montreal_forced_aligner.db import (
     Speaker,
     Utterance,
     Word,
-    WordInterval,
 )
 from montreal_forced_aligner.exceptions import AlignmentExportError, FeatureGenerationError
 from montreal_forced_aligner.helper import mfa_open, split_phone_position
-from montreal_forced_aligner.textgrid import export_textgrid
+from montreal_forced_aligner.textgrid import (
+    construct_output_path,
+    construct_output_tiers,
+    export_textgrid,
+)
 from montreal_forced_aligner.utils import (
     Counter,
     KaldiFunction,
@@ -2323,132 +2324,6 @@ class AlignmentExtractionFunction(KaldiFunction):
                                 continue
                         yield utterance, word_intervals, phone_intervals, phone_word_mapping
                     self.check_call(ctm_proc)
-
-
-def construct_output_tiers(
-    session: Session,
-    file_id: int,
-    workflow: CorpusWorkflow,
-    cleanup_textgrids: bool,
-    clitic_marker: str,
-    include_original_text: bool,
-) -> Dict[str, Dict[str, List[CtmInterval]]]:
-    """
-    Construct aligned output tiers for a file
-
-    Parameters
-    ----------
-    session: Session
-        SqlAlchemy session
-    file_id: int
-        Integer ID for the file
-
-    Returns
-    -------
-    Dict[str, Dict[str,List[CtmInterval]]]
-        Aligned tiers
-    """
-    utterances = (
-        session.query(Utterance)
-        .options(
-            joinedload(Utterance.speaker, innerjoin=True).load_only(Speaker.name),
-        )
-        .filter(Utterance.file_id == file_id)
-    )
-    data = {}
-    for utt in utterances:
-        word_intervals = (
-            session.query(WordInterval, Word)
-            .join(WordInterval.word)
-            .filter(WordInterval.utterance_id == utt.id)
-            .filter(WordInterval.workflow_id == workflow.id)
-            .options(
-                selectinload(WordInterval.phone_intervals).joinedload(
-                    PhoneInterval.phone, innerjoin=True
-                )
-            )
-            .order_by(WordInterval.begin)
-        )
-        if cleanup_textgrids:
-            word_intervals = word_intervals.filter(Word.word_type != WordType.silence)
-        if utt.speaker.name not in data:
-            data[utt.speaker.name] = {"words": [], "phones": []}
-            if include_original_text:
-                data[utt.speaker.name]["utterances"] = []
-        actual_words = utt.normalized_text.split()
-        if include_original_text:
-            data[utt.speaker.name]["utterances"].append(CtmInterval(utt.begin, utt.end, utt.text))
-        for i, (wi, w) in enumerate(word_intervals.all()):
-            if len(wi.phone_intervals) == 0:
-                continue
-            label = w.word
-            if cleanup_textgrids:
-                if (
-                    w.word_type is WordType.oov
-                    and workflow.workflow_type is WorkflowType.alignment
-                ):
-                    label = actual_words[i]
-                if (
-                    data[utt.speaker.name]["words"]
-                    and clitic_marker
-                    and (
-                        data[utt.speaker.name]["words"][-1].label.endswith(clitic_marker)
-                        or label.startswith(clitic_marker)
-                    )
-                ):
-                    data[utt.speaker.name]["words"][-1].end = wi.end
-                    data[utt.speaker.name]["words"][-1].label += label
-
-                    for pi in sorted(wi.phone_intervals, key=lambda x: x.begin):
-                        data[utt.speaker.name]["phones"].append(
-                            CtmInterval(pi.begin, pi.end, pi.phone.phone)
-                        )
-                    continue
-
-            data[utt.speaker.name]["words"].append(CtmInterval(wi.begin, wi.end, label))
-
-            for pi in wi.phone_intervals:
-                data[utt.speaker.name]["phones"].append(
-                    CtmInterval(pi.begin, pi.end, pi.phone.phone)
-                )
-    return data
-
-
-def construct_output_path(
-    name: str,
-    relative_path: Path,
-    output_directory: Path,
-    input_path: Path = None,
-    output_format: str = TextgridFormats.SHORT_TEXTGRID,
-) -> Path:
-    """
-    Construct an output path
-
-    Returns
-    -------
-    Path
-        Output path
-    """
-    if isinstance(output_directory, str):
-        output_directory = Path(output_directory)
-    if output_format.upper() == "LAB":
-        extension = ".lab"
-    elif output_format.upper() == "JSON":
-        extension = ".json"
-    elif output_format.upper() == "CSV":
-        extension = ".csv"
-    else:
-        extension = ".TextGrid"
-    if relative_path:
-        relative = output_directory.joinpath(relative_path)
-    else:
-        relative = output_directory
-    output_path = relative.joinpath(name + extension)
-    if output_path == input_path:
-        output_path = relative.joinpath(name + "_aligned" + extension)
-    os.makedirs(relative, exist_ok=True)
-    relative.mkdir(parents=True, exist_ok=True)
-    return output_path
 
 
 class ExportTextGridProcessWorker(mp.Process):
