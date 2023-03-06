@@ -165,6 +165,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         ]
 
     def analyze_alignments(self):
+        logger.info("Analyzing alignment quality...")
+        begin = time.time()
         with self.session() as session:
             update_mappings = []
             query = session.query(
@@ -225,6 +227,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 )
                 for row in utterances:
                     writer.writerow([*row])
+        logger.debug(f"Analyzed alignment quality in {time.time() - begin:.3f} seconds")
 
     def alignment_extraction_arguments(self) -> List[AlignmentExtractionArguments]:
         """
@@ -776,8 +779,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             if max_word_interval_id is None:
                 max_word_interval_id = 0
 
+        logger.info(f"Collecting phone and word alignments from {workflow.name} lattices...")
         with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
-            logger.info(f"Collecting phone and word alignments from {workflow.name} lattices...")
 
             arguments = self.alignment_extraction_arguments()
             has_words = False
@@ -885,20 +888,20 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     phone_buf.truncate(0)
                     phone_buf.seek(0)
 
-            if word_buf.tell() != 0:
-                word_buf.seek(0)
-                cursor.copy_from(word_buf, WordInterval.__tablename__, sep=",", null="")
-                word_buf.truncate(0)
-                word_buf.seek(0)
+        if word_buf.tell() != 0:
+            word_buf.seek(0)
+            cursor.copy_from(word_buf, WordInterval.__tablename__, sep=",", null="")
+            word_buf.truncate(0)
+            word_buf.seek(0)
 
-            if phone_buf.tell() != 0:
-                phone_buf.seek(0)
-                cursor.copy_from(phone_buf, PhoneInterval.__tablename__, sep=",", null="")
-                phone_buf.truncate(0)
-                phone_buf.seek(0)
-            conn.commit()
-            cursor.close()
-            conn.close()
+        if phone_buf.tell() != 0:
+            phone_buf.seek(0)
+            cursor.copy_from(phone_buf, PhoneInterval.__tablename__, sep=",", null="")
+            phone_buf.truncate(0)
+            phone_buf.seek(0)
+        conn.commit()
+        cursor.close()
+        conn.close()
         with self.session() as session:
             if new_words:
                 session.execute(sqlalchemy.insert(Word).values(new_words))
