@@ -1,6 +1,7 @@
 import os
 
 import click.testing
+import pytest
 from praatio import textgrid as tgio
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
@@ -85,6 +86,7 @@ def test_align_single_speaker(
         assert os.path.exists(path)
 
 
+@pytest.mark.timeout(300)
 def test_align_duplicated(
     duplicated_name_corpus_dir,
     generated_dir,
