@@ -69,9 +69,10 @@ jobs:
         run: cat ~/Documents/MFA/pg_log_test.txt
 
       - name: Run tests
+        env:
+          GITHUB_TOKEN: ${{ secrets.MFA_GITHUB_TOKEN }}
         shell: bash -l {0}
         run: pytest -x ./tests
-        continue-on-error: true
 
       - name: Stop database
         shell: bash -l {0}
