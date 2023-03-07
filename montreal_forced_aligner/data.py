@@ -33,6 +33,12 @@ __all__ = [
     "WordData",
     "DatabaseImportData",
     "PronunciationProbabilityCounter",
+    "ManifoldAlgorithm",
+    "ClusterType",
+    "DistanceMetric",
+    "WorkflowType",
+    "DatasetType",
+    "M_LOG_2PI",
 ]
 
 M_LOG_2PI = 1.8378770664093454835606594728112

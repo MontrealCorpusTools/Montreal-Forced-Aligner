@@ -8,3 +8,5 @@ dataclassy
 sqlalchemy
 rich
 rich-click
+numba
+numpy

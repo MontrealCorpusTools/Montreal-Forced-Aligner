@@ -49,6 +49,7 @@ __all__ = [
     "PyniniGenerator",
     "PyniniCorpusGenerator",
     "PyniniWordListGenerator",
+    "PyniniValidator",
 ]
 
 logger = logging.getLogger("mfa")

@@ -43,9 +43,14 @@ except (ImportError, OSError):
 
 if TYPE_CHECKING:
     SpeakerCharacterType = Union[str, int]
+    from dataclasses import dataclass
+
     from montreal_forced_aligner.abc import MetaDict
+else:
+    from dataclassy import dataclass
 
 
+@dataclass
 class SegmentVadArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.segmenter.SegmentVadFunction`"""
 
@@ -71,25 +76,25 @@ def get_initial_segmentation(
     List[CtmInterval]
         Initial segmentation
     """
-    segs = []
-    cur_seg = None
+    segments = []
+    cur_segment = None
     silent_frames = 0
     non_silent_frames = 0
     for i, f in enumerate(frames):
         if int(f) > 0:
             non_silent_frames += 1
-            if cur_seg is None:
-                cur_seg = CtmInterval(begin=i * frame_shift, end=0, label="speech")
+            if cur_segment is None:
+                cur_segment = CtmInterval(begin=i * frame_shift, end=0, label="speech")
         else:
             silent_frames += 1
-            if cur_seg is not None:
-                cur_seg.end = (i - 1) * frame_shift
-                segs.append(cur_seg)
-                cur_seg = None
-    if cur_seg is not None:
-        cur_seg.end = len(frames) * frame_shift
-        segs.append(cur_seg)
-    return segs
+            if cur_segment is not None:
+                cur_segment.end = (i - 1) * frame_shift
+                segments.append(cur_segment)
+                cur_segment = None
+    if cur_segment is not None:
+        cur_segment.end = len(frames) * frame_shift
+        segments.append(cur_segment)
+    return segments
 
 
 def merge_segments(
@@ -109,36 +114,36 @@ def merge_segments(
         Minimum amount of silence time to mark an utterance boundary
     max_segment_length: float
         Maximum length of segments before they're broken up
-    snap_boundary_threshold:
-        Boundary threshold to snap boundaries together
+    min_segment_length: float
+        Minimum length of segments returned
 
     Returns
     -------
     List[CtmInterval]
         Merged segments
     """
-    merged_segs = []
+    merged_segments = []
     snap_boundary_threshold = min_pause_duration / 2
     for s in segments:
         if (
-            not merged_segs
-            or s.begin > merged_segs[-1].end + min_pause_duration
-            or s.end - merged_segs[-1].begin > max_segment_length
+            not merged_segments
+            or s.begin > merged_segments[-1].end + min_pause_duration
+            or s.end - merged_segments[-1].begin > max_segment_length
         ):
             if s.end - s.begin > min_pause_duration:
-                if merged_segs and snap_boundary_threshold:
-                    boundary_gap = s.begin - merged_segs[-1].end
+                if merged_segments and snap_boundary_threshold:
+                    boundary_gap = s.begin - merged_segments[-1].end
                     if boundary_gap < snap_boundary_threshold:
                         half_boundary = boundary_gap / 2
                     else:
                         half_boundary = snap_boundary_threshold / 2
-                    merged_segs[-1].end += half_boundary
+                    merged_segments[-1].end += half_boundary
                     s.begin -= half_boundary
 
-                merged_segs.append(s)
+                merged_segments.append(s)
         else:
-            merged_segs[-1].end = s.end
-    return [x for x in merged_segs if x.end - x.begin > min_segment_length]
+            merged_segments[-1].end = s.end
+    return [x for x in merged_segments if x.end - x.begin > min_segment_length]
 
 
 def construct_utterance_segmentation_fst(
@@ -532,7 +537,7 @@ def segment_utterance_vad_speech_brain(
         activation_th=segmentation_options["activation_th"],
         deactivation_th=segmentation_options["deactivation_th"],
     ).float()
-    # Comupute the boundaries of the speech segments
+    # Compute the boundaries of the speech segments
     boundaries = vad_model.get_boundaries(prob_th, output_value="seconds")
     boundaries += utterance.begin
     # Apply energy-based VAD on the detected speech segments

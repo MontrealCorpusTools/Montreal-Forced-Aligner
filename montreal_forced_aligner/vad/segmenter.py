@@ -36,7 +36,7 @@ from montreal_forced_aligner.vad.multiprocessing import (
 
 SegmentationType = List[Dict[str, float]]
 
-__all__ = ["Segmenter"]
+__all__ = ["Segmenter", "SpeechbrainSegmenterMixin", "TranscriptionSegmenter"]
 
 logger = logging.getLogger("mfa")
 
@@ -48,7 +48,7 @@ class SpeechbrainSegmenterMixin:
         large_chunk_size: float = 30,
         small_chunk_size: float = 0.05,
         overlap_small_chunk: bool = False,
-        apply_energy_VAD: bool = False,
+        apply_energy_vad: bool = False,
         double_check: bool = True,
         close_th: float = 0.250,
         len_th: float = 0.250,
@@ -70,7 +70,7 @@ class SpeechbrainSegmenterMixin:
         self.large_chunk_size = large_chunk_size
         self.small_chunk_size = small_chunk_size
         self.overlap_small_chunk = overlap_small_chunk
-        self.apply_energy_VAD = apply_energy_VAD
+        self.apply_energy_vad = apply_energy_vad
         self.double_check = double_check
         self.close_th = close_th
         self.len_th = len_th
@@ -102,7 +102,7 @@ class SpeechbrainSegmenterMixin:
             "frame_shift": getattr(self, "export_frame_shift", 0.01),
             "small_chunk_size": self.small_chunk_size,
             "overlap_small_chunk": self.overlap_small_chunk,
-            "apply_energy_VAD": self.apply_energy_VAD,
+            "apply_energy_VAD": self.apply_energy_vad,
             "double_check": self.double_check,
             "activation_th": self.activation_th,
             "deactivation_th": self.deactivation_th,
@@ -149,7 +149,7 @@ class Segmenter(
         The energy thresholds is  managed by activation_th and
         deactivation_th (see below).
     double_check: bool
-        If True, double checkis (using the neural VAD) that the candidate
+        If True, double checks (using the neural VAD) that the candidate
         speech segments actually contain speech. A threshold on the mean
         posterior probabilities provided by the neural network is applied
         based on the speech_th parameter (see below).
@@ -417,6 +417,8 @@ class Segmenter(
         ----------
         output_directory: str
             Directory to save segmentation TextGrids
+        output_format: str, optional
+            Format to force output files into
         """
         if output_format is None:
             output_format = TextFileType.TEXTGRID.value
@@ -439,6 +441,8 @@ class TranscriptionSegmenter(TranscriberMixin, SpeechbrainSegmenterMixin, TopLev
 
     def setup(self) -> None:
         TopLevelMfaWorker.setup(self)
+
+        self.create_new_current_workflow(WorkflowType.segmentation)
         self.setup_acoustic_model()
 
         self.dictionary_setup()
@@ -449,7 +453,7 @@ class TranscriptionSegmenter(TranscriberMixin, SpeechbrainSegmenterMixin, TopLev
 
         self.normalize_text()
 
-        self.write_lexicon_information()
+        self.write_lexicon_information(write_disambiguation=True)
 
     def setup_acoustic_model(self):
         self.acoustic_model.validate(self)

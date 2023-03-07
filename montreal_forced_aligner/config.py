@@ -28,6 +28,12 @@ __all__ = [
     "update_command_history",
     "MfaConfiguration",
     "GLOBAL_CONFIG",
+    "MFA_ROOT_ENVIRONMENT_VARIABLE",
+    "MFA_PROFILE_VARIABLE",
+    "IVECTOR_DIMENSION",
+    "XVECTOR_DIMENSION",
+    "PLDA_DIMENSION",
+    "MEMORY",
 ]
 
 MFA_ROOT_ENVIRONMENT_VARIABLE = "MFA_ROOT_DIR"

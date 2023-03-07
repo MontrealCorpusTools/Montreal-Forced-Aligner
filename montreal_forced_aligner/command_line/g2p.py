@@ -104,7 +104,10 @@ def g2p_cli(context, **kwargs) -> None:
             if per_utterance:
                 g2p.num_pronunciations = 1
     elif use_stdin:
-        g2p = PyniniConsoleGenerator(g2p_model_path=g2p_model_path)
+        g2p = PyniniConsoleGenerator(
+            g2p_model_path=g2p_model_path,
+            **PyniniWordListGenerator.parse_parameters(config_path, context.params, context.args),
+        )
     else:
         g2p = PyniniWordListGenerator(
             word_list_path=input_path,

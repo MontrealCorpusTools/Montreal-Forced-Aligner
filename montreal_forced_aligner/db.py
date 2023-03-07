@@ -56,6 +56,7 @@ __all__ = [
     "Job",
     "Word2Job",
     "M2M2Job",
+    "Dictionary2Job",
     "Grapheme",
     "MfaSqlBase",
     "bulk_update",
@@ -1943,7 +1944,9 @@ class Job(MfaSqlBase):
         identifier: str
             Identifier for the path name, like ali or acc
         extension: str
-            Extension of the path, like .scp or .ark
+            Extension of the path, like scp or ark
+        dictionary_id: int, optional
+            Dictionary ID to construct path for
 
         Returns
         -------

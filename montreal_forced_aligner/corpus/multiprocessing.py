@@ -43,29 +43,7 @@ __all__ = [
     "ExportKaldiFilesArguments",
     "NormalizeTextFunction",
     "NormalizeTextArguments",
-    "construct_path",
 ]
-
-
-def construct_path(job_name, directory: str, identifier: str, extension: str) -> str:
-    """
-    Helper function for constructing dictionary-dependent paths for the Job
-
-    Parameters
-    ----------
-    directory: str
-        Directory to use as the root
-    identifier: str
-        Identifier for the path name, like ali or acc
-    extension: str
-        Extension of the path, like .scp or .ark
-
-    Returns
-    -------
-    str
-        Path
-    """
-    return os.path.join(directory, f"{identifier}.{job_name}.{extension}")
 
 
 def dictionary_ids_for_job(session, job_id):

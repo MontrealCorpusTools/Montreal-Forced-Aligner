@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import datetime
 import logging
-import re
 import sys
 import typing
 from pathlib import Path
@@ -18,9 +17,7 @@ import requests.structures
 from montreal_forced_aligner.helper import comma_join
 
 if TYPE_CHECKING:
-    from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
-    from montreal_forced_aligner.models import G2PModel
-    from montreal_forced_aligner.textgrid import CtmInterval
+    from montreal_forced_aligner.data import CtmInterval
 
 
 __all__ = [
@@ -55,7 +52,7 @@ __all__ = [
     "MultipleModelTypesFoundError",
     "ModelTypeNotSupportedError",
     "PronunciationAcousticMismatchError",
-    "PronunciationOrthographyMismatchError",
+    "RootDirectoryError",
 ]
 
 
@@ -360,7 +357,7 @@ class TextParseError(CorpusReadError):
     def __init__(self, file_name: str):
         super().__init__("")
         self.message_lines = [
-            f"There was an error decoding {file_name}, " f"maybe try resaving it as utf8?"
+            f"There was an error decoding {file_name}, maybe try re-saving it as utf8?"
         ]
 
 
@@ -485,9 +482,10 @@ class AlignmentExportError(AlignmentError):
 
     Parameters
     ----------
-    error_dict: dict[tuple[str, int], str]
-        Error dictionary mapping export stage and job to the error encountered
-
+    path: :class:`pathlib.Path`
+        Path for export
+    error_lines: list[str]
+        Lines in the error message
     """
 
     def __init__(self, path: Path, error_lines: List[str]):
@@ -536,27 +534,6 @@ class PronunciationAcousticMismatchError(AlignerError):
         super().__init__("There were phones in the dictionary that do not have acoustic models: ")
         missing_phones = [f"{x}" for x in sorted(missing_phones)]
         self.message_lines.append(comma_join(missing_phones))
-
-
-class PronunciationOrthographyMismatchError(AlignerError):
-    """
-    Exception class for missing graphemes in a G2P model
-
-    Parameters
-    ----------
-    g2p_model: :class:`~montreal_forced_aligner.models.G2PModel`
-        Specified G2P model
-    dictionary: :class:`~montreal_forced_aligner.dictionary.mixins.DictionaryMixin`
-        Specified dictionary
-    """
-
-    def __init__(self, g2p_model: G2PModel, dictionary: DictionaryMixin):
-        super().__init__(
-            "There were graphemes in the corpus that are not covered by the G2P model:"
-        )
-        missing_graphs = dictionary.graphemes - set(g2p_model.meta["graphemes"])
-        missing_graphs = [f"{x}" for x in sorted(missing_graphs)]
-        self.message_lines.append(comma_join(missing_graphs))
 
 
 # Command line exceptions
@@ -827,29 +804,7 @@ class MultiprocessingError(MFAError):
         super().__init__(f"Job {job_name} encountered an error:")
         self.message_lines = [f"Job {job_name} encountered an error:"]
         self.job_name = job_name
-        self.message_lines.extend(
-            [self.highlight_line(x) for x in error_text.splitlines(keepends=False)]
-        )
-
-    def highlight_line(self, line: str) -> str:
-        """
-        Highlight a line in traceback
-
-        Parameters
-        ----------
-        line: str
-            Line to highlight
-
-        Returns
-        -------
-        str
-            Highlighted line
-        """
-        emph_replacement = r"\1"
-        err_replacement = r"\1"
-        line = re.sub(r"File \"(.*)\"", f'File "{emph_replacement}"', line)
-        line = re.sub(r"line (\d+)", f"line {err_replacement}", line)
-        return line
+        self.message_lines.extend([x for x in error_text.splitlines(keepends=False)])
 
 
 class KaldiProcessingError(MFAError):
@@ -905,11 +860,6 @@ class KaldiProcessingError(MFAError):
     def update_log_file(self) -> None:
         """
         Update the log file output
-
-        Parameters
-        ----------
-        logger: logging.Logger
-            Logger
         """
 
         logger = logging.getLogger("mfa")
