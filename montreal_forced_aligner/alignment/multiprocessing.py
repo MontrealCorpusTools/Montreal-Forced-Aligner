@@ -34,11 +34,10 @@ from montreal_forced_aligner.corpus.features import (
 from montreal_forced_aligner.data import (
     CtmInterval,
     MfaArguments,
+    PhoneType,
     PronunciationProbabilityCounter,
-    TextgridFormats,
     WordCtmInterval,
     WordType,
-    WorkflowType,
 )
 from montreal_forced_aligner.db import (
     CorpusWorkflow,
@@ -52,11 +51,14 @@ from montreal_forced_aligner.db import (
     Speaker,
     Utterance,
     Word,
-    WordInterval,
 )
 from montreal_forced_aligner.exceptions import AlignmentExportError, FeatureGenerationError
 from montreal_forced_aligner.helper import mfa_open, split_phone_position
-from montreal_forced_aligner.textgrid import export_textgrid
+from montreal_forced_aligner.textgrid import (
+    construct_output_path,
+    construct_output_tiers,
+    export_textgrid,
+)
 from montreal_forced_aligner.utils import (
     Counter,
     KaldiFunction,
@@ -370,6 +372,29 @@ class AlignArguments(MfaArguments):
     align_options: MetaDict
     feature_options: MetaDict
     confidence: bool
+
+
+@dataclass
+class CalculateSpeechPostArguments(MfaArguments):
+    """
+    Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: :class:`~pathlib.Path`
+        Path to save logging information during the run
+    model_path: :class:`~pathlib.Path`
+        Path to model file
+    align_options: dict[str, Any]
+        Alignment options
+    """
+
+    model_path: Path
+    align_options: MetaDict
 
 
 @dataclass
@@ -835,6 +860,7 @@ class AlignFunction(KaldiFunction):
                     workflow.working_directory, "trans", "ark", dict_id
                 )
                 ali_path = job.construct_path(workflow.working_directory, "ali", "ark", dict_id)
+                like_path = job.construct_path(workflow.working_directory, "like", "ark", dict_id)
                 if (
                     self.confidence
                     and self.feature_options["uses_speaker_adaptation"]
@@ -850,6 +876,7 @@ class AlignFunction(KaldiFunction):
                         f"--max-active={self.align_options['max_active']}",
                         f"--lattice-beam={self.align_options['lattice_beam']}",
                         f"--word-symbol-table={word_symbols_path}",
+                        "--allow-partial=true",
                         self.model_path,
                         f"ark,s,cs:{fst_path}",
                         feature_string,
@@ -868,6 +895,7 @@ class AlignFunction(KaldiFunction):
                         f"--beam={self.align_options['beam']}",
                         f"--retry-beam={self.align_options['retry_beam']}",
                         "--careful=false",
+                        f"--write-per-frame-acoustic-loglikes=ark:{like_path}",
                         "-",
                         f"ark,s,cs:{fst_path}",
                         feature_string,
@@ -906,6 +934,7 @@ class AlignFunction(KaldiFunction):
                         and self.feature_options["uses_speaker_adaptation"]
                         and os.path.exists(fmllr_path)
                     ):
+                        log_file.write(line + "\n")
                         m = self.progress_pattern.match(line)
                         if m:
                             utterance = m.group("utterance")
@@ -924,6 +953,89 @@ class AlignFunction(KaldiFunction):
                         f"or downgrade MFA to the version that the model was trained on."
                     )
                 self.check_call(align_proc)
+
+
+class CalculateSpeechPostFunction(KaldiFunction):
+    """
+    Multiprocessing function for alignment.
+
+    See Also
+    --------
+    :meth:`.CorpusAligner.analyze_alignments`
+        Main function that calls this function in parallel
+    :meth:`.CorpusAligner.calculate_speech_post_arguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`lattice-to-post`
+        Relevant Kaldi binary
+    :kaldi_src:`weight-silence-post`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.alignment.multiprocessing.CalculateSpeechPostArguments`
+        Arguments for the function
+    """
+
+    progress_pattern = re.compile(
+        r"^LOG.*Log-like per frame for utterance (?P<utterance>.*) is (?P<loglike>[-\d.]+) over (?P<num_frames>\d+) frames."
+    )
+
+    def __init__(self, args: CalculateSpeechPostArguments):
+        super().__init__(args)
+        self.model_path = args.model_path
+        self.align_options = args.align_options
+
+    def _run(self) -> typing.Generator[typing.Tuple[int, float]]:
+        """Run the function"""
+
+        with Session(self.db_engine()) as session:
+            job: Job = (
+                session.query(Job)
+                .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
+                .filter(Job.id == self.job_name)
+                .first()
+            )
+            workflow = (
+                session.query(CorpusWorkflow)
+                .filter(CorpusWorkflow.current == True)  # noqa
+                .first()
+            )
+            phones = {
+                k: (m, sd)
+                for k, m, sd in session.query(
+                    Phone.id, Phone.mean_duration, Phone.sd_duration
+                ).filter(
+                    Phone.phone_type == PhoneType.non_silence,
+                    Phone.sd_duration != None,  # noqa
+                    Phone.sd_duration != 0,
+                )
+            }
+            query = session.query(Utterance).filter(
+                Utterance.job_id == job.id, Utterance.alignment_log_likelihood != None  # noqa
+            )
+            for utterance in query:
+                phone_intervals = (
+                    session.query(PhoneInterval)
+                    .join(PhoneInterval.phone)
+                    .filter(
+                        PhoneInterval.utterance_id == utterance.id,
+                        PhoneInterval.workflow_id == workflow.id,
+                        Phone.id.in_(list(phones.keys())),
+                    )
+                    .all()
+                )
+                if not phone_intervals:
+                    continue
+                interval_count = len(phone_intervals)
+                log_like_sum = 0
+                duration_zscore_sum = 0
+                for pi in phone_intervals:
+                    log_like_sum += pi.phone_goodness
+                    m, sd = phones[pi.phone_id]
+                    duration_zscore_sum += abs((pi.duration - m) / sd)
+                utterance_speech_log_likelihood = log_like_sum / interval_count
+                utterance_duration_deviation = duration_zscore_sum / interval_count
+                yield utterance.id, utterance_speech_log_likelihood, utterance_duration_deviation
 
 
 class FineTuneFunction(KaldiFunction):
@@ -1293,10 +1405,10 @@ class FineTuneFunction(KaldiFunction):
                 trans_proc = compute_transform_process(
                     log_file,
                     extract_proc,
-                    utt2spk_path,
                     workflow.lda_mat_path,
-                    fmllr_path,
                     self.lda_options,
+                    fmllr_path=fmllr_path,
+                    utt2spk_path=utt2spk_path,
                 )
                 align_proc = subprocess.Popen(
                     [
@@ -1486,6 +1598,7 @@ class PhoneConfidenceFunction(KaldiFunction):
                         frame_end = int(((pi.end - utt_begin) * 1000) / 10)
                         if frame_begin == frame_end:
                             frame_end += 1
+                        frame_end = min(frame_end, top_phone_inds.shape[0])
                         alternate_labels = collections.Counter()
                         scores = []
 
@@ -1772,6 +1885,7 @@ class AlignmentExtractionFunction(KaldiFunction):
         self.model_path = args.model_path
         self.frame_shift = args.frame_shift
         self.utterance_begins = {}
+        self.utterance_durations = {}
         self.reversed_phone_mapping = {}
         self.reversed_word_mapping = {}
         self.pronunciation_mapping = {}
@@ -1812,6 +1926,9 @@ class AlignmentExtractionFunction(KaldiFunction):
         actual_word_intervals = []
         phone_word_mapping = []
         utterance_begin = self.utterance_begins[utterance_name]
+        utterance_duration = self.utterance_durations[utterance_name]
+        if utterance_duration - intervals[-1].end < 0.05:
+            intervals[-1].end = utterance_duration
         current_word_begin = None
         words_index = 0
         current_phones = []
@@ -1989,7 +2106,7 @@ class AlignmentExtractionFunction(KaldiFunction):
                 self.phone_mapping[phone] = mapping_id
 
             for d in job.dictionaries:
-                columns = [Utterance.id, Utterance.begin]
+                columns = [Utterance.id, Utterance.begin, Utterance.duration]
                 if d.use_g2p:
                     columns.append(Utterance.normalized_character_text)
                 else:
@@ -2002,8 +2119,9 @@ class AlignmentExtractionFunction(KaldiFunction):
                 )
                 self.utterance_begins = {}
                 self.utterance_texts = {}
-                for u_id, begin, text in utts:
+                for u_id, begin, duration, text in utts:
                     self.utterance_begins[u_id] = begin
+                    self.utterance_durations[u_id] = duration
                     self.utterance_texts[u_id] = text
                 if self.phone_symbol_table is None:
                     self.phone_symbol_table = pywrapfst.SymbolTable.read_text(
@@ -2057,6 +2175,7 @@ class AlignmentExtractionFunction(KaldiFunction):
                 if not os.path.exists(lat_path):
                     lat_path = job.construct_path(workflow.working_directory, "lat", "ark", d.id)
                 ali_path = job.construct_path(workflow.working_directory, "ali", "ark", d.id)
+                like_path = job.construct_path(workflow.working_directory, "like", "ark", d.id)
                 if self.transcription:
                     self.utterance_texts = {}
                     lat_align_proc = subprocess.Popen(
@@ -2162,9 +2281,31 @@ class AlignmentExtractionFunction(KaldiFunction):
                         env=os.environ,
                         encoding="utf8",
                     )
+                    if like_path.exists():
+                        like_proc = subprocess.Popen(
+                            [
+                                thirdparty_binary("copy-vector"),
+                                f"ark,s,cs:{like_path}",
+                                "ark,t:-",
+                            ],
+                            stderr=log_file,
+                            stdout=subprocess.PIPE,
+                            env=os.environ,
+                        )
+                        like_gen = read_feats(like_proc)
                     for utterance, intervals in parse_ctm_output(
                         ctm_proc, self.reversed_phone_mapping
                     ):
+                        if like_path.exists():
+                            utt, loglikes = next(like_gen)
+                            for interval in intervals:
+                                begin_frame = int(round(interval.begin / self.frame_shift))
+                                end_frame = int(round(interval.end / self.frame_shift))
+                                if begin_frame == end_frame:
+                                    end_frame += 1
+                                interval.confidence = round(
+                                    float(np.mean(loglikes[begin_frame:end_frame])), 6
+                                )
                         if not d.use_g2p:
 
                             (
@@ -2183,132 +2324,6 @@ class AlignmentExtractionFunction(KaldiFunction):
                                 continue
                         yield utterance, word_intervals, phone_intervals, phone_word_mapping
                     self.check_call(ctm_proc)
-
-
-def construct_output_tiers(
-    session: Session,
-    file_id: int,
-    workflow: CorpusWorkflow,
-    cleanup_textgrids: bool,
-    clitic_marker: str,
-    include_original_text: bool,
-) -> Dict[str, Dict[str, List[CtmInterval]]]:
-    """
-    Construct aligned output tiers for a file
-
-    Parameters
-    ----------
-    session: Session
-        SqlAlchemy session
-    file_id: int
-        Integer ID for the file
-
-    Returns
-    -------
-    Dict[str, Dict[str,List[CtmInterval]]]
-        Aligned tiers
-    """
-    utterances = (
-        session.query(Utterance)
-        .options(
-            joinedload(Utterance.speaker, innerjoin=True).load_only(Speaker.name),
-        )
-        .filter(Utterance.file_id == file_id)
-    )
-    data = {}
-    for utt in utterances:
-        word_intervals = (
-            session.query(WordInterval, Word)
-            .join(WordInterval.word)
-            .filter(WordInterval.utterance_id == utt.id)
-            .filter(WordInterval.workflow_id == workflow.id)
-            .options(
-                selectinload(WordInterval.phone_intervals).joinedload(
-                    PhoneInterval.phone, innerjoin=True
-                )
-            )
-            .order_by(WordInterval.begin)
-        )
-        if cleanup_textgrids:
-            word_intervals = word_intervals.filter(Word.word_type != WordType.silence)
-        if utt.speaker.name not in data:
-            data[utt.speaker.name] = {"words": [], "phones": []}
-            if include_original_text:
-                data[utt.speaker.name]["utterances"] = []
-        actual_words = utt.normalized_text.split()
-        if include_original_text:
-            data[utt.speaker.name]["utterances"].append(CtmInterval(utt.begin, utt.end, utt.text))
-        for i, (wi, w) in enumerate(word_intervals.all()):
-            if len(wi.phone_intervals) == 0:
-                continue
-            label = w.word
-            if cleanup_textgrids:
-                if (
-                    w.word_type is WordType.oov
-                    and workflow.workflow_type is WorkflowType.alignment
-                ):
-                    label = actual_words[i]
-                if (
-                    data[utt.speaker.name]["words"]
-                    and clitic_marker
-                    and (
-                        data[utt.speaker.name]["words"][-1].label.endswith(clitic_marker)
-                        or label.startswith(clitic_marker)
-                    )
-                ):
-                    data[utt.speaker.name]["words"][-1].end = wi.end
-                    data[utt.speaker.name]["words"][-1].label += label
-
-                    for pi in sorted(wi.phone_intervals, key=lambda x: x.begin):
-                        data[utt.speaker.name]["phones"].append(
-                            CtmInterval(pi.begin, pi.end, pi.phone.phone)
-                        )
-                    continue
-
-            data[utt.speaker.name]["words"].append(CtmInterval(wi.begin, wi.end, label))
-
-            for pi in wi.phone_intervals:
-                data[utt.speaker.name]["phones"].append(
-                    CtmInterval(pi.begin, pi.end, pi.phone.phone)
-                )
-    return data
-
-
-def construct_output_path(
-    name: str,
-    relative_path: Path,
-    output_directory: Path,
-    input_path: Path = None,
-    output_format: str = TextgridFormats.SHORT_TEXTGRID,
-) -> Path:
-    """
-    Construct an output path
-
-    Returns
-    -------
-    Path
-        Output path
-    """
-    if isinstance(output_directory, str):
-        output_directory = Path(output_directory)
-    if output_format.upper() == "LAB":
-        extension = ".lab"
-    elif output_format.upper() == "JSON":
-        extension = ".json"
-    elif output_format.upper() == "CSV":
-        extension = ".csv"
-    else:
-        extension = ".TextGrid"
-    if relative_path:
-        relative = output_directory.joinpath(relative_path)
-    else:
-        relative = output_directory
-    output_path = relative.joinpath(name + extension)
-    if output_path == input_path:
-        output_path = relative.joinpath(name + "_aligned" + extension)
-    os.makedirs(relative, exist_ok=True)
-    relative.mkdir(parents=True, exist_ok=True)
-    return output_path
 
 
 class ExportTextGridProcessWorker(mp.Process):

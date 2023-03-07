@@ -6,6 +6,7 @@ import shutil
 
 import mock
 import pytest
+import sqlalchemy.orm
 import yaml
 
 from montreal_forced_aligner.config import GLOBAL_CONFIG
@@ -78,38 +79,24 @@ def global_config():
     GLOBAL_CONFIG.current_profile_name = "test"
     GLOBAL_CONFIG.current_profile.clean = True
     GLOBAL_CONFIG.current_profile.database_backend = "psycopg2"
-    GLOBAL_CONFIG.current_profile.database_port = 65432
     GLOBAL_CONFIG.current_profile.debug = True
     GLOBAL_CONFIG.current_profile.verbose = True
     GLOBAL_CONFIG.current_profile.num_jobs = 2
     GLOBAL_CONFIG.current_profile.use_mp = False
+    GLOBAL_CONFIG.current_profile.database_limited_mode = True
+    GLOBAL_CONFIG.current_profile.auto_server = False
     GLOBAL_CONFIG.save()
     yield GLOBAL_CONFIG
 
 
 @pytest.fixture(scope="session")
-def temp_dir(generated_dir, global_config):
-    temp_dir = generated_dir.joinpath("temp")
-    global_config.current_profile.temporary_directory = temp_dir
-    global_config.save()
-    yield temp_dir
+def temp_dir(global_config):
+    yield global_config.current_profile.temporary_directory
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def db_setup(temp_dir, global_config, request):
-    from montreal_forced_aligner.command_line.utils import (
-        check_databases,
-        cleanup_databases,
-        remove_databases,
-    )
-
-    check_databases()
-
-    def fin():
-        cleanup_databases()
-        remove_databases()
-
-    request.addfinalizer(fin)
+    sqlalchemy.orm.close_all_sessions()
     return True
 
 
@@ -550,7 +537,7 @@ def punctuated_dir(corpus_root_dir, wav_dir, lab_dir):
 def japanese_dir(corpus_root_dir, wav_dir, lab_dir):
     path = corpus_root_dir.joinpath("test_japanese")
     os.makedirs(path, exist_ok=True)
-    name = "japanese"
+    name = "日本語"
     shutil.copyfile(lab_dir.joinpath(name + ".lab"), path.joinpath(name + ".lab"))
     return path
 
@@ -603,7 +590,28 @@ def japanese_cv_dir(corpus_root_dir, wav_dir, lab_dir):
     path.mkdir(parents=True, exist_ok=True)
     names = [
         (
-            "02a8841a00d7624",
+            "02a8841a00d762472a4797b56ee01643e8d9ece5a225f2e91c007ab1f94c49c99e50d19986ff3fefb18190257323f34238828114aa607f84fbe9764ecf5aaeaa",
+            [
+                "common_voice_ja_24511055",
+            ],
+        )
+    ]
+    for s, files in names:
+        s_dir = path.joinpath(s)
+        s_dir.mkdir(parents=True, exist_ok=True)
+        for name in files:
+            shutil.copyfile(wav_dir.joinpath(name + ".mp3"), s_dir.joinpath(name + ".mp3"))
+            shutil.copyfile(lab_dir.joinpath(name + ".lab"), s_dir.joinpath(name + ".lab"))
+    return path
+
+
+@pytest.fixture()
+def japanese_cv_japanese_name_dir(corpus_root_dir, wav_dir, lab_dir):
+    path = corpus_root_dir.joinpath("test_japanese_cv")
+    path.mkdir(parents=True, exist_ok=True)
+    names = [
+        (
+            "だれか",
             [
                 "common_voice_ja_24511055",
             ],

@@ -219,38 +219,49 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         self._session = None
         self.database_initialized = False
 
+    def delete_database(self) -> None:
+        """
+        Reset all schemas
+        """
+
+        MfaSqlBase.metadata.drop_all(self.db_engine)
+
     def initialize_database(self) -> None:
         """
         Initialize the database with database schema
         """
         if self.database_initialized:
             return
-        retcode = subprocess.call(
-            [
-                "createdb",
-                f"--port={GLOBAL_CONFIG.current_profile.database_port}",
-                self.identifier,
-            ],
-            stderr=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-        )
-        exist_check = retcode != 0
+        from montreal_forced_aligner.command_line.utils import check_databases
+
+        exist_check = True
+        try:
+            check_databases(self.identifier)
+        except Exception:
+            subprocess.check_call(
+                [
+                    "createdb",
+                    f"--host={GLOBAL_CONFIG.database_socket}",
+                    self.identifier,
+                ],
+                stderr=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+            )
+            exist_check = False
+        self.database_initialized = True
+        if exist_check:
+            if GLOBAL_CONFIG.current_profile.clean:
+                self.clean_working_directory()
+                self.delete_database()
+            else:
+                return
+
+        os.makedirs(self.output_directory, exist_ok=True)
         with self.db_engine.connect() as conn:
             conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS vector"))
             conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
             conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"))
             conn.commit()
-        self.database_initialized = True
-        if exist_check:
-            if GLOBAL_CONFIG.current_profile.clean:
-                self.clean_working_directory()
-                sqlalchemy.orm.session.close_all_sessions()
-
-                MfaSqlBase.metadata.drop_all(self.db_engine)
-            else:
-                return
-
-        os.makedirs(self.output_directory, exist_ok=True)
 
         MfaSqlBase.metadata.create_all(self.db_engine)
 
@@ -319,7 +330,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
     @property
     def db_string(self):
         """Connection string for the database"""
-        return f"postgresql+psycopg2://localhost:{GLOBAL_CONFIG.current_profile.database_port}/{self.identifier}"
+        return f"postgresql+psycopg2://@/{self.identifier}?host={GLOBAL_CONFIG.database_socket}"
 
     def construct_engine(self, **kwargs) -> sqlalchemy.engine.Engine:
         """
@@ -339,7 +350,8 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         """
         e = sqlalchemy.create_engine(
             self.db_string,
-            poolclass=sqlalchemy.NullPool,
+            pool_size=10,
+            max_overflow=10,
             logging_name="main_process_engine",
             **kwargs,
         ).execution_options(logging_token="main_process_engine")
@@ -617,7 +629,6 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         """
         Clean up loggers and output final message for top-level workers
         """
-        sqlalchemy.orm.session.close_all_sessions()
         try:
             if getattr(self, "_session", None) is not None:
                 del self._session
@@ -630,11 +641,6 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
                 logger.error("There was an error in the run, please see the log.")
             else:
                 logger.info(f"Done! Everything took {time.time() - self.start_time:.3f} seconds")
-            handlers = logger.handlers[:]
-            for handler in handlers:
-                if isinstance(handler, logging.FileHandler):
-                    handler.close()
-                    logger.removeHandler(handler)
             self.save_worker_config()
         except (NameError, ValueError):  # already cleaned up
             pass

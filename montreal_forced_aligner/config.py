@@ -28,6 +28,12 @@ __all__ = [
     "update_command_history",
     "MfaConfiguration",
     "GLOBAL_CONFIG",
+    "MFA_ROOT_ENVIRONMENT_VARIABLE",
+    "MFA_PROFILE_VARIABLE",
+    "IVECTOR_DIMENSION",
+    "XVECTOR_DIMENSION",
+    "PLDA_DIMENSION",
+    "MEMORY",
 ]
 
 MFA_ROOT_ENVIRONMENT_VARIABLE = "MFA_ROOT_DIR"
@@ -139,16 +145,16 @@ class MfaProfile:
     debug: bool = False
     quiet: bool = False
     overwrite: bool = False
-    terminal_colors: bool = True
     cleanup_textgrids: bool = True
     database_backend: str = "psycopg2"
-    database_port: int = 5433
+    database_limited_mode: bool = False
     bytes_limit: int = 100e6
     seed: int = 0
     num_jobs: int = 3
     blas_num_threads: int = 1
     use_mp: bool = True
     single_speaker: bool = False
+    auto_server: bool = False
     temporary_directory: pathlib.Path = get_temporary_directory()
     github_token: typing.Optional[str] = None
 
@@ -168,10 +174,10 @@ class MfaProfile:
         for k, v in data.items():
             if k == "temp_directory":
                 k = "temporary_directory"
-            if k == "temporary_directory":
-                v = pathlib.Path(v)
             if v is None:
                 continue
+            if k == "temporary_directory":
+                v = pathlib.Path(v)
             if hasattr(self, k):
                 setattr(self, k, v)
 
@@ -201,6 +207,12 @@ class MfaConfiguration:
         """Get key from current profile"""
         if hasattr(self.current_profile, item):
             return getattr(self.current_profile, item)
+
+    @property
+    def database_socket(self):
+        p = get_temporary_directory().joinpath(f"pg_mfa_{self.current_profile_name}_socket")
+        p.mkdir(parents=True, exist_ok=True)
+        return p.as_posix()
 
     @property
     def current_profile(self) -> MfaProfile:

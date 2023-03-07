@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 import typing
+from pathlib import Path
 
 import soundfile
 
@@ -107,16 +109,17 @@ def get_wav_info(
         Sound information for format, duration, number of channels, bit depth, and
         sox_string for use in Kaldi feature extraction if necessary
     """
-    _, format = file_path.rsplit(".", maxsplit=1)
-    format = format.lower()
+    if isinstance(file_path, str):
+        file_path = Path(file_path)
+    format = file_path.suffix.lower()
     num_channels = 0
     sample_rate = 0
     duration = 0
     sox_string = ""
-    if format in {"mp3", "opus"}:
-        if format == "mp3":
+    if format in {".mp3", ".opus"}:
+        if sys.platform != "win32" and format == ".mp3":
             sox_proc = subprocess.Popen(
-                ["soxi", f"{file_path}"], stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True
+                ["soxi", file_path], stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True
             )
             stdout, stderr = sox_proc.communicate()
             if stderr:

@@ -13,6 +13,7 @@ def test_create_segments(
     generated_dir,
     temp_dir,
     basic_segment_config_path,
+    db_setup,
 ):
     output_path = generated_dir.joinpath("segment_output")
     shutil.rmtree(output_path, ignore_errors=True)
@@ -20,8 +21,6 @@ def test_create_segments(
         "segment",
         basic_corpus_dir,
         output_path,
-        "-t",
-        os.path.join(temp_dir, "sad_cli"),
         "-q",
         "--clean",
         "--debug",
@@ -47,6 +46,7 @@ def test_create_segments_speechbrain(
     generated_dir,
     temp_dir,
     basic_segment_config_path,
+    db_setup,
 ):
     if not FOUND_SPEECHBRAIN:
         pytest.skip("SpeechBrain not installed")
@@ -55,8 +55,6 @@ def test_create_segments_speechbrain(
         "segment",
         basic_corpus_dir,
         output_path,
-        "-t",
-        os.path.join(temp_dir, "sad_cli_speechbrain"),
         "-q",
         "--clean",
         "--no_debug",

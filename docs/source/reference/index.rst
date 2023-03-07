@@ -23,4 +23,5 @@ This should (hopefully) make it easier to extend MFA for your own purposes if yo
 
    core_index
    top_level_index
+   server/index
    helper/index

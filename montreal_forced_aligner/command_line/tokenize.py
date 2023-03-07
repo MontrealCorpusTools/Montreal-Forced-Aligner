@@ -6,12 +6,7 @@ from pathlib import Path
 
 import rich_click as click
 
-from montreal_forced_aligner.command_line.utils import (
-    check_databases,
-    cleanup_databases,
-    common_options,
-    validate_tokenizer_model,
-)
+from montreal_forced_aligner.command_line.utils import common_options, validate_tokenizer_model
 from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.tokenization.tokenizer import CorpusTokenizer
 
@@ -48,10 +43,9 @@ def tokenize_cli(context, **kwargs) -> None:
     Tokenize utterances with a trained tokenizer model
     """
     if kwargs.get("profile", None) is not None:
-        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
     GLOBAL_CONFIG.save()
-    check_databases()
 
     config_path = kwargs.get("config_path", None)
     input_path = kwargs["input_path"]
@@ -73,4 +67,3 @@ def tokenize_cli(context, **kwargs) -> None:
         raise
     finally:
         tokenizer.cleanup()
-        cleanup_databases()

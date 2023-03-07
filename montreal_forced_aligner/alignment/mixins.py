@@ -37,7 +37,13 @@ from montreal_forced_aligner.db import (
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 from montreal_forced_aligner.exceptions import NoAlignmentsError
 from montreal_forced_aligner.helper import mfa_open
-from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped, run_mp, run_non_mp
+from montreal_forced_aligner.utils import (
+    KaldiProcessWorker,
+    Stopped,
+    run_kaldi_function,
+    run_mp,
+    run_non_mp,
+)
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
@@ -416,79 +422,31 @@ class AlignMixin(DictionaryMixin):
         """
         begin = time.time()
         logger.info("Generating alignments...")
-        with tqdm(
-            total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet
-        ) as pbar, self.session() as session:
+        with self.session() as session:
             if not training:
                 utterances = session.query(Utterance)
                 if hasattr(self, "subset"):
                     utterances = utterances.filter(Utterance.in_subset == True)  # noqa
                 utterances.update({"alignment_log_likelihood": None})
                 session.commit()
-            log_like_sum = 0
-            log_like_count = 0
-            update_mappings = []
-            if GLOBAL_CONFIG.use_mp:
-                error_dict = {}
-                return_queue = mp.Queue()
-                stopped = Stopped()
-                procs = []
-                for i, args in enumerate(self.align_arguments()):
-                    function = AlignFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, stopped)
-                    procs.append(p)
-                    p.start()
-                while True:
-                    try:
-                        result = return_queue.get(timeout=1)
-                        if isinstance(result, Exception):
-                            error_dict[getattr(result, "job_name", 0)] = result
-                            continue
-                        if stopped.stop_check():
-                            continue
-                    except Empty:
-                        for proc in procs:
-                            if not proc.finished.stop_check():
-                                break
-                        else:
-                            break
-                        continue
+            with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+                log_like_sum = 0
+                log_like_count = 0
+                update_mappings = []
+                for utterance, log_likelihood in run_kaldi_function(
+                    AlignFunction, self.align_arguments(), pbar.update
+                ):
                     if not training:
-                        utterance, log_likelihood = result
                         log_like_sum += log_likelihood
                         log_like_count += 1
                         update_mappings.append(
                             {"id": utterance, "alignment_log_likelihood": log_likelihood}
                         )
-                    pbar.update(1)
-                for p in procs:
-                    p.join()
-
-                if not training and len(update_mappings) == 0:
-                    raise NoAlignmentsError(
-                        self.num_current_utterances, self.beam, self.retry_beam
-                    )
-                if error_dict:
-                    for v in error_dict.values():
-                        raise v
-
-            else:
-                logger.debug("Not using multiprocessing...")
-                for args in self.align_arguments():
-                    function = AlignFunction(args)
-                    for utterance, log_likelihood in function.run():
-                        if not training:
-                            log_like_sum += log_likelihood
-                            log_like_count += 1
-                            update_mappings.append(
-                                {"id": utterance, "alignment_log_likelihood": log_likelihood}
-                            )
-                        pbar.update(1)
-                if not training and len(update_mappings) == 0:
-                    raise NoAlignmentsError(
-                        self.num_current_utterances, self.beam, self.retry_beam
-                    )
             if not training:
+                if len(update_mappings) == 0:
+                    raise NoAlignmentsError(
+                        self.num_current_utterances, self.beam, self.retry_beam
+                    )
                 bulk_update(session, Utterance, update_mappings)
                 session.query(Utterance).filter(
                     Utterance.alignment_log_likelihood != None  # noqa

@@ -10,11 +10,7 @@ from sqlalchemy.orm import Session
 
 from montreal_forced_aligner.abc import KaldiFunction, MetaDict
 from montreal_forced_aligner.corpus.classes import UtteranceData
-from montreal_forced_aligner.corpus.features import (
-    compute_mfcc_process,
-    compute_pitch_process,
-    compute_transform_process,
-)
+from montreal_forced_aligner.corpus.features import online_feature_proc
 from montreal_forced_aligner.data import CtmInterval, MfaArguments, WordCtmInterval, WordType
 from montreal_forced_aligner.db import Dictionary, Phone, Pronunciation, Word
 from montreal_forced_aligner.helper import mfa_open
@@ -190,16 +186,11 @@ class OnlineAlignmentFunction(KaldiFunction):
         wav_path = self.working_directory.joinpath("wav.scp")
         likelihood_path = self.working_directory.joinpath("likelihoods.scp")
         feat_path = self.working_directory.joinpath("feats.scp")
-        utt2spk_path = self.working_directory.joinpath("utt2spk.scp")
         segment_path = self.working_directory.joinpath("segments.scp")
         text_int_path = self.working_directory.joinpath("text.int")
         lda_mat_path = self.working_directory.joinpath("lda.mat")
         fst_path = self.working_directory.joinpath("fsts.ark")
-        mfcc_ark_path = self.working_directory.joinpath("mfcc.ark")
-        pitch_ark_path = self.working_directory.joinpath("pitch.ark")
-        feats_ark_path = self.working_directory.joinpath("feats.ark")
         ali_path = self.working_directory.joinpath("ali.ark")
-        min_length = 0.1
         if self.align_options["boost_silence"] != 1.0:
             mdl_string = f"gmm-boost-silence --boost={self.align_options['boost_silence']} {self.align_options['optional_silence_csl']} {self.model_path} - |"
 
@@ -224,86 +215,14 @@ class OnlineAlignmentFunction(KaldiFunction):
             )
             proc.communicate()
             if not os.path.exists(feat_path):
-                seg_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("extract-segments"),
-                        f"--min-segment-length={min_length}",
-                        f"scp:{wav_path}",
-                        segment_path,
-                        "ark:-",
-                    ],
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                    env=os.environ,
-                )
-                mfcc_proc = compute_mfcc_process(
-                    log_file, wav_path, subprocess.PIPE, self.mfcc_options
-                )
-                cmvn_proc = subprocess.Popen(
-                    [
-                        "apply-cmvn-sliding",
-                        "--norm-vars=false",
-                        "--center=true",
-                        "--cmn-window=300",
-                        "ark:-",
-                        f"ark:{mfcc_ark_path}",
-                    ],
-                    env=os.environ,
-                    stdin=mfcc_proc.stdout,
-                    stderr=log_file,
-                )
-
-                use_pitch = self.pitch_options["use-pitch"] or self.pitch_options["use-voicing"]
-                if use_pitch:
-                    pitch_proc = compute_pitch_process(
-                        log_file, wav_path, subprocess.PIPE, self.pitch_options
-                    )
-                    pitch_copy_proc = subprocess.Popen(
-                        [
-                            thirdparty_binary("copy-feats"),
-                            "--compress=true",
-                            "ark:-",
-                            f"ark:{pitch_ark_path}",
-                        ],
-                        stdin=pitch_proc.stdout,
-                        stderr=log_file,
-                        env=os.environ,
-                    )
-                for line in seg_proc.stdout:
-                    mfcc_proc.stdin.write(line)
-                    mfcc_proc.stdin.flush()
-                    if use_pitch:
-                        pitch_proc.stdin.write(line)
-                        pitch_proc.stdin.flush()
-                mfcc_proc.stdin.close()
-                if use_pitch:
-                    pitch_proc.stdin.close()
-                cmvn_proc.wait()
-                if use_pitch:
-                    pitch_copy_proc.wait()
-                if use_pitch:
-                    paste_proc = subprocess.Popen(
-                        [
-                            thirdparty_binary("paste-feats"),
-                            "--length-tolerance=2",
-                            f"ark:{mfcc_ark_path}",
-                            f"ark:{pitch_ark_path}",
-                            f"ark:{feats_ark_path}",
-                        ],
-                        stderr=log_file,
-                        env=os.environ,
-                    )
-                    paste_proc.wait()
-                else:
-                    feats_ark_path = mfcc_ark_path
-
-                trans_proc = compute_transform_process(
-                    log_file,
-                    feats_ark_path,
-                    utt2spk_path,
-                    lda_mat_path,
-                    None,
+                feature_proc = online_feature_proc(
+                    self.working_directory,
+                    wav_path,
+                    segment_path,
+                    self.mfcc_options,
+                    self.pitch_options,
                     self.lda_options,
+                    log_file,
                 )
 
                 # Features done, alignment
@@ -325,7 +244,7 @@ class OnlineAlignmentFunction(KaldiFunction):
                     stdout=subprocess.PIPE,
                     stderr=log_file,
                     encoding="utf8",
-                    stdin=trans_proc.stdout,
+                    stdin=feature_proc.stdout,
                     env=os.environ,
                 )
             else:

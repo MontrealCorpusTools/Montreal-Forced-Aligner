@@ -8,6 +8,7 @@ import io
 import logging
 import multiprocessing as mp
 import os
+import shutil
 import subprocess
 import time
 import typing
@@ -24,6 +25,8 @@ from montreal_forced_aligner.alignment.mixins import AlignMixin
 from montreal_forced_aligner.alignment.multiprocessing import (
     AlignmentExtractionArguments,
     AlignmentExtractionFunction,
+    CalculateSpeechPostArguments,
+    CalculateSpeechPostFunction,
     ExportTextGridArguments,
     ExportTextGridProcessWorker,
     FineTuneArguments,
@@ -46,6 +49,7 @@ from montreal_forced_aligner.db import (
     CorpusWorkflow,
     Dictionary,
     File,
+    Phone,
     PhoneInterval,
     PhonologicalRule,
     Pronunciation,
@@ -110,6 +114,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         self.lattice_beam = lattice_beam
         self.phone_lm_order = 2
         self.phone_lm_method = "unsmoothed"
+        self.alignment_mode = True
 
     @property
     def hclg_options(self) -> MetaDict:
@@ -146,6 +151,83 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             "language_model_weight": getattr(self, "language_model_weight", 10),
             "word_insertion_penalty": getattr(self, "word_insertion_penalty", 0.5),
         }
+
+    def calculate_speech_post_arguments(self) -> List[CalculateSpeechPostArguments]:
+        return [
+            CalculateSpeechPostArguments(
+                j.id,
+                getattr(self, "db_string", ""),
+                self.working_log_directory.joinpath(f"calculate_speech_post.{j.id}.log"),
+                self.model_path,
+                self.align_options,
+            )
+            for j in self.jobs
+        ]
+
+    def analyze_alignments(self):
+        logger.info("Analyzing alignment quality...")
+        begin = time.time()
+        with self.session() as session:
+            update_mappings = []
+            query = session.query(
+                PhoneInterval.phone_id,
+                sqlalchemy.func.avg(PhoneInterval.duration),
+                sqlalchemy.func.stddev_samp(PhoneInterval.duration),
+            ).group_by(PhoneInterval.phone_id)
+            for p_id, mean_duration, sd_duration in query:
+                update_mappings.append(
+                    {"id": p_id, "mean_duration": mean_duration, "sd_duration": sd_duration}
+                )
+            bulk_update(session, Phone, update_mappings)
+            session.commit()
+
+            arguments = self.calculate_speech_post_arguments()
+            update_mappings = []
+            with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+                for utt_id, speech_log_likelihood, duration_deviation in run_kaldi_function(
+                    CalculateSpeechPostFunction, arguments, pbar.update
+                ):
+                    update_mappings.append(
+                        {
+                            "id": utt_id,
+                            "speech_log_likelihood": speech_log_likelihood,
+                            "duration_deviation": duration_deviation,
+                        }
+                    )
+
+            bulk_update(session, Utterance, update_mappings)
+            session.commit()
+
+            csv_path = self.working_directory.joinpath("alignment_analysis.csv")
+            with mfa_open(csv_path, "w") as f:
+                writer = csv.writer(f)
+                writer.writerow(
+                    [
+                        "file",
+                        "begin",
+                        "end",
+                        "speaker",
+                        "overall_log_likelihood",
+                        "speech_log_likelihood",
+                        "phone_duration_deviation",
+                    ]
+                )
+                utterances = (
+                    session.query(
+                        File.name,
+                        Utterance.begin,
+                        Utterance.end,
+                        Speaker.name,
+                        Utterance.alignment_log_likelihood,
+                        Utterance.speech_log_likelihood,
+                        Utterance.duration_deviation,
+                    )
+                    .join(Utterance.file)
+                    .join(Utterance.speaker)
+                )
+                for row in utterances:
+                    writer.writerow([*row])
+        logger.debug(f"Analyzed alignment quality in {time.time() - begin:.3f} seconds")
 
     def alignment_extraction_arguments(self) -> List[AlignmentExtractionArguments]:
         """
@@ -239,6 +321,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
     def align(self, workflow_name=None) -> None:
         """Run the aligner"""
+        self.alignment_mode = True
         self.initialize_database()
         self.create_new_current_workflow(WorkflowType.alignment, workflow_name)
         wf = self.current_workflow
@@ -696,8 +779,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             if max_word_interval_id is None:
                 max_word_interval_id = 0
 
+        logger.info(f"Collecting phone and word alignments from {workflow.name} lattices...")
         with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
-            logger.info(f"Collecting phone and word alignments from {workflow.name} lattices...")
 
             arguments = self.alignment_extraction_arguments()
             has_words = False
@@ -805,20 +888,20 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     phone_buf.truncate(0)
                     phone_buf.seek(0)
 
-            if word_buf.tell() != 0:
-                word_buf.seek(0)
-                cursor.copy_from(word_buf, WordInterval.__tablename__, sep=",", null="")
-                word_buf.truncate(0)
-                word_buf.seek(0)
+        if word_buf.tell() != 0:
+            word_buf.seek(0)
+            cursor.copy_from(word_buf, WordInterval.__tablename__, sep=",", null="")
+            word_buf.truncate(0)
+            word_buf.seek(0)
 
-            if phone_buf.tell() != 0:
-                phone_buf.seek(0)
-                cursor.copy_from(phone_buf, PhoneInterval.__tablename__, sep=",", null="")
-                phone_buf.truncate(0)
-                phone_buf.seek(0)
-            conn.commit()
-            cursor.close()
-            conn.close()
+        if phone_buf.tell() != 0:
+            phone_buf.seek(0)
+            cursor.copy_from(phone_buf, PhoneInterval.__tablename__, sep=",", null="")
+            phone_buf.truncate(0)
+            phone_buf.seek(0)
+        conn.commit()
+        cursor.close()
+        conn.close()
         with self.session() as session:
             if new_words:
                 session.execute(sqlalchemy.insert(Word).values(new_words))
@@ -1160,6 +1243,11 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             f"Exporting {self.current_workflow.name} TextGrids to {self.export_output_directory}..."
         )
         self.export_output_directory.mkdir(parents=True, exist_ok=True)
+        analysis_csv = self.working_directory.joinpath("alignment_analysis.csv")
+        if analysis_csv.exists():
+            shutil.copyfile(
+                analysis_csv, self.export_output_directory.joinpath("alignment_analysis.csv")
+            )
         self.export_textgrids(output_format, include_original_text)
 
     def evaluate_alignments(

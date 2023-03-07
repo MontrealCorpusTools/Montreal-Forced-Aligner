@@ -1,6 +1,7 @@
 import os
 
 import click.testing
+import sqlalchemy.orm
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
 
@@ -12,6 +13,7 @@ def test_train_dict(
     generated_dir,
     temp_dir,
     basic_align_config_path,
+    db_setup,
 ):
     output_path = generated_dir.joinpath("trained_dict")
     command = [
@@ -20,8 +22,6 @@ def test_train_dict(
         english_dictionary,
         english_acoustic_model,
         output_path,
-        "-t",
-        os.path.join(temp_dir, "train_dictionary_cli"),
         "-q",
         "--clean",
         "--debug",
@@ -43,6 +43,7 @@ def test_train_dict(
 
     dict_path = os.path.join(output_path, "english_us_arpa.dict")
     assert os.path.exists(output_path)
+    sqlalchemy.orm.close_all_sessions()
     textgrid_output = generated_dir.joinpath("trained_dict_output")
     command = [
         "align",
@@ -50,8 +51,6 @@ def test_train_dict(
         dict_path,
         english_acoustic_model,
         textgrid_output,
-        "-t",
-        os.path.join(temp_dir, "train_dictionary_cli"),
         "-q",
         "--clean",
         "--debug",

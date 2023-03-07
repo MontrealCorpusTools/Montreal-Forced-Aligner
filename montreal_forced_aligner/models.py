@@ -421,6 +421,53 @@ class AcousticModel(Archive):
         return params
 
     @property
+    def mfcc_options(self) -> MetaDict:
+        """Parameters to use in computing MFCC features."""
+        return {
+            "use-energy": self._meta["features"].get("use_energy", False),
+            "dither": self._meta["features"].get("dither", 1),
+            "energy-floor": self._meta["features"].get("energy_floor", 0),
+            "num-ceps": self._meta["features"].get("num_coefficients", 13),
+            "num-mel-bins": self._meta["features"].get("num_mel_bins", 23),
+            "cepstral-lifter": self._meta["features"].get("cepstral_lifter", 22),
+            "preemphasis-coefficient": self._meta["features"].get("preemphasis_coefficient", 0.97),
+            "frame-shift": self._meta["features"].get("frame_shift", 10),
+            "frame-length": self._meta["features"].get("frame_length", 25),
+            "low-freq": self._meta["features"].get("low_frequency", 20),
+            "high-freq": self._meta["features"].get("high_frequency", 7800),
+            "sample-frequency": self._meta["features"].get("sample_frequency", 16000),
+            "allow-downsample": self._meta["features"].get("allow_downsample", True),
+            "allow-upsample": self._meta["features"].get("allow_upsample", True),
+            "snip-edges": self._meta["features"].get("snip_edges", True),
+        }
+
+    @property
+    def pitch_options(self) -> MetaDict:
+        """Parameters to use in computing MFCC features."""
+        return {
+            "use-pitch": self._meta["features"].get("use_pitch", False),
+            "use-voicing": self._meta["features"].get("use_voicing", False),
+            "use-delta-pitch": self._meta["features"].get("use_delta_pitch", False),
+            "frame-shift": self._meta["features"].get("frame_shift", 10),
+            "frame-length": self._meta["features"].get("frame_length", 25),
+            "min-f0": self._meta["features"].get("min_f0", 50),
+            "max-f0": self._meta["features"].get("max_f0", 800),
+            "sample-frequency": self._meta["features"].get("sample_frequency", 16000),
+            "penalty-factor": self._meta["features"].get("penalty_factor", 0.1),
+            "delta-pitch": self._meta["features"].get("delta_pitch", 0.005),
+            "snip-edges": self._meta["features"].get("snip_edges", True),
+            "normalize": self._meta["features"].get("normalize_pitch", True),
+        }
+
+    @property
+    def lda_options(self) -> MetaDict:
+        """Parameters to use in computing MFCC features."""
+        return {
+            "splice_left_context": self._meta["features"].get("splice_left_context", 3),
+            "splice_right_context": self._meta["features"].get("splice_right_context", 3),
+        }
+
+    @property
     def meta(self) -> MetaDict:
         """
         Metadata information for the acoustic model

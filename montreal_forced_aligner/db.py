@@ -56,6 +56,7 @@ __all__ = [
     "Job",
     "Word2Job",
     "M2M2Job",
+    "Dictionary2Job",
     "Grapheme",
     "MfaSqlBase",
     "bulk_update",
@@ -513,6 +514,8 @@ class Phone(MfaSqlBase):
     kaldi_label = Column(String(10), unique=True, nullable=False)
     position = Column(String(2), nullable=True)
     phone_type = Column(Enum(PhoneType), nullable=False, index=True)
+    mean_duration = Column(Float, nullable=True)
+    sd_duration = Column(Float, nullable=True)
 
     phone_intervals = relationship(
         "PhoneInterval",
@@ -574,6 +577,8 @@ class Word(MfaSqlBase):
     word = Column(String, nullable=False, index=True)
     count = Column(Integer, default=0, nullable=False, index=True)
     word_type = Column(Enum(WordType), nullable=False, index=True)
+    initial_cost = Column(Float, nullable=True)
+    final_cost = Column(Float, nullable=True)
     dictionary_id = Column(Integer, ForeignKey("dictionary.id"), nullable=False, index=True)
     dictionary = relationship("Dictionary", back_populates="words")
     pronunciations = relationship(
@@ -888,6 +893,7 @@ class Speaker(MfaSqlBase):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, unique=True, nullable=False)
     cmvn = Column(String)
+    fmllr = Column(String)
     min_f0 = Column(Float, nullable=True)
     max_f0 = Column(Float, nullable=True)
     ivector = Column(Vector(IVECTOR_DIMENSION), nullable=True)
@@ -1239,7 +1245,11 @@ class Utterance(MfaSqlBase):
     ignored: bool
         Flag for if the utterance is ignored due to lacking features
     alignment_log_likelihood: float
-        Log likelihood for the alignment of the utterance
+        Log likelihood for the alignment of the utterance, taking both speech and silence phones into consideration
+    speech_log_likelihood: float
+        Log likelihood for the alignment of the utterance, taking only the speech phones into consideration
+    duration_deviation: float
+        Average of absolute z-score of speech phone duration
     phone_error_rate: float
         Phone error rate for alignment evaluation
     alignment_score: float
@@ -1285,6 +1295,8 @@ class Utterance(MfaSqlBase):
     in_subset = Column(Boolean, nullable=False, default=False, index=True)
     ignored = Column(Boolean, nullable=False, default=False, index=True)
     alignment_log_likelihood = Column(Float)
+    speech_log_likelihood = Column(Float)
+    duration_deviation = Column(Float)
     phone_error_rate = Column(Float)
     alignment_score = Column(Float)
     word_error_rate = Column(Float)
@@ -1574,7 +1586,7 @@ class CorpusWorkflow(MfaSqlBase):
     )
 
     @property
-    def lda_mat_path(self) -> str:
+    def lda_mat_path(self) -> Path:
         return self.working_directory.joinpath("lda.mat")
 
 
@@ -1591,6 +1603,8 @@ class PhoneInterval(MfaSqlBase):
         Beginning timestamp of the interval
     end: float
         Ending timestamp of the interval
+    duration: float
+        Calculated duration of the interval
     phone_goodness: float
         Confidence score, log-likelihood, etc for the phone interval
     phone_id: int
@@ -1617,6 +1631,7 @@ class PhoneInterval(MfaSqlBase):
     begin = Column(Float, nullable=False, index=True)
     end = Column(Float, nullable=False)
     phone_goodness = Column(Float, nullable=True)
+    duration = Column(Float, sqlalchemy.Computed('"end" - "begin"'))
 
     phone_id = Column(
         Integer, ForeignKey("phone.id", ondelete="CASCADE"), index=True, nullable=False
@@ -1860,6 +1875,10 @@ class Job(MfaSqlBase):
         return self.construct_path(self.corpus.split_directory, "segments", "scp")
 
     @property
+    def utt2spk_scp_path(self) -> Path:
+        return self.construct_path(self.corpus.split_directory, "utt2spk", "scp")
+
+    @property
     def feats_scp_path(self) -> Path:
         return self.construct_path(self.corpus.split_directory, "feats", "scp")
 
@@ -1925,7 +1944,9 @@ class Job(MfaSqlBase):
         identifier: str
             Identifier for the path name, like ali or acc
         extension: str
-            Extension of the path, like .scp or .ark
+            Extension of the path, like scp or ark
+        dictionary_id: int, optional
+            Dictionary ID to construct path for
 
         Returns
         -------
@@ -2003,7 +2024,7 @@ class Job(MfaSqlBase):
             if not os.path.exists(lda_mat_path):
                 lda_mat_path = None
             fmllr_trans_path = self.construct_path(
-                working_directory, "trans", "ark", dictionary_id
+                self.corpus.current_subset_directory, "trans", "scp", dictionary_id
             )
 
             if not os.path.exists(fmllr_trans_path):
@@ -2021,7 +2042,7 @@ class Job(MfaSqlBase):
         else:
             feats += f'add-deltas scp,s,cs:"{feat_path}" ark:- |'
         if fmllr_trans_path is not None and uses_speaker_adaptation:
-            feats += f' transform-feats --utt2spk=ark:"{utt2spk_path}" ark:"{fmllr_trans_path}" ark:- ark:- |'
+            feats += f' transform-feats --utt2spk=ark:"{utt2spk_path}" scp:"{fmllr_trans_path}" ark:- ark:- |'
 
         return feats
 

@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import functools
-import os
+import logging
 import shutil
 import subprocess
+import sys
 import typing
 from pathlib import Path
 
@@ -217,134 +218,201 @@ def validate_ivector_extractor(ctx, param, value):
     return validate_model_arg(value, "ivector")
 
 
+def cleanup_logger():
+    logger = logging.getLogger("mfa")
+    handlers = logger.handlers[:]
+    for handler in handlers:
+        if isinstance(handler, logging.FileHandler):
+            handler.close()
+            logger.removeHandler(handler)
+
+
 def configure_pg(directory):
     configuration_updates = {
         "#log_min_duration_statement = -1": "log_min_duration_statement = 5000",
         "#enable_partitionwise_join = off": "enable_partitionwise_join = on",
         "#enable_partitionwise_aggregate = off": "enable_partitionwise_aggregate = on",
-        "#maintenance_work_mem = 64MB": "maintenance_work_mem = 500MB",
-        "#work_mem = 4MB": "work_mem = 128MB",
-        "shared_buffers = 128MB": "shared_buffers = 256MB",
-        "max_connections = 100": "max_connections = 10000",
+        "#unix_socket_directories = ''": f"unix_socket_directories = '{GLOBAL_CONFIG.database_socket}'",
+        "#unix_socket_directories = '/tmp'": f"unix_socket_directories = '{GLOBAL_CONFIG.database_socket}'",
+        "#listen_addresses = 'localhost'": "listen_addresses = ''",
+        "max_connections = 100": "max_connections = 1000",
     }
-    with mfa_open(os.path.join(directory, "postgresql.conf"), "r") as f:
+    if not GLOBAL_CONFIG.current_profile.database_limited_mode:
+        configuration_updates.update(
+            {
+                "#maintenance_work_mem = 64MB": "maintenance_work_mem = 500MB",
+                "#work_mem = 4MB": "work_mem = 128MB",
+                "shared_buffers = 128MB": "shared_buffers = 256MB",
+            }
+        )
+    else:
+        configuration_updates.update(
+            {
+                "#wal_level = replica": "wal_level = minimal",
+                "#fsync = on": "fsync = off",
+                "#synchronous_commit = on": "synchronous_commit = off",
+                "#full_page_writes = on": "full_page_writes = off",
+                "#max_wal_senders = 10": "max_wal_senders = 0",
+            }
+        )
+    with mfa_open(directory.joinpath("postgresql.conf"), "r") as f:
         config = f.read()
     for query, rep in configuration_updates.items():
         config = config.replace(query, rep)
-    with mfa_open(os.path.join(directory, "postgresql.conf"), "w") as f:
+    with mfa_open(directory.joinpath("postgresql.conf"), "w") as f:
         f.write(config)
 
 
 def check_databases(db_name=None) -> None:
     """Check for existence of necessary databases"""
+    logger = logging.getLogger("mfa")
     GLOBAL_CONFIG.load()
+    logger.debug(f"Checking the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
 
-    db_directory = os.path.join(
-        GLOBAL_CONFIG["temporary_directory"], f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
+    try:
+        engine = sqlalchemy.create_engine(
+            f"postgresql+psycopg2://@/{db_name}?host={GLOBAL_CONFIG.database_socket}",
+            poolclass=sqlalchemy.NullPool,
+            pool_reset_on_return=None,
+            logging_name="check_databases_engine",
+            isolation_level="AUTOCOMMIT",
+        ).execution_options(logging_token="check_databases_engine")
+        with engine.connect():
+            pass
+        logger.debug(f"Connected to {GLOBAL_CONFIG.current_profile_name} MFA database server!")
+    except Exception:
+        logger.error(
+            f"There was an error connecting to the {GLOBAL_CONFIG.current_profile_name} MFA database server."
+        )
+        logger.error(
+            "Please ensure the server is initialized (mfa server init) or running (mfa server start)"
+        )
+        raise
+
+
+def initialize_server() -> None:
+    """Initialize the MFA server for the current profile"""
+    GLOBAL_CONFIG.load()
+    logger = logging.getLogger("mfa")
+    logger.info(f"Initializing the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
+
+    db_directory = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+        f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
-    init_log_path = os.path.join(
-        GLOBAL_CONFIG["temporary_directory"],
-        f"pg_init_log_{GLOBAL_CONFIG.current_profile_name}.txt",
+    init_log_path = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+        f"pg_init_log_{GLOBAL_CONFIG.current_profile_name}.txt"
     )
-    log_path = os.path.join(
-        GLOBAL_CONFIG["temporary_directory"], f"pg_log_{GLOBAL_CONFIG.current_profile_name}.txt"
-    )
-    os.makedirs(GLOBAL_CONFIG["temporary_directory"], exist_ok=True)
-    create = not os.path.exists(db_directory)
-    if not create:
-        try:
-            engine = sqlalchemy.create_engine(
-                f"postgresql+psycopg2://localhost:{GLOBAL_CONFIG.current_profile.database_port}/{db_name}",
-                poolclass=sqlalchemy.NullPool,
-                pool_reset_on_return=None,
-                logging_name="check_databases_engine",
-                isolation_level="AUTOCOMMIT",
-            ).execution_options(logging_token="check_databases_engine")
-            with engine.connect():
-                pass
-            return
-        except sqlalchemy.exc.OperationalError:
-            if not os.listdir(db_directory):
-                create = False
-                os.rmdir(db_directory)
+    GLOBAL_CONFIG.current_profile.temporary_directory.mkdir(parents=True, exist_ok=True)
+    if db_directory.exists():
+        logger.error(
+            "The server directory already exists, if you would like to make a new server, please run `mfa server delete` first, or run `mfa server start` to start the existing one."
+        )
+        sys.exit(1)
     with open(init_log_path, "w") as log_file:
-        if create:
+        try:
             subprocess.check_call(
                 ["initdb", "-D", db_directory, "--encoding=UTF8"],
                 stdout=log_file,
                 stderr=log_file,
             )
             configure_pg(db_directory)
-            try:
-                subprocess.check_call(
-                    [
-                        "pg_ctl",
-                        "-D",
-                        db_directory,
-                        "-l",
-                        log_path,
-                        "-o",
-                        f"-F -p {GLOBAL_CONFIG.current_profile.database_port}",
-                        "start",
-                    ],
-                    stdout=log_file,
-                    stderr=log_file,
-                )
-                subprocess.check_call(
-                    [
-                        "createuser",
-                        "-p",
-                        str(GLOBAL_CONFIG.current_profile.database_port),
-                        "-s",
-                        "postgres",
-                    ],
-                    stdout=log_file,
-                    stderr=log_file,
-                )
-            except Exception:
-                pass
-        else:
-            try:
-                subprocess.check_call(
-                    [
-                        "pg_ctl",
-                        "-D",
-                        db_directory,
-                        "-l",
-                        log_path,
-                        "-o",
-                        f"-F -p {GLOBAL_CONFIG.current_profile.database_port}",
-                        "start",
-                    ],
-                    stdout=log_file,
-                    stderr=log_file,
-                )
-            except Exception:
-                pass
+        except Exception:
+            logger.error(
+                f"There was an issue initializing the server, please refer to {init_log_path} for more details"
+            )
+            raise
+        start_server()
+        try:
+            subprocess.check_call(
+                [
+                    "createuser",
+                    "-h",
+                    GLOBAL_CONFIG.database_socket,
+                    "-s",
+                    "postgres",
+                ],
+                stdout=log_file,
+                stderr=log_file,
+            )
+        except Exception:
+            pass
 
 
-def cleanup_databases() -> None:
-    """Stop current database"""
+def start_server() -> None:
+    """Start the MFA server for the current profile"""
+    GLOBAL_CONFIG.load()
+    logger = logging.getLogger("mfa")
+
+    db_directory = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+        f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
+    )
+    if not db_directory.exists():
+        logger.warning(
+            f"The {GLOBAL_CONFIG.current_profile_name} MFA database server does not exist, initializing it first."
+        )
+        initialize_server()
+        return
+    logger.info(f"Starting the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
+    log_path = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+        f"pg_log_{GLOBAL_CONFIG.current_profile_name}.txt"
+    )
+    subprocess.check_call(
+        [
+            "pg_ctl",
+            "-D",
+            db_directory,
+            "-l",
+            log_path,
+            "start",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    logger.info(f"{GLOBAL_CONFIG.current_profile_name} MFA database server started!")
+
+
+def stop_server(mode: str = "fast") -> None:
+    """
+    Stop the MFA server for the current profile.
+
+    Parameters
+    ----------
+    mode: str, optional
+        Mode to to be passed to `pg_ctl`, defaults to "fast"
+    """
+    logger = logging.getLogger("mfa")
     GLOBAL_CONFIG.load()
 
-    db_directory = os.path.join(
-        GLOBAL_CONFIG["temporary_directory"], f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
+    db_directory = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+        f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
+    if not db_directory.exists():
+
+        logger.error(f"There was no database found at {db_directory}.")
+        sys.exit(1)
+    logger.info(f"Stopping the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
     try:
         subprocess.check_call(
-            ["pg_ctl", "-D", db_directory, "stop"],
-            stdout=subprocess.DEVNULL if not GLOBAL_CONFIG.current_profile.verbose else None,
-            stderr=subprocess.DEVNULL if not GLOBAL_CONFIG.current_profile.verbose else None,
+            ["pg_ctl", "-D", db_directory, "-m", mode, "stop"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
     except Exception:
         pass
 
 
-def remove_databases() -> None:
-    """Remove database"""
+def delete_server() -> None:
+    """Remove the MFA server for the current profile"""
+    stop_server(mode="immediate")
+    logger = logging.getLogger("mfa")
     GLOBAL_CONFIG.load()
 
-    db_directory = os.path.join(
-        GLOBAL_CONFIG["temporary_directory"], f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
+    db_directory = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+        f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
-    shutil.rmtree(db_directory)
+    if db_directory.exists():
+        logger.info(f"Deleting the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
+        shutil.rmtree(db_directory)
+    else:
+        logger.error(f"There was no database found at {db_directory}.")
+        sys.exit(1)

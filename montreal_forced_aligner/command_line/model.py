@@ -9,12 +9,7 @@ from pathlib import Path
 
 import rich_click as click
 
-from montreal_forced_aligner.command_line.utils import (
-    check_databases,
-    cleanup_databases,
-    common_options,
-    validate_dictionary,
-)
+from montreal_forced_aligner.command_line.utils import common_options, validate_dictionary
 from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.data import PhoneSetType
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionary
@@ -159,10 +154,9 @@ def add_words_cli(context, **kwargs) -> None:
     so long as the new pronunciations do not contain any new phones
     """
     if kwargs.get("profile", None) is not None:
-        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
     GLOBAL_CONFIG.save()
-    check_databases()
 
     dictionary_path = kwargs.get("dictionary_path", None)
     new_pronunciations_path = kwargs.get("new_pronunciations_path", None)
@@ -177,18 +171,13 @@ def add_words_cli(context, **kwargs) -> None:
     if new_phones:
         raise PhoneMismatchError(new_phones)
 
-    try:
-        new_words = new_pronunciations.words_for_export(probability=True)
-        base_dictionary.add_words(new_words)
-        base_dictionary.export_lexicon(
-            base_dictionary._default_dictionary_id,
-            base_dictionary.dictionary_model.path,
-            probability=True,
-        )
-    except Exception:
-        raise
-    finally:
-        cleanup_databases()
+    new_words = new_pronunciations.words_for_export(probability=True)
+    base_dictionary.add_words(new_words)
+    base_dictionary.export_lexicon(
+        base_dictionary._default_dictionary_id,
+        base_dictionary.dictionary_model.path,
+        probability=True,
+    )
 
 
 @model_cli.command(name="save", short_help="Save a model")

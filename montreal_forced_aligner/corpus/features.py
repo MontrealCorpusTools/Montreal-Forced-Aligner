@@ -49,6 +49,7 @@ __all__ = [
     "plda_distance",
     "plda_log_likelihood",
     "score_plda",
+    "online_feature_proc",
     "compute_transform_process",
 ]
 
@@ -187,8 +188,6 @@ def compute_mfcc_process(
         Options for computing MFCC features
     min_length: float
         Minimum length of segments in seconds
-    no_logging: bool
-        Flag for logging progress information to log_file rather than a subprocess pipe
 
     Returns
     -------
@@ -267,14 +266,10 @@ def compute_pitch_process(
         Wav scp to use
     segments: str
         Segments scp to use
-    mfcc_options: dict[str, Any]
-        Options for computing MFCC features
     pitch_options: dict[str, Any]
         Options for computing pitch features
     min_length: float
         Minimum length of segments in seconds
-    no_logging: bool
-        Flag for logging progress information to log_file rather than a subprocess pipe
 
     Returns
     -------
@@ -363,10 +358,10 @@ def compute_pitch_process(
 def compute_transform_process(
     log_file: io.FileIO,
     feat_proc: typing.Union[subprocess.Popen, Path],
-    utt2spk_path: Path,
     lda_mat_path: typing.Optional[Path],
-    fmllr_path: typing.Optional[Path],
     lda_options: MetaDict,
+    fmllr_path: Path = None,
+    utt2spk_path: Path = None,
 ) -> subprocess.Popen:
     """
     Construct feature transformation process
@@ -377,21 +372,21 @@ def compute_transform_process(
         File for logging stderr
     feat_proc: subprocess.Popen
         Feature generation process
-    utt2spk_path: :class:`~pathlib.Path`
-        Utterance to speaker SCP file path
     lda_mat_path: :class:`~pathlib.Path`
         LDA matrix file path
-    fmllr_path: :class:`~pathlib.Path`
-        fMLLR transform file path
     lda_options: dict[str, Any]
         Options for LDA
+    fmllr_path: :class:`~pathlib.Path`, optional
+        fMLLR transform file path
+    utt2spk_path: :class:`~pathlib.Path`, optional
+        Utterance to speaker SCP file path
 
     Returns
     -------
     subprocess.Popen
         Processing for transforming features
     """
-    if isinstance(feat_proc, str):
+    if isinstance(feat_proc, (str, Path)):
         feat_input = f"ark,s,cs:{feat_proc}"
         use_stdin = False
     else:
@@ -426,14 +421,17 @@ def compute_transform_process(
             stdout=subprocess.PIPE,
             stderr=log_file,
         )
-    if fmllr_path is None:
+    if fmllr_path is None or not fmllr_path.exists():
         return delta_proc
-
+    if fmllr_path.suffix == ".scp":
+        fmllr_ark = f"scp:{fmllr_path}"
+    else:
+        fmllr_ark = f"ark:{fmllr_path}"
     fmllr_proc = subprocess.Popen(
         [
             "transform-feats",
             f"--utt2spk=ark:{utt2spk_path}",
-            f"ark:{fmllr_path}",
+            fmllr_ark,
             "ark,s,cs:-",
             "ark,t:-",
         ],
@@ -481,7 +479,7 @@ class MfccFunction(KaldiFunction):
     def _run(self) -> typing.Generator[int]:
         """Run the function"""
         with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
-            job: Job = session.get(Job, self.job_name)
+            job: typing.Optional[Job] = session.get(Job, self.job_name)
             feats_scp_path = job.construct_path(self.data_directory, "feats", "scp")
             pitch_scp_path = job.construct_path(self.data_directory, "pitch", "scp")
             segments_scp_path = job.construct_path(self.data_directory, "segments", "scp")
@@ -589,7 +587,7 @@ class FinalFeatureFunction(KaldiFunction):
     def _run(self) -> typing.Generator[int]:
         """Run the function"""
         with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
-            job: Job = session.get(Job, self.job_name)
+            job: typing.Optional[Job] = session.get(Job, self.job_name)
             feats_scp_path = job.construct_path(self.data_directory, "feats", "scp")
             temp_scp_path = job.construct_path(self.data_directory, "final_features", "scp")
             utt2spk_path = job.construct_path(self.data_directory, "utt2spk", "scp")
@@ -734,7 +732,7 @@ class PitchFunction(KaldiFunction):
     def _run(self) -> typing.Generator[int]:
         """Run the function"""
         with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
-            job: Job = session.get(Job, self.job_name)
+            job: typing.Optional[Job] = session.get(Job, self.job_name)
 
             feats_scp_path = job.construct_path(self.data_directory, "pitch", "scp")
             raw_ark_path = job.construct_path(self.data_directory, "pitch", "ark")
@@ -802,7 +800,7 @@ class PitchRangeFunction(KaldiFunction):
     def _run(self) -> typing.Generator[int]:
         """Run the function"""
         with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
-            job: Job = session.get(Job, self.job_name)
+            job: typing.Optional[Job] = session.get(Job, self.job_name)
             wav_path = job.construct_path(self.data_directory, "wav", "scp")
             segment_path = job.construct_path(self.data_directory, "segments", "scp")
             min_length = 0.1
@@ -1245,22 +1243,19 @@ class FeatureConfigMixin:
         raise NotImplementedError
 
     @property
-    @abstractmethod
     def working_directory(self) -> Path:
         """Abstract method for working directory"""
-        ...
+        raise NotImplementedError
 
     @property
-    @abstractmethod
     def corpus_output_directory(self) -> str:
         """Abstract method for working directory of corpus"""
-        ...
+        raise NotImplementedError
 
     @property
-    @abstractmethod
     def data_directory(self) -> str:
         """Abstract method for corpus data directory"""
-        ...
+        raise NotImplementedError
 
     @property
     def feature_options(self) -> MetaDict:
@@ -1299,10 +1294,9 @@ class FeatureConfigMixin:
         }
         return options
 
-    @abstractmethod
     def calc_fmllr(self) -> None:
         """Abstract method for calculating fMLLR transforms"""
-        ...
+        raise NotImplementedError
 
     @property
     def fmllr_options(self) -> MetaDict:
@@ -1318,6 +1312,8 @@ class FeatureConfigMixin:
     @property
     def lda_options(self) -> MetaDict:
         """Options for computing LDA"""
+        if getattr(self, "acoustic_model", None) is not None:
+            return self.acoustic_model.lda_options
         return {
             "splice_left_context": self.splice_left_context,
             "splice_right_context": self.splice_right_context,
@@ -1326,6 +1322,8 @@ class FeatureConfigMixin:
     @property
     def mfcc_options(self) -> MetaDict:
         """Parameters to use in computing MFCC features."""
+        if getattr(self, "acoustic_model", None) is not None:
+            return self.acoustic_model.mfcc_options
         return {
             "use-energy": self.use_energy,
             "dither": self.dither,
@@ -1347,6 +1345,8 @@ class FeatureConfigMixin:
     @property
     def pitch_options(self) -> MetaDict:
         """Parameters to use in computing MFCC features."""
+        if getattr(self, "acoustic_model", None) is not None:
+            return self.acoustic_model.pitch_options
         return {
             "use-pitch": self.use_pitch,
             "use-voicing": self.use_voicing,
@@ -1656,10 +1656,8 @@ def plda_distance_matrix(
         Ivectors to compare test ivectors against against 1 X N X D
     test_ivectors : numpy.ndarray
         Ivectors to compare against training examples 1 X M X D
-    normalize: bool
-        Flag for normalizing matrix by the maximum value
-    distance: bool
-        Flag for converting PLDA log likelihood ratios into a distance metric
+    psi: numpy.ndarray
+        Psi matrix from PLDA model
 
     Returns
     -------
@@ -1685,14 +1683,10 @@ def pairwise_plda_distance_matrix(
 
     Parameters
     ----------
-    train_ivectors : numpy.ndarray
-        Ivectors to compare test ivectors against against 1 X N X D
-    test_ivectors : numpy.ndarray
-        Ivectors to compare against training examples 1 X M X D
-    normalize: bool
-        Flag for normalizing matrix by the maximum value
-    distance: bool
-        Flag for converting PLDA log likelihood ratios into a distance metric
+    ivectors : numpy.ndarray
+        Ivectors to compare pairwise
+    psi: numpy.ndarray
+        Psi matrix from PLDA model
 
     Returns
     -------
@@ -1764,16 +1758,41 @@ def score_plda(
         threshold = np.max(loglikes)
         loglikes -= threshold
         loglikes *= -1
-    if normalize:
-        # loglike_ratio -= np.min(loglike_ratio)
-        loglikes /= threshold
+        if normalize:
+            loglikes /= threshold
     return loglikes
 
 
 @njit
 def compute_classification_stats(
     speaker_ivectors: np.ndarray, psi: np.ndarray, counts: np.ndarray
-):
+) -> typing.Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Precomputes necessary stats for training ivectors to save time on classification in
+    :func:`~montreal_forced_aligner.corpus.features.classify_plda`.
+
+    Parameters
+    ----------
+    speaker_ivectors: numpy.ndarray
+        Training speaker ivectors
+    psi: numpy.ndarray
+        Psi matrix from PLDA model
+    counts: numpy.ndarray
+        Utterance counts for each speaker
+
+    Returns
+    -------
+    numpy.ndarray
+        PLDA mean vector
+    numpy.ndarray
+        Variance for given class
+    numpy.ndarray
+        Logdet for given class
+    numpy.ndarray
+        Variance for no class
+    numpy.ndarray
+        Logdet for no class
+    """
     mean = (counts.reshape(-1, 1) * psi.reshape(1, -1)) / (
         counts.reshape(-1, 1) * psi.reshape(1, -1) + 1.0
     )
@@ -1793,11 +1812,11 @@ def compute_classification_stats(
 @njit(parallel=True)
 def classify_plda(
     utterance_ivector: np.ndarray,
-    mean,
-    variance_given,
-    logdet_given,
-    variance_without,
-    logdet_without,
+    mean: np.ndarray,
+    variance_given: np.ndarray,
+    logdet_given: np.ndarray,
+    variance_without: np.ndarray,
+    logdet_without: np.ndarray,
 ) -> typing.Tuple[int, float]:
     """
     Adapted from https://github.com/prachiisc/PLDA_scoring/blob/master/PLDA_scoring.py#L177
@@ -1807,6 +1826,16 @@ def classify_plda(
     ----------
     utterance_ivector : numpy.ndarray
         Utterance ivector to compare against
+    mean: numpy.ndarray
+        From :func:`~montreal_forced_aligner.corpus.features.compute_classification_stats`
+    variance_given: numpy.ndarray
+        From :func:`~montreal_forced_aligner.corpus.features.compute_classification_stats`
+    logdet_given: numpy.ndarray
+        From :func:`~montreal_forced_aligner.corpus.features.compute_classification_stats`
+    variance_without: numpy.ndarray
+        From :func:`~montreal_forced_aligner.corpus.features.compute_classification_stats`
+    logdet_without: numpy.ndarray
+        From :func:`~montreal_forced_aligner.corpus.features.compute_classification_stats`
 
     Returns
     -------
@@ -1851,10 +1880,10 @@ def score_plda_train_counts(
         Ivectors to compare test ivectors against against 1 X N X D
     test_ivectors : numpy.ndarray
         Ivectors to compare against training examples 1 X M X D
-    normalize: bool
-        Flag for normalizing matrix by the maximum value
-    distance: bool
-        Flag for converting PLDA log likelihood ratios into a distance metric
+    psi: numpy.ndarray
+        Psi matrix from PLDA model
+    counts: numpy.ndarray
+        Utterance counts for each speaker
 
     Returns
     -------
@@ -2056,14 +2085,9 @@ class PldaModel:
         self.apply_transform()
         return newX
 
-    def apply_transform(self):
+    def apply_transform(self) -> None:
         """
         Adapted from https://github.com/prachiisc/PLDA_scoring/blob/master/PLDA_scoring.py#L101
-
-        Parameters
-        ----------
-        transform_in : numpy.ndarray
-           PCA transform
         """
 
         mean_plda = self.mean
@@ -2101,6 +2125,8 @@ class PldaModel:
         ----------
         ivectors : numpy.ndarray
            Input ivectors
+        counts : numpy.ndarray, optional
+           Utterance counts per speaker
 
         Returns
         -------
@@ -2141,6 +2167,7 @@ class PldaModel:
 class ExportIvectorsFunction(KaldiFunction):
     """
     Multiprocessing function to compute voice activity detection
+
     See Also
     --------
     :meth:`.AcousticCorpusMixin.compute_vad`
@@ -2149,6 +2176,7 @@ class ExportIvectorsFunction(KaldiFunction):
         Job method for generating arguments for this function
     :kaldi_src:`compute-vad`
         Relevant Kaldi binary
+
     Parameters
     ----------
     args: :class:`~montreal_forced_aligner.corpus.features.VadArguments`
@@ -2214,3 +2242,133 @@ class ExportIvectorsFunction(KaldiFunction):
                     utt_id, ark_path = line.split(maxsplit=1)
                     utt_id = int(utt_id.split("-")[1])
                     yield utt_id, ark_path
+
+
+def online_feature_proc(
+    working_directory: Path,
+    wav_path: Path,
+    segment_path: Path,
+    mfcc_options: MetaDict,
+    pitch_options: MetaDict,
+    lda_options: MetaDict,
+    log_file: io.FileIO,
+) -> subprocess.Popen:
+    """
+    Generate a subprocess Popen object that processes features for online alignment, decoding, etc.
+
+    Parameters
+    ----------
+    working_directory: :class:`~pathlib.Path`
+    wav_path: :class:`~pathlib.Path`
+    segment_path: :class:`~pathlib.Path`
+    mfcc_options: dict[str, Any]
+    pitch_options: dict[str, Any]
+    lda_options: dict[str, Any]
+    log_file: writable buffer
+
+
+    Returns
+    -------
+    subprocess.Popen
+        Process that
+    """
+    mfcc_ark_path = working_directory.joinpath("mfcc.ark")
+    pitch_ark_path = working_directory.joinpath("pitch.ark")
+    feats_ark_path = working_directory.joinpath("feats.ark")
+    lda_mat_path = working_directory.joinpath("lda.mat")
+    trans_scp_path = working_directory.joinpath("trans.scp")
+    cmvn_scp_path = working_directory.joinpath("cmvn.scp")
+    utt2spk_scp_path = working_directory.joinpath("utt2spk.scp")
+    seg_proc = subprocess.Popen(
+        [
+            thirdparty_binary("extract-segments"),
+            "--min-segment-length=0.1",
+            f"scp:{wav_path}",
+            segment_path,
+            "ark:-",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=log_file,
+        env=os.environ,
+    )
+    mfcc_proc = compute_mfcc_process(log_file, wav_path, subprocess.PIPE, mfcc_options)
+    if cmvn_scp_path.exists():
+        cmvn_proc = subprocess.Popen(
+            [
+                thirdparty_binary("apply-cmvn"),
+                f"--utt2spk=ark:{utt2spk_scp_path}",
+                f"scp:{cmvn_scp_path}",
+                "ark:-",
+                f"ark:{mfcc_ark_path}",
+            ],
+            stdin=mfcc_proc.stdout,
+            stderr=log_file,
+            env=os.environ,
+        )
+
+    else:
+        cmvn_proc = subprocess.Popen(
+            [
+                "apply-cmvn-sliding",
+                "--norm-vars=false",
+                "--center=true",
+                "--cmn-window=300",
+                "ark:-",
+                f"ark:{mfcc_ark_path}",
+            ],
+            env=os.environ,
+            stdin=mfcc_proc.stdout,
+            stderr=log_file,
+        )
+
+    use_pitch = pitch_options["use-pitch"] or pitch_options["use-voicing"]
+    if use_pitch:
+        pitch_proc = compute_pitch_process(log_file, wav_path, subprocess.PIPE, pitch_options)
+        pitch_copy_proc = subprocess.Popen(
+            [
+                thirdparty_binary("copy-feats"),
+                "--compress=true",
+                "ark:-",
+                f"ark:{pitch_ark_path}",
+            ],
+            stdin=pitch_proc.stdout,
+            stderr=log_file,
+            env=os.environ,
+        )
+    for line in seg_proc.stdout:
+        mfcc_proc.stdin.write(line)
+        mfcc_proc.stdin.flush()
+        if use_pitch:
+            pitch_proc.stdin.write(line)  # noqa
+            pitch_proc.stdin.flush()
+    mfcc_proc.stdin.close()
+    if use_pitch:
+        pitch_proc.stdin.close()
+    cmvn_proc.wait()
+    if use_pitch:
+        pitch_copy_proc.wait()  # noqa
+    if use_pitch:
+        paste_proc = subprocess.Popen(
+            [
+                thirdparty_binary("paste-feats"),
+                "--length-tolerance=2",
+                f"ark:{mfcc_ark_path}",
+                f"ark:{pitch_ark_path}",
+                f"ark:{feats_ark_path}",
+            ],
+            stderr=log_file,
+            env=os.environ,
+        )
+        paste_proc.wait()
+    else:
+        feats_ark_path = mfcc_ark_path
+
+    trans_proc = compute_transform_process(
+        log_file,
+        feats_ark_path,
+        lda_mat_path,
+        lda_options,
+        fmllr_path=trans_scp_path,
+        utt2spk_path=utt2spk_scp_path,
+    )
+    return trans_proc

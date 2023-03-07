@@ -31,6 +31,8 @@ dependencies:
   - setuptools_scm
   - pytest
   - pytest-mypy
+  - pytest-cov
+  - pytest-timeout
   - mock
   - coverage
   - coveralls

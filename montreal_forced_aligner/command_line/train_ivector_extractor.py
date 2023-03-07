@@ -6,11 +6,7 @@ from pathlib import Path
 
 import rich_click as click
 
-from montreal_forced_aligner.command_line.utils import (
-    check_databases,
-    cleanup_databases,
-    common_options,
-)
+from montreal_forced_aligner.command_line.utils import common_options
 from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.ivector.trainer import TrainableIvectorExtractor
 
@@ -61,10 +57,9 @@ def train_ivector_cli(context, **kwargs) -> None:
     Train an ivector extractor from a corpus and pretrained acoustic model.
     """
     if kwargs.get("profile", None) is not None:
-        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
     GLOBAL_CONFIG.save()
-    check_databases()
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"]
     output_model_path = kwargs["output_model_path"]
@@ -84,4 +79,3 @@ def train_ivector_cli(context, **kwargs) -> None:
         raise
     finally:
         trainer.cleanup()
-        cleanup_databases()

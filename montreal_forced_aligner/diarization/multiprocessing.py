@@ -64,6 +64,7 @@ __all__ = [
     "SpeechbrainClassificationFunction",
     "SpeechbrainEmbeddingFunction",
     "cluster_matrix",
+    "visualize_clusters",
 ]
 
 logger = logging.getLogger("mfa")

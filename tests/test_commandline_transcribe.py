@@ -14,6 +14,7 @@ def test_transcribe(
     transcription_language_model,
     temp_dir,
     transcribe_config_path,
+    db_setup,
 ):
     output_path = generated_dir.joinpath("transcribe_test")
     command = [
@@ -23,8 +24,6 @@ def test_transcribe(
         transcription_acoustic_model,
         transcription_language_model,
         output_path,
-        "-t",
-        os.path.join(temp_dir, "transcribe_cli"),
         "-q",
         "--clean",
         "--debug",
@@ -54,6 +53,7 @@ def test_transcribe_arpa(
     transcription_language_model_arpa,
     temp_dir,
     transcribe_config_path,
+    db_setup,
 ):
     temp_dir = os.path.join(temp_dir, "arpa_test_temp")
     output_path = generated_dir.joinpath("transcribe_test_arpa")
@@ -64,8 +64,6 @@ def test_transcribe_arpa(
         english_acoustic_model,
         transcription_language_model_arpa,
         output_path,
-        "-t",
-        os.path.join(temp_dir, "transcribe_cli"),
         "-q",
         "--clean",
         "--no_debug",
@@ -96,6 +94,7 @@ def test_transcribe_speaker_dictionaries(
     transcription_language_model,
     temp_dir,
     transcribe_config_path,
+    db_setup,
 ):
     output_path = generated_dir.joinpath("transcribe_test")
     command = [
@@ -105,8 +104,6 @@ def test_transcribe_speaker_dictionaries(
         english_mfa_acoustic_model,
         transcription_language_model,
         output_path,
-        "-t",
-        os.path.join(temp_dir, "transcribe_cli"),
         "-q",
         "--clean",
         "--debug",
@@ -135,6 +132,7 @@ def test_transcribe_speaker_dictionaries_evaluate(
     transcription_language_model,
     temp_dir,
     transcribe_config_path,
+    db_setup,
 ):
     output_path = generated_dir.joinpath("transcribe_test")
     command = [
@@ -144,8 +142,6 @@ def test_transcribe_speaker_dictionaries_evaluate(
         english_mfa_acoustic_model,
         transcription_language_model,
         output_path,
-        "-t",
-        os.path.join(temp_dir, "transcribe_cli"),
         "-q",
         "--clean",
         "--debug",

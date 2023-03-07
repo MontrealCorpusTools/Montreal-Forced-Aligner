@@ -25,7 +25,6 @@ from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import TopLevelMfaWorker
 from montreal_forced_aligner.alignment.base import CorpusAligner
-from montreal_forced_aligner.alignment.multiprocessing import construct_output_path
 from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import (
     ArpaNgramModel,
@@ -57,6 +56,7 @@ from montreal_forced_aligner.language_modeling.multiprocessing import (
     TrainSpeakerLmFunction,
 )
 from montreal_forced_aligner.models import AcousticModel, LanguageModel
+from montreal_forced_aligner.textgrid import construct_output_path
 from montreal_forced_aligner.transcription.multiprocessing import (
     CarpaLmRescoreArguments,
     CarpaLmRescoreFunction,
@@ -151,6 +151,7 @@ class TranscriberMixin(CorpusAligner):
         self.language_model_weight = language_model_weight
         self.word_insertion_penalty = word_insertion_penalty
         self.evaluation_mode = evaluation_mode
+        self.alignment_mode = False
 
     def train_speaker_lm_arguments(
         self,
@@ -1208,6 +1209,9 @@ class TranscriberMixin(CorpusAligner):
                     )
                 )
             else:
+                decode_options = self.decode_options
+                decode_options["max_active"] = decode_options["first_max_active"]
+                decode_options["beam"] = decode_options["first_beam"]
                 arguments.append(
                     DecodeArguments(
                         j.id,
@@ -1215,7 +1219,7 @@ class TranscriberMixin(CorpusAligner):
                         self.working_log_directory.joinpath(f"decode.{j.id}.log"),
                         j.dictionary_ids,
                         feat_strings,
-                        self.decode_options,
+                        decode_options,
                         self.alignment_model_path,
                         j.construct_path_dictionary(self.working_directory, "lat", "ark"),
                         j.construct_dictionary_dependent_paths(
@@ -1725,9 +1729,16 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
             global_params["word_insertion_penalties"] = [args["word_insertion_penalty"]]
         return global_params
 
+    def setup_acoustic_model(self):
+        self.acoustic_model.validate(self)
+        self.acoustic_model.export_model(self.model_directory)
+        self.acoustic_model.export_model(self.working_directory)
+        self.acoustic_model.log_details()
+
     def setup(self) -> None:
         """Set up transcription"""
-        super().setup()
+        self.alignment_mode = False
+        TopLevelMfaWorker.setup(self)
         if self.initialized:
             return
         self.create_new_current_workflow(WorkflowType.transcription)
@@ -1744,10 +1755,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
             shutil.rmtree(self.model_directory)
         log_dir = os.path.join(self.model_directory, "log")
         os.makedirs(log_dir, exist_ok=True)
-        self.acoustic_model.validate(self)
-        self.acoustic_model.export_model(self.model_directory)
-        self.acoustic_model.export_model(self.working_directory)
-        self.acoustic_model.log_details()
+        self.setup_acoustic_model()
         self.create_decoding_graph()
         self.initialized = True
         logger.debug(f"Setup for transcription in {time.time() - begin:.3f} seconds")

@@ -177,7 +177,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         self.classification_score = None
         self.initial_plda_score_threshold = 0
         self.plda_score_threshold = 10
-        self.initial_sb_score_threshold = 0.25
+        self.initial_sb_score_threshold = 0.75
 
         self.ground_truth_utt2spk = {}
         self.ground_truth_speakers = {}
@@ -676,7 +676,6 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
     def initialize_mfa_clustering(self):
 
         with self.session() as session:
-
             next_speaker_id = self.get_next_primary_key(Speaker)
             speaker_mapping = {}
             existing_speakers = {

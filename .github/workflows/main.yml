@@ -36,44 +36,55 @@ jobs:
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
-
-      - name: Cache MFA models
-        uses: actions/cache@v3
-        env:
-          cache-name: cache-mfa-models
+      - uses: actions/checkout@main
         with:
-          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-build-${{ env.cache-name }}-
-            ${{ runner.os }}-build-
-            ${{ runner.os }}-
-          path: |
-            ~/Documents/MFA
+          fetch-depth: 0
 
-      - name: Setup Mambaforge
-        uses: conda-incubator/setup-miniconda@v2
+      - name: Install Conda environment with Micromamba
+        uses: mamba-org/provision-with-micromamba@main
         with:
-          miniforge-variant: Mambaforge
-          miniforge-version: latest
-          activate-environment: my-env
-          use-mamba: true
-      - name: Set cache date
-        run: echo "DATE=$(date +'%Y%m%d')" >> $GITHUB_ENV
+          environment-file: environment.yml
+          environment-name: mfa
+          extra-specs: |
+            python=3.9
 
-      - uses: actions/cache@v3
-        with:
-          path: ${{ matrix.prefix }}
-          key: ${{ matrix.label }}-conda-${{ hashFiles('environment.yml') }}-${{ env.DATE }}-${{ env.CACHE_NUMBER }}
-        id: cache
+      - name: Configure mfa
+        shell: bash -l {0}
+        run: python -m montreal_forced_aligner configure --disable_auto_server
 
-      - name: Update environment
-        run: mamba env update -n my-env -f environment.yml
-        if: steps.cache.outputs.cache-hit != 'true'
+      - name: Initialize database
+        shell: bash -l {0}
+        run: python -m montreal_forced_aligner server init -p test
+
+      - name: Check database config
+        shell: bash -l {0}
+        run: cat ~/Documents/MFA/pg_mfa_test/postgresql.conf
+
+      - name: Check init database log
+        shell: bash -l {0}
+        run: cat ~/Documents/MFA/pg_init_log_test.txt
+
+      - name: Check database start log
+        shell: bash -l {0}
+        run: cat ~/Documents/MFA/pg_log_test.txt
 
       - name: Run tests
+        env:
+          GITHUB_TOKEN: ${{ secrets.MFA_GITHUB_TOKEN }}
         shell: bash -l {0}
         run: pytest -x ./tests
+
+      - name: Stop database
+        shell: bash -l {0}
+        run: python -m montreal_forced_aligner server stop -p test
+
+      - name: Check init database log
+        shell: bash -l {0}
+        run: cat ~/Documents/MFA/pg_init_log_test.txt
+
+      - name: Check database start log
+        shell: bash -l {0}
+        run: cat ~/Documents/MFA/pg_log_test.txt
 
       - name: "Upload coverage to Codecov"
         uses: "codecov/codecov-action@v3"

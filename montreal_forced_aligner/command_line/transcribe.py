@@ -7,8 +7,6 @@ from pathlib import Path
 import rich_click as click
 
 from montreal_forced_aligner.command_line.utils import (
-    check_databases,
-    cleanup_databases,
     common_options,
     validate_acoustic_model,
     validate_dictionary,
@@ -104,10 +102,9 @@ def transcribe_corpus_cli(context, **kwargs) -> None:
     Transcribe utterances using an acoustic model, language model, and pronunciation dictionary.
     """
     if kwargs.get("profile", None) is not None:
-        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
     GLOBAL_CONFIG.save()
-    check_databases()
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"]
     acoustic_model_path = kwargs["acoustic_model_path"]
@@ -136,4 +133,3 @@ def transcribe_corpus_cli(context, **kwargs) -> None:
         raise
     finally:
         transcriber.cleanup()
-        cleanup_databases()

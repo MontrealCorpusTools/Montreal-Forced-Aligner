@@ -6,12 +6,7 @@ from pathlib import Path
 
 import rich_click as click
 
-from montreal_forced_aligner.command_line.utils import (
-    check_databases,
-    cleanup_databases,
-    common_options,
-    validate_dictionary,
-)
+from montreal_forced_aligner.command_line.utils import common_options, validate_dictionary
 from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.g2p.phonetisaurus_trainer import PhonetisaurusTrainer
 from montreal_forced_aligner.g2p.trainer import PyniniTrainer
@@ -61,10 +56,9 @@ def train_g2p_cli(context, **kwargs) -> None:
     Train a G2P model from a pronunciation dictionary.
     """
     if kwargs.get("profile", None) is not None:
-        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
     GLOBAL_CONFIG.save()
-    check_databases()
     config_path = kwargs.get("config_path", None)
     dictionary_path = kwargs["dictionary_path"]
     phonetisaurus = kwargs["phonetisaurus"]
@@ -91,4 +85,3 @@ def train_g2p_cli(context, **kwargs) -> None:
         raise
     finally:
         trainer.cleanup()
-        cleanup_databases()

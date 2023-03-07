@@ -9,8 +9,6 @@ import yaml
 
 from montreal_forced_aligner.alignment import PretrainedAligner
 from montreal_forced_aligner.command_line.utils import (
-    check_databases,
-    cleanup_databases,
     common_options,
     validate_acoustic_model,
     validate_dictionary,
@@ -93,10 +91,9 @@ def align_corpus_cli(context, **kwargs) -> None:
     Align a corpus with a pronunciation dictionary and a pretrained acoustic model.
     """
     if kwargs.get("profile", None) is not None:
-        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
     GLOBAL_CONFIG.save()
-    check_databases()
     config_path = kwargs.get("config_path", None)
     reference_directory = kwargs.get("reference_directory", None)
     custom_mapping_path = kwargs.get("custom_mapping_path", None)
@@ -114,6 +111,7 @@ def align_corpus_cli(context, **kwargs) -> None:
     )
     try:
         aligner.align()
+        aligner.analyze_alignments()
         if aligner.use_phone_model:
             aligner.export_files(
                 output_directory,
@@ -156,4 +154,3 @@ def align_corpus_cli(context, **kwargs) -> None:
         raise
     finally:
         aligner.cleanup()
-        cleanup_databases()

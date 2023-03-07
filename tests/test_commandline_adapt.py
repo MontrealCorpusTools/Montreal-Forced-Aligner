@@ -12,6 +12,7 @@ def test_adapt_basic(
     temp_dir,
     test_align_config,
     english_acoustic_model,
+    db_setup,
 ):
     adapted_model_path = generated_dir.joinpath("basic_adapted.zip")
     command = [
@@ -22,10 +23,10 @@ def test_adapt_basic(
         adapted_model_path,
         "--beam",
         "15",
-        "-t",
-        temp_dir.joinpath("adapt_cli"),
         "--clean",
         "--no_debug",
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
@@ -47,6 +48,7 @@ def test_adapt_multilingual(
     basic_align_config_path,
     english_acoustic_model,
     english_mfa_acoustic_model,
+    db_setup,
 ):
     adapted_model_path = generated_dir.joinpath("multilingual_adapted.zip")
     output_path = generated_dir.joinpath("multilingual_output")
@@ -57,13 +59,13 @@ def test_adapt_multilingual(
         english_mfa_acoustic_model,
         adapted_model_path,
         output_path,
-        "-t",
-        temp_dir,
         "--config_path",
         basic_align_config_path,
         "-q",
         "--clean",
         "--no_debug",
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(

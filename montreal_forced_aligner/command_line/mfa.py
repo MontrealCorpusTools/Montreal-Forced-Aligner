@@ -19,6 +19,7 @@ from montreal_forced_aligner.command_line.diarize_speakers import diarize_speake
 from montreal_forced_aligner.command_line.g2p import g2p_cli
 from montreal_forced_aligner.command_line.history import history_cli
 from montreal_forced_aligner.command_line.model import model_cli
+from montreal_forced_aligner.command_line.server import server_cli
 from montreal_forced_aligner.command_line.tokenize import tokenize_cli
 from montreal_forced_aligner.command_line.train_acoustic_model import train_acoustic_model_cli
 from montreal_forced_aligner.command_line.train_dictionary import train_dictionary_cli
@@ -27,6 +28,7 @@ from montreal_forced_aligner.command_line.train_ivector_extractor import train_i
 from montreal_forced_aligner.command_line.train_lm import train_lm_cli
 from montreal_forced_aligner.command_line.train_tokenizer import train_tokenizer_cli
 from montreal_forced_aligner.command_line.transcribe import transcribe_corpus_cli
+from montreal_forced_aligner.command_line.utils import cleanup_logger
 from montreal_forced_aligner.command_line.validate import (
     validate_corpus_cli,
     validate_dictionary_cli,
@@ -105,8 +107,24 @@ def mfa_cli(ctx: click.Context) -> None:
     Main function for the MFA command line interface
     """
     GLOBAL_CONFIG.load()
+    from montreal_forced_aligner.command_line.utils import start_server, stop_server
     from montreal_forced_aligner.helper import configure_logger
 
+    auto_server = False
+    if "--help" in sys.argv or ctx.invoked_subcommand in [
+        "configure",
+        "version",
+        "history",
+        "server",
+    ]:
+        auto_server = False
+    elif ctx.invoked_subcommand in ["model", "models"]:
+        if "add_words" in sys.argv or "inspect" in sys.argv:
+            auto_server = getattr(GLOBAL_CONFIG.global_profile, "auto_server", True)
+    else:
+        auto_server = getattr(GLOBAL_CONFIG.global_profile, "auto_server", True)
+    if auto_server:
+        start_server()
     warnings.simplefilter("ignore")
     configure_logger("mfa")
     check_third_party()
@@ -114,6 +132,9 @@ def mfa_cli(ctx: click.Context) -> None:
         hooks = ExitHooks()
         hooks.hook()
         atexit.register(hooks.history_save_handler)
+        atexit.register(cleanup_logger)
+        if auto_server:
+            atexit.register(stop_server)
 
     mp.freeze_support()
 
@@ -140,6 +161,7 @@ mfa_cli.add_command(history_cli)
 mfa_cli.add_command(g2p_cli)
 mfa_cli.add_command(model_cli, name="model")
 mfa_cli.add_command(model_cli, name="models")
+mfa_cli.add_command(server_cli)
 mfa_cli.add_command(tokenize_cli)
 mfa_cli.add_command(train_acoustic_model_cli)
 mfa_cli.add_command(train_dictionary_cli)

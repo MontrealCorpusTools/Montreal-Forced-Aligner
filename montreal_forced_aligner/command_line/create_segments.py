@@ -6,11 +6,7 @@ from pathlib import Path
 
 import rich_click as click
 
-from montreal_forced_aligner.command_line.utils import (
-    check_databases,
-    cleanup_databases,
-    common_options,
-)
+from montreal_forced_aligner.command_line.utils import common_options
 from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.vad.segmenter import Segmenter
 
@@ -63,10 +59,9 @@ def create_segments_cli(context, **kwargs) -> None:
     Create segments based on SpeechBrain's voice activity detection (VAD) model or a basic energy-based algorithm
     """
     if kwargs.get("profile", None) is not None:
-        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
     GLOBAL_CONFIG.save()
-    check_databases()
 
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"]
@@ -85,4 +80,3 @@ def create_segments_cli(context, **kwargs) -> None:
         raise
     finally:
         segmenter.cleanup()
-        cleanup_databases()

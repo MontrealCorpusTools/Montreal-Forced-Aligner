@@ -555,8 +555,8 @@ def compose_hclg(
         Log file handler to output logging info to
     """
     tree_path = model_path.with_name("tree")
-    ha_path = hclga_path.with_stem("Ha" + hclga_path.stem.split("_")[-1])
-    ha_out_disambig = hclga_path.with_stem("disambig_tid" + hclga_path.stem.split("_")[-1])
+    ha_path = hclga_path.with_stem("Ha" + hclga_path.stem.split(".")[-1])
+    ha_out_disambig = hclga_path.with_stem("disambig_tid" + hclga_path.stem.split(".")[-1])
     make_h_proc = subprocess.Popen(
         [
             thirdparty_binary("make-h-transducer"),
@@ -905,6 +905,7 @@ class DecodeFunction(KaldiFunction):
     def _run(self) -> typing.Generator[typing.Tuple[str, float, int]]:
         """Run the function"""
         with mfa_open(self.log_path, "w") as log_file:
+            log_file.write(f"{self.decode_options}\n")
             for dict_id in self.dictionaries:
                 feature_string = self.feature_strings[dict_id]
                 lat_path = self.lat_paths[dict_id]

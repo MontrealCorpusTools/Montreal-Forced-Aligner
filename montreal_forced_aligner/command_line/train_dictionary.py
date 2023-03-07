@@ -8,8 +8,6 @@ import rich_click as click
 
 from montreal_forced_aligner.alignment.pretrained import DictionaryTrainer
 from montreal_forced_aligner.command_line.utils import (
-    check_databases,
-    cleanup_databases,
     common_options,
     validate_acoustic_model,
     validate_dictionary,
@@ -71,10 +69,9 @@ def train_dictionary_cli(context, **kwargs) -> None:
     Calculate pronunciation probabilities for a dictionary based on alignment results in a corpus.
     """
     if kwargs.get("profile", None) is not None:
-        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
     GLOBAL_CONFIG.save()
-    check_databases()
     config_path = kwargs.get("config_path", None)
     acoustic_model_path = kwargs["acoustic_model_path"]
     corpus_directory = kwargs["corpus_directory"]
@@ -95,4 +92,3 @@ def train_dictionary_cli(context, **kwargs) -> None:
         raise
     finally:
         trainer.cleanup()
-        cleanup_databases()
