@@ -31,5 +31,4 @@
        MultipleModelTypesFoundError
        ModelTypeNotSupportedError
        PronunciationAcousticMismatchError
-       PronunciationOrthographyMismatchError
        RootDirectoryError
