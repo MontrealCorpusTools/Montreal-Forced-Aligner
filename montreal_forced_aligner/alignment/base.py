@@ -25,8 +25,8 @@ from montreal_forced_aligner.alignment.mixins import AlignMixin
 from montreal_forced_aligner.alignment.multiprocessing import (
     AlignmentExtractionArguments,
     AlignmentExtractionFunction,
-    CalculateSpeechPostArguments,
-    CalculateSpeechPostFunction,
+    AnalyzeAlignmentsArguments,
+    AnalyzeAlignmentsFunction,
     ExportTextGridArguments,
     ExportTextGridProcessWorker,
     FineTuneArguments,
@@ -152,9 +152,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             "word_insertion_penalty": getattr(self, "word_insertion_penalty", 0.5),
         }
 
-    def calculate_speech_post_arguments(self) -> List[CalculateSpeechPostArguments]:
+    def analyze_alignments_arguments(self) -> List[AnalyzeAlignmentsArguments]:
         return [
-            CalculateSpeechPostArguments(
+            AnalyzeAlignmentsArguments(
                 j.id,
                 getattr(self, "db_string", ""),
                 self.working_log_directory.joinpath(f"calculate_speech_post.{j.id}.log"),
@@ -181,11 +181,11 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             bulk_update(session, Phone, update_mappings)
             session.commit()
 
-            arguments = self.calculate_speech_post_arguments()
+            arguments = self.analyze_alignments_arguments()
             update_mappings = []
             with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
                 for utt_id, speech_log_likelihood, duration_deviation in run_kaldi_function(
-                    CalculateSpeechPostFunction, arguments, pbar.update
+                    AnalyzeAlignmentsFunction, arguments, pbar.update
                 ):
                     update_mappings.append(
                         {

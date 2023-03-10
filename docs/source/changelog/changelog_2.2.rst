@@ -5,6 +5,12 @@
 2.2 Changelog
 *************
 
+2.2.5
+=====
+
+- Fixed a bug in where piping to :code:`mfa g2p` could hang if there was no known characters
+- Fixed a bug where the default auto_server setting was to be disabled rather than enabled
+
 2.2.4
 =====
 

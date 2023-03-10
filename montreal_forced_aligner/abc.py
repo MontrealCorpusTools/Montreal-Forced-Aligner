@@ -32,7 +32,11 @@ import yaml
 
 from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.db import CorpusWorkflow, MfaSqlBase
-from montreal_forced_aligner.exceptions import KaldiProcessingError, MultiprocessingError
+from montreal_forced_aligner.exceptions import (
+    DatabaseError,
+    KaldiProcessingError,
+    MultiprocessingError,
+)
 from montreal_forced_aligner.helper import comma_join, load_configuration, mfa_open
 
 if TYPE_CHECKING:
@@ -237,7 +241,9 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         exist_check = True
         try:
             check_databases(self.identifier)
-        except Exception:
+        except Exception as e:
+            if isinstance(e, DatabaseError):
+                raise
             subprocess.check_call(
                 [
                     "createdb",

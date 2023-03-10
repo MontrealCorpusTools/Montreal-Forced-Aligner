@@ -746,6 +746,10 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 position = None
                 if self.position_dependent_phones:
                     phone, position = split_phone_position(p)
+                if p == self.oov_phone:
+                    phone_type = PhoneType.oov
+                else:
+                    phone_type = PhoneType.silence
                 phone_objs.append(
                     {
                         "id": i,
@@ -753,7 +757,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         "phone": phone,
                         "position": position,
                         "kaldi_label": p,
-                        "phone_type": PhoneType.silence,
+                        "phone_type": phone_type,
                         "count": 0,
                     }
                 )

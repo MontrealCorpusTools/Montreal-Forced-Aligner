@@ -168,6 +168,17 @@ class FeatureGenerationError(MFAError):
     pass
 
 
+# Database Errors
+
+
+class DatabaseError(MFAError):
+    """
+    Exception class related to database servers
+    """
+
+    pass
+
+
 # Model Errors
 
 

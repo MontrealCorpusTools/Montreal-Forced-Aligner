@@ -126,6 +126,8 @@ def inspect_model_cli(model_type: str, model: str) -> None:
                 raise PretrainedModelNotFoundError(model)
         model = path
     working_dir = get_temporary_directory().joinpath("models", "inspect")
+    if isinstance(model, str):
+        model = Path(model)
     ext = model.suffix
     if model_type:
         if model_type == MODEL_TYPES["dictionary"]:

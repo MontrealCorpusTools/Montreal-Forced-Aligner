@@ -82,7 +82,9 @@ __all__ = [
     "AlignmentExtractionArguments",
     "ExportTextGridArguments",
     "AlignFunction",
+    "AnalyzeAlignmentsFunction",
     "AlignArguments",
+    "AnalyzeAlignmentsArguments",
     "AccStatsFunction",
     "AccStatsArguments",
     "compile_information_func",
@@ -375,9 +377,9 @@ class AlignArguments(MfaArguments):
 
 
 @dataclass
-class CalculateSpeechPostArguments(MfaArguments):
+class AnalyzeAlignmentsArguments(MfaArguments):
     """
-    Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignFunction`
+    Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AnalyzeAlignmentsFunction`
 
     Parameters
     ----------
@@ -955,9 +957,9 @@ class AlignFunction(KaldiFunction):
                 self.check_call(align_proc)
 
 
-class CalculateSpeechPostFunction(KaldiFunction):
+class AnalyzeAlignmentsFunction(KaldiFunction):
     """
-    Multiprocessing function for alignment.
+    Multiprocessing function for analyzing alignments.
 
     See Also
     --------
@@ -980,7 +982,7 @@ class CalculateSpeechPostFunction(KaldiFunction):
         r"^LOG.*Log-like per frame for utterance (?P<utterance>.*) is (?P<loglike>[-\d.]+) over (?P<num_frames>\d+) frames."
     )
 
-    def __init__(self, args: CalculateSpeechPostArguments):
+    def __init__(self, args: AnalyzeAlignmentsArguments):
         super().__init__(args)
         self.model_path = args.model_path
         self.align_options = args.align_options
@@ -1005,7 +1007,7 @@ class CalculateSpeechPostFunction(KaldiFunction):
                 for k, m, sd in session.query(
                     Phone.id, Phone.mean_duration, Phone.sd_duration
                 ).filter(
-                    Phone.phone_type == PhoneType.non_silence,
+                    Phone.phone_type.in_([PhoneType.non_silence, PhoneType.oov]),
                     Phone.sd_duration != None,  # noqa
                     Phone.sd_duration != 0,
                 )

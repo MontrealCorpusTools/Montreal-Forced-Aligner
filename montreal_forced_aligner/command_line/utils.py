@@ -15,6 +15,7 @@ import yaml
 
 from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.exceptions import (
+    DatabaseError,
     FileArgumentNotFoundError,
     ModelExtensionError,
     ModelTypeNotSupportedError,
@@ -281,13 +282,10 @@ def check_databases(db_name=None) -> None:
             pass
         logger.debug(f"Connected to {GLOBAL_CONFIG.current_profile_name} MFA database server!")
     except Exception:
-        logger.error(
-            f"There was an error connecting to the {GLOBAL_CONFIG.current_profile_name} MFA database server."
-        )
-        logger.error(
+        raise DatabaseError(
+            f"There was an error connecting to the {GLOBAL_CONFIG.current_profile_name} MFA database server. "
             "Please ensure the server is initialized (mfa server init) or running (mfa server start)"
         )
-        raise
 
 
 def initialize_server() -> None:

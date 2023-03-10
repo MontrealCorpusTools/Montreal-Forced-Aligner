@@ -154,7 +154,7 @@ class MfaProfile:
     blas_num_threads: int = 1
     use_mp: bool = True
     single_speaker: bool = False
-    auto_server: bool = False
+    auto_server: bool = True
     temporary_directory: pathlib.Path = get_temporary_directory()
     github_token: typing.Optional[str] = None
 
