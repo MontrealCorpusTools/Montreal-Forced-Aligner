@@ -1,0 +1,7 @@
+
+docs/*
+build/*
+.tox/*
+.github/*
+.pytest_cache/*
+tests/*

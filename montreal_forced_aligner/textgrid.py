@@ -374,7 +374,7 @@ def export_textgrid(
                         a.end = duration
                     if i > 0 and a.to_tg_interval().start > tier.entries[-1].end:
                         a.begin = tier.entries[-1].end
-                    tier.insertEntry(a.to_tg_interval())
+                    tier.insertEntry(a.to_tg_interval(duration))
         if has_data:
             for tier in tg.tiers:
                 if len(tier.entries) > 0 and tier.entries[-1][1] > tg.maxTimestamp:

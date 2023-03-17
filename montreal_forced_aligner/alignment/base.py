@@ -482,7 +482,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         Word.word,
                         Pronunciation.pronunciation,
                         Pronunciation.id,
-                        Pronunciation.base_pronunciation_id,
+                        Pronunciation.generated_by_rule,
                     )
                     .join(Pronunciation.word)
                     .filter(Word.dictionary_id == d_id)
@@ -492,8 +492,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 pron_mapping = {}
                 pronunciations = [
                     (w, p, p_id)
-                    for w, p, p_id, b_id in pronunciations
-                    if p_id == b_id or p in counter.word_pronunciation_counts[w]
+                    for w, p, p_id, generated in pronunciations
+                    if not generated or p in counter.word_pronunciation_counts[w]
                 ]
                 for w, p, p_id in pronunciations:
                     pron_mapping[(w, p)] = {"id": p_id}
@@ -728,8 +728,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 ).delete()
                 session.flush()
                 session.query(Pronunciation).filter(
-                    Pronunciation.id != Pronunciation.base_pronunciation_id,
-                    Pronunciation.count == 0,
+                    Pronunciation.count == 0, Pronunciation.generated_by_rule == True  # noqa
                 ).delete()
                 session.commit()
                 pronunciation_counts = {

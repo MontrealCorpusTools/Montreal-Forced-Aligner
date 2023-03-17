@@ -75,7 +75,7 @@ def generated_dir(test_dir):
 
 @pytest.fixture(scope="session")
 def global_config():
-
+    GLOBAL_CONFIG.load()
     GLOBAL_CONFIG.current_profile_name = "test"
     GLOBAL_CONFIG.current_profile.clean = True
     GLOBAL_CONFIG.current_profile.database_backend = "psycopg2"

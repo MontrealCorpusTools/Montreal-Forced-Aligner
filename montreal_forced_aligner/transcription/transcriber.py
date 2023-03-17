@@ -600,16 +600,13 @@ class TranscriberMixin(CorpusAligner):
             self.setup_phone_lm()
             for a in self.calc_fmllr_arguments():
                 for p in a.trans_paths.values():
-                    shutil.copyfile(
-                        p.replace(self.working_directory, previous_working_directory), p
-                    )
+
+                    shutil.copyfile(previous_working_directory.joinpath(p.name), p)
         elif workflow_type is WorkflowType.per_speaker_transcription:
             for a in self.calc_fmllr_arguments():
                 for p in a.trans_paths.values():
                     if os.path.exists(p):
-                        shutil.copyfile(
-                            p.replace(self.working_directory, previous_working_directory), p
-                        )
+                        shutil.copyfile(previous_working_directory.joinpath(p.name), p)
         self.acoustic_model.export_model(self.working_directory)
         self.transcribe_utterances()
 

@@ -13,14 +13,11 @@ def test_align_sick(
     test_align_config,
     db_setup,
 ):
-    temp_dir = os.path.join(temp_dir, "align_corpus_cli")
-    shutil.rmtree(temp_dir, ignore_errors=True)
     a = PretrainedAligner(
         corpus_directory=basic_corpus_dir,
         dictionary_path=english_dictionary,
         acoustic_model_path=english_acoustic_model,
         oov_count_threshold=1,
-        temporary_directory=temp_dir,
         **test_align_config
     )
     a.align()
@@ -40,12 +37,10 @@ def test_align_one(
     test_align_config,
     db_setup,
 ):
-    temp = os.path.join(temp_dir, "align_one_temp")
     a = PretrainedAligner(
         corpus_directory=basic_corpus_dir,
         dictionary_path=english_dictionary,
         acoustic_model_path=english_acoustic_model,
-        temporary_directory=temp,
         debug=True,
         verbose=True,
         clean=True,

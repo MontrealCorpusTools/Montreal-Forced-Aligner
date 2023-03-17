@@ -638,6 +638,7 @@ class Pronunciation(MfaSqlBase):
     silence_after_probability = Column(Float, nullable=True)
     silence_before_correction = Column(Float, nullable=True)
     non_silence_before_correction = Column(Float, nullable=True)
+    generated_by_rule = Column(Boolean, default=False, nullable=False, index=True)
 
     count = Column(Integer, nullable=False, default=0)
     silence_following_count = Column(Integer, nullable=True)
@@ -647,13 +648,6 @@ class Pronunciation(MfaSqlBase):
         Integer, ForeignKey("word.id", ondelete="CASCADE"), nullable=False, index=True
     )
     word = relationship("Word", back_populates="pronunciations")
-
-    base_pronunciation_id = Column(
-        Integer, ForeignKey("pronunciation.id"), nullable=False, index=True
-    )
-    variants = relationship(
-        "Pronunciation", backref=sqlalchemy.orm.backref("base_pronunciation", remote_side=[id])
-    )
 
     rules = relationship(
         "RuleApplication",
@@ -1284,7 +1278,7 @@ class Utterance(MfaSqlBase):
     duration = Column(Float, sqlalchemy.Computed('"end" - "begin"'), index=True)
     channel = Column(Integer, nullable=False)
     num_frames = Column(Integer)
-    text = Column(String, index=True)
+    text = Column(String)
     oovs = Column(String)
     normalized_text = Column(String)
     normalized_character_text = Column(String)

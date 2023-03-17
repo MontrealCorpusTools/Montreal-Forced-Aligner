@@ -713,7 +713,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                     "id": pronunciation_key,
                                     "word_id": word_key,
                                     "pronunciation": getattr(self, "oov_phone", "spn"),
-                                    "base_pronunciation_id": pronunciation_key,
                                 }
                             )
                             word_key += 1
@@ -744,7 +743,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                     "id": pronunciation_key,
                                     "word_id": word_key,
                                     "pronunciation": getattr(self, "oov_phone", "spn"),
-                                    "base_pronunciation_id": pronunciation_key,
                                 }
                             )
                             word_key += 1

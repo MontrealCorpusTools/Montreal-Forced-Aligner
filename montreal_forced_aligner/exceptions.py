@@ -176,7 +176,15 @@ class DatabaseError(MFAError):
     Exception class related to database servers
     """
 
-    pass
+    def __init__(self, message=None):
+        if message is None:
+            from montreal_forced_aligner.config import GLOBAL_CONFIG
+
+            message = (
+                f"There was an error connecting to the {GLOBAL_CONFIG.current_profile_name} MFA database server. "
+                "Please ensure the server is initialized (mfa server init) or running (mfa server start)"
+            )
+        super().__init__(message)
 
 
 # Model Errors

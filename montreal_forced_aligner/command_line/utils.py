@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -264,7 +265,7 @@ def configure_pg(directory):
         f.write(config)
 
 
-def check_databases(db_name=None) -> None:
+def check_databases(db_name: str) -> None:
     """Check for existence of necessary databases"""
     logger = logging.getLogger("mfa")
     GLOBAL_CONFIG.load()
@@ -282,10 +283,7 @@ def check_databases(db_name=None) -> None:
             pass
         logger.debug(f"Connected to {GLOBAL_CONFIG.current_profile_name} MFA database server!")
     except Exception:
-        raise DatabaseError(
-            f"There was an error connecting to the {GLOBAL_CONFIG.current_profile_name} MFA database server. "
-            "Please ensure the server is initialized (mfa server init) or running (mfa server start)"
-        )
+        raise DatabaseError()
 
 
 def initialize_server() -> None:
@@ -307,39 +305,98 @@ def initialize_server() -> None:
         )
         sys.exit(1)
     with open(init_log_path, "w") as log_file:
-        try:
-            subprocess.check_call(
-                ["initdb", "-D", db_directory, "--encoding=UTF8"],
-                stdout=log_file,
-                stderr=log_file,
+        initdb_proc = subprocess.Popen(
+            ["initdb", "-D", db_directory, "--encoding=UTF8"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=os.environ,
+            encoding="utf8",
+        )
+        stdout, stderr = initdb_proc.communicate()
+
+        if initdb_proc.returncode == 1:
+            logger.error(f"pg_ctl stdout: {stdout}")
+            logger.error(f"pg_ctl stderr: {stderr}")
+            raise DatabaseError(
+                f"There was an error encountered starting the {GLOBAL_CONFIG.current_profile_name} MFA database server, "
+                f"please see {init_log_path} for more details and/or look at the logged errors above."
             )
-            configure_pg(db_directory)
-        except Exception:
-            logger.error(
-                f"There was an issue initializing the server, please refer to {init_log_path} for more details"
-            )
-            raise
+        else:
+            logger.debug(f"pg_ctl stdout: {stdout}")
+            logger.debug(f"pg_ctl stderr: {stderr}")
+        configure_pg(db_directory)
         start_server()
-        try:
-            subprocess.check_call(
-                [
-                    "createuser",
-                    "-h",
-                    GLOBAL_CONFIG.database_socket,
-                    "-s",
-                    "postgres",
-                ],
-                stdout=log_file,
-                stderr=log_file,
-            )
-        except Exception:
-            pass
+
+        user_proc = subprocess.Popen(
+            [
+                "createuser",
+                "-h",
+                GLOBAL_CONFIG.database_socket,
+                "-s",
+                "postgres",
+            ],
+            stdout=log_file,
+            stderr=log_file,
+            env=os.environ,
+            encoding="utf8",
+        )
+        stdout, stderr = user_proc.communicate()
+        logger.debug(f"pg_ctl stdout: {stdout}")
+        logger.debug(f"pg_ctl stderr: {stderr}")
+
+
+def check_server() -> None:
+    """Check the status of the MFA server for the current profile"""
+    GLOBAL_CONFIG.load()
+    logger = logging.getLogger("mfa")
+
+    db_directory = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+        f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
+    )
+    log_path = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+        f"pg_log_{GLOBAL_CONFIG.current_profile_name}.txt"
+    )
+    if not db_directory.exists():
+        raise DatabaseError(
+            f"Database server has not been initialized (could not find {db_directory}).  Please run `mfa server init`."
+        )
+    proc = subprocess.Popen(
+        [
+            "pg_ctl",
+            "-D",
+            db_directory,
+            "status",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=os.environ,
+        encoding="utf8",
+    )
+    stdout, stderr = proc.communicate()
+    if proc.returncode == 1:
+        logger.error(f"pg_ctl stdout: {stdout}")
+        logger.error(f"pg_ctl stderr: {stderr}")
+        raise DatabaseError(
+            f"There was an error encountered connecting the {GLOBAL_CONFIG.current_profile_name} MFA database server, "
+            f"please see {log_path} for more details and/or look at the logged errors above."
+        )
+    else:
+        logger.debug(f"pg_ctl stdout: {stdout}")
+        logger.debug(f"pg_ctl stderr: {stderr}")
+        if "no server running" in stdout:
+            raise DatabaseError()
 
 
 def start_server() -> None:
     """Start the MFA server for the current profile"""
     GLOBAL_CONFIG.load()
     logger = logging.getLogger("mfa")
+    try:
+        check_server()
+        logger.info(f"{GLOBAL_CONFIG.current_profile_name} MFA database server already running.")
+        return
+    except Exception:
+        pass
 
     db_directory = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
         f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
@@ -354,18 +411,24 @@ def start_server() -> None:
     log_path = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
         f"pg_log_{GLOBAL_CONFIG.current_profile_name}.txt"
     )
-    subprocess.check_call(
-        [
-            "pg_ctl",
-            "-D",
-            db_directory,
-            "-l",
-            log_path,
-            "start",
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    try:
+        subprocess.check_call(
+            [
+                "pg_ctl",
+                "-D",
+                db_directory,
+                "-l",
+                log_path,
+                "start",
+            ],
+            env=os.environ,
+        )
+    except Exception:
+        raise DatabaseError(
+            f"There was an error encountered starting the {GLOBAL_CONFIG.current_profile_name} MFA database server, "
+            f"please see {log_path} for more details and/or look at the logged errors above."
+        )
+
     logger.info(f"{GLOBAL_CONFIG.current_profile_name} MFA database server started!")
 
 
@@ -384,19 +447,32 @@ def stop_server(mode: str = "fast") -> None:
     db_directory = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
         f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
+    log_path = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+        f"pg_log_{GLOBAL_CONFIG.current_profile_name}.txt"
+    )
     if not db_directory.exists():
 
         logger.error(f"There was no database found at {db_directory}.")
         sys.exit(1)
     logger.info(f"Stopping the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
-    try:
-        subprocess.check_call(
-            ["pg_ctl", "-D", db_directory, "-m", mode, "stop"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+    proc = subprocess.Popen(
+        ["pg_ctl", "-D", db_directory, "-m", mode, "stop"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=os.environ,
+        encoding="utf8",
+    )
+    stdout, stderr = proc.communicate()
+    if proc.returncode == 1:
+        logger.error(f"pg_ctl stdout: {stdout}")
+        logger.error(f"pg_ctl stderr: {stderr}")
+        raise DatabaseError(
+            f"There was an error encountered starting the {GLOBAL_CONFIG.current_profile_name} MFA database server, "
+            f"please see {log_path} for more details and/or look at the logged errors above."
         )
-    except Exception:
-        pass
+    else:
+        logger.debug(f"pg_ctl stdout: {stdout}")
+        logger.debug(f"pg_ctl stderr: {stderr}")
 
 
 def delete_server() -> None:
