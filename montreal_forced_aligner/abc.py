@@ -32,7 +32,11 @@ import yaml
 
 from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.db import CorpusWorkflow, MfaSqlBase
-from montreal_forced_aligner.exceptions import KaldiProcessingError, MultiprocessingError
+from montreal_forced_aligner.exceptions import (
+    DatabaseError,
+    KaldiProcessingError,
+    MultiprocessingError,
+)
 from montreal_forced_aligner.helper import comma_join, load_configuration, mfa_open
 
 if TYPE_CHECKING:
@@ -238,19 +242,25 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         try:
             check_databases(self.identifier)
         except Exception:
-            subprocess.check_call(
-                [
-                    "createdb",
-                    f"--host={GLOBAL_CONFIG.database_socket}",
-                    self.identifier,
-                ],
-                stderr=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-            )
+            try:
+                subprocess.check_call(
+                    [
+                        "createdb",
+                        f"--host={GLOBAL_CONFIG.database_socket}",
+                        self.identifier,
+                    ],
+                    stderr=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                )
+            except Exception:
+                raise DatabaseError(
+                    f"There was an error connecting to the {GLOBAL_CONFIG.current_profile_name} MFA database server. "
+                    "Please ensure the server is initialized (mfa server init) or running (mfa server start)"
+                )
             exist_check = False
         self.database_initialized = True
         if exist_check:
-            if GLOBAL_CONFIG.current_profile.clean:
+            if GLOBAL_CONFIG.current_profile.clean or getattr(self, "dirty", False):
                 self.clean_working_directory()
                 self.delete_database()
             else:
@@ -668,29 +678,16 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         """
         from montreal_forced_aligner.utils import get_mfa_version
 
-        clean = True
+        self.dirty = False
         current_version = get_mfa_version()
-        if conf["dirty"]:
-            logger.debug("Previous run ended in an error (maybe ctrl-c?)")
-            clean = False
-        if conf.get("version", current_version) != current_version:
+        if (
+            not GLOBAL_CONFIG.current_profile.debug
+            and conf.get("version", current_version) != current_version
+        ):
             logger.debug(
                 f"Previous run was on {conf['version']} version (new run: {current_version})"
             )
-            clean = False
-        for key in [
-            "corpus_directory",
-            "dictionary_path",
-            "acoustic_model_path",
-            "g2p_model_path",
-            "language_model_path",
-        ]:
-            if conf.get(key, None) != getattr(self, key, None):
-                logger.debug(
-                    f"Previous run used a different {key.replace('_', ' ')} than {getattr(self, key, None)} (was {conf.get(key, None)})"
-                )
-                clean = False
-        return clean
+            self.dirty = True
 
     def check_previous_run(self) -> bool:
         """
@@ -705,7 +702,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
             return True
         conf = load_configuration(self.worker_config_path)
         clean = self._validate_previous_configuration(conf)
-        if not GLOBAL_CONFIG.current_profile.clean and not clean:
+        if not GLOBAL_CONFIG.current_profile.clean and self.dirty:
             logger.warning(
                 "The previous run had a different configuration than the current, which may cause issues."
                 " Please see the log for details or use --clean flag if issues are encountered."

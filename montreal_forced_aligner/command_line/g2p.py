@@ -128,6 +128,8 @@ def g2p_cli(context, **kwargs) -> None:
                     if not word:
                         continue
                     pronunciations = g2p.rewriter(word)
+                    if not pronunciations:
+                        output.write(f"{word}\t\n")
                     for p in pronunciations:
                         output.write(f"{word}\t{p}\n")
                     output.flush()

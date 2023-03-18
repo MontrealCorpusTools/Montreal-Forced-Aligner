@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import atexit
 import multiprocessing as mp
+import os
 import sys
 import time
 import warnings
@@ -33,7 +34,11 @@ from montreal_forced_aligner.command_line.validate import (
     validate_corpus_cli,
     validate_dictionary_cli,
 )
-from montreal_forced_aligner.config import GLOBAL_CONFIG, update_command_history
+from montreal_forced_aligner.config import (
+    GLOBAL_CONFIG,
+    MFA_PROFILE_VARIABLE,
+    update_command_history,
+)
 from montreal_forced_aligner.utils import check_third_party
 
 BEGIN = time.time()
@@ -107,10 +112,15 @@ def mfa_cli(ctx: click.Context) -> None:
     Main function for the MFA command line interface
     """
     GLOBAL_CONFIG.load()
-    from montreal_forced_aligner.command_line.utils import start_server, stop_server
+    from montreal_forced_aligner.command_line.utils import check_server, start_server, stop_server
     from montreal_forced_aligner.helper import configure_logger
 
     auto_server = False
+    run_check = True
+    if ctx.invoked_subcommand == "anchor":
+        os.environ[MFA_PROFILE_VARIABLE] = "anchor"
+        GLOBAL_CONFIG.profiles["anchor"].clean = False
+        GLOBAL_CONFIG.save()
     if "--help" in sys.argv or ctx.invoked_subcommand in [
         "configure",
         "version",
@@ -118,13 +128,19 @@ def mfa_cli(ctx: click.Context) -> None:
         "server",
     ]:
         auto_server = False
+        run_check = False
     elif ctx.invoked_subcommand in ["model", "models"]:
         if "add_words" in sys.argv or "inspect" in sys.argv:
             auto_server = getattr(GLOBAL_CONFIG.global_profile, "auto_server", True)
+            run_check = True
+        else:
+            run_check = False
     else:
         auto_server = getattr(GLOBAL_CONFIG.global_profile, "auto_server", True)
     if auto_server:
         start_server()
+    elif run_check:
+        check_server()
     warnings.simplefilter("ignore")
     configure_logger("mfa")
     check_third_party()

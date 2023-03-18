@@ -359,7 +359,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             "silence_before_correction": None,
                             "non_silence_before_correction": None,
                             "word_id": word_primary_key,
-                            "base_pronunciation_id": pronunciation_primary_key,
                         }
                     )
                     word_primary_key += 1
@@ -434,7 +433,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             WordType.clitic,
                         }:
                             self.non_silence_phones.update(pron)
-                        base_pronunciation_key = pronunciation_primary_key
 
                         pron_objs.append(
                             {
@@ -446,7 +444,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                                 "silence_before_correction": silence_before_correct,
                                 "non_silence_before_correction": non_silence_before_correct,
                                 "word_id": word_cache[word],
-                                "base_pronunciation_id": base_pronunciation_key,
                             }
                         )
                         self.non_silence_phones.update(pron)
@@ -483,7 +480,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                                 "silence_before_correction": None,
                                 "non_silence_before_correction": None,
                                 "word_id": word_primary_key,
-                                "base_pronunciation_id": pronunciation_primary_key,
                             }
                         )
                         pronunciation_primary_key += 1
@@ -665,7 +661,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         variant_mapping = {}
                         existing_prons = {p.pronunciation for p in w.pronunciations}
                         for p in w.pronunciations:
-                            base_id = p.id
                             new_variants = [p.pronunciation]
 
                             variant_index = 0
@@ -686,7 +681,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                                                 "silence_before_correction": None,
                                                 "non_silence_before_correction": None,
                                                 "word_id": w.id,
-                                                "base_pronunciation_id": base_id,
                                             }
                                         )
                                         new_variants.append(n)
@@ -746,6 +740,10 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 position = None
                 if self.position_dependent_phones:
                     phone, position = split_phone_position(p)
+                if p == self.oov_phone:
+                    phone_type = PhoneType.oov
+                else:
+                    phone_type = PhoneType.silence
                 phone_objs.append(
                     {
                         "id": i,
@@ -753,7 +751,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         "phone": phone,
                         "position": position,
                         "kaldi_label": p,
-                        "phone_type": PhoneType.silence,
+                        "phone_type": phone_type,
                         "count": 0,
                     }
                 )
@@ -1279,7 +1277,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 phones = data["pronunciation"]
                 d = {
                     "id": pronunciation_index,
-                    "base_pronunciation_id": pronunciation_index,
                     "word_id": word_mapping[word]["id"],
                     "pronunciation": phones,
                 }
@@ -1712,7 +1709,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         new_pronunciation_mapping.append(
                             {
                                 "id": max_pron_id,
-                                "base_pronunciation_id": max_pron_id,
                                 "pronunciation": self.oov_phone,
                                 "word_id": max_word_id,
                             }
@@ -1732,7 +1728,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                                         "id": max_pron_id,
                                         "pronunciation": new_p,
                                         "word_id": max_word_id,
-                                        "base_pronunciation_id": max_pron_id,
                                     }
                                 )
                         new_word_mapping.append(

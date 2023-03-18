@@ -29,7 +29,7 @@ __all__ = [
     "adapt",
     "align",
     "anchor",
-    "diarize_speakers.py",
+    "diarize_speakers",
     "create_segments",
     "g2p",
     "mfa",
