@@ -119,7 +119,8 @@ def mfa_cli(ctx: click.Context) -> None:
     run_check = True
     if ctx.invoked_subcommand == "anchor":
         os.environ[MFA_PROFILE_VARIABLE] = "anchor"
-        GLOBAL_CONFIG.profiles["anchor"].clean = False
+
+        GLOBAL_CONFIG.current_profile.clean = False
         GLOBAL_CONFIG.save()
     if "--help" in sys.argv or ctx.invoked_subcommand in [
         "configure",
