@@ -1,6 +1,6 @@
 FROM condaforge/mambaforge:22.11.1-4 as build
 
-COPY docker_environment.yaml .
+COPY ci/docker_environment.yaml .
 RUN mkdir -p /mfa
 RUN mamba env create -p /env -f docker_environment.yaml && conda clean -afy
 

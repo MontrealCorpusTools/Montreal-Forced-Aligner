@@ -1,57 +1,28 @@
-name: Publish Python distributions to PyPI and TestPyPI
+name: Publish Python distributions to PyPI
 
 on:
-  - push
-  - release
-
-env:
-  CACHE_NUMBER: 0  # increase to reset cache manually
+  release:
+    types: [published]
 
 jobs:
   build-n-publish:
-    name: Build and publish to PyPI and TestPyPI
+    name: Build and publish to PyPI
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        # Adding -l {0} helps ensure conda can be found properly.
-        shell: bash -l {0}
-    env:
-      ENV_NAME: mfa_publish
-      PYTHON: 3.8
     steps:
       - uses: actions/checkout@main
         with:
           fetch-depth: 0
-
-      - name: Setup Mambaforge
-        uses: conda-incubator/setup-miniconda@v2
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v3
         with:
-          miniforge-variant: Mambaforge
-          miniforge-version: latest
-          activate-environment: my-env
-          use-mamba: true
-      - name: Set cache date
-        run: echo "DATE=$(date +'%Y%m%d')" >> $GITHUB_ENV
+          python-version: "3.10"
 
-      - uses: actions/cache@v3
-        with:
-          path: /usr/share/miniconda3/envs/my-env
-          key: linux-64-conda-${{ hashFiles('environment.yml') }}-${{ env.DATE }}-${{ env.CACHE_NUMBER }}
-        id: cache
-
-      - name: Update environment
-        run: mamba env update -n my-env -f environment.yml
-        if: steps.cache.outputs.cache-hit != 'true'
-
-      - name: Create environment variable
-        if: startsWith(github.ref, 'refs/tags/') != true
-        run: |
-          wget https://gist.github.com/plaplant/0902f09e59166bac742bbd554f3cd2f9/raw/make_dev_version.sh
-          version=$(bash make_dev_version.sh)
-          echo "SETUPTOOLS_SCM_PRETEND_VERSION=$version" >> $GITHUB_ENV
-
-      - name: Check environment variable
-        run: echo $SETUPTOOLS_SCM_PRETEND_VERSION
+      - name: Install pypa/build
+        run: >-
+          python -m
+          pip install
+          build
+          --user
 
       - name: Build a binary wheel and a source tarball
         run: >-
@@ -61,16 +32,8 @@ jobs:
           --wheel
           --outdir dist/
           .
-      - name: Publish to Test PyPI
-        if: startsWith(github.event.ref, 'refs/tags')
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          user: __token__
-          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
-          repository_url: https://test.pypi.org/legacy/
 
       - name: Publish to PyPI
-        if: startsWith(github.event.ref, 'refs/tags')
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           user: __token__
