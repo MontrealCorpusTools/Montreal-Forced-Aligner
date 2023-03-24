@@ -630,6 +630,7 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
         :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
+        self.dirty = True  # Always reset validate
         self.initialize_database()
         if self.initialized:
             return
