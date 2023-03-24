@@ -32,13 +32,14 @@ Installation
     .. grid-item-card:: In-depth instructions
        :text-align: center
 
-       Want to learn more about installing? Want to use G2P commands on Windows?
+       Using :ref:`Docker <docker_installation>`? Want to :ref:`install via source <source_installation>`?
 
        +++
 
        .. button-ref:: installation
           :expand:
           :color: primary
+          :ref-type: doc
 
           To the installation guide
 

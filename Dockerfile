@@ -14,4 +14,5 @@ USER mfauser
 ENV MFA_ROOT_ENVIRONMENT_VARIABLE=/mfa
 RUN conda run -p /env mfa server init
 
-ENTRYPOINT ["conda", "run", "-p", "/env", "mfa"]
+RUN echo "source activate /env && mfa server start" > ~/.bashrc
+ENV PATH /env/bin:$PATH
