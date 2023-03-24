@@ -5,6 +5,18 @@
 2.2 Changelog
 *************
 
+2.2.7
+=====
+
+- Update docker image to use interactive mode
+- Update docs for Docker installation
+- Fixed bug with running G2P in stdin/stdout still requiring a database server
+
+2.2.6
+=====
+
+- Fix crash when running :code:`mfa anchor`
+
 2.2.5
 =====
 

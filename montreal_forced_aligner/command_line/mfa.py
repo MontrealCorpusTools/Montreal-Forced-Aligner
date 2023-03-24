@@ -136,6 +136,10 @@ def mfa_cli(ctx: click.Context) -> None:
             run_check = True
         else:
             run_check = False
+    elif ctx.invoked_subcommand == "g2p":
+        if len(sys.argv) > 2 and sys.argv[2] == "-":
+            run_check = False
+            auto_server = False
     else:
         auto_server = getattr(GLOBAL_CONFIG.global_profile, "auto_server", True)
     if auto_server:

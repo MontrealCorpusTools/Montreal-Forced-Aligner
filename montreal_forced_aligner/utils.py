@@ -276,6 +276,9 @@ def check_third_party():
     bin_path = shutil.which("sox")
     if bin_path is None:
         raise ThirdpartyError("sox")
+    bin_path = shutil.which("initdb")
+    if bin_path is None:
+        raise ThirdpartyError("initdb")
     bin_path = shutil.which("fstcompile")
     if bin_path is None:
         raise ThirdpartyError("fstcompile", open_fst=True)

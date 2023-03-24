@@ -39,6 +39,6 @@ Running the corpus validation utility
 Command reference
 -----------------
 
-.. click:: montreal_forced_aligner.command_line.mfa:mfa_cli
-   :prog: mfa
-   :commands: validate
+.. click:: montreal_forced_aligner.command_line.validate:validate_corpus_cli
+   :prog: mfa validate
+   :nested: full
