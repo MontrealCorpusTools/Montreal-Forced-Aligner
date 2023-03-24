@@ -213,7 +213,7 @@ class ValidationMixin:
                 with mfa_open(path, "w") as f:
                     for file_name, relative_path, begin, end in utterances:
 
-                        f.write(f"{relative_path + '/' + file_name},{begin},{end}\n")
+                        f.write(f"{relative_path.joinpath(file_name)},{begin},{end}\n")
 
                 logger.error(
                     f"There were {utterances.count()} utterances missing features. "

@@ -11,6 +11,7 @@
 - Update docker image to use interactive mode
 - Update docs for Docker installation
 - Fixed bug with running G2P in stdin/stdout still requiring a database server
+- Fixed bug in corpus validator with Path and str mismatch
 
 2.2.6
 =====
