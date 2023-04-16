@@ -9,12 +9,15 @@ import re
 import subprocess
 import typing
 from abc import abstractmethod
+from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 import dataclassy
+import librosa
 import numba
 import numpy as np
+import soundfile
 import sqlalchemy
 from numba import njit
 from scipy.sparse import csr_matrix
@@ -23,7 +26,7 @@ from sqlalchemy.orm import Session, joinedload
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.config import IVECTOR_DIMENSION, PLDA_DIMENSION
 from montreal_forced_aligner.data import M_LOG_2PI, MfaArguments
-from montreal_forced_aligner.db import Job, Utterance
+from montreal_forced_aligner.db import File, Job, SoundFile, Utterance
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import read_feats, thirdparty_binary
@@ -482,25 +485,11 @@ class MfccFunction(KaldiFunction):
             job: typing.Optional[Job] = session.get(Job, self.job_name)
             feats_scp_path = job.construct_path(self.data_directory, "feats", "scp")
             pitch_scp_path = job.construct_path(self.data_directory, "pitch", "scp")
-            segments_scp_path = job.construct_path(self.data_directory, "segments", "scp")
             wav_path = job.construct_path(self.data_directory, "wav", "scp")
             raw_ark_path = job.construct_path(self.data_directory, "feats", "ark")
             raw_pitch_ark_path = job.construct_path(self.data_directory, "pitch", "ark")
             if os.path.exists(raw_ark_path):
                 return
-            min_length = 0.1
-            seg_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("extract-segments"),
-                    f"--min-segment-length={min_length}",
-                    f"scp:{wav_path}",
-                    segments_scp_path,
-                    "ark:-",
-                ],
-                stdout=subprocess.PIPE,
-                stderr=log_file,
-                env=os.environ,
-            )
             mfcc_proc = compute_mfcc_process(
                 log_file, wav_path, subprocess.PIPE, self.mfcc_options
             )
@@ -531,14 +520,39 @@ class MfccFunction(KaldiFunction):
                     stderr=log_file,
                     env=os.environ,
                 )
-            for line in seg_proc.stdout:
-                mfcc_proc.stdin.write(line)
+            min_length = 0.1
+            utterances = (
+                session.query(Utterance, SoundFile)
+                .join(Utterance.file)
+                .join(File.sound_file)
+                .filter(
+                    Utterance.job_id == self.job_name,
+                    Utterance.ignored == False,  # noqa
+                    Utterance.duration >= min_length,
+                )
+                .order_by(Utterance.kaldi_id)
+            )
+            for u, sf in utterances:
+
+                wave, _ = librosa.load(
+                    sf.sound_file_path,
+                    sr=16000,
+                    offset=u.begin,
+                    duration=u.duration,
+                    mono=False,
+                )
+                if len(wave.shape) == 2:
+                    wave = wave[u.channel, :]
+                bio = BytesIO()
+                soundfile.write(bio, wave, samplerate=16000, format="WAV")
+                mfcc_proc.stdin.write(f"{u.kaldi_id}\t".encode("utf8"))
+                mfcc_proc.stdin.write(bio.getvalue())
                 mfcc_proc.stdin.flush()
                 if use_pitch:
-                    pitch_proc.stdin.write(line)
+                    pitch_proc.stdin.write(f"{u.kaldi_id}\t".encode("utf8"))
+                    pitch_proc.stdin.write(bio.getvalue())
                     pitch_proc.stdin.flush()
-                if re.search(rb"\d+-\d+ ", line):
-                    yield 1
+                yield 1
             mfcc_proc.stdin.close()
             if use_pitch:
                 pitch_proc.stdin.close()

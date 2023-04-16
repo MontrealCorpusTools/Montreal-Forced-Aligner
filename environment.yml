@@ -6,6 +6,7 @@ dependencies:
   - python>=3.8
   - numpy
   - librosa
+  - pysoundfile
   - tqdm
   - requests
   - pyyaml
@@ -13,8 +14,10 @@ dependencies:
   - kaldi=*=*cpu*
   - sox
   - ffmpeg
+  - scipy
   - pynini
   - openfst
+  - scikit-learn
   - hdbscan
   - baumwelch
   - ngram

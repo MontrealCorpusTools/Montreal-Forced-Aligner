@@ -71,7 +71,7 @@ class TokenizerAlignmentInitWorker(AlignmentInitWorker):
             logging_name=f"{type(self).__name__}_engine",
         ).execution_options(logging_token=f"{type(self).__name__}_engine")
         try:
-            symbol_table = pynini.SymbolTable()
+            symbol_table = pywrapfst.SymbolTable()
             symbol_table.add_symbol(self.eps)
             valid_output_ngrams = set()
             base_dir = os.path.dirname(self.far_path)
@@ -143,7 +143,7 @@ class TokenizerAlignmentInitWorker(AlignmentInitWorker):
                                                 [input_string, output_string]
                                             )
                                             ilabel = symbol_table.find(symbol)
-                                            if ilabel == pynini.NO_LABEL:
+                                            if ilabel == pywrapfst.NO_LABEL:
                                                 ilabel = symbol_table.add_symbol(symbol)
                                             ostate = (i + input_range) * (len(output) + 1) + (
                                                 j + output_range
@@ -153,7 +153,7 @@ class TokenizerAlignmentInitWorker(AlignmentInitWorker):
                                                 pywrapfst.Arc(
                                                     ilabel,
                                                     ilabel,
-                                                    pynini.Weight(
+                                                    pywrapfst.Weight(
                                                         "log", float(input_range * output_range)
                                                     ),
                                                     ostate,
@@ -168,7 +168,7 @@ class TokenizerAlignmentInitWorker(AlignmentInitWorker):
                                 if sym not in data:
                                     data[sym] = arc.weight
                                 else:
-                                    data[sym] = pynini.plus(data[sym], arc.weight)
+                                    data[sym] = pywrapfst.plus(data[sym], arc.weight)
                         if count >= self.batch_size:
                             data = {k: float(v) for k, v in data.items()}
                             self.return_queue.put((self.job_name, data, count))

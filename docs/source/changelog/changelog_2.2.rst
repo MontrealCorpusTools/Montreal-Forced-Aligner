@@ -5,6 +5,13 @@
 2.2 Changelog
 *************
 
+2.2.8
+=====
+- Fixed a bug introduced in 2.2.4 that made segments overlap with silence intervals when using textgrid cleanup
+- Changed databases to always use the root MFA rather than rely on temporary directories to make it more consistent where database files and sockets will get placed.  This root directory can be changed via the environment variable :code:`MFA_ROOT_DIR`
+- Optimized training graph and collecting alignments after changes to how unknown words were represented internally
+- Changed feature generation to use piped audio loaded via PySoundFile rather than via calls to sox/ffmpeg directly
+
 2.2.7
 =====
 

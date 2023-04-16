@@ -24,6 +24,7 @@ import numpy as np
 import pynini
 import pywrapfst
 import sqlalchemy
+from pynini.lib import rewrite
 from sqlalchemy.orm import Session, joinedload, selectinload, subqueryload
 
 from montreal_forced_aligner.corpus.features import (
@@ -53,7 +54,7 @@ from montreal_forced_aligner.db import (
     Word,
 )
 from montreal_forced_aligner.exceptions import AlignmentExportError, FeatureGenerationError
-from montreal_forced_aligner.helper import mfa_open, split_phone_position
+from montreal_forced_aligner.helper import align_pronunciations, mfa_open, split_phone_position
 from montreal_forced_aligner.textgrid import (
     construct_output_path,
     construct_output_tiers,
@@ -95,6 +96,8 @@ __all__ = [
     "GeneratePronunciationsFunction",
 ]
 
+logger = logging.getLogger("mfa")
+
 
 def phones_to_prons(
     text: str,
@@ -104,9 +107,11 @@ def phones_to_prons(
     phone_symbol_table: pywrapfst.SymbolTableView,
     optional_silence_phone: str,
     transcription: bool = False,
-    clitic_marker=None,
+    clitic_marker: str = None,
+    oov_word: str = None,
+    use_g2p: bool = False,
 ):
-    if "<space>" in text:
+    if use_g2p:
         words = [x.replace(" ", "") for x in text.split("<space>")]
     else:
         words = text.split()
@@ -114,7 +119,11 @@ def phones_to_prons(
     word_end = "#2"
     word_begin_symbol = phone_symbol_table.find(word_begin)
     word_end_symbol = phone_symbol_table.find(word_end)
-    acceptor = pynini.accep(text, token_type=word_symbol_table)
+    if use_g2p:
+        kaldi_text = text
+    else:
+        kaldi_text = " ".join([x if word_symbol_table.member(x) else oov_word for x in words])
+    acceptor = pynini.accep(kaldi_text, token_type=word_symbol_table)
     phone_to_word = pynini.compose(align_lexicon_fst, acceptor)
     phone_fst = pynini.Fst()
     current_state = phone_fst.add_state()
@@ -183,25 +192,27 @@ def phones_to_prons(
     try:
         path_string = pynini.shortestpath(lattice).project("input").string(phone_symbol_table)
     except Exception:
-        logging.debug("For the text and intervals:")
-        logging.debug(text)
-        logging.debug([x.label for x in intervals])
-        logging.debug("There was an issue composing word and phone FSTs")
-        logging.debug("PHONE FST:")
+        logger.debug("For the text and intervals:")
+        logger.debug(text)
+        logger.debug(kaldi_text)
+        logger.debug([x.label for x in intervals])
+        logger.debug("There was an issue composing word and phone FSTs")
+        logger.debug("PHONE FST:")
         phone_fst.set_input_symbols(phone_symbol_table)
         phone_fst.set_output_symbols(phone_symbol_table)
-        logging.debug(phone_fst)
-        logging.debug("PHONE_TO_WORD FST:")
+        logger.debug(phone_fst)
+        logger.debug("PHONE_TO_WORD FST:")
         phone_to_word.set_input_symbols(phone_symbol_table)
         phone_to_word.set_output_symbols(word_symbol_table)
-        logging.debug(phone_to_word)
+        logger.debug(phone_to_word)
         raise
     path_string = path_string.replace(f"{word_end} {word_begin}", word_begin)
     path_string = path_string.replace(f"{word_end}", word_begin)
+    path_string = re.sub(f"^{word_begin} ", "", path_string)
     word_splits = re.split(rf" ?{word_begin} ?", path_string)
-    word_splits = [x.split() for x in word_splits if x != optional_silence_phone and x]
-
-    return list(zip(words, word_splits))
+    word_splits = [x.split() for x in word_splits if x != optional_silence_phone]
+    pronunciations = align_pronunciations(words, list(zip(words, word_splits)), oov_word)
+    return pronunciations
 
 
 @dataclass
@@ -568,20 +579,27 @@ class CompileTrainGraphsFunction(KaldiFunction):
                 workflow.working_directory, f"{self.job_name}.ha_out_disambig.temp"
             )
             text_int_paths = job.per_dictionary_text_int_scp_paths
+            batch_size = 1000
             if self.use_g2p:
-                import pynini
-                from pynini.lib import rewrite
 
                 from montreal_forced_aligner.g2p.generator import threshold_lattice_to_dfa
 
                 for d in job.dictionaries:
+                    log_file.write(f"Compiling graphs for {d.name} ({d.id})...\n")
                     fst = pynini.Fst.read(d.lexicon_fst_path)
-                    token_type = pynini.SymbolTable.read_text(d.grapheme_symbol_table_path)
+                    words = d.word_mapping
+                    if self.use_g2p:
+                        token_type = pywrapfst.SymbolTable.read_text(d.grapheme_symbol_table_path)
+                        text_column = Utterance.normalized_character_text
+                    else:
+                        token_type = pywrapfst.SymbolTable.read_text(d.words_symbol_path)
+                        text_column = Utterance.normalized_text
+                        fst.invert()
                     utterances = (
-                        session.query(Utterance.kaldi_id, Utterance.normalized_character_text)
+                        session.query(Utterance.kaldi_id, text_column)
                         .join(Utterance.speaker)
                         .filter(Utterance.ignored == False)  # noqa
-                        .filter(Utterance.normalized_character_text != "")
+                        .filter(text_column != "")
                         .filter(Utterance.job_id == self.job_name)
                         .filter(Speaker.dictionary_id == d.id)
                         .order_by(Utterance.kaldi_id)
@@ -593,8 +611,19 @@ class CompileTrainGraphsFunction(KaldiFunction):
                     with mfa_open(fst_ark_path, "wb") as fst_output_file:
                         for utt_id, full_text in utterances:
                             try:
-                                lattice = rewrite.rewrite_lattice(full_text, fst, token_type)
-                                lattice = threshold_lattice_to_dfa(lattice, 2.0)
+                                if self.use_g2p:
+                                    lattice = rewrite.rewrite_lattice(full_text, fst, token_type)
+                                    lattice = threshold_lattice_to_dfa(lattice, 2.0)
+                                else:
+                                    text = " ".join(
+                                        [
+                                            x if x in words else d.oov_word
+                                            for x in full_text.split()
+                                        ]
+                                    )
+                                    a = pynini.accep(text, token_type=token_type)
+                                    lattice = rewrite.rewrite_lattice(a, fst)
+                                    lattice.invert()
                                 input = lattice.write_to_string()
                             except pynini.lib.rewrite.Error:
                                 log_file.write(f'Error composing "{full_text}"\n')
@@ -703,6 +732,7 @@ class CompileTrainGraphsFunction(KaldiFunction):
 
             else:
                 for d in job.dictionaries:
+                    log_file.write(f"Compiling graphs for {d}")
                     fst_ark_path = job.construct_path(
                         workflow.working_directory, "fsts", "ark", d.id
                     )
@@ -711,6 +741,7 @@ class CompileTrainGraphsFunction(KaldiFunction):
                         [
                             thirdparty_binary("compile-train-graphs"),
                             f"--read-disambig-syms={d.disambiguation_symbols_int_path}",
+                            f"--batch-size={batch_size}",
                             self.tree_path,
                             self.model_path,
                             d.lexicon_fst_path,
@@ -723,6 +754,7 @@ class CompileTrainGraphsFunction(KaldiFunction):
                     )
                     for line in proc.stderr:
                         log_file.write(line)
+                        log_file.flush()
                         m = self.progress_pattern.match(line.strip())
                         if m:
                             yield int(m.group("succeeded")), int(m.group("failed"))
@@ -1766,6 +1798,7 @@ class GeneratePronunciationsFunction(KaldiFunction):
                         self.word_symbol_table,
                         self.phone_symbol_table,
                         self.optional_silence_phone,
+                        oov_word=self.oov_word,
                     )
                     if d.position_dependent_phones:
                         word_pronunciations = [
@@ -1837,7 +1870,7 @@ def compile_information_func(
             if decode_error_match:
                 data["unaligned"].append(decode_error_match.group("utt"))
                 continue
-            log_like_match = re.match(log_like_pattern, line)
+            log_like_match = re.search(log_like_pattern, line)
             if log_like_match:
                 log_like = log_like_match.group("log_like")
                 frames = log_like_match.group("frames")
@@ -1923,6 +1956,7 @@ class AlignmentExtractionFunction(KaldiFunction):
             self.phone_symbol_table,
             self.optional_silence_phone,
             self.transcription,
+            oov_word=self.oov_word,
         )
         actual_phone_intervals = []
         actual_word_intervals = []
@@ -2018,6 +2052,8 @@ class AlignmentExtractionFunction(KaldiFunction):
             self.phone_symbol_table,
             self.optional_silence_phone,
             clitic_marker=self.clitic_marker,
+            oov_word=self.oov_word,
+            use_g2p=True,
         )
         actual_phone_intervals = []
         actual_word_intervals = []

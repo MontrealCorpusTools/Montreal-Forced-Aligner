@@ -70,7 +70,7 @@ A simple Dockerfile for installing MFA would be:
    RUN chown -R mfauser /mfa
    RUN chown -R mfauser /env
    USER mfauser
-   ENV MFA_ROOT_ENVIRONMENT_VARIABLE=/mfa
+   ENV MFA_ROOT_DIR=/mfa
    RUN conda run -p /env mfa server init
 
    RUN echo "source activate /env && mfa server start" > ~/.bashrc
@@ -84,7 +84,7 @@ Crucially, note the useradd and subsequent user commands:
    RUN chown -R mfauser /mfa
    RUN chown -R mfauser /env
    USER mfauser
-   ENV MFA_ROOT_ENVIRONMENT_VARIABLE=/mfa
+   ENV MFA_ROOT_DIR=/mfa
    RUN conda run -p /env mfa server init
 
 These lines ensure that the database is initialized without using Docker's default root user, avoiding a permissions error thrown by PostGreSQL.

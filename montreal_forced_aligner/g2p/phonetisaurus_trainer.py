@@ -291,7 +291,7 @@ class AlignmentInitWorker(mp.Process):
                                                 pywrapfst.Arc(
                                                     ilabel,
                                                     ilabel,
-                                                    pynini.Weight(
+                                                    pywrapfst.Weight(
                                                         "log", float(input_range * output_range)
                                                     ),
                                                     ostate,
@@ -306,7 +306,7 @@ class AlignmentInitWorker(mp.Process):
                                 if sym not in data:
                                     data[sym] = arc.weight
                                 else:
-                                    data[sym] = pynini.plus(data[sym], arc.weight)
+                                    data[sym] = pywrapfst.plus(data[sym], arc.weight)
                         if count >= self.batch_size:
                             data = {k: float(v) for k, v in data.items()}
                             self.return_queue.put((self.job_name, data, count))
@@ -1359,9 +1359,12 @@ class PhonetisaurusTrainerMixin:
         logger.info("Done exporting alignments!")
 
     def compute_initial_ngrams(self) -> None:
-        logger.info("Computing initial ngrams...")
         input_path = self.working_directory.joinpath("input.txt")
         input_ngram_path = self.working_directory.joinpath("input_ngram.fst")
+        if input_ngram_path.with_suffix(".ngrams").exists():
+            logger.info("Initial ngrams already computed")
+            return
+        logger.info("Computing initial ngrams...")
         input_symbols_path = self.working_directory.joinpath("input_ngram.syms")
         symbols_proc = subprocess.Popen(
             [
@@ -1517,6 +1520,8 @@ class PhonetisaurusTrainerMixin:
         """
         Train a G2P model
         """
+        if os.path.exists(self.fst_path):
+            return
         os.makedirs(self.working_log_directory, exist_ok=True)
         begin = time.time()
         self.train_alignments()

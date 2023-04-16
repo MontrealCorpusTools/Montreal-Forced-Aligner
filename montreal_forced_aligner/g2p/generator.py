@@ -171,10 +171,14 @@ class Rewriter:
             hypotheses = []
             for w in words:
                 w_fst = self.create_word_fst(w)
+                if not w_fst:
+                    continue
                 hypotheses.append(self.rewrite(w_fst))
             hypotheses = sorted(set(" ".join(x) for x in itertools.product(*hypotheses)))
         else:
             fst = self.create_word_fst(graphemes)
+            if not fst:
+                return []
             hypotheses = self.rewrite(fst)
         return [x for x in hypotheses if x]
 
@@ -234,9 +238,11 @@ class PhonetisaurusRewriter:
                 output_token_type=output_token_type,
             )
 
-    def create_word_fst(self, word: str) -> pynini.Fst:
+    def create_word_fst(self, word: str) -> typing.Optional[pynini.Fst]:
         if self.graphemes is not None:
             word = [x for x in word if x in self.graphemes]
+        if not word:
+            return None
         fst = pynini.Fst()
         one = pywrapfst.Weight.one(fst.weight_type())
         max_state = 0
@@ -265,10 +271,14 @@ class PhonetisaurusRewriter:
             hypotheses = []
             for w in words:
                 w_fst = self.create_word_fst(w)
+                if not w_fst:
+                    continue
                 hypotheses.append(self.rewrite(w_fst))
             hypotheses = sorted(set(" ".join(x) for x in itertools.product(*hypotheses)))
         else:
             fst = self.create_word_fst(graphemes)
+            if not fst:
+                return []
             hypotheses = self.rewrite(fst)
         hypotheses = [x.replace(self.seq_sep, " ") for x in hypotheses if x]
         return hypotheses
@@ -483,6 +493,7 @@ class PyniniGenerator(G2PTopLevelMixin):
                 self.output_token_type,
                 num_pronunciations=self.num_pronunciations,
                 threshold=self.g2p_threshold,
+                graphemes=self.g2p_model.meta["graphemes"],
             )
 
     def generate_pronunciations(self) -> Dict[str, List[str]]:

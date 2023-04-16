@@ -14,13 +14,11 @@ from montreal_forced_aligner.db import Word
 
 def test_mp3(mp3_test_path):
     info = get_wav_info(str(mp3_test_path))
-    assert info.sox_string
     assert info.duration > 0
 
 
 def test_opus(opus_test_path):
     info = get_wav_info(str(opus_test_path))
-    assert info.sox_string
     assert info.duration > 0
 
 

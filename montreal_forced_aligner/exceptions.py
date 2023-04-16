@@ -31,6 +31,7 @@ __all__ = [
     "LanguageModelNotFoundError",
     "ModelExtensionError",
     "ThirdpartyError",
+    "MultiprocessingError",
     "TrainerError",
     "ModelError",
     "CorpusError",

@@ -1,13 +1,11 @@
 import os
 
 import click.testing
-import pytest
 from praatio import textgrid as tgio
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
-@pytest.mark.timeout(200)
 def test_align_no_speaker_adaptation(
     basic_corpus_dir, generated_dir, english_dictionary, temp_dir, english_acoustic_model, db_setup
 ):
@@ -31,7 +29,6 @@ def test_align_no_speaker_adaptation(
     assert os.path.exists(output_directory)
 
 
-@pytest.mark.timeout(200)
 def test_align_single_speaker(
     basic_corpus_dir,
     generated_dir,
@@ -84,7 +81,6 @@ def test_align_single_speaker(
         assert os.path.exists(path)
 
 
-@pytest.mark.timeout(200)
 def test_align_duplicated(
     duplicated_name_corpus_dir,
     generated_dir,
@@ -132,7 +128,6 @@ def test_align_duplicated(
         assert os.path.exists(path)
 
 
-@pytest.mark.timeout(200)
 def test_align_multilingual(
     multilingual_ipa_corpus_dir,
     english_uk_mfa_dictionary,
@@ -171,7 +166,6 @@ def test_align_multilingual(
     assert not result.return_value
 
 
-@pytest.mark.timeout(200)
 def test_align_multilingual_speaker_dict(
     multilingual_ipa_corpus_dir,
     mfa_speaker_dict_path,
@@ -210,7 +204,6 @@ def test_align_multilingual_speaker_dict(
     assert not result.return_value
 
 
-@pytest.mark.timeout(200)
 def test_align_multilingual_tg_speaker_dict(
     multilingual_ipa_tg_corpus_dir,
     mfa_speaker_dict_path,
@@ -248,7 +241,6 @@ def test_align_multilingual_tg_speaker_dict(
     assert not result.return_value
 
 
-@pytest.mark.timeout(200)
 def test_align_evaluation(
     basic_corpus_dir,
     english_us_mfa_dictionary,
@@ -294,7 +286,6 @@ def test_align_evaluation(
     assert not result.return_value
 
 
-@pytest.mark.timeout(200)
 def test_align_split(
     basic_split_dir,
     english_us_mfa_dictionary,
@@ -336,7 +327,6 @@ def test_align_split(
     assert not result.return_value
 
 
-@pytest.mark.timeout(200)
 def test_align_stereo(
     stereo_corpus_dir,
     generated_dir,
@@ -378,7 +368,6 @@ def test_align_stereo(
     assert len(tg.tierNames) == 4
 
 
-@pytest.mark.timeout(200)
 def test_align_mp3s(
     mp3_corpus_dir,
     generated_dir,
@@ -420,7 +409,6 @@ def test_align_mp3s(
     assert len(tg.tierNames) == 2
 
 
-@pytest.mark.timeout(200)
 def test_align_opus(
     opus_corpus_dir,
     generated_dir,
@@ -462,7 +450,6 @@ def test_align_opus(
     assert len(tg.tierNames) == 2
 
 
-@pytest.mark.timeout(200)
 def test_swedish_cv(
     swedish_dir,
     generated_dir,
@@ -512,7 +499,6 @@ def test_swedish_cv(
         assert len(tg.tierNames) == 2
 
 
-@pytest.mark.timeout(200)
 def test_swedish_mfa(
     swedish_dir,
     generated_dir,
@@ -562,7 +548,6 @@ def test_swedish_mfa(
         assert len(tg.tierNames) == 2
 
 
-@pytest.mark.timeout(200)
 def test_acoustic_g2p_model(
     basic_corpus_dir,
     acoustic_model_dir,

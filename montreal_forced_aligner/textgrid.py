@@ -372,7 +372,7 @@ def export_textgrid(
                 for i, a in enumerate(sorted(intervals, key=lambda x: x.begin)):
                     if duration - a.end < (frame_shift * 2):  # Fix rounding issues
                         a.end = duration
-                    if i > 0 and a.to_tg_interval().start > tier.entries[-1].end:
+                    if i > 0 and tier.entries[-1].end > a.to_tg_interval().start:
                         a.begin = tier.entries[-1].end
                     tier.insertEntry(a.to_tg_interval(duration))
         if has_data:

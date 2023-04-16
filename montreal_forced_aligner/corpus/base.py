@@ -1074,7 +1074,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             session.query(Utterance.id)
                             .join(Utterance.speaker)
                             .filter(Speaker.dictionary_id == dict_id)
-                            .filter(Utterance.text.like("% %"))
+                            .filter(Utterance.text.op("~")(r" [^ ]+ "))
                             .filter(Utterance.ignored == False)  # noqa
                             .order_by(Utterance.duration)
                             .limit(larger_subset_num)
@@ -1142,7 +1142,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     # Get all shorter utterances that are not one word long
                     larger_subset_query = (
                         session.query(Utterance.id)
-                        .filter(Utterance.text.like("% %"))
+                        .filter(Utterance.text.op("~")(r"\s\S+\s"))
                         .filter(Utterance.ignored == False)  # noqa
                         .order_by(Utterance.duration)
                         .limit(larger_subset_num)
