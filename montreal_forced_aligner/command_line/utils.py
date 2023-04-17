@@ -292,13 +292,13 @@ def initialize_server() -> None:
     logger = logging.getLogger("mfa")
     logger.info(f"Initializing the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
 
-    db_directory = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+    db_directory = GLOBAL_CONFIG.root_temporary_directory.joinpath(
         f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
-    init_log_path = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+    init_log_path = GLOBAL_CONFIG.root_temporary_directory.joinpath(
         f"pg_init_log_{GLOBAL_CONFIG.current_profile_name}.txt"
     )
-    GLOBAL_CONFIG.current_profile.temporary_directory.mkdir(parents=True, exist_ok=True)
+    GLOBAL_CONFIG.root_temporary_directory.mkdir(parents=True, exist_ok=True)
     if db_directory.exists():
         logger.error(
             "The server directory already exists, if you would like to make a new server, please run `mfa server delete` first, or run `mfa server start` to start the existing one."
@@ -350,10 +350,10 @@ def check_server() -> None:
     GLOBAL_CONFIG.load()
     logger = logging.getLogger("mfa")
 
-    db_directory = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+    db_directory = GLOBAL_CONFIG.root_temporary_directory.joinpath(
         f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
-    log_path = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+    log_path = GLOBAL_CONFIG.root_temporary_directory.joinpath(
         f"pg_log_{GLOBAL_CONFIG.current_profile_name}.txt"
     )
     if not db_directory.exists():
@@ -398,7 +398,7 @@ def start_server() -> None:
     except Exception:
         pass
 
-    db_directory = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+    db_directory = GLOBAL_CONFIG.root_temporary_directory.joinpath(
         f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
     if not db_directory.exists():
@@ -407,8 +407,9 @@ def start_server() -> None:
         )
         initialize_server()
         return
+    assert os.path.exists(GLOBAL_CONFIG.database_socket)
     logger.info(f"Starting the {GLOBAL_CONFIG.current_profile_name} MFA database server...")
-    log_path = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+    log_path = GLOBAL_CONFIG.root_temporary_directory.joinpath(
         f"pg_log_{GLOBAL_CONFIG.current_profile_name}.txt"
     )
     try:
@@ -444,10 +445,10 @@ def stop_server(mode: str = "fast") -> None:
     logger = logging.getLogger("mfa")
     GLOBAL_CONFIG.load()
 
-    db_directory = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+    db_directory = GLOBAL_CONFIG.root_temporary_directory.joinpath(
         f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
-    log_path = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+    log_path = GLOBAL_CONFIG.root_temporary_directory.joinpath(
         f"pg_log_{GLOBAL_CONFIG.current_profile_name}.txt"
     )
     if not db_directory.exists():
@@ -481,7 +482,7 @@ def delete_server() -> None:
     logger = logging.getLogger("mfa")
     GLOBAL_CONFIG.load()
 
-    db_directory = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
+    db_directory = GLOBAL_CONFIG.root_temporary_directory.joinpath(
         f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
     if db_directory.exists():

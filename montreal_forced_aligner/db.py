@@ -373,6 +373,22 @@ class Dictionary(MfaSqlBase):
     )
 
     @property
+    def word_mapping(self):
+        if not hasattr(self, "_word_mapping"):
+            session = sqlalchemy.orm.Session.object_session(self)
+            query = (
+                session.query(Word.word, Word.mapping_id)
+                .filter(Word.dictionary_id == self.id)
+                .filter(sqlalchemy.or_(Word.word_type != WordType.oov, Word.word == self.oov_word))
+                .filter(Word.word_type != WordType.bracketed)
+                .order_by(Word.mapping_id)
+            )
+            self._word_mapping = {}
+            for w, mapping_id in query:
+                self._word_mapping[w] = mapping_id
+        return self._word_mapping
+
+    @property
     def special_set(self) -> typing.Set[str]:
         return {
             "<s>",

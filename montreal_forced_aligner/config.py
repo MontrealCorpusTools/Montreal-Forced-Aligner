@@ -209,8 +209,14 @@ class MfaConfiguration:
             return getattr(self.current_profile, item)
 
     @property
-    def database_socket(self):
-        p = get_temporary_directory().joinpath(f"pg_mfa_{self.current_profile_name}_socket")
+    def root_temporary_directory(self):
+        return pathlib.Path(
+            os.environ.get(MFA_ROOT_ENVIRONMENT_VARIABLE, "~/Documents/MFA")
+        ).expanduser()
+
+    @property
+    def database_socket(self) -> str:
+        p = self.root_temporary_directory.joinpath(f"pg_mfa_{self.current_profile_name}_socket")
         p.mkdir(parents=True, exist_ok=True)
         return p.as_posix()
 

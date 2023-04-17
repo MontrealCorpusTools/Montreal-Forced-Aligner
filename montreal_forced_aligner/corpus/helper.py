@@ -1,16 +1,12 @@
 """Helper functions for corpus parsing and loading"""
 from __future__ import annotations
 
-import re
-import subprocess
-import sys
 import typing
 from pathlib import Path
 
 import soundfile
 
 from montreal_forced_aligner.data import FileExtensions, SoundFileInformation
-from montreal_forced_aligner.exceptions import SoundFileError
 from montreal_forced_aligner.helper import mfa_open
 
 SoundFileInfoDict = typing.Dict[str, typing.Union[int, float, str]]
@@ -112,99 +108,11 @@ def get_wav_info(
     if isinstance(file_path, str):
         file_path = Path(file_path)
     format = file_path.suffix.lower()
-    num_channels = 0
-    sample_rate = 0
-    duration = 0
     sox_string = ""
-    if format in {".mp3", ".opus"}:
-        if sys.platform != "win32" and format == ".mp3":
-            sox_proc = subprocess.Popen(
-                ["soxi", file_path], stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True
-            )
-            stdout, stderr = sox_proc.communicate()
-            if stderr:
-                raise SoundFileError(file_path, stderr)
-            for line in stdout.splitlines():
-                if line.startswith("Channels"):
-                    num_channels = int(line.split(":")[-1].strip())
-                elif line.startswith("Sample Rate"):
-                    sample_rate = int(line.split(":")[-1].strip())
-                elif line.startswith("Duration"):
-                    m = re.search(r"= (?P<num_samples>\d+) samples", line)
-                    if m:
-                        num_samples = int(m.group("num_samples"))
-                        duration = round(num_samples / sample_rate, 6)
-                    else:
-                        raise SoundFileError(file_path, "Could not parse number of samples")
-                    break
-            sample_rate_string = ""
-            if enforce_sample_rate is not None:
-                sample_rate_string = f" -r {enforce_sample_rate}"
-            sox_string = f'sox "{file_path}" -t wav -b 16{sample_rate_string} - |'
-        else:  # Fall back use ffmpeg if sox doesn't support the format
-            ffmpeg_proc = subprocess.Popen(
-                [
-                    "ffprobe",
-                    "-v",
-                    "error",
-                    "-hide_banner",
-                    "-show_entries",
-                    "stream=duration,channels,sample_rate",
-                    "-of",
-                    "default=noprint_wrappers=1",
-                    "-i",
-                    file_path,
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            stdout, stderr = ffmpeg_proc.communicate()
-            if stderr:
-                raise SoundFileError(file_path, stderr)
-            for line in stdout.splitlines():
-                try:
-                    key, value = line.strip().split("=")
-                    if key == "duration":
-                        duration = float(value)
-                    elif key == "sample_rate":
-                        sample_rate = int(value)
-                    else:
-                        num_channels = int(value)
-                except ValueError:
-                    pass
-            mono_string = ""
-            sample_rate_string = ""
-            if num_channels > 1 and enforce_mono:
-                mono_string = ' -af "pan=mono|FC=FL"'
-            if enforce_sample_rate is not None:
-                sample_rate_string = f" -ar {enforce_sample_rate}"
-            sox_string = f'ffmpeg -nostdin -hide_banner -loglevel error -nostats -i "{file_path}" -acodec pcm_s16le -f wav{mono_string}{sample_rate_string} - |'
-    else:
-        use_sox = False
-        with soundfile.SoundFile(file_path) as inf:
-            frames = inf.frames
-            sample_rate = inf.samplerate
-            duration = frames / sample_rate
-            num_channels = inf.channels
-            try:
-                bit_depth = int(inf.subtype.split("_")[-1])
-                if bit_depth != 16:
-                    use_sox = True
-            except Exception:
-                use_sox = True
-        sample_rate_string = ""
-        if enforce_sample_rate is not None:
-            sample_rate_string = f" -r {enforce_sample_rate}"
-        if format != "wav":
-            use_sox = True
-        if num_channels > 1 and enforce_mono:
-            use_sox = True
-        elif enforce_sample_rate is not None and sample_rate != enforce_sample_rate:
-            use_sox = True
-        if num_channels > 1 and enforce_mono:
-            sox_string = f'sox "{file_path}" -t wav -b 16{sample_rate_string} - remix 1  |'
-        elif use_sox:
-            sox_string = f'sox "{file_path}" -t wav -b 16{sample_rate_string} - |'
+    with soundfile.SoundFile(file_path) as inf:
+        frames = inf.frames
+        sample_rate = inf.samplerate
+        duration = frames / sample_rate
+        num_channels = inf.channels
 
     return SoundFileInformation(format, sample_rate, duration, num_channels, sox_string)

@@ -296,10 +296,11 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
         if not sox_string:
             sox_string = utterance.file.sound_file.sound_file_path
         text_int_path = self.working_directory.joinpath("text.int")
+        word_mapping = self.word_mapping(utterance.speaker.dictionary_id)
         with mfa_open(text_int_path, "w") as f:
             normalized_text_int = " ".join(
                 [
-                    str(self.word_mapping(utterance.speaker.dictionary_id)[x])
+                    str(word_mapping[x]) if x in word_mapping else str(word_mapping[self.oov_word])
                     for x in utterance.normalized_text.split()
                 ]
             )

@@ -524,9 +524,8 @@ class ExportKaldiFilesFunction(KaldiFunction):
             .first()
         )
         wav_scp_path = job.wav_scp_path
-        segments_scp_path = job.segments_scp_path
         utt2spk_scp_path = job.utt2spk_scp_path
-        if os.path.exists(segments_scp_path):
+        if os.path.exists(utt2spk_scp_path):
             return
         with mfa_open(wav_scp_path, "w") as wav_file:
             files = (
@@ -543,23 +542,13 @@ class ExportKaldiFilesFunction(KaldiFunction):
                 wav_file.write(f"{f_id} {sox_string}\n")
                 yield 1
 
-        with mfa_open(segments_scp_path, "w") as segments_file, mfa_open(
-            utt2spk_scp_path, "w"
-        ) as utt2spk_file:
+        with mfa_open(utt2spk_scp_path, "w") as utt2spk_file:
             utterances = (
-                session.query(
-                    Utterance.kaldi_id,
-                    Utterance.file_id,
-                    Utterance.speaker_id,
-                    Utterance.begin,
-                    Utterance.end,
-                    Utterance.channel,
-                )
+                session.query(Utterance.kaldi_id, Utterance.speaker_id)
                 .filter(Utterance.job_id == job.id)
                 .order_by(Utterance.kaldi_id)
             )
-            for u_id, f_id, s_id, begin, end, channel in utterances:
-                segments_file.write(f"{u_id} {f_id} {begin} {end} {channel}\n")
+            for u_id, s_id in utterances:
                 utt2spk_file.write(f"{u_id} {s_id}\n")
                 yield 1
 
@@ -701,12 +690,7 @@ class ExportKaldiFilesFunction(KaldiFunction):
             text_ints_paths = job.per_dictionary_text_int_scp_paths
             for d in job.dictionaries:
 
-                words_mapping = {}
-                words_query = session.query(Word.word, Word.mapping_id).filter(
-                    Word.dictionary_id == d.id
-                )
-                for w, m_id in words_query:
-                    words_mapping[w] = m_id
+                words_mapping = d.word_mapping
                 spk2utt = {}
                 feats = {}
                 cmvns = {}
@@ -730,7 +714,14 @@ class ExportKaldiFilesFunction(KaldiFunction):
                     feats[utterance] = features
                     cmvns[speaker] = cmvn
                     words = normalized_text.split()
-                    text_ints[utterance] = " ".join([str(words_mapping[x]) for x in words])
+                    text_ints[utterance] = " ".join(
+                        [
+                            str(words_mapping[x])
+                            if x in words_mapping
+                            else str(words_mapping[d.oov_word])
+                            for x in words
+                        ]
+                    )
                     yield 1
 
                 with mfa_open(spk2utt_paths[d.id], "w") as f:

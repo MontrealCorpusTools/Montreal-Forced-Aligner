@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import atexit
 import multiprocessing as mp
-import os
 import sys
 import time
 import warnings
@@ -34,11 +33,7 @@ from montreal_forced_aligner.command_line.validate import (
     validate_corpus_cli,
     validate_dictionary_cli,
 )
-from montreal_forced_aligner.config import (
-    GLOBAL_CONFIG,
-    MFA_PROFILE_VARIABLE,
-    update_command_history,
-)
+from montreal_forced_aligner.config import GLOBAL_CONFIG, update_command_history
 from montreal_forced_aligner.utils import check_third_party
 
 BEGIN = time.time()
@@ -118,7 +113,6 @@ def mfa_cli(ctx: click.Context) -> None:
     auto_server = False
     run_check = True
     if ctx.invoked_subcommand == "anchor":
-        os.environ[MFA_PROFILE_VARIABLE] = "anchor"
 
         GLOBAL_CONFIG.current_profile.clean = False
         GLOBAL_CONFIG.save()

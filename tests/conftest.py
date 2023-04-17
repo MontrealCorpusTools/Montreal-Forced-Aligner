@@ -9,7 +9,7 @@ import pytest
 import sqlalchemy.orm
 import yaml
 
-from montreal_forced_aligner.config import GLOBAL_CONFIG
+from montreal_forced_aligner.config import GLOBAL_CONFIG, get_temporary_directory
 from montreal_forced_aligner.helper import mfa_open
 
 
@@ -85,6 +85,7 @@ def global_config():
     GLOBAL_CONFIG.current_profile.use_mp = False
     GLOBAL_CONFIG.current_profile.database_limited_mode = True
     GLOBAL_CONFIG.current_profile.auto_server = False
+    GLOBAL_CONFIG.current_profile.temporary_directory = get_temporary_directory()
     GLOBAL_CONFIG.save()
     yield GLOBAL_CONFIG
 

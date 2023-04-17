@@ -21,7 +21,14 @@ from tqdm.rich import tqdm
 from montreal_forced_aligner.abc import KaldiFunction, ModelExporterMixin, TopLevelMfaWorker
 from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import MfaArguments, WorkflowType
-from montreal_forced_aligner.db import CorpusWorkflow, Dictionary, Job
+from montreal_forced_aligner.db import (
+    CorpusWorkflow,
+    Dictionary,
+    Job,
+    Speaker,
+    Utterance,
+    bulk_update,
+)
 from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
 from montreal_forced_aligner.helper import load_configuration, mfa_open, parse_old_features
 from montreal_forced_aligner.models import AcousticModel, DictionaryModel
@@ -333,6 +340,28 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                         wf.current = True
             session.commit()
 
+    def filter_training_utterances(self):
+        logger.info("Filtering utterances with only unknown words...")
+        with self.session() as session:
+            dictionaries = session.query(Dictionary)
+            for d in dictionaries:
+                update_mapping = []
+                word_mapping = d.word_mapping
+                utterances = (
+                    session.query(Utterance.id, Utterance.normalized_text)
+                    .join(Utterance.speaker)
+                    .filter(Utterance.ignored == False)  # noqa
+                    .filter(Speaker.dictionary_id == d.id)
+                )
+                for u_id, text in utterances:
+                    words = text.split()
+                    if any(x in word_mapping for x in words):
+                        continue
+                    update_mapping.append({"id": u_id, "ignored": True})
+                if update_mapping:
+                    bulk_update(session, Utterance, update_mapping)
+                    session.commit()
+
     def setup(self) -> None:
         """Setup for acoustic model training"""
         super().setup()
@@ -342,6 +371,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         try:
             self.load_corpus()
             self.setup_trainers()
+            self.filter_training_utterances()
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs)

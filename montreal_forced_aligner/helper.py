@@ -42,6 +42,7 @@ __all__ = [
     "overlap_scoring",
     "align_phones",
     "split_phone_position",
+    "align_pronunciations",
     "configure_logger",
     "mfa_open",
     "load_configuration",
@@ -571,6 +572,27 @@ class EnhancedJSONEncoder(json.JSONEncoder):
         if isinstance(o, set):
             return list(o)
         return dataclassy.asdict(o)
+
+
+def align_pronunciations(
+    ref_text: List[str], pronunciations: List[Tuple[str, str]], unknown_word: str
+):
+    def score_function(ref: str, pron: Tuple[str, str]):
+        if ref == pron[0]:
+            return 0
+        if pron[0] == unknown_word:
+            return 0
+        return -2
+
+    alignments = pairwise2.align.globalcs(
+        ref_text, pronunciations, score_function, -5, -5, gap_char=["-"], one_alignment_only=True
+    )
+    transformed_pronunciations = []
+    for a in alignments:
+        for i, sa in enumerate(a.seqA):
+            sb = a.seqB[i]
+            transformed_pronunciations.append((sa, sb[1]))
+    return transformed_pronunciations
 
 
 def align_phones(

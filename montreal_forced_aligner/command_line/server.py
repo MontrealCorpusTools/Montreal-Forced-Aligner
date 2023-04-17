@@ -4,6 +4,7 @@ import os
 import rich_click as click
 
 from montreal_forced_aligner.command_line.utils import (
+    common_options,
     delete_server,
     initialize_server,
     start_server,
@@ -28,6 +29,7 @@ def server_cli():
     default=None,
 )
 @click.help_option("-h", "--help")
+@common_options
 @click.pass_context
 def init_cli(context, **kwargs):
     if kwargs.get("profile", None) is not None:
@@ -46,6 +48,7 @@ def init_cli(context, **kwargs):
     default=None,
 )
 @click.help_option("-h", "--help")
+@common_options
 @click.pass_context
 def start_cli(context, **kwargs):
     if kwargs.get("profile", None) is not None:
@@ -71,6 +74,7 @@ def start_cli(context, **kwargs):
     default="fast",
 )
 @click.help_option("-h", "--help")
+@common_options
 @click.pass_context
 def stop_cli(context, **kwargs):
     if kwargs.get("profile", None) is not None:
@@ -89,6 +93,7 @@ def stop_cli(context, **kwargs):
     default=None,
 )
 @click.help_option("-h", "--help")
+@common_options
 @click.pass_context
 def delete_cli(context, **kwargs):
     if kwargs.get("profile", None) is not None:
