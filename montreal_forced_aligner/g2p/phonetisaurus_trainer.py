@@ -171,7 +171,7 @@ class AlignmentInitWorker(mp.Process):
             logging_name=f"{type(self).__name__}_engine",
         ).execution_options(logging_token=f"{type(self).__name__}_engine")
         try:
-            symbol_table = pynini.SymbolTable()
+            symbol_table = pywrapfst.SymbolTable()
             symbol_table.add_symbol(self.eps)
             valid_output_ngrams = set()
             base_dir = os.path.dirname(self.far_path)
@@ -215,7 +215,7 @@ class AlignmentInitWorker(mp.Process):
                                                 continue
                                             symbol = self.s1s2_sep.join([self.skip, output_string])
                                             ilabel = symbol_table.find(symbol)
-                                            if ilabel == pynini.NO_LABEL:
+                                            if ilabel == pywrapfst.NO_LABEL:
                                                 ilabel = symbol_table.add_symbol(symbol)
                                             ostate = i * (len(output) + 1) + (j + output_range)
                                             fst.add_arc(
@@ -223,7 +223,7 @@ class AlignmentInitWorker(mp.Process):
                                                 pywrapfst.Arc(
                                                     ilabel,
                                                     ilabel,
-                                                    pynini.Weight("log", 99.0),
+                                                    pywrapfst.Weight("log", 99.0),
                                                     ostate,
                                                 ),
                                             )
@@ -239,7 +239,7 @@ class AlignmentInitWorker(mp.Process):
                                                 continue
                                             symbol = self.s1s2_sep.join([input_string, self.skip])
                                             ilabel = symbol_table.find(symbol)
-                                            if ilabel == pynini.NO_LABEL:
+                                            if ilabel == pywrapfst.NO_LABEL:
                                                 ilabel = symbol_table.add_symbol(symbol)
                                             ostate = (i + input_range) * (len(output) + 1) + j
                                             fst.add_arc(
@@ -247,7 +247,7 @@ class AlignmentInitWorker(mp.Process):
                                                 pywrapfst.Arc(
                                                     ilabel,
                                                     ilabel,
-                                                    pynini.Weight("log", 99.0),
+                                                    pywrapfst.Weight("log", 99.0),
                                                     ostate,
                                                 ),
                                             )
@@ -281,7 +281,7 @@ class AlignmentInitWorker(mp.Process):
                                                 [input_string, output_string]
                                             )
                                             ilabel = symbol_table.find(symbol)
-                                            if ilabel == pynini.NO_LABEL:
+                                            if ilabel == pywrapfst.NO_LABEL:
                                                 ilabel = symbol_table.add_symbol(symbol)
                                             ostate = (i + input_range) * (len(output) + 1) + (
                                                 j + output_range
@@ -371,7 +371,7 @@ class ExpectationWorker(mp.Process):
         ).execution_options(logging_token=f"{type(self).__name__}_engine")
         Session = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
         far_reader = pywrapfst.FarReader.open(self.far_path)
-        symbol_table = pynini.SymbolTable.read_text(self.far_path.with_suffix(".syms"))
+        symbol_table = pywrapfst.SymbolTable.read_text(self.far_path.with_suffix(".syms"))
         symbol_mapper = {}
         data = {}
         count = 0
@@ -387,16 +387,16 @@ class ExpectationWorker(mp.Process):
             if self.stopped.stop_check():
                 break
             fst = far_reader.get_fst()
-            zero = pynini.Weight.zero("log")
+            zero = pywrapfst.Weight.zero("log")
             try:
                 fst = pynini.Fst.read_from_string(fst.write_to_string())
                 alpha = pynini.shortestdistance(fst)
                 beta = pynini.shortestdistance(fst, reverse=True)
                 for state_id in fst.states():
                     for arc in fst.arcs(state_id):
-                        gamma = pynini.divide(
-                            pynini.times(
-                                pynini.times(alpha[state_id], arc.weight), beta[arc.nextstate]
+                        gamma = pywrapfst.divide(
+                            pywrapfst.times(
+                                pywrapfst.times(alpha[state_id], arc.weight), beta[arc.nextstate]
                             ),
                             beta[0],
                         )
@@ -404,7 +404,7 @@ class ExpectationWorker(mp.Process):
                             sym_id = symbol_mapper[arc.ilabel]
                             if sym_id not in data:
                                 data[sym_id] = zero
-                            data[sym_id] = pynini.plus(data[sym_id], gamma)
+                            data[sym_id] = pywrapfst.plus(data[sym_id], gamma)
                 if count >= self.batch_size:
                     data = {k: float(v) for k, v in data.items()}
                     self.return_queue.put((data, count))
@@ -458,7 +458,7 @@ class MaximizationWorker(mp.Process):
 
     def run(self) -> None:
         """Run the function"""
-        symbol_table = pynini.SymbolTable.read_text(self.far_path.with_suffix(".syms"))
+        symbol_table = pywrapfst.SymbolTable.read_text(self.far_path.with_suffix(".syms"))
         count = 0
         engine = sqlalchemy.create_engine(
             self.db_string,
@@ -477,12 +477,12 @@ class MaximizationWorker(mp.Process):
                     .filter(M2M2Job.job_id == self.job_name)
                 )
                 for m2m in query:
-                    weight = pynini.Weight("log", m2m.weight)
+                    weight = pywrapfst.Weight("log", m2m.weight)
                     if self.penalize_em:
                         if m2m.grapheme_order > 1 or m2m.phone_order > 1:
-                            weight = pynini.Weight("log", float(weight) * m2m.total_order)
-                        if weight == pynini.Weight.zero("log") or float(weight) == numpy.inf:
-                            weight = pynini.Weight("log", 99)
+                            weight = pywrapfst.Weight("log", float(weight) * m2m.total_order)
+                        if weight == pywrapfst.Weight.zero("log") or float(weight) == numpy.inf:
+                            weight = pywrapfst.Weight("log", 99)
                     alignment_model[symbol_table.find(m2m.symbol)] = weight
             far_reader = pywrapfst.FarReader.open(self.far_path)
             far_writer = pywrapfst.FarWriter.create(
@@ -549,7 +549,7 @@ class AlignmentExporter(mp.Process):
 
     def run(self) -> None:
         """Run the function"""
-        symbol_table = pynini.SymbolTable.read_text(self.far_path.with_suffix(".syms"))
+        symbol_table = pywrapfst.SymbolTable.read_text(self.far_path.with_suffix(".syms"))
         with mfa_open(self.log_path, "w") as log_file:
             far_reader = pywrapfst.FarReader.open(self.far_path)
             one_best_path = self.far_path.with_suffix(".strings")
@@ -575,9 +575,9 @@ class AlignmentExporter(mp.Process):
                                 sym = symbol_table.find(arc.ilabel)
                                 ld = self.penalties[sym]
                                 if ld.lhs > 1 and ld.rhs > 1:
-                                    arc.weight = pynini.Weight(tfst.weight_type(), 999)
+                                    arc.weight = pywrapfst.Weight(tfst.weight_type(), 999)
                                 else:
-                                    arc.weight = pynini.Weight(
+                                    arc.weight = pywrapfst.Weight(
                                         tfst.weight_type(), float(arc.weight) * ld.max
                                     )
                                 maiter.set_value(arc)
@@ -585,7 +585,7 @@ class AlignmentExporter(mp.Process):
                             del maiter
                     pfst = rewrite.lattice_to_dfa(tfst, True, 8).project("output").rmepsilon()
 
-                    if pfst.start() != pynini.NO_SYMBOL:
+                    if pfst.start() != pywrapfst.NO_SYMBOL:
                         path = pynini.shortestpath(pfst)
                     else:
                         pfst = rewrite.lattice_to_dfa(tfst, False, 8).project("output").rmepsilon()

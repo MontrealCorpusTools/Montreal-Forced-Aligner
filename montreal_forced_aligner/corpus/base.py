@@ -707,6 +707,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                 "count": 0,
                                 "dictionary_id": dict_id,
                                 "word_type": word_type,
+                                "included": False,
                             }
                             pronunciation_insert_mappings.append(
                                 {
@@ -780,10 +781,10 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 )
             self.text_normalized = True
             session.query(Corpus).update({"text_normalized": True})
-            if self.oov_count_threshold > 0:
-                session.query(Word).filter(Word.word_type == WordType.speech).filter(
-                    Word.count <= self.oov_count_threshold
-                ).update({Word.word_type: WordType.oov})
+            session.commit()
+            session.query(Word).filter(Word.word_type == WordType.speech).filter(
+                Word.count <= self.oov_count_threshold
+            ).update({Word.included: False})
             session.commit()
 
     def add_speaker(self, name: str, session: Session = None):

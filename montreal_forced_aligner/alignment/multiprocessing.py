@@ -103,13 +103,16 @@ def phones_to_prons(
     text: str,
     intervals: List[CtmInterval],
     align_lexicon_fst: pynini.Fst,
+    word_pronunciations: typing.Dict[str, typing.Set[str]],
     word_symbol_table: pywrapfst.SymbolTableView,
     phone_symbol_table: pywrapfst.SymbolTableView,
     optional_silence_phone: str,
     transcription: bool = False,
-    clitic_marker: str = None,
+    oov_phone: str = None,
     oov_word: str = None,
     use_g2p: bool = False,
+    silence_words: typing.Set[str] = None,
+    position_dependent_phones=False,
 ):
     if use_g2p:
         words = [x.replace(" ", "") for x in text.split("<space>")]
@@ -206,12 +209,23 @@ def phones_to_prons(
         phone_to_word.set_output_symbols(word_symbol_table)
         logger.debug(phone_to_word)
         raise
+    path_string = re.sub(f" {word_end}$", "", path_string)
     path_string = path_string.replace(f"{word_end} {word_begin}", word_begin)
     path_string = path_string.replace(f"{word_end}", word_begin)
     path_string = re.sub(f"^{word_begin} ", "", path_string)
-    word_splits = re.split(rf" ?{word_begin} ?", path_string)
-    word_splits = [x.split() for x in word_splits if x != optional_silence_phone]
-    pronunciations = align_pronunciations(words, list(zip(words, word_splits)), oov_word)
+    word_splits = [x for x in re.split(rf" ?{word_begin} ?", path_string) if x]
+    if position_dependent_phones:
+        word_splits = [
+            " ".join(split_phone_position(y)[0] for y in x.split()) for x in word_splits
+        ]
+    pronunciations = align_pronunciations(
+        words,
+        word_splits,
+        oov_phone,
+        optional_silence_phone,
+        sorted(silence_words)[0],
+        word_pronunciations,
+    )
     return pronunciations
 
 
@@ -1763,6 +1777,7 @@ class GeneratePronunciationsFunction(KaldiFunction):
                 self.oov_word = d.oov_word
                 self.optional_silence_phone = d.optional_silence_phone
                 self.oov_phone = d.oov_phone
+                self.position_dependent_phones = d.position_dependent_phones
 
                 silence_words = (
                     session.query(Word.word)
@@ -1795,16 +1810,15 @@ class GeneratePronunciationsFunction(KaldiFunction):
                         self.utterance_texts[utterance],
                         intervals,
                         self.align_lexicon_fst,
+                        d.word_pronunciations,
                         self.word_symbol_table,
                         self.phone_symbol_table,
                         self.optional_silence_phone,
+                        oov_phone=self.oov_phone,
                         oov_word=self.oov_word,
+                        silence_words=self.silence_words,
+                        position_dependent_phones=self.position_dependent_phones,
                     )
-                    if d.position_dependent_phones:
-                        word_pronunciations = [
-                            (x[0], [split_phone_position(y)[0] for y in x[1]])
-                            for x in word_pronunciations
-                        ]
                     word_pronunciations = [(x[0], " ".join(x[1])) for x in word_pronunciations]
                     word_pronunciations = [
                         x if x[1] != self.oov_phone else (self.oov_word, self.oov_phone)
@@ -1952,11 +1966,15 @@ class AlignmentExtractionFunction(KaldiFunction):
             self.utterance_texts[utterance_name],
             intervals,
             self.align_lexicon_fst,
+            self.word_pronunciations,
             self.word_symbol_table,
             self.phone_symbol_table,
             self.optional_silence_phone,
             self.transcription,
+            oov_phone=self.oov_phone,
             oov_word=self.oov_word,
+            silence_words=self.silence_words,
+            position_dependent_phones=self.position_dependent_phones,
         )
         actual_phone_intervals = []
         actual_word_intervals = []
@@ -1987,6 +2005,7 @@ class AlignmentExtractionFunction(KaldiFunction):
                 phone_word_mapping.append(len(actual_word_intervals) - 1)
                 current_word_begin = None
                 current_phones = []
+                words_index += 1
                 continue
             if current_word_begin is None:
                 current_word_begin = interval.begin
@@ -1999,9 +2018,10 @@ class AlignmentExtractionFunction(KaldiFunction):
                 else:
                     raise
             pronunciation = " ".join(cur_word[1])
+            current_pron = " ".join(current_phones)
             if self.position_dependent_phones:
-                pronunciation = re.sub(r"_[BIES]\b", "", pronunciation)
-            if current_phones == cur_word[1]:
+                current_pron = re.sub(r"_[BIES]\b", "", current_pron)
+            if current_pron == pronunciation:
                 if (
                     pronunciation == self.oov_phone
                     and (cur_word[0], pronunciation) not in self.pronunciation_mapping
@@ -2048,12 +2068,15 @@ class AlignmentExtractionFunction(KaldiFunction):
             self.utterance_texts[utterance_name],
             intervals,
             self.align_lexicon_fst,
+            self.word_pronunciations,
             self.word_symbol_table,
             self.phone_symbol_table,
             self.optional_silence_phone,
-            clitic_marker=self.clitic_marker,
+            oov_phone=self.oov_phone,
             oov_word=self.oov_word,
             use_g2p=True,
+            silence_words=self.silence_words,
+            position_dependent_phones=self.position_dependent_phones,
         )
         actual_phone_intervals = []
         actual_word_intervals = []
@@ -2085,9 +2108,10 @@ class AlignmentExtractionFunction(KaldiFunction):
             current_phones.append(interval.label)
             cur_word = word_pronunciations[words_index]
             pronunciation = " ".join(cur_word[1])
+            current_pron = " ".join(current_phones)
             if self.position_dependent_phones:
-                pronunciation = re.sub(r"_[BIES]\b", "", pronunciation)
-            if current_phones == cur_word[1]:
+                current_pron = re.sub(r"_[BIES]\b", "", current_pron)
+            if current_pron == pronunciation:
                 try:
                     if (
                         pronunciation == self.oov_phone
@@ -2175,6 +2199,7 @@ class AlignmentExtractionFunction(KaldiFunction):
                     self.word_symbol_table = pywrapfst.SymbolTable.read_text(d.words_symbol_path)
                 self.clitic_marker = d.clitic_marker
                 self.silence_word = d.silence_word
+                self.word_pronunciations = d.word_pronunciations
                 self.oov_word = d.oov_word
                 self.oov_phone = "spn"
                 self.position_dependent_phones = d.position_dependent_phones

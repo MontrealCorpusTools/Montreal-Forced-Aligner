@@ -575,23 +575,40 @@ class EnhancedJSONEncoder(json.JSONEncoder):
 
 
 def align_pronunciations(
-    ref_text: List[str], pronunciations: List[Tuple[str, str]], unknown_word: str
+    ref_text: typing.List[str],
+    pronunciations: typing.List[str],
+    oov_phone: str,
+    silence_phone: str,
+    silence_word: str,
+    word_pronunciations: typing.Dict[str, typing.Set[str]],
 ):
-    def score_function(ref: str, pron: Tuple[str, str]):
-        if ref == pron[0]:
+    def score_function(ref: str, pron: typing.List[str]):
+        if not word_pronunciations:
             return 0
-        if pron[0] == unknown_word:
+        if ref in word_pronunciations and pron in word_pronunciations[ref]:
+            return 0
+        if pron == oov_phone:
             return 0
         return -2
 
     alignments = pairwise2.align.globalcs(
-        ref_text, pronunciations, score_function, -5, -5, gap_char=["-"], one_alignment_only=True
+        ref_text,
+        pronunciations,
+        score_function,
+        -1 if word_pronunciations else -5,
+        -1 if word_pronunciations else -5,
+        gap_char=["-"],
+        one_alignment_only=True,
     )
     transformed_pronunciations = []
     for a in alignments:
         for i, sa in enumerate(a.seqA):
             sb = a.seqB[i]
-            transformed_pronunciations.append((sa, sb[1]))
+            if sa == "-" and sb == silence_phone:
+                sa = silence_word
+            if "-" in (sa, sb):
+                continue
+            transformed_pronunciations.append((sa, sb.split()))
     return transformed_pronunciations
 
 

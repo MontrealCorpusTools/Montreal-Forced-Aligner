@@ -336,10 +336,10 @@ class Dictionary(MfaSqlBase):
     position_dependent_phones = Column(Boolean, nullable=True)
     default = Column(Boolean, default=False, nullable=False)
     clitic_marker = Column(String(1), nullable=True)
-    silence_word = Column(String, nullable=True)
-    optional_silence_phone = Column(String, nullable=True)
-    oov_word = Column(String, nullable=True)
-    oov_phone = Column(String, nullable=True)
+    silence_word = Column(String, nullable=True, default="<eps>")
+    optional_silence_phone = Column(String, nullable=True, default="sil")
+    oov_word = Column(String, nullable=True, default="<unk>")
+    oov_phone = Column(String, nullable=True, default="spn")
     bracketed_word = Column(String, nullable=True)
     laughter_word = Column(String, nullable=True)
 
@@ -379,14 +379,32 @@ class Dictionary(MfaSqlBase):
             query = (
                 session.query(Word.word, Word.mapping_id)
                 .filter(Word.dictionary_id == self.id)
-                .filter(sqlalchemy.or_(Word.word_type != WordType.oov, Word.word == self.oov_word))
-                .filter(Word.word_type != WordType.bracketed)
+                .filter(Word.included == True)  # noqa
                 .order_by(Word.mapping_id)
             )
             self._word_mapping = {}
             for w, mapping_id in query:
                 self._word_mapping[w] = mapping_id
         return self._word_mapping
+
+    @property
+    def word_pronunciations(self):
+        if not hasattr(self, "_word_pronunciations"):
+            session = sqlalchemy.orm.Session.object_session(self)
+            query = (
+                session.query(Word.word, Pronunciation.pronunciation)
+                .join(Pronunciation.word)
+                .filter(Word.dictionary_id == self.id)
+                .filter(Word.included == True)  # noqa
+                .filter(Pronunciation.pronunciation != self.oov_phone)
+                .order_by(Word.mapping_id)
+            )
+            self._word_pronunciations = {}
+            for w, pronunciation in query:
+                if w not in self._word_pronunciations:
+                    self._word_pronunciations[w] = set()
+                self._word_pronunciations[w].add(pronunciation)
+        return self._word_pronunciations
 
     @property
     def special_set(self) -> typing.Set[str]:
@@ -593,6 +611,7 @@ class Word(MfaSqlBase):
     word = Column(String, nullable=False, index=True)
     count = Column(Integer, default=0, nullable=False, index=True)
     word_type = Column(Enum(WordType), nullable=False, index=True)
+    included = Column(Boolean, nullable=False, default=True)
     initial_cost = Column(Float, nullable=True)
     final_cost = Column(Float, nullable=True)
     dictionary_id = Column(Integer, ForeignKey("dictionary.id"), nullable=False, index=True)
