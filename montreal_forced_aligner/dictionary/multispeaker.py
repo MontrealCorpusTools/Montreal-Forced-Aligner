@@ -687,6 +687,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                                                 "silence_after_probability": None,
                                                 "silence_before_correction": None,
                                                 "non_silence_before_correction": None,
+                                                "generated_by_rule": True,
                                                 "word_id": w.id,
                                             }
                                         )
@@ -893,9 +894,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 session.query(bn)
                 .join(Pronunciation.word)
                 .filter(Word.dictionary_id == dictionary.id)
-                .filter(sqlalchemy.or_(Word.word_type != WordType.oov, Word.word == self.oov_word))
-                .filter(Word.word_type != WordType.bracketed)
-                .filter(sqlalchemy.or_(Word.count > 0, Word.word == self.oov_word))
+                .filter(Word.included == True)  # noqa
                 .filter(Word.word_type != WordType.silence)
             )
             for row in pronunciation_query:
@@ -989,6 +988,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         silence_query = (
             session.query(Word.word)
             .filter(Word.word_type == WordType.silence)
+            .filter(Word.included == True)  # noqa
             .filter(Word.dictionary_id == dictionary.id)
         )
         for (word,) in silence_query:
@@ -1031,9 +1031,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             session.query(Word.word, Pronunciation.pronunciation)
             .join(Pronunciation.word)
             .filter(Word.dictionary_id == dictionary.id)
-            .filter(sqlalchemy.or_(Word.word_type != WordType.oov, Word.word == self.oov_word))
-            .filter(Word.word_type != WordType.bracketed)
-            .filter(sqlalchemy.or_(Word.count > 0, Word.word == self.oov_word))
+            .filter(Word.included == True)  # noqa
             .filter(Word.word_type != WordType.silence)
         )
         for w, pron in pronunciation_query:
@@ -1090,6 +1088,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 session.query(Word.mapping_id, Pronunciation.pronunciation)
                 .join(Pronunciation.word)
                 .filter(Word.dictionary_id == dictionary.id)
+                .filter(Word.included == True)  # noqa
                 .order_by(Word.mapping_id)
             )
             for m_id, pron in pronunciation_query:
@@ -1242,7 +1241,12 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 .join(Pronunciation.word)
                 .filter(
                     Word.dictionary_id == dictionary_id,
-                    Word.word_type.in_([WordType.speech, WordType.clitic]),
+                    sqlalchemy.or_(
+                        Word.word_type.in_(
+                            [WordType.speech, WordType.clitic, WordType.interjection]
+                        ),
+                        Word.word.in_([self.oov_word, self.bracketed_word, self.laughter_word]),
+                    ),
                 )
                 .order_by(Word.word)
             )

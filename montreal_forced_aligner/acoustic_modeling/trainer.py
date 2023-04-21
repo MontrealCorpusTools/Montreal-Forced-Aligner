@@ -341,7 +341,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             session.commit()
 
     def filter_training_utterances(self):
-        logger.info("Filtering utterances with only unknown words...")
+        logger.info("Filtering utterances for training...")
         with self.session() as session:
             dictionaries = session.query(Dictionary)
             for d in dictionaries:
@@ -354,6 +354,9 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                     .filter(Speaker.dictionary_id == d.id)
                 )
                 for u_id, text in utterances:
+                    if not text:
+                        update_mapping.append({"id": u_id, "ignored": True})
+                        continue
                     words = text.split()
                     if any(x in word_mapping for x in words):
                         continue
@@ -365,7 +368,6 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
     def setup(self) -> None:
         """Setup for acoustic model training"""
         super().setup()
-        self.ignore_empty_utterances = True
         if self.initialized:
             return
         try:

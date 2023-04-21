@@ -592,6 +592,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         "final_non_silence_correction": final_non_silence_correction,
                     }
                 )
+
             self.silence_probability = format_probability(silence_prob_sum / self.num_dictionaries)
             self.initial_silence_probability = format_probability(
                 initial_silence_prob_sum / self.num_dictionaries

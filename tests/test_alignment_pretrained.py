@@ -2,7 +2,8 @@ import os
 import shutil
 
 from montreal_forced_aligner.alignment import PretrainedAligner
-from montreal_forced_aligner.db import PhoneInterval, Utterance, WordInterval, WorkflowType
+from montreal_forced_aligner.data import WordType, WorkflowType
+from montreal_forced_aligner.db import PhoneInterval, Utterance, Word, WordInterval
 
 
 def test_align_sick(
@@ -23,8 +24,16 @@ def test_align_sick(
     a.align()
     export_directory = os.path.join(temp_dir, "test_align_export")
     shutil.rmtree(export_directory, ignore_errors=True)
-    assert "AY_S" in a.phone_mapping
     a.export_files(export_directory)
+    with a.session() as session:
+        word_interval_count = (
+            session.query(WordInterval)
+            .join(WordInterval.word)
+            .filter(Word.word_type != WordType.silence)
+            .count()
+        )
+        assert word_interval_count == 370
+    assert "AY_S" in a.phone_mapping
     assert os.path.exists(os.path.join(export_directory, "michael", "acoustic_corpus.TextGrid"))
     a.clean_working_directory()
 
