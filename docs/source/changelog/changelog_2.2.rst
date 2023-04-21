@@ -5,6 +5,11 @@
 2.2 Changelog
 *************
 
+2.2.9
+=====
+- Fixed a bug in pronunciation probability training that was causing all probabilities of following silence to be 0
+- Fixed a bug where only words in the corpus were being exported from the lexicon
+
 2.2.8
 =====
 - Fixed a bug introduced in 2.2.4 that made segments overlap with silence intervals when using textgrid cleanup
