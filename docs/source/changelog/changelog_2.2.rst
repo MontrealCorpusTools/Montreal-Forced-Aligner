@@ -5,6 +5,12 @@
 2.2 Changelog
 *************
 
+2.2.10
+======
+
+- Fix crash in speaker diarization
+- Update alignment evaluation to export confusion counts
+
 2.2.9
 =====
 - Fixed a bug in pronunciation probability training that was causing all probabilities of following silence to be 0

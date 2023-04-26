@@ -433,14 +433,14 @@ def start_server() -> None:
     logger.info(f"{GLOBAL_CONFIG.current_profile_name} MFA database server started!")
 
 
-def stop_server(mode: str = "fast") -> None:
+def stop_server(mode: str = "smart") -> None:
     """
     Stop the MFA server for the current profile.
 
     Parameters
     ----------
     mode: str, optional
-        Mode to to be passed to `pg_ctl`, defaults to "fast"
+        Mode to to be passed to `pg_ctl`, defaults to "smart"
     """
     logger = logging.getLogger("mfa")
     GLOBAL_CONFIG.load()

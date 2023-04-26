@@ -5,6 +5,7 @@ Helper functions
 """
 from __future__ import annotations
 
+import collections
 import functools
 import itertools
 import json
@@ -619,7 +620,7 @@ def align_phones(
     ignored_phones: typing.Set[str] = None,
     custom_mapping: Optional[Dict[str, str]] = None,
     debug: bool = False,
-) -> Tuple[float, float]:
+) -> Tuple[float, float, Dict[Tuple[str, str], int]]:
     """
     Align phones based on how much they overlap and their phone label, with the ability to specify a custom mapping for
     different phone labels to be scored as if they're the same phone
@@ -634,6 +635,8 @@ def align_phones(
         Silence phone (these are ignored in the final calculation)
     custom_mapping: dict[str, str], optional
         Mapping of phones to treat as matches even if they have different symbols
+    debug: bool, optional
+        Flag for logging extra information about alignments
 
     Returns
     -------
@@ -641,6 +644,8 @@ def align_phones(
         Score based on the average amount of overlap in phone intervals
     float
         Phone error rate
+    dict[tuple[str, str], int]
+        Dictionary of error pairs with their counts
     """
 
     if ignored_phones is None:
@@ -653,23 +658,26 @@ def align_phones(
         )
 
     alignments = pairwise2.align.globalcs(
-        ref, test, score_func, -5, -5, gap_char=["-"], one_alignment_only=True
+        ref, test, score_func, -2, -2, gap_char=["-"], one_alignment_only=True
     )
     overlap_count = 0
     overlap_sum = 0
     num_insertions = 0
     num_deletions = 0
     num_substitutions = 0
+    errors = collections.Counter()
     for a in alignments:
         for i, sa in enumerate(a.seqA):
             sb = a.seqB[i]
             if sa == "-":
                 if sb.label not in ignored_phones:
+                    errors[(sa, sb.label)] += 1
                     num_insertions += 1
                 else:
                     continue
             elif sb == "-":
                 if sa.label not in ignored_phones:
+                    errors[(sa.label, sb)] += 1
                     num_deletions += 1
                 else:
                     continue
@@ -680,6 +688,7 @@ def align_phones(
                 overlap_count += 1
                 if compare_labels(sa.label, sb.label, silence_phone, mapping=custom_mapping) > 0:
                     num_substitutions += 1
+                    errors[(sa.label, sb.label)] += 1
     if debug:
         import logging
 
@@ -690,7 +699,7 @@ def align_phones(
     else:
         score = None
     phone_error_rate = (num_insertions + num_deletions + (2 * num_substitutions)) / len(ref)
-    return score, phone_error_rate
+    return score, phone_error_rate, errors
 
 
 def format_probability(probability_value: float) -> float:
