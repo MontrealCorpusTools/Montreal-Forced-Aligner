@@ -43,7 +43,7 @@ To use the Docker image of MFA:
 
 1. Run :code:`docker image pull mmcauliffe/montreal-forced-aligner:latest`
 2. Enter the interactive docker shell via :code:`docker run -it -v /path/to/data/directory:/data mmcauliffe/montreal-forced-aligner:latest`
-3. Once you are in the shell, you can run MFA commands as normal (i.e., :code:`mfa align ...`).  You may need to download any pretrained models you want to use each session (i.e., :code:`mfa download acoustic english_mfa`)
+3. Once you are in the shell, you can run MFA commands as normal (i.e., :code:`mfa align ...`).  You may need to download any pretrained models you want to use each session (i.e., :code:`mfa model download acoustic english_mfa`)
 
 .. important::
 

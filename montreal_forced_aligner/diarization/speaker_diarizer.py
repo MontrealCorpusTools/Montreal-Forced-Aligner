@@ -182,6 +182,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         self.ground_truth_utt2spk = {}
         self.ground_truth_speakers = {}
         self.single_clusters = set()
+        self._unknown_speaker_break_up_count = 0
 
     @classmethod
     def parse_parameters(
@@ -674,6 +675,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             session.commit()
 
     def initialize_mfa_clustering(self):
+        self._unknown_speaker_break_up_count = 0
 
         with self.session() as session:
             next_speaker_id = self.get_next_primary_key(Speaker)

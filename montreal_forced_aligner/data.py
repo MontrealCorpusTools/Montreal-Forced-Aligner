@@ -1751,8 +1751,10 @@ class CtmInterval:
         if self.end < -1 or self.begin == 1000000:
             raise CtmError(self)
         end = round(self.end, 6)
+        begin = round(self.begin, 6)
         if file_duration is not None and end > file_duration:
             end = round(file_duration, 6)
+        assert begin < end
         return Interval(round(self.begin, 6), end, self.label)
 
 

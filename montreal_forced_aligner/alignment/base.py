@@ -1209,7 +1209,11 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 f"Check {os.path.join(self.export_output_directory, 'output_errors.txt')} "
                 f"for more details"
             )
-        output_textgrid_writing_errors(self.export_output_directory, error_dict)
+            output_textgrid_writing_errors(self.export_output_directory, error_dict)
+            if GLOBAL_CONFIG.current_profile.debug:
+                for k, v in error_dict.items():
+                    print(k)
+                    raise v
         logger.info(f"Finished exporting TextGrids to {self.export_output_directory}!")
         logger.debug(f"Exported TextGrids in a total of {time.time() - begin:.3f} seconds")
 
@@ -1279,12 +1283,20 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 output_directory,
                 f"{comparison_source.name}_{reference_source.name}_evaluation.csv",
             )
+            confusion_path = os.path.join(
+                output_directory,
+                f"{comparison_source.name}_{reference_source.name}_confusions.csv",
+            )
         else:
             self._current_workflow = "evaluation"
             os.makedirs(self.working_log_directory, exist_ok=True)
             csv_path = os.path.join(
                 self.working_log_directory,
                 f"{comparison_source.name}_{reference_source.name}_evaluation.csv",
+            )
+            confusion_path = os.path.join(
+                self.working_log_directory,
+                f"{comparison_source.name}_{reference_source.name}_confusions.csv",
             )
         csv_header = [
             "file",
@@ -1306,6 +1318,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         score_sum = 0
         phone_edit_sum = 0
         phone_length_sum = 0
+        phone_confusions = collections.Counter()
         with self.session() as session:
             # Set up
             logger.info("Evaluating alignments...")
@@ -1370,10 +1383,11 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 to_comp.append((reference_phones, comparison_phones))
             with mp.Pool(GLOBAL_CONFIG.num_jobs) as pool:
                 gen = pool.starmap(score_func, to_comp)
-                for i, (score, phone_error_rate) in enumerate(gen):
+                for i, (score, phone_error_rate, errors) in enumerate(gen):
                     if score is None:
                         continue
                     u = indices[i]
+                    phone_confusions.update(errors)
                     reference_phone_count = reference_phone_counts[u.id]
                     update_mappings.append(
                         {
@@ -1443,7 +1457,10 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         score_count += 1
                         score_sum += alignment_score
                     writer.writerow(data)
-
+        with mfa_open(confusion_path, "w") as f:
+            f.write("reference,hypothesis,count\n")
+            for k, v in sorted(phone_confusions.items(), key=lambda x: -x[1]):
+                f.write(f"{k[0]},{k[1]},{v}\n")
         logger.info(f"Average overlap score: {score_sum/score_count}")
         logger.info(f"Average phone error rate: {phone_edit_sum/phone_length_sum}")
         logger.debug(f"Alignment evaluation took {time.time()-begin} seconds")
