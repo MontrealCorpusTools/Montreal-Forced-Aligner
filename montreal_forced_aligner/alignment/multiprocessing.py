@@ -1877,7 +1877,7 @@ def compile_information_func(
     data = {"unaligned": [], "too_short": [], "log_like": 0, "total_frames": 0}
     align_log_path = arguments.align_log_path
     if not os.path.exists(align_log_path):
-        align_log_path = align_log_path.with_suffix(".fmllr.log")
+        align_log_path = Path(align_log_path).with_suffix(".fmllr.log")
     with mfa_open(arguments.log_path, "w"), mfa_open(align_log_path, "r") as f:
         for line in f:
             decode_error_match = re.match(decode_error_pattern, line)
