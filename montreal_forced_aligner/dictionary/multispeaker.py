@@ -1158,7 +1158,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         word_mapping = {}
         pronunciation_mapping = []
         word_index = self.get_next_primary_key(Word)
-        pronunciation_index = self.get_next_primary_key(Word)
+        pronunciation_index = self.get_next_primary_key(Pronunciation)
         with self.session() as session:
             word_mapping_index = (
                 session.query(sqlalchemy.func.max(Word.mapping_id))
