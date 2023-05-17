@@ -34,6 +34,7 @@ from montreal_forced_aligner.command_line.validate import (
     validate_dictionary_cli,
 )
 from montreal_forced_aligner.config import GLOBAL_CONFIG, update_command_history
+from montreal_forced_aligner.exceptions import DatabaseError
 from montreal_forced_aligner.utils import check_third_party
 
 BEGIN = time.time()
@@ -149,7 +150,10 @@ def mfa_cli(ctx: click.Context) -> None:
         atexit.register(hooks.history_save_handler)
         atexit.register(cleanup_logger)
         if auto_server:
-            atexit.register(stop_server)
+            try:
+                atexit.register(stop_server)
+            except DatabaseError:
+                pass
 
     mp.freeze_support()
 

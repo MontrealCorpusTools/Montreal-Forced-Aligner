@@ -4,6 +4,7 @@ from __future__ import annotations
 import functools
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -27,6 +28,7 @@ from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.models import MODEL_TYPES
 
 __all__ = [
+    "cleanup_logger",
     "validate_acoustic_model",
     "validate_g2p_model",
     "validate_ivector_extractor",
@@ -234,9 +236,7 @@ def configure_pg(directory):
         "#log_min_duration_statement = -1": "log_min_duration_statement = 5000",
         "#enable_partitionwise_join = off": "enable_partitionwise_join = on",
         "#enable_partitionwise_aggregate = off": "enable_partitionwise_aggregate = on",
-        "#unix_socket_directories = ''": f"unix_socket_directories = '{GLOBAL_CONFIG.database_socket}'",
-        "#unix_socket_directories = '/var/run/postgresql'": f"unix_socket_directories = '{GLOBAL_CONFIG.database_socket}'",
-        "#unix_socket_directories = '/tmp'": f"unix_socket_directories = '{GLOBAL_CONFIG.database_socket}'",
+        "#unix_socket_directories.*": f"unix_socket_directories = '{GLOBAL_CONFIG.database_socket}'",
         "#listen_addresses = 'localhost'": "listen_addresses = ''",
         "max_connections = 100": "max_connections = 1000",
     }
@@ -261,7 +261,7 @@ def configure_pg(directory):
     with mfa_open(directory.joinpath("postgresql.conf"), "r") as f:
         config = f.read()
     for query, rep in configuration_updates.items():
-        config = config.replace(query, rep)
+        config = re.sub(query, rep, config)
     with mfa_open(directory.joinpath("postgresql.conf"), "w") as f:
         f.write(config)
 

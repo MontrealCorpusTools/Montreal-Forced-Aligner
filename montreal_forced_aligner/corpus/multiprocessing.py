@@ -238,6 +238,7 @@ class NormalizeTextArguments(MfaArguments):
     laughter_word: str
     oov_word: str
     bracketed_word: str
+    cutoff_word: str
     ignore_case: bool
     use_g2p: bool
 
@@ -277,10 +278,12 @@ class NormalizeTextFunction(KaldiFunction):
         self.laughter_word = args.laughter_word
         self.oov_word = args.oov_word
         self.bracketed_word = args.bracketed_word
+        self.cutoff_word = args.cutoff_word
         self.clitic_marker = None
         self.clitic_cleanup_regex = None
         self.compound_regex = None
         self.bracket_regex = None
+        self.cutoff_regex = None
         self.bracket_sanitize_regex = None
         self.laughter_regex = None
         self.word_break_regex = None
@@ -311,6 +314,10 @@ class NormalizeTextFunction(KaldiFunction):
         if self.brackets:
             left_brackets = [x[0] for x in self.brackets]
             right_brackets = [x[1] for x in self.brackets]
+            self.cutoff_regex = re.compile(
+                rf"[{re.escape(''.join(left_brackets))}](cutoff|hes).*?[{re.escape(''.join(right_brackets))}]+",
+                flags=re.IGNORECASE,
+            )
             self.bracket_regex = re.compile(
                 rf"[{re.escape(''.join(left_brackets))}].*?[{re.escape(''.join(right_brackets))}]+"
             )
@@ -351,6 +358,8 @@ class NormalizeTextFunction(KaldiFunction):
 
         if self.laughter_regex is not None:
             self.non_speech_regexes[self.laughter_word] = self.laughter_regex
+        if self.cutoff_regex is not None:
+            self.non_speech_regexes[self.cutoff_word] = self.cutoff_regex
         if self.bracket_regex is not None:
             self.non_speech_regexes[self.bracketed_word] = self.bracket_regex
 
@@ -398,6 +407,8 @@ class NormalizeTextFunction(KaldiFunction):
             non_speech_regexes = {}
             if self.laughter_regex is not None:
                 non_speech_regexes[d.laughter_word] = self.laughter_regex
+            if self.cutoff_regex is not None:
+                non_speech_regexes[d.cutoff_word] = self.cutoff_regex
             if self.bracket_regex is not None:
                 non_speech_regexes[d.bracketed_word] = self.bracket_regex
             split_function = SplitWordsFunction(

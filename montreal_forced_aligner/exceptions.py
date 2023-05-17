@@ -54,6 +54,7 @@ __all__ = [
     "ModelTypeNotSupportedError",
     "PronunciationAcousticMismatchError",
     "RootDirectoryError",
+    "DatabaseError",
 ]
 
 

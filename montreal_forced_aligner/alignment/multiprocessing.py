@@ -1445,7 +1445,6 @@ class FineTuneFunction(KaldiFunction):
                         feature_segment_path,
                         "ark:-",
                     ],
-                    stdin=paste_proc.stdout,
                     stderr=log_file,
                     stdout=subprocess.PIPE,
                     env=os.environ,
@@ -1874,15 +1873,18 @@ def compile_information_func(
         r"^WARNING .* Did not successfully decode file (?P<utt>.*?), .*$"
     )
 
-    data = {"unaligned": [], "too_short": [], "log_like": 0, "total_frames": 0}
+    data = {"unaligned": [], "log_like": 0, "total_frames": 0}
     align_log_path = arguments.align_log_path
     if not os.path.exists(align_log_path):
         align_log_path = align_log_path.with_suffix(".fmllr.log")
-    with mfa_open(arguments.log_path, "w"), mfa_open(align_log_path, "r") as f:
+    with mfa_open(arguments.log_path, "w") as log_file, mfa_open(align_log_path, "r") as f:
+        log_file.write(f"Processing {align_log_path}...\n")
         for line in f:
             decode_error_match = re.match(decode_error_pattern, line)
             if decode_error_match:
-                data["unaligned"].append(decode_error_match.group("utt"))
+                utt = decode_error_match.group("utt")
+                data["unaligned"].append(utt)
+                log_file.write(f"Unaligned: {utt}\n")
                 continue
             log_like_match = re.search(log_like_pattern, line)
             if log_like_match:
@@ -1890,12 +1892,14 @@ def compile_information_func(
                 frames = log_like_match.group("frames")
                 data["log_like"] = float(log_like)
                 data["total_frames"] = int(frames)
+                log_file.write(line)
             m = re.search(average_logdet_pattern, line)
             if m:
                 logdet = float(m.group("logdet"))
                 frames = float(m.group("frames"))
                 data["logdet"] = logdet
                 data["logdet_frames"] = frames
+                log_file.write(line)
     return data
 
 

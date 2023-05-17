@@ -36,6 +36,7 @@ from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.textgrid import process_ctm_line
 
 __all__ = [
+    "check_third_party",
     "thirdparty_binary",
     "log_kaldi_errors",
     "get_mfa_version",

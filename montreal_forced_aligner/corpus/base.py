@@ -636,6 +636,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     self.laughter_word,
                     self.oov_word,
                     self.bracketed_word,
+                    self.cutoff_word,
                     self.ignore_case,
                     getattr(self, "use_g2p", False),
                 )

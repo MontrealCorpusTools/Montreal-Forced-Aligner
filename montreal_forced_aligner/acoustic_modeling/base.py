@@ -440,12 +440,12 @@ class AcousticModelTrainingMixin(
         logger.debug(
             f"Generating alignments for iteration {self.iteration} took {time.time()-begin} seconds"
         )
-        logger.debug(f"Analyzing information for alignment in iteration {self.iteration}...")
-        begin = time.time()
-        self.compile_information()
-        logger.debug(
-            f"Analyzing iteration {self.iteration} alignments took {time.time()-begin} seconds"
-        )
+        # logger.debug(f"Analyzing information for alignment in iteration {self.iteration}...")
+        # begin = time.time()
+        # self.compile_information()
+        # logger.debug(
+        #    f"Analyzing iteration {self.iteration} alignments took {time.time()-begin} seconds"
+        # )
 
     @property
     def initialized(self) -> bool:

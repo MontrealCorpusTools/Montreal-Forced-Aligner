@@ -499,13 +499,16 @@ class AlignMixin(DictionaryMixin):
         average_logdet_sum = 0
         average_logdet_frames = 0
         beam_too_narrow_count = 0
-        too_short_count = 0
-        for data in alignment_info.values():
+        for k, data in alignment_info.items():
+            logger.debug(f"For job {k}:")
+            logger.debug(f'{len(data["unaligned"])} beam too narrow')
+            logger.debug(f'{data["total_frames"]} total frames')
+            logger.debug(f'{data["log_like"]} average log-likelihood')
             beam_too_narrow_count += len(data["unaligned"])
-            too_short_count += len(data["too_short"])
             avg_like_frames += data["total_frames"]
             avg_like_sum += data["log_like"] * data["total_frames"]
             if "logdet_frames" in data:
+                logger.debug(f'{data["logdet"]} average logdet')
                 average_logdet_frames += data["logdet_frames"]
                 average_logdet_sum += data["logdet"] * data["logdet_frames"]
 
@@ -538,10 +541,6 @@ class AlignMixin(DictionaryMixin):
                 "No files were aligned, this likely indicates serious problems with the aligner."
             )
         else:
-            if too_short_count:
-                logger.debug(
-                    f"There were {too_short_count} utterances that were too short to be aligned."
-                )
             if beam_too_narrow_count:
                 logger.debug(
                     f"There were {beam_too_narrow_count} utterances that could not be aligned with "
