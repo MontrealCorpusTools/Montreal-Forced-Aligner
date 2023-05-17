@@ -5,6 +5,16 @@
 2.2 Changelog
 *************
 
+2.2.11
+======
+
+- Make socket updating more general
+- Remove false "no alignments" warning in alignment iterations while training
+- Fixed a bug in adding words to a dictionary
+- Fixed a bug where words marked as "<cutoff>" were being treated as "[bracketed]"
+- Silences DatabaseError while cleaning up MFA
+- Fix a crash with in fine tuning
+
 2.2.10
 ======
 

@@ -341,6 +341,7 @@ class Dictionary(MfaSqlBase):
     oov_word = Column(String, nullable=True, default="<unk>")
     oov_phone = Column(String, nullable=True, default="spn")
     bracketed_word = Column(String, nullable=True)
+    cutoff_word = Column(String, nullable=True)
     laughter_word = Column(String, nullable=True)
 
     use_g2p = Column(Boolean, nullable=False, default=False)

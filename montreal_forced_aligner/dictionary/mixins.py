@@ -434,6 +434,7 @@ class DictionaryMixin:
         self.oov_word = oov_word
         self.silence_word = silence_word
         self.bracketed_word = "[bracketed]"
+        self.cutoff_word = "<cutoff>"
         self.laughter_word = "[laughter]"
         self.position_dependent_phones = position_dependent_phones
         self.optional_silence_phone = optional_silence_phone

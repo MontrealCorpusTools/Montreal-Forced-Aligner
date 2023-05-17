@@ -333,6 +333,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         silence_word=self.silence_word,
                         oov_word=self.oov_word,
                         bracketed_word=self.bracketed_word,
+                        cutoff_word=self.cutoff_word,
                         laughter_word=self.laughter_word,
                         optional_silence_phone=self.optional_silence_phone,
                         oov_phone=self.oov_phone,
@@ -373,6 +374,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
 
                     special_words = {self.oov_word: WordType.oov}
                     special_words[self.bracketed_word] = WordType.bracketed
+                    special_words[self.cutoff_word] = WordType.cutoff
                     special_words[self.laughter_word] = WordType.laughter
                     specials_found = set()
                     if not os.path.exists(dictionary_model.path):
@@ -533,6 +535,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 session.commit()
                 special_graphemes = [self.silence_word, "<space>"]
                 special_graphemes.append(self.bracketed_word)
+                special_graphemes.append(self.cutoff_word)
                 special_graphemes.append(self.laughter_word)
                 for g in special_graphemes:
                     grapheme_objs.append(
@@ -1245,7 +1248,14 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         Word.word_type.in_(
                             [WordType.speech, WordType.clitic, WordType.interjection]
                         ),
-                        Word.word.in_([self.oov_word, self.bracketed_word, self.laughter_word]),
+                        Word.word.in_(
+                            [
+                                self.oov_word,
+                                self.bracketed_word,
+                                self.cutoff_word,
+                                self.laughter_word,
+                            ]
+                        ),
                     ),
                 )
                 .order_by(Word.word)
