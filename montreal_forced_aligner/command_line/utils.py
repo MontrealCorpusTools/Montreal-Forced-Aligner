@@ -235,6 +235,7 @@ def configure_pg(directory):
         "#enable_partitionwise_join = off": "enable_partitionwise_join = on",
         "#enable_partitionwise_aggregate = off": "enable_partitionwise_aggregate = on",
         "#unix_socket_directories = ''": f"unix_socket_directories = '{GLOBAL_CONFIG.database_socket}'",
+        "#unix_socket_directories = '/var/run/postgresql'": f"unix_socket_directories = '{GLOBAL_CONFIG.database_socket}'",
         "#unix_socket_directories = '/tmp'": f"unix_socket_directories = '{GLOBAL_CONFIG.database_socket}'",
         "#listen_addresses = 'localhost'": "listen_addresses = ''",
         "max_connections = 100": "max_connections = 1000",
