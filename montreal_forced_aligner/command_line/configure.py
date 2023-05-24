@@ -96,6 +96,13 @@ __all__ = ["configure_cli"]
     default=None,
 )
 @click.option(
+    "--enable_use_postgres/--disable_use_postgres",
+    "use_postgres",
+    help="If use_postgres is enabled, MFA will use PostgreSQL as the database backend instead of sqlite. "
+    f"Currently defaults to {getattr(GLOBAL_CONFIG['global'], 'use_postgres', False)}.",
+    default=None,
+)
+@click.option(
     "--blas_num_threads",
     help="Number of threads to use for BLAS libraries, 1 is recommended "
     "due to how much MFA relies on multiprocessing. "

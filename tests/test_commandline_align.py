@@ -52,6 +52,7 @@ def test_align_single_speaker(
         "--debug",
         "--single_speaker",
         "--no_use_mp",
+        "--use_postgres",
         "-p",
         "test",
     ]

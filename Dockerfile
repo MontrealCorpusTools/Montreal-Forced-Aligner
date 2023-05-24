@@ -5,6 +5,7 @@ RUN mkdir -p /mfa
 RUN mamba env create -p /env -f docker_environment.yaml && conda clean -afy
 
 COPY . /pkg
+RUN conda run -p /env python -m pip install speechbrain
 RUN conda run -p /env python -m pip install --no-deps /pkg
 
 RUN useradd -ms /bin/bash mfauser

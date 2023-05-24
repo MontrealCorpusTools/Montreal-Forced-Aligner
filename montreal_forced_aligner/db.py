@@ -18,7 +18,12 @@ from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integ
 from sqlalchemy.ext.orderinglist import ordering_list
 from sqlalchemy.orm import Bundle, declarative_base, relationship
 
-from montreal_forced_aligner.config import IVECTOR_DIMENSION, PLDA_DIMENSION, XVECTOR_DIMENSION
+from montreal_forced_aligner.config import (
+    GLOBAL_CONFIG,
+    IVECTOR_DIMENSION,
+    PLDA_DIMENSION,
+    XVECTOR_DIMENSION,
+)
 from montreal_forced_aligner.data import (
     CtmInterval,
     PhoneSetType,
@@ -109,8 +114,9 @@ def bulk_update(
     column_names = [x for x in values[0].keys()]
     columns = [getattr(table, x)._copy() for x in column_names if x != id_field]
     sql_column_names = [f'"{x}"' for x in column_names if x != id_field]
-    session.execute(sqlalchemy.text(f"ALTER TABLE {table.__tablename__} DISABLE TRIGGER all"))
-    session.commit()
+    if GLOBAL_CONFIG.current_profile.use_postgres:
+        session.execute(sqlalchemy.text(f"ALTER TABLE {table.__tablename__} DISABLE TRIGGER all"))
+        session.commit()
     with session.begin_nested():
         temp_table = sqlalchemy.Table(
             f"temp_{table.__tablename__}",
@@ -141,9 +147,10 @@ def bulk_update(
 
         # drop temp table
         session.execute(sqlalchemy.text(f"DROP TABLE temp_{table.__tablename__}"))
-    session.execute(sqlalchemy.text(f"ALTER TABLE {table.__tablename__} ENABLE TRIGGER all"))
-    session.commit()
-    session.execute(sqlalchemy.text("DISCARD TEMP"))
+    if GLOBAL_CONFIG.current_profile.use_postgres:
+        session.execute(sqlalchemy.text(f"ALTER TABLE {table.__tablename__} ENABLE TRIGGER all"))
+        session.commit()
+        session.execute(sqlalchemy.text("DISCARD TEMP"))
     MfaSqlBase.metadata.remove(temp_table)
 
 

@@ -106,6 +106,12 @@ def common_options(f: typing.Callable) -> typing.Callable:
             default=None,
         ),
         click.option(
+            "--use_postgres/--no_use_postgres",
+            "use_postgres",
+            help=f"Use postgres instead of sqlite for extra functionality, default is {GLOBAL_CONFIG.use_postgres}",
+            default=None,
+        ),
+        click.option(
             "--single_speaker",
             "single_speaker",
             is_flag=True,
@@ -449,9 +455,6 @@ def stop_server(mode: str = "smart") -> None:
     db_directory = GLOBAL_CONFIG.root_temporary_directory.joinpath(
         f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
     )
-    log_path = GLOBAL_CONFIG.root_temporary_directory.joinpath(
-        f"pg_log_{GLOBAL_CONFIG.current_profile_name}.txt"
-    )
     if not db_directory.exists():
 
         logger.error(f"There was no database found at {db_directory}.")
@@ -466,12 +469,8 @@ def stop_server(mode: str = "smart") -> None:
     )
     stdout, stderr = proc.communicate()
     if proc.returncode == 1:
-        logger.error(f"pg_ctl stdout: {stdout}")
-        logger.error(f"pg_ctl stderr: {stderr}")
-        raise DatabaseError(
-            f"There was an error encountered starting the {GLOBAL_CONFIG.current_profile_name} MFA database server, "
-            f"please see {log_path} for more details and/or look at the logged errors above."
-        )
+        logger.debug(f"pg_ctl stdout: {stdout}")
+        logger.debug(f"pg_ctl stderr: {stderr}")
     else:
         logger.debug(f"pg_ctl stdout: {stdout}")
         logger.debug(f"pg_ctl stderr: {stderr}")

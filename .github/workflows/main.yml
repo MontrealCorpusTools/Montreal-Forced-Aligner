@@ -8,10 +8,6 @@ on:
   repository_dispatch:
     types: rebuild
 
-
-env:
-  CACHE_NUMBER: 0  # increase to reset cache manually
-
 concurrency:
   group: run_tests-${{ github.ref }}
   cancel-in-progress: true
@@ -41,12 +37,13 @@ jobs:
           fetch-depth: 0
 
       - name: Install Conda environment with Micromamba
-        uses: mamba-org/provision-with-micromamba@main
+        uses: mamba-org/setup-micromamba@v1
         with:
           environment-file: environment.yml
           environment-name: mfa
-          extra-specs: |
+          create-args: >-
             python=3.9
+          cache-environment: true
 
       - name: Configure mfa
         shell: bash -l {0}

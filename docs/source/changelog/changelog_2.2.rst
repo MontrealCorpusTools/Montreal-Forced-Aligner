@@ -5,6 +5,12 @@
 2.2 Changelog
 *************
 
+2.2.12
+======
+
+- Re-established support for sqlite for most aspects of MFA (some functionality requires using PostgreSQL)
+- Added a configuration flag for `mfa configure --enable_use_postgres` and `mfa [command] ... --use_postgres` to use PostgreSQL as the database backend
+
 2.2.11
 ======
 

@@ -103,6 +103,7 @@ def adapt_model_cli(context, **kwargs) -> None:
         if output_directory is not None:
             os.makedirs(output_directory, exist_ok=True)
             adapter.align()
+            adapter.analyze_alignments()
             adapter.export_files(
                 output_directory,
                 output_format,
