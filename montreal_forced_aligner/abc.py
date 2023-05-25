@@ -230,7 +230,10 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         Reset all schemas
         """
 
-        MfaSqlBase.metadata.drop_all(self.db_engine)
+        if GLOBAL_CONFIG.current_profile.use_postgres:
+            MfaSqlBase.metadata.drop_all(self.db_engine)
+        elif self.db_path.exists():
+            os.remove(self.db_path)
 
     def initialize_database(self) -> None:
         """
