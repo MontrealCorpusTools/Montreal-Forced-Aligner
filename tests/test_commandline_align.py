@@ -52,7 +52,6 @@ def test_align_single_speaker(
         "--debug",
         "--single_speaker",
         "--no_use_mp",
-        "--use_postgres",
         "-p",
         "test",
     ]
@@ -192,6 +191,7 @@ def test_align_multilingual_speaker_dict(
         "json",
         "-p",
         "test",
+        "--use_postgres",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
