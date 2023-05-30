@@ -178,7 +178,7 @@ Once we've validated the data, we can train an acoustic model (and output the al
 
    mfa train ~/mfa_data/my_corpus ~/mfa_data/my_dictionary.txt ~/mfa_data/new_acoustic_model.zip  # Export just the trained acoustic model
    mfa train ~/mfa_data/my_corpus ~/mfa_data/my_dictionary.txt ~/mfa_data/my_corpus_aligned  # Export just the training alignments
-   mfa train ~/mfa_data/my_corpus ~/mfa_data/my_dictionary.txt ~/mfa_data/new_acoustic_model.zip ~/mfa_data/my_corpus_aligned  # Export both trained model and alignments
+   mfa train ~/mfa_data/my_corpus ~/mfa_data/my_dictionary.txt ~/mfa_data/new_acoustic_model.zip --output_directory ~/mfa_data/my_corpus_aligned  # Export both trained model and alignments
 
 As for other commands, if your data is large, you'll likely want to increase the number of jobs that MFA uses.  For that and more advanced configuration of the training command, see :ref:`train_acoustic_model`.
 

@@ -197,7 +197,13 @@ class TokenizerFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator:
         """Run the function"""
-        engine = sqlalchemy.create_engine(self.db_string)
+        engine = sqlalchemy.create_engine(
+            self.db_string,
+            poolclass=sqlalchemy.NullPool,
+            pool_reset_on_return=None,
+            isolation_level="AUTOCOMMIT",
+            logging_name=f"{type(self).__name__}_engine",
+        ).execution_options(logging_token=f"{type(self).__name__}_engine")
         with sqlalchemy.orm.Session(engine) as session:
             utterances = session.query(Utterance.id, Utterance.normalized_text).filter(
                 Utterance.job_id == self.job_name

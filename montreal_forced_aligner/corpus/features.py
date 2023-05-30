@@ -482,6 +482,7 @@ class MfccFunction(KaldiFunction):
     def _run(self) -> typing.Generator[int]:
         """Run the function"""
         with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
+            log_file.write(f"Using: {self.db_string}\n")
             job: typing.Optional[Job] = session.get(Job, self.job_name)
             feats_scp_path = job.construct_path(self.data_directory, "feats", "scp")
             pitch_scp_path = job.construct_path(self.data_directory, "pitch", "scp")

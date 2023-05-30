@@ -165,6 +165,10 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         ]
 
     def analyze_alignments(self):
+
+        if not GLOBAL_CONFIG.current_profile.use_postgres:
+            logger.warning("Alignment analysis not available without using postgresql")
+            return
         logger.info("Analyzing alignment quality...")
         begin = time.time()
         with self.session() as session:
@@ -762,9 +766,10 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             Arguments for extraction
         """
         with self.session() as session:
-            session.execute(sqlalchemy.text("ALTER TABLE word_interval DISABLE TRIGGER all"))
-            session.execute(sqlalchemy.text("ALTER TABLE phone_interval DISABLE TRIGGER all"))
-            session.commit()
+            if GLOBAL_CONFIG.current_profile.use_postgres:
+                session.execute(sqlalchemy.text("ALTER TABLE word_interval DISABLE TRIGGER all"))
+                session.execute(sqlalchemy.text("ALTER TABLE phone_interval DISABLE TRIGGER all"))
+                session.commit()
             workflow = (
                 session.query(CorpusWorkflow)
                 .filter(CorpusWorkflow.current == True)  # noqa
@@ -778,6 +783,11 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             max_word_interval_id = session.query(sqlalchemy.func.max(WordInterval.id)).scalar()
             if max_word_interval_id is None:
                 max_word_interval_id = 0
+            mapping_id = session.query(sqlalchemy.func.max(Word.mapping_id)).scalar()
+            if mapping_id is None:
+                mapping_id = -1
+            mapping_id += 1
+        word_index = self.get_next_primary_key(Word)
 
         logger.info(f"Collecting phone and word alignments from {workflow.name} lattices...")
         with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
@@ -785,7 +795,17 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             arguments = self.alignment_extraction_arguments()
             has_words = False
             phone_interval_count = 0
-            word_buf = io.StringIO()
+            new_words = []
+            if GLOBAL_CONFIG.current_profile.use_postgres:
+                conn = self.db_engine.raw_connection()
+                cursor = conn.cursor()
+                word_buf = io.StringIO()
+                phone_buf = io.StringIO()
+            else:
+                word_csv_path = self.working_directory.joinpath("word_intervals.csv")
+                phone_csv_path = self.working_directory.joinpath("phone_intervals.csv")
+                word_buf = open(word_csv_path, "w", encoding="utf8", newline="")
+                phone_buf = open(phone_csv_path, "w", encoding="utf8", newline="")
             word_writer = csv.DictWriter(
                 word_buf,
                 [
@@ -798,7 +818,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     "workflow_id",
                 ],
             )
-            phone_buf = io.StringIO()
             phone_writer = csv.DictWriter(
                 phone_buf,
                 [
@@ -812,14 +831,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     "workflow_id",
                 ],
             )
-            conn = self.db_engine.raw_connection()
-            cursor = conn.cursor()
-            new_words = []
-            word_index = self.get_next_primary_key(Word)
-            mapping_id = session.query(sqlalchemy.func.max(Word.mapping_id)).scalar()
-            if mapping_id is None:
-                mapping_id = -1
-            mapping_id += 1
+            if not GLOBAL_CONFIG.current_profile.use_postgres:
+                word_writer.writeheader()
+                phone_writer.writeheader()
             for (
                 utterance,
                 word_intervals,
@@ -876,7 +890,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 word_writer.writerows(new_word_interval_mappings)
                 if new_word_interval_mappings:
                     has_words = True
-                if phone_interval_count > 1000000:
+                if GLOBAL_CONFIG.current_profile.use_postgres and phone_interval_count > 1000000:
                     if has_words:
                         word_buf.seek(0)
                         cursor.copy_from(word_buf, WordInterval.__tablename__, sep=",", null="")
@@ -887,24 +901,58 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     cursor.copy_from(phone_buf, PhoneInterval.__tablename__, sep=",", null="")
                     phone_buf.truncate(0)
                     phone_buf.seek(0)
+            if GLOBAL_CONFIG.current_profile.use_postgres:
+                if word_buf.tell() != 0:
+                    word_buf.seek(0)
+                    cursor.copy_from(word_buf, WordInterval.__tablename__, sep=",", null="")
+                    word_buf.truncate(0)
+                    word_buf.seek(0)
 
-        if word_buf.tell() != 0:
-            word_buf.seek(0)
-            cursor.copy_from(word_buf, WordInterval.__tablename__, sep=",", null="")
-            word_buf.truncate(0)
-            word_buf.seek(0)
-
-        if phone_buf.tell() != 0:
-            phone_buf.seek(0)
-            cursor.copy_from(phone_buf, PhoneInterval.__tablename__, sep=",", null="")
-            phone_buf.truncate(0)
-            phone_buf.seek(0)
-        conn.commit()
-        cursor.close()
-        conn.close()
+                if phone_buf.tell() != 0:
+                    phone_buf.seek(0)
+                    cursor.copy_from(phone_buf, PhoneInterval.__tablename__, sep=",", null="")
+                    phone_buf.truncate(0)
+                    phone_buf.seek(0)
+                conn.commit()
+                cursor.close()
+                conn.close()
+            else:
+                word_buf.close()
+                phone_buf.close()
+                if has_words:
+                    subprocess.check_call(
+                        [
+                            "sqlite3",
+                            self.db_path.as_posix(),
+                            "--cmd",
+                            ".mode csv",
+                            f".import {word_csv_path.as_posix()} word_interval_temp",
+                        ]
+                    )
+                subprocess.check_call(
+                    [
+                        "sqlite3",
+                        self.db_path.as_posix(),
+                        "--cmd",
+                        ".mode csv",
+                        f".import {phone_csv_path.as_posix()} phone_interval_temp",
+                    ]
+                )
         with self.session() as session:
             if new_words:
                 session.execute(sqlalchemy.insert(Word).values(new_words))
+                session.commit()
+
+            if not GLOBAL_CONFIG.current_profile.use_postgres:
+                session.execute(
+                    sqlalchemy.text("INSERT INTO word_interval SELECT * from word_interval_temp")
+                )
+                session.execute(
+                    sqlalchemy.text("INSERT INTO phone_interval SELECT * from phone_interval_temp")
+                )
+                session.commit()
+                session.execute(sqlalchemy.text("DROP TABLE word_interval_temp"))
+                session.execute(sqlalchemy.text("DROP TABLE phone_interval_temp"))
                 session.commit()
             workflow = (
                 session.query(CorpusWorkflow)
@@ -934,9 +982,10 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 {CorpusWorkflow.alignments_collected: True}
             )
             session.commit()
-            session.execute(sqlalchemy.text("ALTER TABLE word_interval ENABLE TRIGGER all"))
-            session.execute(sqlalchemy.text("ALTER TABLE phone_interval ENABLE TRIGGER all"))
-            session.commit()
+            if GLOBAL_CONFIG.current_profile.use_postgres:
+                session.execute(sqlalchemy.text("ALTER TABLE word_interval ENABLE TRIGGER all"))
+                session.execute(sqlalchemy.text("ALTER TABLE phone_interval ENABLE TRIGGER all"))
+                session.commit()
 
     def fine_tune_alignments(self) -> None:
         """

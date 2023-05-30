@@ -74,6 +74,9 @@ class KaldiFunction(metaclass=abc.ABCMeta):
         self.log_path = self.args.log_path
 
     def db_engine(self):
+        db_string = self.db_string
+        if not GLOBAL_CONFIG.current_profile.use_postgres:
+            db_string += "?mode=ro&nolock=1&uri=true"
 
         return sqlalchemy.create_engine(
             self.db_string,
@@ -216,7 +219,6 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.db_backend = GLOBAL_CONFIG.database_backend
 
         self._db_engine = None
         self._db_path = None
@@ -228,7 +230,10 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         Reset all schemas
         """
 
-        MfaSqlBase.metadata.drop_all(self.db_engine)
+        if GLOBAL_CONFIG.current_profile.use_postgres:
+            MfaSqlBase.metadata.drop_all(self.db_engine)
+        elif self.db_path.exists():
+            os.remove(self.db_path)
 
     def initialize_database(self) -> None:
         """
@@ -238,26 +243,29 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
             return
         from montreal_forced_aligner.command_line.utils import check_databases
 
-        exist_check = True
-        try:
-            check_databases(self.identifier)
-        except Exception:
+        if GLOBAL_CONFIG.current_profile.use_postgres:
+            exist_check = True
             try:
-                subprocess.check_call(
-                    [
-                        "createdb",
-                        f"--host={GLOBAL_CONFIG.database_socket}",
-                        self.identifier,
-                    ],
-                    stderr=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                )
+                check_databases(self.identifier)
             except Exception:
-                raise DatabaseError(
-                    f"There was an error connecting to the {GLOBAL_CONFIG.current_profile_name} MFA database server. "
-                    "Please ensure the server is initialized (mfa server init) or running (mfa server start)"
-                )
-            exist_check = False
+                try:
+                    subprocess.check_call(
+                        [
+                            "createdb",
+                            f"--host={GLOBAL_CONFIG.database_socket}",
+                            self.identifier,
+                        ],
+                        stderr=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                    )
+                except Exception:
+                    raise DatabaseError(
+                        f"There was an error connecting to the {GLOBAL_CONFIG.current_profile_name} MFA database server. "
+                        "Please ensure the server is initialized (mfa server init) or running (mfa server start)"
+                    )
+                exist_check = False
+        else:
+            exist_check = self.db_path.exists()
         self.database_initialized = True
         if exist_check:
             if GLOBAL_CONFIG.current_profile.clean or getattr(self, "dirty", False):
@@ -267,11 +275,12 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
                 return
 
         os.makedirs(self.output_directory, exist_ok=True)
-        with self.db_engine.connect() as conn:
-            conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS vector"))
-            conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
-            conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"))
-            conn.commit()
+        if GLOBAL_CONFIG.current_profile.use_postgres:
+            with self.db_engine.connect() as conn:
+                conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS vector"))
+                conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+                conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"))
+                conn.commit()
 
         MfaSqlBase.metadata.create_all(self.db_engine)
 
@@ -338,9 +347,19 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         return wf
 
     @property
-    def db_string(self):
+    def db_path(self) -> Path:
+        """Connection path for sqlite database"""
+        return self.output_directory.joinpath(f"{self.identifier}.db")
+
+    @property
+    def db_string(self) -> str:
         """Connection string for the database"""
-        return f"postgresql+psycopg2://@/{self.identifier}?host={GLOBAL_CONFIG.database_socket}"
+        if GLOBAL_CONFIG.use_postgres:
+            return (
+                f"postgresql+psycopg2://@/{self.identifier}?host={GLOBAL_CONFIG.database_socket}"
+            )
+        else:
+            return f"sqlite:///{self.db_path}"
 
     def construct_engine(self, **kwargs) -> sqlalchemy.engine.Engine:
         """
@@ -358,10 +377,16 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         :class:`~sqlalchemy.engine.Engine`
             SqlAlchemy engine
         """
+        db_string = self.db_string
+        if not GLOBAL_CONFIG.use_postgres:
+            if kwargs.pop("read_only", False):
+                db_string += "?mode=ro&nolock=1&uri=true"
+            kwargs["poolclass"] = sqlalchemy.NullPool
+        else:
+            kwargs["pool_size"] = 10
+            kwargs["max_overflow"] = 10
         e = sqlalchemy.create_engine(
-            self.db_string,
-            pool_size=10,
-            max_overflow=10,
+            db_string,
             logging_name="main_process_engine",
             **kwargs,
         ).execution_options(logging_token="main_process_engine")

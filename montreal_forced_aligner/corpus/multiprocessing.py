@@ -536,8 +536,6 @@ class ExportKaldiFilesFunction(KaldiFunction):
         )
         wav_scp_path = job.wav_scp_path
         utt2spk_scp_path = job.utt2spk_scp_path
-        if os.path.exists(utt2spk_scp_path):
-            return
         with mfa_open(wav_scp_path, "w") as wav_file:
             files = (
                 session.query(File.id, SoundFile.sox_string, SoundFile.sound_file_path)

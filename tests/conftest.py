@@ -78,7 +78,7 @@ def global_config():
     GLOBAL_CONFIG.load()
     GLOBAL_CONFIG.current_profile_name = "test"
     GLOBAL_CONFIG.current_profile.clean = True
-    GLOBAL_CONFIG.current_profile.database_backend = "psycopg2"
+    GLOBAL_CONFIG.current_profile.use_postgres = True
     GLOBAL_CONFIG.current_profile.debug = True
     GLOBAL_CONFIG.current_profile.verbose = True
     GLOBAL_CONFIG.current_profile.num_jobs = 2

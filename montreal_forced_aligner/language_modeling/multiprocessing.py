@@ -9,6 +9,7 @@ from pathlib import Path
 import sqlalchemy
 from sqlalchemy.orm import Session, joinedload, subqueryload
 
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import MfaArguments, WordType
 from montreal_forced_aligner.db import Job, Phone, PhoneInterval, Speaker, Utterance, Word
 from montreal_forced_aligner.helper import mfa_open
@@ -192,8 +193,12 @@ class TrainPhoneLmFunction(KaldiFunction):
     def _run(self) -> typing.Generator[bool]:
         """Run the function"""
         with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
+            if GLOBAL_CONFIG.current_profile.use_postgres:
+                string_agg_function = sqlalchemy.func.string_agg
+            else:
+                string_agg_function = sqlalchemy.func.group_concat
             pronunciation_query = (
-                sqlalchemy.select(Utterance.id, sqlalchemy.func.string_agg(Phone.kaldi_label, " "))
+                sqlalchemy.select(Utterance.id, string_agg_function(Phone.kaldi_label, " "))
                 .select_from(Utterance)
                 .join(Utterance.phone_intervals)
                 .join(PhoneInterval.phone)

@@ -10,6 +10,7 @@ from montreal_forced_aligner.command_line.utils import common_options, validate_
 from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.data import ClusterType
 from montreal_forced_aligner.diarization.speaker_diarizer import SpeakerDiarizer
+from montreal_forced_aligner.exceptions import DatabaseError
 
 __all__ = ["diarize_speakers_cli"]
 
@@ -98,6 +99,12 @@ def diarize_speakers_cli(context, **kwargs) -> None:
         os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
     GLOBAL_CONFIG.save()
+    print(kwargs)
+    print(GLOBAL_CONFIG.current_profile.use_postgres)
+    if not GLOBAL_CONFIG.current_profile.use_postgres:
+        raise DatabaseError(
+            "Postgres is required for running diarization functionality via `--use_postgres true`."
+        )
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"]
     ivector_extractor_path = kwargs["ivector_extractor_path"]

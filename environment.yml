@@ -26,6 +26,7 @@ dependencies:
   - sqlalchemy>=2.0
   - pgvector
   - pgvector-python
+  - sqlite
   - postgresql
   - psycopg2
   - click

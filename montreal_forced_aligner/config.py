@@ -146,7 +146,7 @@ class MfaProfile:
     quiet: bool = False
     overwrite: bool = False
     cleanup_textgrids: bool = True
-    database_backend: str = "psycopg2"
+    use_postgres: bool = False
     database_limited_mode: bool = False
     bytes_limit: int = 100e6
     seed: int = 0

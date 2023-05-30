@@ -153,6 +153,7 @@ def test_align_multilingual(
         "short_textgrid",
         "-p",
         "test",
+        "--no_use_postgres",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
@@ -191,6 +192,7 @@ def test_align_multilingual_speaker_dict(
         "json",
         "-p",
         "test",
+        "--use_postgres",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(

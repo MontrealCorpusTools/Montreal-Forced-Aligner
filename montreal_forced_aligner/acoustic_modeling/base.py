@@ -643,6 +643,7 @@ class AcousticModelTrainingMixin(
         )
         acoustic_model.add_meta_file(self)
         acoustic_model.add_model(self.working_directory)
+        acoustic_model.add_model(self.worker.phones_dir)
         acoustic_model.add_pronunciation_models(
             self.working_directory, self.worker.dictionary_base_names.values()
         )
