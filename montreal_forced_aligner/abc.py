@@ -381,10 +381,12 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         if not GLOBAL_CONFIG.use_postgres:
             if kwargs.pop("read_only", False):
                 db_string += "?mode=ro&nolock=1&uri=true"
+            kwargs["poolclass"] = sqlalchemy.NullPool
+        else:
+            kwargs["pool_size"] = 10
+            kwargs["max_overflow"] = 10
         e = sqlalchemy.create_engine(
             db_string,
-            pool_size=10,
-            max_overflow=10,
             logging_name="main_process_engine",
             **kwargs,
         ).execution_options(logging_token="main_process_engine")

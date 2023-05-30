@@ -596,7 +596,7 @@ class AcousticModel(Archive):
 
         pprint(configuration_data)
 
-    def add_model(self, source: str) -> None:
+    def add_model(self, source: Path) -> None:
         """
         Add file into archive
 

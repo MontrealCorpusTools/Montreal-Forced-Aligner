@@ -10,6 +10,7 @@
 
 - Re-established support for sqlite for most aspects of MFA (some functionality requires using PostgreSQL)
 - Added a configuration flag for `mfa configure --enable_use_postgres` and `mfa [command] ... --use_postgres` to use PostgreSQL as the database backend
+- Fixed a bug where adapted acoustic models would not contain all the necessary metadata to be used
 
 2.2.11
 ======

@@ -358,6 +358,23 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
             "train_date": str(datetime.now()),
             "features": self.feature_options,
             "phone_set_type": str(self.phone_set_type),
+            "dictionaries": {
+                "names": sorted(self.dictionary_base_names.values()),
+                "default": self.dictionary_base_names[self._default_dictionary_id],
+                "silence_word": self.silence_word,
+                "use_g2p": self.use_g2p,
+                "oov_word": self.oov_word,
+                "bracketed_word": self.bracketed_word,
+                "laughter_word": self.laughter_word,
+                "clitic_marker": self.clitic_marker,
+                "position_dependent_phones": self.position_dependent_phones,
+            },
+            "oov_phone": self.oov_phone,
+            "optional_silence_phone": self.optional_silence_phone,
+            "silence_probability": self.silence_probability,
+            "initial_silence_probability": self.initial_silence_probability,
+            "final_silence_correction": self.final_silence_correction,
+            "final_non_silence_correction": self.final_non_silence_correction,
         }
         return data
 
@@ -377,6 +394,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         )
         acoustic_model.add_meta_file(self)
         acoustic_model.add_model(self.working_directory)
+        acoustic_model.add_model(self.phones_dir)
         if directory:
             os.makedirs(directory, exist_ok=True)
         basename, _ = os.path.splitext(output_model_path)
