@@ -136,6 +136,9 @@ def mfa_cli(ctx: click.Context) -> None:
             auto_server = False
     else:
         auto_server = getattr(GLOBAL_CONFIG.global_profile, "auto_server", True)
+    if "--no_use_postgres" in sys.argv or not GLOBAL_CONFIG.current_profile.use_postgres:
+        run_check = False
+        auto_server = False
     if auto_server:
         start_server()
     elif run_check:

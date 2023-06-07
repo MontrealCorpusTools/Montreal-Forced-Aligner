@@ -5,6 +5,11 @@
 2.2 Changelog
 *************
 
+2.2.13
+======
+
+- Fixes an issue in using sqlite during subset creation for training
+
 2.2.12
 ======
 
