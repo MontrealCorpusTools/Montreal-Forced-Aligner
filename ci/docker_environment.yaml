@@ -34,6 +34,7 @@ dependencies:
   - kneed
   - matplotlib
   - seaborn
+  - sqlite
   - pip
   - rich
   - rich-click
