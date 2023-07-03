@@ -5,10 +5,16 @@
 2.2 Changelog
 *************
 
+2.2.15
+======
+
+- Fixed a crash when using fine tuned boundaries
+- Pinned scikit-learn to versions less than 1.3, due to it breaking hdbscan package
+
 2.2.13
 ======
 
-- Fixes an issue in using sqlite during subset creation for training
+- Fixed an issue in using sqlite during subset creation for training
 
 2.2.12
 ======
