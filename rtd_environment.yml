@@ -14,6 +14,7 @@ dependencies:
   - pgvector
   - pgvector-python
   - postgresql
+  - scikit-learn<1.3
   - hdbscan
   - psycopg2
   - biopython=1.79

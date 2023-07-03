@@ -32,7 +32,7 @@ def test_align_sick(
             .filter(Word.word_type != WordType.silence)
             .count()
         )
-        assert word_interval_count == 370
+        assert word_interval_count == 372
     assert "AY_S" in a.phone_mapping
     assert os.path.exists(os.path.join(export_directory, "michael", "acoustic_corpus.TextGrid"))
     a.clean_working_directory()

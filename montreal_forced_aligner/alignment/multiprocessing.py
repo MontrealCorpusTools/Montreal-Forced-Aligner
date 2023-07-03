@@ -2060,6 +2060,8 @@ class AlignmentExtractionFunction(KaldiFunction):
 
         Parameters
         ----------
+        utterance_name: str
+            Name of the current utterance
         intervals: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
             Intervals to process
 
