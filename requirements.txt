@@ -6,7 +6,7 @@ numpy
 scipy
 scikit-learn
 requests
-biopython=1.79
+biopython==1.79
 dataclassy
 sqlalchemy>=2.0
 click
