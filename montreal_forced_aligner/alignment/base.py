@@ -1031,9 +1031,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         continue
 
                     update_mappings.extend(result[0])
-                    update_mappings.extend(
-                        [{"id": x, "begin": 0, "end": 0, "label": ""} for x in result[1]]
-                    )
+                    update_mappings.extend([{"id": x, "begin": 0, "end": 0} for x in result[1]])
                     pbar.update(1)
                 for p in procs:
                     p.join()
@@ -1049,7 +1047,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     for result in function.run():
                         update_mappings.extend(result[0])
                         update_mappings.extend(
-                            [{"id": x, "begin": 0, "end": 0, "label": ""} for x in result[1]]
+                            [{"id": x, "begin": 0, "end": 0} for x in result[1]]
                         )
                         pbar.update(1)
             bulk_update(session, PhoneInterval, update_mappings)

@@ -370,7 +370,9 @@ def export_textgrid(
                     tg.addTier(tgio.IntervalTier(tier_name, [], minT=0, maxT=duration))
                 tier = tg.getTier(tier_name)
                 for i, a in enumerate(sorted(intervals, key=lambda x: x.begin)):
-                    if duration - a.end < (frame_shift * 2):  # Fix rounding issues
+                    if i == len(intervals) - 1 and duration - a.end < (
+                        frame_shift * 2
+                    ):  # Fix rounding issues
                         a.end = duration
                     if i > 0 and tier.entries[-1].end > a.to_tg_interval().start:
                         a.begin = tier.entries[-1].end
