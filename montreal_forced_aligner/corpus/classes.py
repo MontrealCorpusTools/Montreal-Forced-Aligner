@@ -170,6 +170,8 @@ class FileData:
                 num_channels = self.wav_info.num_channels
             else:
                 duration = tg.maxTimestamp
+            if root_speaker:
+                self.speaker_ordering.append(root_speaker)
             for i, tier_name in enumerate(tg.tierNames):
                 ti = tg._tierDict[tier_name]
                 if tier_name.lower() == "notes":
