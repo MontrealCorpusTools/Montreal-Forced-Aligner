@@ -12,6 +12,7 @@ import rich_click as click
 
 from montreal_forced_aligner.command_line.adapt import adapt_model_cli
 from montreal_forced_aligner.command_line.align import align_corpus_cli
+from montreal_forced_aligner.command_line.align_one import align_one_cli
 from montreal_forced_aligner.command_line.anchor import anchor_cli
 from montreal_forced_aligner.command_line.configure import configure_cli
 from montreal_forced_aligner.command_line.create_segments import create_segments_cli
@@ -175,6 +176,7 @@ def version_cli():
 
 mfa_cli.add_command(adapt_model_cli)
 mfa_cli.add_command(align_corpus_cli)
+mfa_cli.add_command(align_one_cli)
 mfa_cli.add_command(anchor_cli)
 mfa_cli.add_command(diarize_speakers_cli)
 mfa_cli.add_command(create_segments_cli)

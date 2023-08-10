@@ -29,3 +29,27 @@ API reference
 -------------
 
 - :ref:`alignment_api`
+
+.. _single_alignment:
+
+Align a single file ``(mfa align_one)``
+=======================================
+
+This workflow is identical to :ref:`pretrained_alignment`, but rather than aligning a full dataset, it only aligns a single file.
+Because only a single file is used, many of the optimizations for larger datasets are skipped resulting in faster alignment times,
+but features like speaker adaptation are not employed.
+
+There are a number of :xref:`pretrained_acoustic_models` to use, but you can also adapt a pretrained model to your data (see :ref:`adapt_acoustic_model`)
+or train an acoustic model from scratch using your dataset (see :ref:`train_acoustic_model`).
+
+Command reference
+-----------------
+
+.. click:: montreal_forced_aligner.command_line.align_one:align_one_cli
+   :prog: mfa align_one
+   :nested: full
+
+Configuration reference
+-----------------------
+
+- :ref:`configuration_global`
