@@ -41,7 +41,7 @@ __all__ = ["align_corpus_cli"]
 @click.option(
     "--config_path",
     "-c",
-    help="Path to config file to use for training.",
+    help="Path to config file to use for aligning.",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(

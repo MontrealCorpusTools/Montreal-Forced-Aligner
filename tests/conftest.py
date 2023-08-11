@@ -788,6 +788,11 @@ def mixed_dict_path(dict_dir):
 
 
 @pytest.fixture(scope="session")
+def english_us_mfa_reduced_dict(dict_dir):
+    return dict_dir.joinpath("english_us_mfa_reduced.dict")
+
+
+@pytest.fixture(scope="session")
 def vietnamese_dict_path(dict_dir):
     return dict_dir.joinpath("test_vietnamese_ipa.txt")
 

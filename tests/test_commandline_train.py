@@ -7,7 +7,7 @@ from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 def test_train_acoustic_with_g2p(
     combined_corpus_dir,
-    english_us_mfa_dictionary,
+    english_us_mfa_reduced_dict,
     generated_dir,
     temp_dir,
     train_g2p_acoustic_config_path,
@@ -20,7 +20,7 @@ def test_train_acoustic_with_g2p(
     command = [
         "train",
         combined_corpus_dir,
-        english_us_mfa_dictionary,
+        english_us_mfa_reduced_dict,
         acoustic_g2p_model_path,
         "--output_directory",
         output_directory,
