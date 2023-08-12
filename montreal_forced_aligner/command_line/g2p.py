@@ -48,6 +48,13 @@ __all__ = ["g2p_cli"]
     type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
+    "--num_pronunciations",
+    "-n",
+    help="Number of pronunciations to generate.",
+    type=click.INT,
+    default=0
+)
+@click.option(
     "--dictionary_path",
     help="Path to existing pronunciation dictionary to use to find OOVs.",
     type=click.UNPROCESSED,

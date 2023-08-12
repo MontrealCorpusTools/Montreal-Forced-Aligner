@@ -336,6 +336,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         acoustic_model = getattr(self, "acoustic_model", None)
         if acoustic_model is not None:
             acoustic_model.export_model(self.working_directory)
+        perform_speaker_adaptation = self.uses_speaker_adaptation
         try:
             self.compile_train_graphs()
 
@@ -350,6 +351,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             if (
                 acoustic_model is not None
                 and acoustic_model.meta["features"]["uses_speaker_adaptation"]
+                and perform_speaker_adaptation
             ):
                 if self.alignment_model_path.suffix == ".mdl":
                     if os.path.exists(self.alignment_model_path.with_suffix(".alimdl")):

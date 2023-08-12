@@ -642,6 +642,22 @@ def basic_corpus_txt_dir(corpus_root_dir, wav_dir, lab_dir):
 
 
 @pytest.fixture()
+def basic_corpus_initial_apostrophe(corpus_root_dir, wav_dir, lab_dir):
+    path = corpus_root_dir.joinpath("test_basic_txt")
+    os.makedirs(path, exist_ok=True)
+    names = [("michael", ["acoustic_corpus"])]
+    for s, files in names:
+        s_dir = path.joinpath(s)
+        os.makedirs(s_dir, exist_ok=True)
+        for name in files:
+            shutil.copyfile(wav_dir.joinpath(name + ".wav"), s_dir.joinpath(name + ".wav"))
+            with open(s_dir.joinpath(name + ".txt"), 'w') as outf, \
+                open(lab_dir.joinpath(name + ".lab"), 'r') as inf:
+                outf.write("'"+inf.read())
+    return path
+
+
+@pytest.fixture()
 def extra_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     path = corpus_root_dir.joinpath("test_extra")
     os.makedirs(path, exist_ok=True)
@@ -785,6 +801,11 @@ def xsampa_dict_path(dict_dir):
 @pytest.fixture(scope="session")
 def mixed_dict_path(dict_dir):
     return dict_dir.joinpath("test_mixed_format_dictionary.txt")
+
+
+@pytest.fixture(scope="session")
+def english_us_mfa_reduced_dict(dict_dir):
+    return dict_dir.joinpath("english_us_mfa_reduced.dict")
 
 
 @pytest.fixture(scope="session")

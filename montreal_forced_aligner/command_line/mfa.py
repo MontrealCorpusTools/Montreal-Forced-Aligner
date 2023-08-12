@@ -127,7 +127,7 @@ def mfa_cli(ctx: click.Context) -> None:
         run_check = False
     elif ctx.invoked_subcommand in ["model", "models"]:
         if "add_words" in sys.argv or "inspect" in sys.argv:
-            auto_server = getattr(GLOBAL_CONFIG.global_profile, "auto_server", True)
+            auto_server = getattr(GLOBAL_CONFIG.current_profile, "auto_server", True)
             run_check = True
         else:
             run_check = False
@@ -136,7 +136,7 @@ def mfa_cli(ctx: click.Context) -> None:
             run_check = False
             auto_server = False
     else:
-        auto_server = getattr(GLOBAL_CONFIG.global_profile, "auto_server", True)
+        auto_server = getattr(GLOBAL_CONFIG.current_profile, "auto_server", True)
     if "--no_use_postgres" in sys.argv or not GLOBAL_CONFIG.current_profile.use_postgres:
         run_check = False
         auto_server = False
@@ -153,10 +153,7 @@ def mfa_cli(ctx: click.Context) -> None:
         atexit.register(hooks.history_save_handler)
         atexit.register(cleanup_logger)
         if auto_server:
-            try:
-                atexit.register(stop_server)
-            except DatabaseError:
-                pass
+            atexit.register(stop_server)
 
     mp.freeze_support()
 

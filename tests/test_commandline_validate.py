@@ -17,6 +17,8 @@ def test_validate_corpus(
         "--acoustic_model_path",
         english_mfa_acoustic_model,
         "-q",
+        "-s",
+        "4",
         "--oov_count_threshold",
         "0",
         "--clean",
