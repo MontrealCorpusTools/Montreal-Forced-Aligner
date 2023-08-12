@@ -849,24 +849,30 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         if silence_disambiguation_symbol is None:
             silence_disambiguation_symbol = "<eps>"
 
-        initial_silence_cost = -1 * math.log(self.initial_silence_probability)
-        initial_non_silence_cost = -1 * math.log(1.0 - (self.initial_silence_probability))
-        if self.final_silence_correction is None or self.final_non_silence_correction is None:
-            final_silence_cost = "0"
-            final_non_silence_cost = "0"
-        else:
+        initial_silence_cost = "0"
+        initial_non_silence_cost = "0"
+        if self.initial_silence_probability:
+            initial_silence_cost = -1 * math.log(self.initial_silence_probability)
+            initial_non_silence_cost = -1 * math.log(1.0 - self.initial_silence_probability)
+        final_silence_cost = "0"
+        final_non_silence_cost = "0"
+        if (self.final_silence_correction is not None and
+                self.final_non_silence_correction is not None):
             final_silence_cost = str(-math.log(self.final_silence_correction))
             final_non_silence_cost = str(-math.log(self.final_non_silence_correction))
-        base_silence_following_cost = -math.log(self.silence_probability)
-        base_non_silence_following_cost = -math.log(1 - self.silence_probability)
+        base_silence_following_cost = "0"
+        base_non_silence_following_cost = "0"
+        if self.silence_probability:
+            base_silence_following_cost = -math.log(self.silence_probability)
+            base_non_silence_following_cost = -math.log(1 - self.silence_probability)
         with mfa_open(path, "w") as outf:
             outf.write(
                 f"{start_state}\t{non_silence_state}\t{silence_disambiguation_symbol}\t{self.silence_word}\t{initial_non_silence_cost}\n"
             )  # initial no silence
-
-            outf.write(
-                f"{start_state}\t{silence_state}\t{self.optional_silence_phone}\t{self.silence_word}\t{initial_silence_cost}\n"
-            )  # initial silence
+            if self.initial_silence_probability:
+                outf.write(
+                    f"{start_state}\t{silence_state}\t{self.optional_silence_phone}\t{self.silence_word}\t{initial_silence_cost}\n"
+                )  # initial silence
             silence_query = (
                 session.query(Word.word)
                 .filter(Word.word_type == WordType.silence)
@@ -956,11 +962,12 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 outf.write(
                     f"{current_state}\t{non_silence_state}\t{silence_disambiguation_symbol}\t<eps>\t{non_silence_following_cost}\n"
                 )
-                outf.write(
-                    f"{current_state}\t{silence_state}\t{self.optional_silence_phone}\t<eps>\t{silence_following_cost}\n"
-                )
-
-            outf.write(f"{silence_state}\t{final_silence_cost}\n")
+                if self.silence_probability:
+                    outf.write(
+                        f"{current_state}\t{silence_state}\t{self.optional_silence_phone}\t<eps>\t{silence_following_cost}\n"
+                    )
+            if self.silence_probability:
+                outf.write(f"{silence_state}\t{final_silence_cost}\n")
             outf.write(f"{non_silence_state}\t{final_non_silence_cost}\n")
 
     def _write_align_lexicon(
