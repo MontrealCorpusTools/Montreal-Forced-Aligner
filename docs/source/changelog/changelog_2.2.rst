@@ -5,6 +5,13 @@
 2.2 Changelog
 *************
 
+2.2.16
+======
+
+- Fixed a crash when using the :code:`--speaker_characters` flag with TextGrid files
+- Fixed a crash when using :code:`--num_pronunciations` flag before required arguments
+- Fixed an issue where the aligner would use speaker adaptation even if it was explicitly disabled
+
 2.2.15
 ======
 
