@@ -11,7 +11,7 @@ from montreal_forced_aligner.models import AcousticModel, DictionaryModel, G2PMo
 
 
 def test_get_available_languages():
-    manager = ModelManager()
+    manager = ModelManager(ignore_cache=True)
     manager.refresh_remote()
     model_type = "acoustic"
     acoustic_models = manager.remote_models[model_type]
@@ -29,7 +29,7 @@ def test_get_available_languages():
     assert "vietnamese_mfa" in langs
 
 
-def test_download():
+def test_download_error():
     command = [
         "model",
         "download",
@@ -39,11 +39,15 @@ def test_download():
     with pytest.raises(RemoteModelNotFoundError):
         click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
 
+
+def test_download_acoustic():
+
     command = [
         "model",
         "download",
         "acoustic",
-        "english_us_arpa",
+        "german_mfa",
+        "--ignore_cache"
     ]
 
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
@@ -55,14 +59,42 @@ def test_download():
         print(result.exc_info)
         raise result.exception
     assert not result.return_value
+    path = AcousticModel.get_pretrained_path("german_mfa")
+    assert path.exists()
 
-    assert os.path.exists(AcousticModel.get_pretrained_path("english_us_arpa"))
+    assert AcousticModel(path).version == '2.0.0rc4.dev19+ged818cb.d20220404'
+
+    command = [
+        "model",
+        "download",
+        "acoustic",
+        "german_mfa",
+        "--version",
+        "2.0.0"
+    ]
+
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+    path = AcousticModel.get_pretrained_path("german_mfa")
+    assert path.exists()
+
+    assert AcousticModel(path).version != '2.0.0rc4.dev19+ged818cb.d20220404'
+
+
+def test_download_g2p():
 
     command = [
         "model",
         "download",
         "g2p",
-        "english_us_arpa",
+        "german_mfa",
     ]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
@@ -74,13 +106,16 @@ def test_download():
         raise result.exception
     assert not result.return_value
 
-    assert os.path.exists(G2PModel.get_pretrained_path("english_us_arpa"))
+    assert os.path.exists(G2PModel.get_pretrained_path("german_mfa"))
+
+
+def test_download_dictionary():
 
     command = [
         "model",
         "download",
         "dictionary",
-        "english_us_arpa",
+        "german_mfa",
     ]
 
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
@@ -93,7 +128,10 @@ def test_download():
         raise result.exception
     assert not result.return_value
 
-    assert os.path.exists(DictionaryModel.get_pretrained_path("english_us_arpa"))
+    assert os.path.exists(DictionaryModel.get_pretrained_path("german_mfa"))
+
+
+def test_download_list_acoustic():
 
     command = ["model", "download", "acoustic", "--ignore_cache"]
 
@@ -106,6 +144,9 @@ def test_download():
         print(result.exc_info)
         raise result.exception
     assert not result.return_value
+
+
+def test_download_list_dictionary():
 
     command = [
         "model",

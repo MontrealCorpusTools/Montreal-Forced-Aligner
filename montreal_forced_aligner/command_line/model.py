@@ -52,6 +52,12 @@ def model_cli() -> None:
     default=None,
 )
 @click.option(
+    "--version",
+    help="Specific version of model to download rather than the latest.",
+    type=str,
+    default=None,
+)
+@click.option(
     "--ignore_cache",
     is_flag=True,
     help="Flag to ignore existing downloaded models and force a re-download.",
@@ -59,16 +65,16 @@ def model_cli() -> None:
 )
 @click.help_option("-h", "--help")
 def download_model_cli(
-    model_type: str, model_name: typing.List[str], github_token: str, ignore_cache: bool
+    model_type: str, model_name: typing.List[str], github_token: str, version: str, ignore_cache: bool
 ) -> None:
     """
     Download pretrained models from the MFA repository. If no model names are specified, the list of all downloadable models
     of the given model type will be printed.
     """
-    manager = ModelManager(token=github_token)
+    manager = ModelManager(token=github_token, ignore_cache=ignore_cache)
     if model_name:
         for name in model_name:
-            manager.download_model(model_type, name, ignore_cache)
+            manager.download_model(model_type, name, version=version)
     else:
         manager.print_remote_models(model_type)
 

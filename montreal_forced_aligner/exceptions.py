@@ -46,6 +46,9 @@ __all__ = [
     "TextGridParseError",
     "DictionaryError",
     "NoDefaultSpeakerDictionaryError",
+    "RemoteModelVersionNotFoundError",
+    "PhoneMismatchError",
+    "RemoteModelNotFoundError",
     "DictionaryPathError",
     "DictionaryFileError",
     "FileArgumentNotFoundError",
@@ -636,11 +639,48 @@ class RemoteModelNotFoundError(ArgumentError):
             available = [f"{x}" for x in available]
             self.message_lines.append(f"Available: {comma_join(available)}.")
         self.message_lines.append(
-            "You can see all available models either on https://mfa-models.readthedocs.io/en/latest/ or https://github.com/MontrealCorpusTools/mfa-models/releases."
+            "You can see all available models either on https://mfa-models.readthedocs.io/en/latest/ or "
+            "https://github.com/MontrealCorpusTools/mfa-models/releases."
         )
         if model_type:
             self.message_lines.append(
-                f"If you're looking for a model from 1.0, please see https://github.com/MontrealCorpusTools/mfa-models/releases/tag/{model_type}-archive-v1.0."
+                f"If you're looking for a model from 1.0, "
+                f"please see https://github.com/MontrealCorpusTools/mfa-models/releases/tag/{model_type}-archive-v1.0."
+            )
+
+
+class RemoteModelVersionNotFoundError(ArgumentError):
+    """
+    Exception class for not finding a specified version of a pretrained model
+
+    Parameters
+    ----------
+    name: str
+        Model name
+    model_type: str
+        Model type requested
+    version: str
+        Model version requested
+    available: list[str], optional
+        List of models that were found
+    """
+
+    def __init__(
+        self, name: str, model_type: str, version: str, available: Optional[List[str]] = None
+    ):
+        super().__init__("")
+        self.message_lines = [f'Could not find version "{version}" for {model_type} named "{name}".']
+        if available:
+            available = [f"{x}" for x in available]
+            self.message_lines.append(f"Available versions: {comma_join(available)}.")
+        self.message_lines.append(
+            "You can see all available models and versions either on https://mfa-models.readthedocs.io/en/latest/ or "
+            "https://github.com/MontrealCorpusTools/mfa-models/releases."
+        )
+        if model_type:
+            self.message_lines.append(
+                f"If you're looking for a model from 1.0, "
+                f"please see https://github.com/MontrealCorpusTools/mfa-models/releases/tag/{model_type}-archive-v1.0."
             )
 
 

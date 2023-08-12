@@ -26,6 +26,7 @@ from montreal_forced_aligner.exceptions import (
     ModelsConnectionError,
     PronunciationAcousticMismatchError,
     RemoteModelNotFoundError,
+    RemoteModelVersionNotFoundError,
 )
 from montreal_forced_aligner.helper import EnhancedJSONEncoder, mfa_open
 
@@ -377,6 +378,10 @@ class AcousticModel(Archive):
             source = AcousticModel.get_pretrained_path(source)
 
         super().__init__(source, root_directory)
+
+    @property
+    def version(self):
+        return self.meta["version"]
 
     def add_meta_file(self, trainer: ModelExporterMixin) -> None:
         """
@@ -1437,17 +1442,19 @@ class ModelManager:
     ----------
         token: str, optional
             GitHub authentication token to use to increase release limits
+        ignore_cache: bool
+            Flag to ignore previously downloaded files
     """
 
     base_url = "https://api.github.com/repos/MontrealCorpusTools/mfa-models/releases"
 
-    def __init__(self, token=None):
+    def __init__(self, token:typing.Optional[str]=None, ignore_cache:bool=False):
         from montreal_forced_aligner.config import get_temporary_directory
 
         pretrained_dir = get_temporary_directory().joinpath("pretrained_models")
         pretrained_dir.mkdir(parents=True, exist_ok=True)
         self.local_models = {k: [] for k in MODEL_TYPES.keys()}
-        self.remote_models: Dict[str, Dict[str, ModelRelease]] = {
+        self.remote_models: Dict[str, Dict[str, Dict[str, ModelRelease]]] = {
             k: {} for k in MODEL_TYPES.keys()
         }
         self.token = token
@@ -1455,6 +1462,7 @@ class ModelManager:
         if self.token is not None:
             self.token = environment_token
         self.synced_remote = False
+        self.ignore_cache = ignore_cache
         self._cache_info = {}
         self.refresh_local()
 
@@ -1475,9 +1483,21 @@ class ModelManager:
 
     def refresh_local(self) -> None:
         """Refresh cached information with the latest list of local model"""
-        if self.cache_path.exists():
+        if self.cache_path.exists() and not self.ignore_cache:
+            reset_cache = False
             with mfa_open(self.cache_path, "r") as f:
                 self._cache_info = json.load(f)
+                for model_type, model_releases in self._cache_info.items():  # Backward compatibility
+                    if model_type not in MODEL_TYPES:
+                        continue
+                    for model_name, version_data in model_releases.items():
+                        if not isinstance(version_data, dict):
+                            reset_cache = True
+                            break
+                    if reset_cache:
+                        break
+                if reset_cache:
+                    self._cache_info = {}
                 if "list_etags" in self._cache_info:
                     self._cache_info["list_etags"] = {
                         int(k): v for k, v in self._cache_info["list_etags"].items()
@@ -1514,8 +1534,11 @@ class ModelManager:
                 for model_type, model_releases in self._cache_info.items():
                     if model_type not in MODEL_TYPES:
                         continue
-                    for model_name, data in model_releases.items():
-                        self.remote_models[model_type][model_name] = ModelRelease(*data)
+                    for model_name, version_data in model_releases.items():
+                        for version, data in version_data.items():
+                            if model_name not in self.remote_models[model_type]:
+                                self.remote_models[model_type][model_name] = {}
+                            self.remote_models[model_type][model_name][version] = ModelRelease(*data)
                 return
             self._cache_info["list_etags"][page] = r.headers["etag"]
             data = r.json()
@@ -1527,22 +1550,22 @@ class ModelManager:
                 )  # tag format "{model_type}-{model_name}-v{version}"
                 if model_type not in self.remote_models:  # Other releases, archived, etc
                     continue
-                if (
-                    model_name in self.remote_models[model_type]
-                ):  # Older version than currently tracked
-                    continue
                 if not tag.startswith(model_type):
                     continue
                 if "archive" in tag:
                     continue
                 download_url = d["assets"][0]["url"]
                 file_name = d["assets"][0]["name"]
-                self.remote_models[model_type][model_name] = ModelRelease(
+                if model_name not in self.remote_models[model_type]:
+                    self.remote_models[model_type][model_name] = {}
+                self.remote_models[model_type][model_name][version] = ModelRelease(
                     model_name, tag, version, download_url, file_name, d["id"]
                 )
                 if model_type not in self._cache_info:
                     self._cache_info[model_type] = {}
-                self._cache_info[model_type][model_name] = [
+                if model_name not in self._cache_info[model_type]:
+                    self._cache_info[model_type][model_name] = {}
+                self._cache_info[model_type][model_name][version] = [
                     model_name,
                     tag,
                     version,
@@ -1603,14 +1626,17 @@ class ModelManager:
             pprint(data)
         else:
             logger.info(f"Available {model_type} models for download")
-            names = sorted(self.remote_models[model_type].keys())
+            names = {x: sorted(self.remote_models[model_type][x].keys())
+                               for x in sorted(self.remote_models[model_type].keys())}
             if names:
                 pprint(names)
             else:
                 logger.error("No models found")
 
     def download_model(
-        self, model_type: str, model_name=typing.Optional[str], ignore_cache=False
+        self, model_type: str,
+            model_name: typing.Optional[str],
+            version: typing.Optional[str] = None
     ) -> None:
         """
         Download a model to MFA's temporary directory
@@ -1621,22 +1647,36 @@ class ModelManager:
             Model type
         model_name: str
             Name of model
-        ignore_cache: bool
-            Flag to ignore previously downloaded files
+        version: str, optional
+            Version of model to download, optional
         """
         if not model_name:
             return self.print_remote_models(model_type)
         if not self.synced_remote:
             self.refresh_remote()
+        ignore_cache = self.ignore_cache
         if model_name not in self.remote_models[model_type]:
             raise RemoteModelNotFoundError(
                 model_name, model_type, sorted(self.remote_models[model_type].keys())
             )
-        release = self.remote_models[model_type][model_name]
+        if version is None:
+            version = sorted(self.remote_models[model_type][model_name].keys())[-1]
+        else:
+            if not version.startswith('v'):
+                version = f"v{version}"
+            ignore_cache = True
+
+        if version not in self.remote_models[model_type][model_name]:
+            raise RemoteModelVersionNotFoundError(
+                model_name, model_type, version, sorted(self.remote_models[model_type][model_name].keys())
+            )
+        release = self.remote_models[model_type][model_name][version]
         local_path = (
             MODEL_TYPES[model_type].pretrained_directory().joinpath(release.download_file_name)
         )
         if local_path.exists() and not ignore_cache:
+            logger.warning(f"Local version of model already exists ({local_path}). "
+                           f"Use the --ignore_cache flag to force redownloading.")
             return
         headers = {"Accept": "application/octet-stream"}
         if self.token:
