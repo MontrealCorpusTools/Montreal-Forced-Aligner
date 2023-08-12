@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 
     from montreal_forced_aligner.abc import MetaDict
 
-__all__ = ["PretrainedAligner"]
+__all__ = ["PretrainedAligner", "DictionaryTrainer"]
 
 logger = logging.getLogger("mfa")
 
@@ -449,8 +449,6 @@ class DictionaryTrainer(PretrainedAligner):
         ----------
         output_directory: str
             Directory in which to save new dictionaries
-        silence_probabilities: bool
-            Flag for whether to save silence probabilities as well
 
         See Also
         --------

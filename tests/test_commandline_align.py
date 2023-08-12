@@ -7,26 +7,44 @@ from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
 def test_align_no_speaker_adaptation(
-    basic_corpus_dir, generated_dir, english_dictionary, temp_dir, english_acoustic_model, db_setup
+    basic_corpus_initial_apostrophe,
+        generated_dir,
+        english_us_mfa_reduced_dict,
+        temp_dir, english_mfa_acoustic_model, db_setup
 ):
     output_directory = generated_dir.joinpath("basic_output")
     command = [
         "align",
-        basic_corpus_dir,
-        english_dictionary,
-        "english_us_arpa",
+        basic_corpus_initial_apostrophe,
+        english_us_mfa_reduced_dict,
+        english_mfa_acoustic_model,
         output_directory,
         "-q",
         "--clean",
         "--debug",
         "--verbose",
-        "--no_uses_speaker_adaptation",
+        "--uses_speaker_adaptation",
+        "false",
+        "--textgrid_cleanup",
         "-p",
         "test",
     ]
     command = [str(x) for x in command]
-    click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+
     assert os.path.exists(output_directory)
+
+    corpus_name = basic_corpus_initial_apostrophe.stem
+    temp_path = temp_dir.joinpath(corpus_name, corpus_name, 'split2', 'trans.1.1.scp')
+    assert not temp_path.exists()
 
 
 def test_align_single_speaker(
