@@ -35,6 +35,7 @@ __all__ = [
     "validate_language_model",
     "validate_dictionary",
     "check_databases",
+    "common_options",
 ]
 
 
@@ -94,8 +95,9 @@ def common_options(f: typing.Callable) -> typing.Callable:
         ),
         click.option(
             "--use_mp/--no_use_mp",
+            "--use_threading/--no_use_threading",
             "use_mp",
-            help="Turn on/off multiprocessing. Multiprocessing is recommended will allow for faster executions.",
+            help="Turn on/off multithreading. Multithreading is recommended will allow for faster executions.",
             default=None,
         ),
         click.option(

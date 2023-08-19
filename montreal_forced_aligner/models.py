@@ -16,6 +16,9 @@ from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Tuple, Union
 
 import requests
 import yaml
+from _kalpy.matrix import FloatMatrix
+from kalpy.feat.mfcc import MfccComputer
+from kalpy.feat.pitch import PitchComputer
 from rich.pretty import pprint
 
 from montreal_forced_aligner.abc import MfaModel, ModelExporterMixin
@@ -383,6 +386,10 @@ class AcousticModel(Archive):
     def version(self):
         return self.meta["version"]
 
+    @property
+    def uses_cmvn(self):
+        return self.meta["features"]["uses_cmvn"]
+
     def add_meta_file(self, trainer: ModelExporterMixin) -> None:
         """
         Add metadata file from a model trainer
@@ -411,9 +418,6 @@ class AcousticModel(Archive):
         params["final_silence_correction"] = self.meta.get("final_silence_correction", None)
         if "other_noise_phone" in self.meta:
             params["other_noise_phone"] = self.meta["other_noise_phone"]
-        # rules_path = self.dirname.joinpath("rules.yaml")
-        # if os.path.exists(rules_path):
-        #    params["rules_path"] = rules_path
         if (
             "dictionaries" in self.meta
             and "position_dependent_phones" in self.meta["dictionaries"]
@@ -426,43 +430,91 @@ class AcousticModel(Archive):
         return params
 
     @property
+    def tree_path(self) -> Path:
+        """Current acoustic model path"""
+        return self.dirname.joinpath("tree")
+
+    @property
+    def lda_mat_path(self) -> Path:
+        """Current acoustic model path"""
+        return self.dirname.joinpath("lda.mat")
+
+    @property
+    def model_path(self) -> Path:
+        """Current acoustic model path"""
+        return self.dirname.joinpath("final.mdl")
+
+    @property
+    def alignment_model_path(self) -> Path:
+        """Alignment model path"""
+        path = self.model_path.with_suffix(".alimdl")
+        if os.path.exists(path):
+            return path
+        return self.model_path
+
+    @property
+    def mfcc_computer(self) -> MfccComputer:
+        return MfccComputer(**self.mfcc_options)
+
+    @property
+    def pitch_computer(self) -> typing.Optional[PitchComputer]:
+        if self.meta["features"]["use_pitch"]:
+            return PitchComputer(**self.pitch_options)
+        return
+
+    @property
+    def lda_mat(self) -> FloatMatrix:
+        lda_mat_path = self.dirname.joinpath("lda.mat")
+        lda_mat = None
+        if lda_mat_path.exists():
+            lda_mat = FloatMatrix.read_from_file(str(lda_mat_path))
+        return lda_mat
+
+    @property
     def mfcc_options(self) -> MetaDict:
         """Parameters to use in computing MFCC features."""
         return {
-            "use-energy": self._meta["features"].get("use_energy", False),
+            "use_energy": self._meta["features"].get("use_energy", False),
             "dither": self._meta["features"].get("dither", 1),
-            "energy-floor": self._meta["features"].get("energy_floor", 0),
-            "num-ceps": self._meta["features"].get("num_coefficients", 13),
-            "num-mel-bins": self._meta["features"].get("num_mel_bins", 23),
-            "cepstral-lifter": self._meta["features"].get("cepstral_lifter", 22),
-            "preemphasis-coefficient": self._meta["features"].get("preemphasis_coefficient", 0.97),
-            "frame-shift": self._meta["features"].get("frame_shift", 10),
-            "frame-length": self._meta["features"].get("frame_length", 25),
-            "low-freq": self._meta["features"].get("low_frequency", 20),
-            "high-freq": self._meta["features"].get("high_frequency", 7800),
-            "sample-frequency": self._meta["features"].get("sample_frequency", 16000),
-            "allow-downsample": self._meta["features"].get("allow_downsample", True),
-            "allow-upsample": self._meta["features"].get("allow_upsample", True),
-            "snip-edges": self._meta["features"].get("snip_edges", True),
+            "energy_floor": self._meta["features"].get("energy_floor", 0),
+            "num_coefficients": self._meta["features"].get("num_coefficients", 13),
+            "num_mel_bins": self._meta["features"].get("num_mel_bins", 23),
+            "cepstral_lifter": self._meta["features"].get("cepstral_lifter", 22),
+            "preemphasis_coefficient": self._meta["features"].get("preemphasis_coefficient", 0.97),
+            "frame_shift": self._meta["features"].get("frame_shift", 10),
+            "frame_length": self._meta["features"].get("frame_length", 25),
+            "low_frequency": self._meta["features"].get("low_frequency", 20),
+            "high_frequency": self._meta["features"].get("high_frequency", 7800),
+            "sample_frequency": self._meta["features"].get("sample_frequency", 16000),
+            "snip_edges": self._meta["features"].get("snip_edges", True),
         }
 
     @property
     def pitch_options(self) -> MetaDict:
         """Parameters to use in computing MFCC features."""
-        return {
-            "use-pitch": self._meta["features"].get("use_pitch", False),
-            "use-voicing": self._meta["features"].get("use_voicing", False),
-            "use-delta-pitch": self._meta["features"].get("use_delta_pitch", False),
-            "frame-shift": self._meta["features"].get("frame_shift", 10),
-            "frame-length": self._meta["features"].get("frame_length", 25),
-            "min-f0": self._meta["features"].get("min_f0", 50),
-            "max-f0": self._meta["features"].get("max_f0", 800),
-            "sample-frequency": self._meta["features"].get("sample_frequency", 16000),
-            "penalty-factor": self._meta["features"].get("penalty_factor", 0.1),
-            "delta-pitch": self._meta["features"].get("delta_pitch", 0.005),
-            "snip-edges": self._meta["features"].get("snip_edges", True),
-            "normalize": self._meta["features"].get("normalize_pitch", True),
+        use_pitch = self._meta["features"].get("use_pitch", False)
+        use_voicing = self._meta["features"].get("use_voicing", False)
+        use_delta_pitch = self._meta["features"].get("use_delta_pitch", False)
+        normalize = self._meta["features"].get("normalize_pitch", True)
+        options = {
+            "frame_shift": self._meta["features"].get("frame_shift", 10),
+            "frame_length": self._meta["features"].get("frame_length", 25),
+            "min_f0": self._meta["features"].get("min_f0", 50),
+            "max_f0": self._meta["features"].get("max_f0", 800),
+            "sample_frequency": self._meta["features"].get("sample_frequency", 16000),
+            "penalty_factor": self._meta["features"].get("penalty_factor", 0.1),
+            "delta_pitch": self._meta["features"].get("delta_pitch", 0.005),
+            "snip_edges": self._meta["features"].get("snip_edges", True),
+            "add_normalized_log_pitch": False,
+            "add_delta_pitch": False,
+            "add_pov_feature": False,
         }
+        if use_pitch:
+            options["add_normalized_log_pitch"] = normalize
+            options["add_raw_log_pitch"] = not normalize
+        options["add_delta_pitch"] = use_delta_pitch
+        options["add_pov_feature"] = use_voicing
+        return options
 
     @property
     def lda_options(self) -> MetaDict:
@@ -754,6 +806,56 @@ class IvectorExtractorModel(Archive):
         for filename in self.model_files:
             if os.path.exists(self.dirname.joinpath(filename)):
                 copyfile(self.dirname.joinpath(filename), os.path.join(destination, filename))
+
+    @property
+    def mfcc_options(self) -> MetaDict:
+        """Parameters to use in computing MFCC features."""
+        return {
+            "use_energy": self._meta["features"].get("use_energy", False),
+            "dither": self._meta["features"].get("dither", 1),
+            "energy_floor": self._meta["features"].get("energy_floor", 0),
+            "num_coefficients": self._meta["features"].get("num_coefficients", 13),
+            "num_mel_bins": self._meta["features"].get("num_mel_bins", 23),
+            "cepstral_lifter": self._meta["features"].get("cepstral_lifter", 22),
+            "preemphasis_coefficient": self._meta["features"].get("preemphasis_coefficient", 0.97),
+            "frame_shift": self._meta["features"].get("frame_shift", 10),
+            "frame_length": self._meta["features"].get("frame_length", 25),
+            "low_frequency": self._meta["features"].get("low_frequency", 20),
+            "high_frequency": self._meta["features"].get("high_frequency", 7800),
+            "sample_frequency": self._meta["features"].get("sample_frequency", 16000),
+            "snip_edges": self._meta["features"].get("snip_edges", True),
+        }
+
+    @property
+    def pitch_options(self) -> MetaDict:
+        """Parameters to use in computing MFCC features."""
+        use_pitch = self._meta["features"].get("use_pitch", False)
+        use_voicing = self._meta["features"].get("use_voicing", False)
+        use_delta_pitch = self._meta["features"].get("use_delta_pitch", False)
+        normalize = self._meta["features"].get("normalize_pitch", True)
+        options = {
+            "frame_shift": self._meta["features"].get("frame_shift", 10),
+            "frame_length": self._meta["features"].get("frame_length", 25),
+            "min_f0": self._meta["features"].get("min_f0", 50),
+            "max_f0": self._meta["features"].get("max_f0", 800),
+            "sample_frequency": self._meta["features"].get("sample_frequency", 16000),
+            "penalty_factor": self._meta["features"].get("penalty_factor", 0.1),
+            "delta_pitch": self._meta["features"].get("delta_pitch", 0.005),
+            "snip_edges": self._meta["features"].get("snip_edges", True),
+            "add_normalized_log_pitch": False,
+            "add_delta_pitch": False,
+            "add_pov_feature": False,
+        }
+        if use_pitch:
+            options["add_normalized_log_pitch"] = normalize
+            options["add_raw_log_pitch"] = not normalize
+        if self._meta["version"] == "2.1.0" and "ivector_dimension" in self._meta:
+
+            options["add_normalized_log_pitch"] = True
+            options["add_raw_log_pitch"] = True
+        options["add_delta_pitch"] = use_delta_pitch
+        options["add_pov_feature"] = use_voicing
+        return options
 
 
 class G2PModel(Archive):
@@ -1448,7 +1550,7 @@ class ModelManager:
 
     base_url = "https://api.github.com/repos/MontrealCorpusTools/mfa-models/releases"
 
-    def __init__(self, token:typing.Optional[str]=None, ignore_cache:bool=False):
+    def __init__(self, token: typing.Optional[str] = None, ignore_cache: bool = False):
         from montreal_forced_aligner.config import get_temporary_directory
 
         pretrained_dir = get_temporary_directory().joinpath("pretrained_models")
@@ -1487,10 +1589,13 @@ class ModelManager:
             reset_cache = False
             with mfa_open(self.cache_path, "r") as f:
                 self._cache_info = json.load(f)
-                for model_type, model_releases in self._cache_info.items():  # Backward compatibility
+                for (
+                    model_type,
+                    model_releases,
+                ) in self._cache_info.items():  # Backward compatibility
                     if model_type not in MODEL_TYPES:
                         continue
-                    for model_name, version_data in model_releases.items():
+                    for version_data in model_releases.values():
                         if not isinstance(version_data, dict):
                             reset_cache = True
                             break
@@ -1538,7 +1643,9 @@ class ModelManager:
                         for version, data in version_data.items():
                             if model_name not in self.remote_models[model_type]:
                                 self.remote_models[model_type][model_name] = {}
-                            self.remote_models[model_type][model_name][version] = ModelRelease(*data)
+                            self.remote_models[model_type][model_name][version] = ModelRelease(
+                                *data
+                            )
                 return
             self._cache_info["list_etags"][page] = r.headers["etag"]
             data = r.json()
@@ -1626,17 +1733,20 @@ class ModelManager:
             pprint(data)
         else:
             logger.info(f"Available {model_type} models for download")
-            names = {x: sorted(self.remote_models[model_type][x].keys())
-                               for x in sorted(self.remote_models[model_type].keys())}
+            names = {
+                x: sorted(self.remote_models[model_type][x].keys())
+                for x in sorted(self.remote_models[model_type].keys())
+            }
             if names:
                 pprint(names)
             else:
                 logger.error("No models found")
 
     def download_model(
-        self, model_type: str,
-            model_name: typing.Optional[str],
-            version: typing.Optional[str] = None
+        self,
+        model_type: str,
+        model_name: typing.Optional[str],
+        version: typing.Optional[str] = None,
     ) -> None:
         """
         Download a model to MFA's temporary directory
@@ -1662,21 +1772,26 @@ class ModelManager:
         if version is None:
             version = sorted(self.remote_models[model_type][model_name].keys())[-1]
         else:
-            if not version.startswith('v'):
+            if not version.startswith("v"):
                 version = f"v{version}"
             ignore_cache = True
 
         if version not in self.remote_models[model_type][model_name]:
             raise RemoteModelVersionNotFoundError(
-                model_name, model_type, version, sorted(self.remote_models[model_type][model_name].keys())
+                model_name,
+                model_type,
+                version,
+                sorted(self.remote_models[model_type][model_name].keys()),
             )
         release = self.remote_models[model_type][model_name][version]
         local_path = (
             MODEL_TYPES[model_type].pretrained_directory().joinpath(release.download_file_name)
         )
         if local_path.exists() and not ignore_cache:
-            logger.warning(f"Local version of model already exists ({local_path}). "
-                           f"Use the --ignore_cache flag to force redownloading.")
+            logger.warning(
+                f"Local version of model already exists ({local_path}). "
+                f"Use the --ignore_cache flag to force redownloading."
+            )
             return
         headers = {"Accept": "application/octet-stream"}
         if self.token:

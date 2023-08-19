@@ -65,7 +65,11 @@ def model_cli() -> None:
 )
 @click.help_option("-h", "--help")
 def download_model_cli(
-    model_type: str, model_name: typing.List[str], github_token: str, version: str, ignore_cache: bool
+    model_type: str,
+    model_name: typing.List[str],
+    github_token: str,
+    version: str,
+    ignore_cache: bool,
 ) -> None:
     """
     Download pretrained models from the MFA repository. If no model names are specified, the list of all downloadable models
@@ -164,7 +168,6 @@ def add_words_cli(context, **kwargs) -> None:
     if kwargs.get("profile", None) is not None:
         os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
-    GLOBAL_CONFIG.save()
 
     dictionary_path = kwargs.get("dictionary_path", None)
     new_pronunciations_path = kwargs.get("new_pronunciations_path", None)

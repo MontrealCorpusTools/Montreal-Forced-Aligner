@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import itertools
 import logging
-import multiprocessing as mp
 import operator
 import os
 import queue
@@ -11,9 +10,11 @@ import random
 import re
 import shutil
 import subprocess
+import threading
 import time
 import typing
 from pathlib import Path
+from queue import Queue
 from typing import Any, List, NamedTuple, Set
 
 import pynini
@@ -30,7 +31,7 @@ from montreal_forced_aligner.exceptions import KaldiProcessingError, PyniniAlign
 from montreal_forced_aligner.g2p.generator import PyniniValidator
 from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.models import G2PModel
-from montreal_forced_aligner.utils import Stopped, thirdparty_binary
+from montreal_forced_aligner.utils import thirdparty_binary
 
 Labels = List[Any]
 
@@ -38,7 +39,7 @@ TOKEN_TYPES = ["byte", "utf8"]
 INF = float("inf")
 RAND_MAX = 32767
 
-__all__ = ["RandomStartWorker", "PyniniTrainer", "G2PTrainer"]
+__all__ = ["RandomStartWorker", "PyniniTrainer", "PyniniTrainerMixin", "G2PTrainer"]
 
 logger = logging.getLogger("mfa")
 
@@ -74,7 +75,7 @@ def _get_far_labels(far_path: typing.Union[Path, str]) -> Set[int]:
     return labels
 
 
-class RandomStartWorker(mp.Process):
+class RandomStartWorker(threading.Thread):
     """
     Random start worker
     """
@@ -82,18 +83,18 @@ class RandomStartWorker(mp.Process):
     def __init__(
         self,
         job_name: int,
-        job_q: mp.Queue,
-        return_queue: mp.Queue,
+        job_q: Queue,
+        return_queue: Queue,
         log_file: str,
-        stopped: Stopped,
+        stopped: threading.Event,
     ):
-        mp.Process.__init__(self)
+        super().__init__()
         self.job_name = job_name
         self.job_q = job_q
         self.return_queue = return_queue
         self.log_file = log_file
         self.stopped = stopped
-        self.finished = Stopped()
+        self.finished = threading.Event()
 
     def run(self) -> None:
         """Run the random start worker"""
@@ -103,7 +104,7 @@ class RandomStartWorker(mp.Process):
                     args = self.job_q.get(timeout=1)
                 except queue.Empty:
                     break
-                if self.stopped.stop_check():
+                if self.stopped.is_set():
                     continue
                 try:
                     start = time.time()
@@ -158,11 +159,11 @@ class RandomStartWorker(mp.Process):
                             likelihood = f.read().strip()
                     self.return_queue.put((afst_path, likelihood))
                 except Exception:
-                    self.stopped.stop()
+                    self.stopped.set()
                     e = KaldiProcessingError([self.log_file])
                     e.job_name = self.job_name
                     self.return_queue.put(e)
-        self.finished.stop()
+        self.finished.set()
         return
 
 
@@ -256,7 +257,6 @@ class PyniniTrainerMixin:
         self,
         order: int = 8,
         random_starts: int = 25,
-        seed: int = 1917,
         delta: float = 1 / 1024,
         alpha: float = 1.0,
         batch_size: int = 800,
@@ -264,6 +264,7 @@ class PyniniTrainerMixin:
         smoothing_method: str = "kneser_ney",
         pruning_method: str = "relative_entropy",
         model_size: int = 1000000,
+        prune_threshold: float = 0.0000001,
         insertions: bool = True,
         deletions: bool = True,
         fst_default_cache_gc="",
@@ -275,7 +276,6 @@ class PyniniTrainerMixin:
             self._data_source = None
         self.order = order
         self.random_starts = random_starts
-        self.seed = seed
         self.delta = delta
         self.alpha = alpha
         self.batch_size = batch_size
@@ -283,6 +283,7 @@ class PyniniTrainerMixin:
         self.smoothing_method = smoothing_method
         self.pruning_method = pruning_method
         self.model_size = model_size
+        self.prune_threshold = prune_threshold
         self.insertions = insertions
         self.deletions = deletions
         self.fst_default_cache_gc = fst_default_cache_gc
@@ -370,13 +371,16 @@ class PyniniTrainerMixin:
                 stdout=subprocess.PIPE,
                 env=os.environ,
             )
-
+            command = [
+                thirdparty_binary("ngramshrink"),
+                f"--method={self.pruning_method}",
+            ]
+            if self.model_size > 0:
+                command.append(f"--target_number_of_ngrams={self.model_size}")
+            else:
+                command.append(f"--theta={self.prune_threshold}")
             ngramshrink_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("ngramshrink"),
-                    f"--method={self.pruning_method}",
-                    f"--target_number_of_ngrams={self.model_size}",
-                ],
+                command,
                 stdin=ngrammake_proc.stdout,
                 stdout=subprocess.PIPE,
                 stderr=logf,
@@ -514,7 +518,7 @@ class PyniniTrainerMixin:
                 train_opts.append(f"--max_iters={self.num_iterations}")
             # Constructs the actual command vectors (plus an index for logging
             # purposes).
-            random.seed(self.seed)
+            random.seed(GLOBAL_CONFIG.current_profile.seed)
             starts = [
                 (
                     RandomStart(
@@ -531,9 +535,9 @@ class PyniniTrainerMixin:
                     random.sample(range(1, RAND_MAX), self.random_starts), 1
                 )
             ]
-            stopped = Stopped()
+            stopped = threading.Event()
             num_commands = len(starts)
-            job_queue = mp.JoinableQueue()
+            job_queue = Queue()
             fst_likelihoods = {}
             # Actually runs starts.
             logger.info("Calculating alignments...")
@@ -544,7 +548,7 @@ class PyniniTrainerMixin:
                 for start in starts:
                     job_queue.put(start)
                 error_dict = {}
-                return_queue = mp.Queue()
+                return_queue = Queue()
                 procs = []
                 for i in range(GLOBAL_CONFIG.num_jobs):
                     log_path = self.working_log_directory.joinpath(f"baumwelch.{i}.log")
@@ -565,11 +569,11 @@ class PyniniTrainerMixin:
 
                             error_dict[getattr(result, "job_name", 0)] = result
                             continue
-                        if stopped.stop_check():
+                        if stopped.is_set():
                             continue
                     except queue.Empty:
                         for proc in procs:
-                            if not proc.finished.stop_check():
+                            if not proc.finished.is_set():
                                 break
                         else:
                             break
@@ -667,7 +671,7 @@ class PyniniTrainer(
             return
         self.dictionary_setup()
         os.makedirs(self.phones_dir, exist_ok=True)
-        self._write_phone_symbol_table()
+        self.phone_table.write_text(str(self.phone_symbol_table_path))
         self._write_grapheme_symbol_table()
         os.makedirs(self.working_log_directory, exist_ok=True)
         self.initialize_training()
@@ -702,7 +706,7 @@ class PyniniTrainer(
 
     def initialize_training(self) -> None:
         """Initialize training G2P model"""
-        random.seed(self.seed)
+        random.seed(GLOBAL_CONFIG.current_profile.seed)
         self._sym_path = self.phone_symbol_table_path
         self.output_token_type = pynini.SymbolTable.read_text(self.phone_symbol_table_path)
         with self.session() as session:

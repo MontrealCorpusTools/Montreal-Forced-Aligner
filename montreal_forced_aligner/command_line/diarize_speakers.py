@@ -98,9 +98,6 @@ def diarize_speakers_cli(context, **kwargs) -> None:
     if kwargs.get("profile", None) is not None:
         os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
-    GLOBAL_CONFIG.save()
-    print(kwargs)
-    print(GLOBAL_CONFIG.current_profile.use_postgres)
     if not GLOBAL_CONFIG.current_profile.use_postgres:
         raise DatabaseError(
             "Postgres is required for running diarization functionality via `--use_postgres true`."

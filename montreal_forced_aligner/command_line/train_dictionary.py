@@ -71,7 +71,6 @@ def train_dictionary_cli(context, **kwargs) -> None:
     if kwargs.get("profile", None) is not None:
         os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
-    GLOBAL_CONFIG.save()
     config_path = kwargs.get("config_path", None)
     acoustic_model_path = kwargs["acoustic_model_path"]
     corpus_directory = kwargs["corpus_directory"]

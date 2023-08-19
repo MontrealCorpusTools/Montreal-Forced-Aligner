@@ -2,29 +2,29 @@
 from __future__ import annotations
 
 import logging
-import multiprocessing as mp
 import os
-import re
 import shutil
-import subprocess
 import typing
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from queue import Empty
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, List
 
+from _kalpy.matrix import FloatMatrix
+from _kalpy.transform import LdaEstimateOptions, compose_transforms
+from kalpy.feat.data import FeatureArchive
+from kalpy.feat.lda import LdaStatsAccumulator, MlltStatsAccumulator
+from kalpy.gmm.data import AlignmentArchive
+from kalpy.gmm.utils import read_gmm_model, write_gmm_model
+from kalpy.utils import kalpy_logger, write_kaldi_object
+from sqlalchemy.orm import joinedload
 from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
 from montreal_forced_aligner.config import GLOBAL_CONFIG
-from montreal_forced_aligner.data import MfaArguments
-from montreal_forced_aligner.helper import mfa_open
-from montreal_forced_aligner.utils import (
-    KaldiProcessWorker,
-    Stopped,
-    parse_logs,
-    thirdparty_binary,
-)
+from montreal_forced_aligner.data import MfaArguments, PhoneType
+from montreal_forced_aligner.db import Job, Phone
+from montreal_forced_aligner.utils import parse_logs, run_kaldi_function, thread_logger
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
@@ -44,23 +44,17 @@ logger = logging.getLogger("mfa")
 class LdaAccStatsArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.LdaAccStatsFunction`"""
 
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
-    ali_paths: Dict[str, Path]
+    working_directory: Path
     model_path: Path
     lda_options: MetaDict
-    acc_paths: Dict[str, Path]
 
 
 class CalcLdaMlltArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.CalcLdaMlltFunction`"""
 
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
-    ali_paths: Dict[str, Path]
+    working_directory: Path
     model_path: Path
     lda_options: MetaDict
-    macc_paths: Dict[str, Path]
 
 
 class LdaAccStatsFunction(KaldiFunction):
@@ -86,64 +80,48 @@ class LdaAccStatsFunction(KaldiFunction):
         Arguments for the function
     """
 
-    progress_pattern = re.compile(r"^LOG.*Done (?P<done>\d+) files, failed for (?P<failed>\d+)$")
-
     def __init__(self, args: LdaAccStatsArguments):
         super().__init__(args)
-        self.dictionaries = args.dictionaries
-        self.feature_strings = args.feature_strings
-        self.ali_paths = args.ali_paths
+        self.working_directory = args.working_directory
         self.model_path = args.model_path
-        self.acc_paths = args.acc_paths
         self.lda_options = args.lda_options
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
+    def _run(self):
         """Run the function"""
-        with mfa_open(self.log_path, "w") as log_file:
-            for dict_id in self.dictionaries:
-                ali_path = self.ali_paths[dict_id]
-                feature_string = self.feature_strings[dict_id]
-                acc_path = self.acc_paths[dict_id]
-                ali_to_post_proc = subprocess.Popen(
-                    [thirdparty_binary("ali-to-post"), f"ark:{ali_path}", "ark:-"],
-                    stderr=log_file,
-                    stdout=subprocess.PIPE,
-                    env=os.environ,
+        with (
+            self.session() as session,
+            thread_logger("kalpy.lda", self.log_path, job_name=self.job_name) as lda_logger,
+        ):
+            lda_logger.debug(f"Using acoustic model: {self.model_path}\n")
+            job: typing.Optional[Job] = session.get(
+                Job, self.job_name, options=[joinedload(Job.dictionaries), joinedload(Job.corpus)]
+            )
+            silence_phones = [
+                x
+                for x, in session.query(Phone.mapping_id).filter(
+                    Phone.phone_type.in_([PhoneType.silence, PhoneType.oov])
                 )
-                weight_silence_post_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("weight-silence-post"),
-                        "0.0",
-                        self.lda_options["silence_csl"],
-                        self.model_path,
-                        "ark:-",
-                        "ark:-",
-                    ],
-                    stdin=ali_to_post_proc.stdout,
-                    stderr=log_file,
-                    stdout=subprocess.PIPE,
-                    env=os.environ,
+            ]
+            for dict_id in job.dictionary_ids:
+                ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                lda_logger.debug(f"Processing {ali_path}")
+                feat_path = job.construct_path(
+                    job.corpus.current_subset_directory, "feats", "scp", dictionary_id=dict_id
                 )
-                acc_lda_post_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("acc-lda"),
-                        f"--rand-prune={self.lda_options['random_prune']}",
-                        self.model_path,
-                        feature_string,
-                        "ark,s,cs:-",
-                        acc_path,
-                    ],
-                    stdin=weight_silence_post_proc.stdout,
-                    stderr=subprocess.PIPE,
-                    encoding="utf8",
-                    env=os.environ,
+                feature_archive = FeatureArchive(
+                    feat_path,
+                    deltas=False,
+                    splices=True,
+                    splice_frames=self.lda_options["splice_left_context"],
                 )
-                for line in acc_lda_post_proc.stderr:
-                    log_file.write(line)
-                    m = self.progress_pattern.match(line.strip())
-                    if m:
-                        yield int(m.group("done")), int(m.group("failed"))
-                self.check_call(acc_lda_post_proc)
+                alignment_archive = AlignmentArchive(ali_path)
+                accumulator = LdaStatsAccumulator(
+                    self.model_path, silence_phones, rand_prune=self.lda_options["random_prune"]
+                )
+                accumulator.accumulate_stats(
+                    feature_archive, alignment_archive, callback=self.callback
+                )
+                self.callback(accumulator.lda)
 
 
 class CalcLdaMlltFunction(KaldiFunction):
@@ -169,66 +147,41 @@ class CalcLdaMlltFunction(KaldiFunction):
         Arguments for the function
     """
 
-    progress_pattern = re.compile(r"^LOG.*Average like for this file.*$")
-
     def __init__(self, args: CalcLdaMlltArguments):
         super().__init__(args)
-        self.dictionaries = args.dictionaries
-        self.feature_strings = args.feature_strings
-        self.ali_paths = args.ali_paths
+        self.working_directory = args.working_directory
         self.model_path = args.model_path
-        self.macc_paths = args.macc_paths
         self.lda_options = args.lda_options
 
     def _run(self) -> typing.Generator[int]:
         """Run the function"""
         # Estimating MLLT
-        with mfa_open(self.log_path, "w") as log_file:
-            for dict_id in self.dictionaries:
-                ali_path = self.ali_paths[dict_id]
-                feature_string = self.feature_strings[dict_id]
-                macc_path = self.macc_paths[dict_id]
-                post_proc = subprocess.Popen(
-                    [thirdparty_binary("ali-to-post"), f"ark:{ali_path}", "ark:-"],
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                    env=os.environ,
+        with (
+            self.session() as session,
+            thread_logger("kalpy.lda", self.log_path, job_name=self.job_name) as lda_logger,
+        ):
+            lda_logger.debug(f"Using acoustic model: {self.model_path}\n")
+            job: typing.Optional[Job] = session.get(
+                Job, self.job_name, options=[joinedload(Job.dictionaries), joinedload(Job.corpus)]
+            )
+            silence_phones = [
+                x
+                for x, in session.query(Phone.mapping_id).filter(
+                    Phone.phone_type.in_([PhoneType.silence, PhoneType.oov])
                 )
-
-                weight_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("weight-silence-post"),
-                        "0.0",
-                        self.lda_options["silence_csl"],
-                        self.model_path,
-                        "ark:-",
-                        "ark:-",
-                    ],
-                    stdin=post_proc.stdout,
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                    env=os.environ,
+            ]
+            for dict_id in job.dictionary_ids:
+                ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                lda_logger.debug(f"Processing {ali_path}")
+                feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
+                alignment_archive = AlignmentArchive(ali_path)
+                accumulator = MlltStatsAccumulator(
+                    self.model_path, silence_phones, rand_prune=self.lda_options["random_prune"]
                 )
-                acc_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("gmm-acc-mllt"),
-                        f"--rand-prune={self.lda_options['random_prune']}",
-                        self.model_path,
-                        feature_string,
-                        "ark,s,cs:-",
-                        macc_path,
-                    ],
-                    stdin=weight_proc.stdout,
-                    stderr=subprocess.PIPE,
-                    encoding="utf8",
-                    env=os.environ,
+                accumulator.accumulate_stats(
+                    feature_archive, alignment_archive, callback=self.callback
                 )
-                for line in acc_proc.stderr:
-                    log_file.write(line)
-                    m = self.progress_pattern.match(line.strip())
-                    if m:
-                        yield 1
-                self.check_call(acc_proc)
+                self.callback(accumulator.mllt_accs)
 
 
 class LdaTrainer(TriphoneTrainer):
@@ -305,29 +258,14 @@ class LdaTrainer(TriphoneTrainer):
         """
         arguments = []
         for j in self.jobs:
-            feat_strings = {}
-            for d_id in j.dictionary_ids:
-                feat_strings[d_id] = j.construct_feature_proc_string(
-                    self.working_directory,
-                    d_id,
-                    self.feature_options["uses_splices"],
-                    self.feature_options["splice_left_context"],
-                    self.feature_options["splice_right_context"],
-                    self.feature_options["uses_speaker_adaptation"],
-                )
             arguments.append(
                 LdaAccStatsArguments(
                     j.id,
-                    getattr(self, "db_string", ""),
+                    getattr(self, "session", ""),
                     self.working_log_directory.joinpath(f"lda_acc_stats.{j.id}.log"),
-                    j.dictionary_ids,
-                    feat_strings,
-                    j.construct_path_dictionary(
-                        self.previous_aligner.working_directory, "ali", "ark"
-                    ),
+                    self.previous_aligner.working_directory,
                     self.previous_aligner.alignment_model_path,
                     self.lda_options,
-                    j.construct_path_dictionary(self.working_directory, "lda", "acc"),
                 )
             )
         return arguments
@@ -343,29 +281,16 @@ class LdaTrainer(TriphoneTrainer):
         """
         arguments = []
         for j in self.jobs:
-            feat_strings = {}
-            for d_id in j.dictionary_ids:
-                feat_strings[d_id] = j.construct_feature_proc_string(
-                    self.working_directory,
-                    d_id,
-                    self.feature_options["uses_splices"],
-                    self.feature_options["splice_left_context"],
-                    self.feature_options["splice_right_context"],
-                    self.feature_options["uses_speaker_adaptation"],
-                )
             arguments.append(
                 CalcLdaMlltArguments(
                     j.id,
-                    getattr(self, "db_string", ""),
+                    getattr(self, "session", ""),
                     os.path.join(
                         self.working_log_directory, f"lda_mllt.{self.iteration}.{j.id}.log"
                     ),
-                    j.dictionary_ids,
-                    feat_strings,
-                    j.construct_path_dictionary(self.working_directory, "ali", "ark"),
+                    self.working_directory,
                     self.model_path,
                     self.lda_options,
-                    j.construct_path_dictionary(self.working_directory, "lda", "macc"),
                 )
             )
         return arguments
@@ -407,66 +332,32 @@ class LdaTrainer(TriphoneTrainer):
             Reference Kaldi script
 
         """
+        logger.info("Calculating initial LDA stats...")
         worker_lda_path = os.path.join(self.worker.working_directory, "lda.mat")
         lda_path = self.working_directory.joinpath("lda.mat")
         if os.path.exists(worker_lda_path):
             os.remove(worker_lda_path)
         arguments = self.lda_acc_stats_arguments()
+        lda = None
         with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
-            if GLOBAL_CONFIG.use_mp:
-                error_dict = {}
-                return_queue = mp.Queue()
-                stopped = Stopped()
-                procs = []
-                for i, args in enumerate(arguments):
-                    function = LdaAccStatsFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, stopped)
-                    procs.append(p)
-                    p.start()
-                while True:
-                    try:
-                        result = return_queue.get(timeout=1)
-                        if isinstance(result, Exception):
-                            error_dict[getattr(result, "job_name", 0)] = result
-                            continue
-                        if stopped.stop_check():
-                            continue
-                    except Empty:
-                        for proc in procs:
-                            if not proc.finished.stop_check():
-                                break
-                        else:
-                            break
-                        continue
-                    done, errors = result
-                    pbar.update(done + errors)
-                for p in procs:
-                    p.join()
-                if error_dict:
-                    for v in error_dict.values():
-                        raise v
-            else:
-                for args in arguments:
-                    function = LdaAccStatsFunction(args)
-                    for done, errors in function.run():
-                        pbar.update(done + errors)
+            for result in run_kaldi_function(LdaAccStatsFunction, arguments, pbar.update):
+                if not isinstance(result, str):
+                    if lda is None:
+                        lda = result
+                    else:
+                        lda.Add(result)
 
         log_path = self.working_log_directory.joinpath("lda_est.log")
-        acc_list = []
-        for x in arguments:
-            acc_list.extend(x.acc_paths.values())
-        with mfa_open(log_path, "w") as log_file:
-            est_lda_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("est-lda"),
-                    f"--dim={self.lda_dimension}",
-                    lda_path,
-                ]
-                + acc_list,
-                stderr=log_file,
-                env=os.environ,
-            )
-            est_lda_proc.communicate()
+
+        with (
+            kalpy_logger("kalpy.lda", log_path) as train_logger,
+            redirect_stdout(train_logger),
+            redirect_stderr(train_logger),
+        ):
+            options = LdaEstimateOptions()
+            options.dim = self.lda_dimension
+            lda_mat, lda_full_mat = lda.estimate(options)
+            write_kaldi_object(lda_mat, lda_path)
         shutil.copyfile(
             lda_path,
             worker_lda_path,
@@ -479,7 +370,6 @@ class LdaTrainer(TriphoneTrainer):
         if self.initialized:
             return
         self.lda_acc_stats()
-        self.tree_stats()
         self._setup_tree(initial_mix_up=False)
 
         self.compile_train_graphs()
@@ -509,85 +399,33 @@ class LdaTrainer(TriphoneTrainer):
         """
         logger.info("Re-calculating LDA...")
         arguments = self.calc_lda_mllt_arguments()
+        mllt_accs = None
         with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
-            if GLOBAL_CONFIG.use_mp:
-                error_dict = {}
-                return_queue = mp.Queue()
-                stopped = Stopped()
-                procs = []
-                for i, args in enumerate(arguments):
-                    function = CalcLdaMlltFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, stopped)
-                    procs.append(p)
-                    p.start()
-                while True:
-                    try:
-                        result = return_queue.get(timeout=1)
-                        if isinstance(result, Exception):
-                            error_dict[getattr(result, "job_name", 0)] = result
-                            continue
-                        if stopped.stop_check():
-                            continue
-                    except Empty:
-                        for proc in procs:
-                            if not proc.finished.stop_check():
-                                break
-                        else:
-                            break
-                        continue
-                    pbar.update(1)
-                for p in procs:
-                    p.join()
-                if error_dict:
-                    for v in error_dict.values():
-                        raise v
-            else:
-                for args in arguments:
-                    function = CalcLdaMlltFunction(args)
-                    for _ in function.run():
-                        pbar.update(1)
+            for result in run_kaldi_function(CalcLdaMlltFunction, arguments, pbar.update):
+                if not isinstance(result, str):
+                    if mllt_accs is None:
+                        mllt_accs = result
+                    else:
+                        mllt_accs.Add(result)
 
         log_path = os.path.join(
             self.working_log_directory, f"transform_means.{self.iteration}.log"
         )
-        previous_mat_path = self.working_directory.joinpath("lda.mat")
-        new_mat_path = self.working_directory.joinpath("lda_new.mat")
-        composed_path = self.working_directory.joinpath("lda_composed.mat")
-        with mfa_open(log_path, "a") as log_file:
-            macc_list = []
-            for x in arguments:
-                macc_list.extend(x.macc_paths.values())
-            subprocess.call(
-                [thirdparty_binary("est-mllt"), new_mat_path] + macc_list,
-                stderr=log_file,
-                env=os.environ,
-            )
-            subprocess.call(
-                [
-                    thirdparty_binary("gmm-transform-means"),
-                    new_mat_path,
-                    self.model_path,
-                    self.model_path,
-                ],
-                stderr=log_file,
-                env=os.environ,
-            )
 
-            if os.path.exists(previous_mat_path):
-                subprocess.call(
-                    [
-                        thirdparty_binary("compose-transforms"),
-                        new_mat_path,
-                        previous_mat_path,
-                        composed_path,
-                    ],
-                    stderr=log_file,
-                    env=os.environ,
-                )
-                os.remove(previous_mat_path)
-                os.rename(composed_path, previous_mat_path)
-            else:
-                os.rename(new_mat_path, previous_mat_path)
+        with (
+            kalpy_logger("kalpy.lda", log_path) as train_logger,
+            redirect_stdout(train_logger),
+            redirect_stderr(train_logger),
+        ):
+            mat, objf_impr, count = mllt_accs.update()
+            transition_model, acoustic_model = read_gmm_model(self.model_path)
+            acoustic_model.transform_means(mat)
+            write_gmm_model(self.model_path, transition_model, acoustic_model)
+            previous_mat_path = self.working_directory.joinpath("lda.mat")
+
+            prev_mat = FloatMatrix.read_from_file(str(previous_mat_path))
+            new_mat = compose_transforms(mat, prev_mat, False)
+            write_kaldi_object(new_mat, str(previous_mat_path))
 
     def train_iteration(self) -> None:
         """

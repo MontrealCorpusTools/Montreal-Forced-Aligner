@@ -4,32 +4,24 @@ Corpus loading worker
 """
 from __future__ import annotations
 
-import multiprocessing as mp
 import os
 import re
+import threading
 import typing
 from pathlib import Path
 from queue import Empty, Queue
 
 import sqlalchemy
-from sqlalchemy.orm import Session, joinedload, subqueryload
+from sqlalchemy.orm import joinedload, subqueryload
 
+from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.corpus.classes import FileData
 from montreal_forced_aligner.corpus.helper import find_exts
 from montreal_forced_aligner.data import MfaArguments, WordType
-from montreal_forced_aligner.db import (
-    Dictionary,
-    File,
-    Grapheme,
-    Job,
-    SoundFile,
-    Speaker,
-    Utterance,
-    Word,
-)
+from montreal_forced_aligner.db import Dictionary, Grapheme, Job, Speaker, Utterance, Word
 from montreal_forced_aligner.exceptions import SoundFileError, TextGridParseError, TextParseError
 from montreal_forced_aligner.helper import make_re_character_set_safe, mfa_open
-from montreal_forced_aligner.utils import Counter, KaldiFunction, Stopped
+from montreal_forced_aligner.utils import Counter
 
 if typing.TYPE_CHECKING:
     from dataclasses import dataclass
@@ -59,7 +51,7 @@ def dictionary_ids_for_job(session, job_id):
     return dictionary_ids
 
 
-class AcousticDirectoryParser(mp.Process):
+class AcousticDirectoryParser(threading.Thread):
     """
     Worker for processing directories for acoustic sound files
 
@@ -71,9 +63,9 @@ class AcousticDirectoryParser(mp.Process):
         Queue to add file names to
     audio_directory: str
         Directory with additional audio files
-    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
+    stopped: :class:`~threading.Event`
         Check for whether to exit early
-    finished_adding: :class:`~montreal_forced_aligner.utils.Stopped`
+    finished_adding: :class:`~threading.Event`
         Check to set when the parser is done adding files to the queue
     file_counts: :class:`~montreal_forced_aligner.utils.Counter`
         Counter for the number of total files that the parser has found
@@ -84,11 +76,11 @@ class AcousticDirectoryParser(mp.Process):
         corpus_directory: str,
         job_queue: Queue,
         audio_directory: str,
-        stopped: Stopped,
-        finished_adding: Stopped,
+        stopped: threading.Event,
+        finished_adding: threading.Event,
         file_counts: Counter,
     ):
-        mp.Process.__init__(self)
+        super().__init__()
         self.corpus_directory = corpus_directory
         self.job_queue = job_queue
         self.audio_directory = audio_directory
@@ -117,7 +109,7 @@ class AcousticDirectoryParser(mp.Process):
             exts = find_exts(files)
             relative_path = root.replace(str(self.corpus_directory), "").lstrip("/").lstrip("\\")
 
-            if self.stopped.stop_check():
+            if self.stopped.is_set():
                 break
             if not use_audio_directory:
                 all_sound_files = {}
@@ -128,7 +120,7 @@ class AcousticDirectoryParser(mp.Process):
                 all_sound_files.update(exts.other_audio_files)
                 all_sound_files.update(exts.wav_files)
             for file_name in exts.identifiers:
-                if self.stopped.stop_check():
+                if self.stopped.is_set():
                     break
                 wav_path = None
                 transcription_path = None
@@ -146,10 +138,10 @@ class AcousticDirectoryParser(mp.Process):
                 self.job_queue.put((file_name, wav_path, transcription_path, relative_path))
                 self.file_counts.increment()
 
-        self.finished_adding.stop()
+        self.finished_adding.set()
 
 
-class CorpusProcessWorker(mp.Process):
+class CorpusProcessWorker(threading.Thread):
     """
     Multiprocessing corpus loading worker
 
@@ -161,29 +153,29 @@ class CorpusProcessWorker(mp.Process):
         Dictionary to catch errors
     return_q: :class:`~multiprocessing.Queue`
         Return queue for processed Files
-    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
+    stopped: :class:`~threading.Event`
         Stop check for whether corpus loading should exit
-    finished_adding: :class:`~montreal_forced_aligner.utils.Stopped`
+    finished_adding: :class:`~threading.Event`
         Signal that the main thread has stopped adding new files to be processed
     """
 
     def __init__(
         self,
         name: int,
-        job_q: mp.Queue,
-        return_q: mp.Queue,
-        stopped: Stopped,
-        finished_adding: Stopped,
+        job_q: Queue,
+        return_q: Queue,
+        stopped: threading.Event,
+        finished_adding: threading.Event,
         speaker_characters: typing.Union[int, str],
         sample_rate: typing.Optional[int],
     ):
-        mp.Process.__init__(self)
+        super().__init__()
         self.name = str(name)
         self.job_q = job_q
         self.return_q = return_q
         self.stopped = stopped
         self.finished_adding = finished_adding
-        self.finished_processing = Stopped()
+        self.finished_processing = threading.Event()
         self.speaker_characters = speaker_characters
         self.sample_rate = sample_rate
 
@@ -195,10 +187,10 @@ class CorpusProcessWorker(mp.Process):
             try:
                 file_name, wav_path, text_path, relative_path = self.job_q.get(timeout=1)
             except Empty:
-                if self.finished_adding.stop_check():
+                if self.finished_adding.is_set():
                     break
                 continue
-            if self.stopped.stop_check():
+            if self.stopped.is_set():
                 continue
             try:
                 file = FileData.parse_file(
@@ -217,9 +209,9 @@ class CorpusProcessWorker(mp.Process):
             except SoundFileError as e:
                 self.return_q.put(("sound_file_errors", e))
             except Exception as e:
-                self.stopped.stop()
+                self.stopped.set()
                 self.return_q.put(("error", e))
-        self.finished_processing.stop()
+        self.finished_processing.set()
         return
 
 
@@ -254,7 +246,6 @@ class ExportKaldiFilesArguments(MfaArguments):
     """
 
     split_directory: Path
-    for_features: bool
 
 
 class NormalizeTextFunction(KaldiFunction):
@@ -450,12 +441,17 @@ class NormalizeTextFunction(KaldiFunction):
                     if text:
                         text += " "
                     text += w
-                yield {
-                    "id": u_id,
-                    "oovs": " ".join(sorted(oovs)),
-                    "normalized_text": " ".join(normalized_text),
-                    "normalized_character_text": " ".join(normalized_character_text),
-                }, d.id
+                self.callback(
+                    (
+                        {
+                            "id": u_id,
+                            "oovs": " ".join(sorted(oovs)),
+                            "normalized_text": " ".join(normalized_text),
+                            "normalized_character_text": " ".join(normalized_character_text),
+                        },
+                        d.id,
+                    )
+                )
 
     def _no_dictionary_sanitize(self, session):
         from montreal_forced_aligner.dictionary.mixins import SanitizeFunction
@@ -487,22 +483,27 @@ class NormalizeTextFunction(KaldiFunction):
                     character_text.append(g)
             text = " ".join(text)
             character_text = " ".join(character_text)
-            yield {
-                "id": u_id,
-                "oovs": "",
-                "normalized_text": text,
-                "normalized_character_text": character_text,
-            }, None
+            self.callback(
+                (
+                    {
+                        "id": u_id,
+                        "oovs": "",
+                        "normalized_text": text,
+                        "normalized_character_text": character_text,
+                    },
+                    None,
+                )
+            )
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, float]]:
+    def _run(self):
         """Run the function"""
         self.compile_regexes()
-        with Session(self.db_engine()) as session:
+        with self.session() as session:
             dict_count = session.query(Dictionary).join(Dictionary.words).limit(1).count()
             if self.use_g2p or dict_count > 0:
-                yield from self._dictionary_sanitize(session)
+                self._dictionary_sanitize(session)
             else:
-                yield from self._no_dictionary_sanitize(session)
+                self._no_dictionary_sanitize(session)
 
 
 class ExportKaldiFilesFunction(KaldiFunction):
@@ -517,49 +518,6 @@ class ExportKaldiFilesFunction(KaldiFunction):
     def __init__(self, args: ExportKaldiFilesArguments):
         super().__init__(args)
         self.split_directory = args.split_directory
-        self.for_features = args.for_features
-
-    def output_for_features(self, session: Session) -> None:
-        """
-        Output the necessary files for Kaldi to generate features
-
-        Parameters
-        ----------
-        split_directory: str
-            Split directory for the corpus
-        """
-        job = (
-            session.query(Job)
-            .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
-            .filter(Job.id == self.job_name)
-            .first()
-        )
-        wav_scp_path = job.wav_scp_path
-        utt2spk_scp_path = job.utt2spk_scp_path
-        with mfa_open(wav_scp_path, "w") as wav_file:
-            files = (
-                session.query(File.id, SoundFile.sox_string, SoundFile.sound_file_path)
-                .join(File.sound_file)
-                .join(File.utterances)
-                .filter(Utterance.job_id == job.id)
-                .order_by(File.id.cast(sqlalchemy.String))
-                .distinct(File.id.cast(sqlalchemy.String))
-            )
-            for f_id, sox_string, sound_file_path in files:
-                if not sox_string:
-                    sox_string = sound_file_path
-                wav_file.write(f"{f_id} {sox_string}\n")
-                yield 1
-
-        with mfa_open(utt2spk_scp_path, "w") as utt2spk_file:
-            utterances = (
-                session.query(Utterance.kaldi_id, Utterance.speaker_id)
-                .filter(Utterance.job_id == job.id)
-                .order_by(Utterance.kaldi_id)
-            )
-            for u_id, s_id in utterances:
-                utt2spk_file.write(f"{u_id} {s_id}\n")
-                yield 1
 
     def output_to_directory(self, session) -> None:
         """
@@ -643,7 +601,7 @@ class ExportKaldiFilesFunction(KaldiFunction):
                     ivectors[utterance] = ivector_ark
                 cmvns[speaker] = cmvn
                 text_ints[utterance] = normalized_text
-                yield 1
+                self.callback(1)
 
             with mfa_open(spk2utt_path, "w") as f:
                 for speaker, utts in sorted(spk2utt.items()):
@@ -731,7 +689,7 @@ class ExportKaldiFilesFunction(KaldiFunction):
                             for x in words
                         ]
                     )
-                    yield 1
+                    self.callback(1)
 
                 with mfa_open(spk2utt_paths[d.id], "w") as f:
                     for speaker, utts in sorted(spk2utt.items()):
@@ -754,10 +712,7 @@ class ExportKaldiFilesFunction(KaldiFunction):
                     for utt, text in sorted(text_ints.items()):
                         f.write(f"{utt} {text}\n")
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, float]]:
+    def _run(self):
         """Run the function"""
-        with Session(self.db_engine()) as session:
-            if self.for_features:
-                yield from self.output_for_features(session)
-            else:
-                yield from self.output_to_directory(session)
+        with self.session() as session:
+            self.output_to_directory(session)

@@ -13,17 +13,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import sqlalchemy
-from sqlalchemy.orm import joinedload
 
 from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 from montreal_forced_aligner.alignment import PretrainedAligner
-from montreal_forced_aligner.alignment.multiprocessing import compile_information_func
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import WorkflowType
 from montreal_forced_aligner.db import Corpus, File, SoundFile, Speaker, TextFile, Utterance
 from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
 from montreal_forced_aligner.helper import comma_join, load_configuration, mfa_open
-from montreal_forced_aligner.utils import log_kaldi_errors, run_mp, run_non_mp
+from montreal_forced_aligner.utils import log_kaldi_errors
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
@@ -300,97 +297,6 @@ class ValidationMixin:
         else:
             logger.info("There were no issues reading text files.")
 
-    def compile_information(self) -> None:
-        """
-        Compiles information about alignment, namely what the overall log-likelihood was
-        and how many files were unaligned.
-
-        See Also
-        --------
-        :func:`~montreal_forced_aligner.alignment.multiprocessing.compile_information_func`
-            Multiprocessing helper function for each job
-        :meth:`.AlignMixin.compile_information_arguments`
-            Job method for generating arguments for the helper function
-        """
-        logger.debug("Analyzing alignment information")
-        compile_info_begin = time.time()
-        self.collect_alignments()
-        jobs = self.compile_information_arguments()
-
-        if GLOBAL_CONFIG.use_mp:
-            alignment_info = run_mp(
-                compile_information_func, jobs, self.working_log_directory, True
-            )
-        else:
-            alignment_info = run_non_mp(
-                compile_information_func, jobs, self.working_log_directory, True
-            )
-
-        avg_like_sum = 0
-        avg_like_frames = 0
-        average_logdet_sum = 0
-        average_logdet_frames = 0
-        beam_too_narrow_count = 0
-        too_short_count = 0
-        unaligned_utts = []
-        for data in alignment_info.values():
-            unaligned_utts.extend(data["unaligned"])
-            beam_too_narrow_count += len(data["unaligned"])
-            too_short_count += len(data["too_short"])
-            avg_like_frames += data["total_frames"]
-            avg_like_sum += data["log_like"] * data["total_frames"]
-            if "logdet_frames" in data:
-                average_logdet_frames += data["logdet_frames"]
-                average_logdet_sum += data["logdet"] * data["logdet_frames"]
-
-        logger.info("Alignment")
-        if not avg_like_frames:
-            logger.error(f"0 of {self.num_utterances} utterances were aligned")
-        else:
-            if too_short_count:
-                logger.error(
-                    too_short_count, f"{too_short_count} utterances were too short to be aligned"
-                )
-            else:
-                logger.info("0 utterances were too short to be aligned")
-            if beam_too_narrow_count:
-                logger.warning(
-                    f"{beam_too_narrow_count} utterances that need a larger beam to align"
-                )
-            else:
-                logger.info("0 utterances that need a larger beam to align")
-
-            num_utterances = self.num_utterances
-            with self.session() as session:
-                unaligned_utts = (
-                    session.query(Utterance)
-                    .options(joinedload(Utterance.file).load_only(File.name))
-                    .filter_by(alignment_log_likelihood=None)
-                )
-                unaligned_count = unaligned_utts.count()
-                if unaligned_count:
-                    path = os.path.join(self.output_directory, "unalignable_files.csv")
-                    with mfa_open(path, "w") as f:
-                        f.write("file,begin,end,duration,text length\n")
-                        for u in unaligned_utts:
-                            utt_length_words = u.text.count(" ") + 1
-                            f.write(
-                                f"{u.file.name},{u.begin},{u.end},{u.duration},{utt_length_words}\n"
-                            )
-                    logger.error(
-                        f"There were {unaligned_count} unaligned utterances out of {self.num_utterances} after initial training. "
-                        f"For details, please see: {path}",
-                    )
-            successful_utterances = num_utterances - beam_too_narrow_count - too_short_count
-            logger.info(
-                f"{successful_utterances} utterances were successfully aligned",
-            )
-            average_log_like = avg_like_sum / avg_like_frames
-            if average_logdet_sum:
-                average_log_like += average_logdet_sum / average_logdet_frames
-            logger.debug(f"Average per frame likelihood for alignment: {average_log_like}")
-        logger.debug(f"Compiling information took {time.time() - compile_info_begin:.3f} seconds")
-
     def test_utterance_transcriptions(self) -> None:
         """
         Tests utterance transcriptions with simple unigram models based on the utterance text and frequent
@@ -466,6 +372,15 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
             training_configuration = [("monophone", {})]
         for k, v in training_configuration:
             self.add_config(k, v)
+
+    @property
+    def working_directory(self) -> Path:
+        if self.current_workflow.workflow_type in [
+            WorkflowType.transcription,
+            WorkflowType.per_speaker_transcription,
+        ]:
+            return self.output_directory.joinpath(self._current_workflow)
+        return super().working_directory
 
     @classmethod
     def parse_parameters(
@@ -567,11 +482,6 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
                 logger.info("Skipping acoustic feature generation")
             else:
                 begin = time.time()
-                self.create_corpus_split()
-                logger.debug(
-                    f"Created corpus split directory in {time.time() - begin:.3f} seconds"
-                )
-                begin = time.time()
                 self.generate_features()
                 logger.debug(f"Generated features in {time.time() - begin:.3f} seconds")
                 begin = time.time()
@@ -648,7 +558,6 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
             else:
                 self.write_lexicon_information()
 
-                self.create_corpus_split()
                 if self.test_transcriptions:
                     self.write_lexicon_information(write_disambiguation=True)
                 self.generate_features()
@@ -677,7 +586,6 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
             return
         self.align()
         self.collect_alignments()
-        self.compile_information()
         if self.phone_confidence:
             self.get_phone_confidences()
 

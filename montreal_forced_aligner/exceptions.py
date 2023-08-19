@@ -22,15 +22,19 @@ if TYPE_CHECKING:
 
 __all__ = [
     "MFAError",
+    "SoundFileError",
     "SoxError",
     "G2PError",
     "CtmError",
     "PyniniAlignmentError",
+    "PyniniGenerationError",
+    "NoAlignmentsError",
     "ConfigError",
     "LMError",
     "LanguageModelNotFoundError",
     "ModelExtensionError",
     "ThirdpartyError",
+    "IvectorTrainingError",
     "MultiprocessingError",
     "TrainerError",
     "ModelError",
@@ -669,7 +673,9 @@ class RemoteModelVersionNotFoundError(ArgumentError):
         self, name: str, model_type: str, version: str, available: Optional[List[str]] = None
     ):
         super().__init__("")
-        self.message_lines = [f'Could not find version "{version}" for {model_type} named "{name}".']
+        self.message_lines = [
+            f'Could not find version "{version}" for {model_type} named "{name}".'
+        ]
         if available:
             available = [f"{x}" for x in available]
             self.message_lines.append(f"Available versions: {comma_join(available)}.")
@@ -775,6 +781,22 @@ class RootDirectoryError(ConfigError):
 class TrainerError(MFAError):
     """
     Exception class for errors in trainers
+    """
+
+    pass
+
+
+class IvectorError(MFAError):
+    """
+    Exception class for errors in ivector extraction
+    """
+
+    pass
+
+
+class IvectorTrainingError(IvectorError):
+    """
+    Exception class for errors in ivector extractor training
     """
 
     pass

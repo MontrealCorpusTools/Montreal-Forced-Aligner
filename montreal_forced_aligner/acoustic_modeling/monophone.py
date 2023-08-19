@@ -2,25 +2,27 @@
 from __future__ import annotations
 
 import logging
-import multiprocessing as mp
-import os
-import re
-import subprocess
 import typing
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from queue import Empty
 
-from sqlalchemy.orm import Session, joinedload, subqueryload
+from _kalpy.gmm import AccumAmDiagGmm, gmm_align_equal, gmm_init_mono
+from _kalpy.matrix import DoubleVector
+from _kalpy.util import Int32VectorWriter
+from kalpy.decoder.data import FstArchive
+from kalpy.feat.data import FeatureArchive
+from kalpy.gmm.train import GmmStatsAccumulator
+from kalpy.gmm.utils import read_gmm_model, read_topology, read_tree, write_gmm_model
+from kalpy.utils import generate_write_specifier, kalpy_logger
+from sqlalchemy.orm import joinedload, subqueryload
 from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
 from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import MfaArguments
-from montreal_forced_aligner.db import CorpusWorkflow, Job
-from montreal_forced_aligner.exceptions import KaldiProcessingError
-from montreal_forced_aligner.helper import mfa_open
-from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped, thirdparty_binary
+from montreal_forced_aligner.db import Job
+from montreal_forced_aligner.utils import run_kaldi_function, thread_logger
 
 if typing.TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
@@ -33,8 +35,8 @@ logger = logging.getLogger("mfa")
 class MonoAlignEqualArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.monophone.MonoAlignEqualFunction`"""
 
+    working_directory: Path
     model_path: Path
-    feature_options: MetaDict
 
 
 class MonoAlignEqualFunction(KaldiFunction):
@@ -58,76 +60,101 @@ class MonoAlignEqualFunction(KaldiFunction):
         Arguments for the function
     """
 
-    progress_pattern = re.compile(
-        r"^LOG.* Done (?P<utterances>\d+) files, (?P<errors>\d+) with errors.$"
-    )
-
     def __init__(self, args: MonoAlignEqualArguments):
         super().__init__(args)
+        self.working_directory = args.working_directory
         self.model_path = args.model_path
-        self.feature_options = args.feature_options
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
+    def _run(self):
         """Run the function"""
-
-        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine()) as session:
-            job = (
+        with (
+            self.session() as session,
+            thread_logger("kalpy.train", self.log_path, job_name=self.job_name) as train_logger,
+        ):
+            job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
                 .filter(Job.id == self.job_name)
                 .first()
             )
-            workflow: CorpusWorkflow = (
-                session.query(CorpusWorkflow)
-                .filter(CorpusWorkflow.current == True)  # noqa
-                .first()
-            )
-            for dict_id in job.dictionary_ids:
-                feature_string = job.construct_feature_proc_string(
-                    workflow.working_directory,
-                    dict_id,
-                    self.feature_options["uses_splices"],
-                    self.feature_options["splice_left_context"],
-                    self.feature_options["splice_right_context"],
-                    self.feature_options["uses_speaker_adaptation"],
+            num_done = 0
+            num_error = 0
+            tot_like = 0.0
+            tot_t = 0.0
+            for d in job.dictionaries:
+                dict_id = d.id
+                train_logger.debug(f"Thread {self.job_name}: Aligning for dictionary {d.id}")
+                train_logger.debug(
+                    f"Thread {self.job_name}: Aligning with model: {self.model_path}"
                 )
+                fst_path = job.construct_path(self.working_directory, "fsts", "ark", dict_id)
+                train_logger.debug(f"Thread {self.job_name}: Training graph archive: {fst_path}")
+                accumulator = GmmStatsAccumulator(self.model_path)
+                feat_path = job.construct_path(
+                    job.corpus.current_subset_directory, "feats", "scp", dictionary_id=dict_id
+                )
+                train_logger.debug(f"Thread {self.job_name}: Feature path: {feat_path}")
+                feature_archive = FeatureArchive(
+                    feat_path,
+                    deltas=True,
+                )
+                training_graph_archive = FstArchive(fst_path)
+                ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                write_specifier = generate_write_specifier(ali_path, write_scp=False)
+                writer = Int32VectorWriter(write_specifier)
+                with redirect_stdout(train_logger), redirect_stderr(train_logger):
+                    for utt_id, decode_fst in training_graph_archive:
+                        train_logger.debug(f"Thread {self.job_name}: Aligning {utt_id}")
+                        feats = feature_archive[utt_id]
+                        if feats.NumRows() == 0:
+                            train_logger.warning(
+                                f"Thread {self.job_name}: Zero-length utterance: {utt_id}"
+                            )
+                            num_error += 1
+                            continue
+                        if decode_fst.Start() == -1:
+                            train_logger.warning(
+                                f"Thread {self.job_name}: Empty decoding graph for {utt_id}"
+                            )
+                            num_error += 1
+                            continue
+                        alignment, words = gmm_align_equal(decode_fst, feats)
+                        if alignment is None or len(alignment) == 0:
+                            train_logger.warning(
+                                f"Thread {self.job_name}: AlignEqual: did not align utterance {utt_id}"
+                            )
+                            num_error += 1
+                            continue
+                        writer.Write(utt_id, alignment)
+                        tot_like_this_file = accumulator.gmm_accs.acc_stats(
+                            accumulator.acoustic_model,
+                            accumulator.transition_model,
+                            alignment,
+                            feats,
+                        )
+                        accumulator.transition_model.acc_stats(
+                            alignment, accumulator.transition_accs
+                        )
 
-                fst_ark_path = job.construct_path(
-                    workflow.working_directory, "fsts", "ark", dict_id
+                        num_done += 1
+                        tot_like += tot_like_this_file
+                        tot_t += len(alignment)
+                        if num_done % 50 == 0:
+                            train_logger.info(
+                                f"Thread {self.job_name}: Processed {num_done} utterances; for utterance "
+                                f"{utt_id} avg. like is "
+                                f"{tot_like_this_file / len(alignment)} "
+                                f"over {len(alignment)} frames."
+                            )
+                        self.callback(utt_id)
+                writer.Close()
+                self.callback((accumulator.transition_accs, accumulator.gmm_accs))
+                train_logger.info(
+                    f"Thread {self.job_name}: Done {num_done} utterances, errors on {num_error} utterances."
                 )
-                ali_path = job.construct_path(workflow.working_directory, "ali", "ark", dict_id)
-                acc_path = job.construct_path(workflow.working_directory, "0", "acc", dict_id)
-                align_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("align-equal-compiled"),
-                        f"ark:{fst_ark_path}",
-                        feature_string,
-                        f"ark:{ali_path}",
-                    ],
-                    stderr=log_file,
-                    env=os.environ,
+                train_logger.info(
+                    f"Thread {self.job_name}: Overall avg like per frame (Gaussian only) = {tot_like/tot_t} over {tot_t} frames."
                 )
-                align_proc.communicate()
-                acc_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("gmm-acc-stats-ali"),
-                        "--binary=true",
-                        self.model_path,
-                        feature_string,
-                        f"ark:{ali_path}",
-                        acc_path,
-                    ],
-                    stdin=align_proc.stdout,
-                    stderr=subprocess.PIPE,
-                    encoding="utf8",
-                    env=os.environ,
-                )
-                for line in acc_proc.stderr:
-                    log_file.write(line)
-                    m = self.progress_pattern.match(line.strip())
-                    if m:
-                        yield int(m.group("utterances")), int(m.group("errors"))
-                self.check_call(acc_proc)
 
 
 class MonophoneTrainer(AcousticModelTrainingMixin):
@@ -180,10 +207,10 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
         return [
             MonoAlignEqualArguments(
                 j.id,
-                getattr(self, "db_string", ""),
+                getattr(self, "session", ""),
                 self.working_log_directory.joinpath(f"mono_align_equal.{j.id}.log"),
+                self.working_directory,
                 self.model_path,
-                self.feature_options,
             )
             for j in self.jobs
         ]
@@ -240,85 +267,51 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
 
         logger.info("Generating initial alignments...")
         arguments = self.mono_align_equal_arguments()
-        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
-            if GLOBAL_CONFIG.use_mp:
-                error_dict = {}
-                return_queue = mp.Queue()
-                stopped = Stopped()
-                procs = []
-                for i, args in enumerate(arguments):
-                    function = MonoAlignEqualFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, stopped)
-                    procs.append(p)
-                    p.start()
-                while True:
-                    try:
-                        result = return_queue.get(timeout=1)
-                        if isinstance(result, Exception):
-                            error_dict[getattr(result, "job_name", 0)] = result
-                            continue
-                        if stopped.stop_check():
-                            continue
-                    except Empty:
-                        for proc in procs:
-                            if not proc.finished.stop_check():
-                                break
-                        else:
-                            break
-                        continue
-                    num_utterances, errors = result
-                    pbar.update(num_utterances + errors)
-                for p in procs:
-                    p.join()
-                if error_dict:
-                    error_logs = []
-                    for e in error_dict.values():
-                        if isinstance(e, KaldiProcessingError):
-                            error_logs.extend(e.error_logs)
-                        else:
-                            raise e
-                    if error_logs:
-                        e = KaldiProcessingError(e.error_logs)
-                        e.update_log_file()
-                        raise e
-            else:
-                for args in arguments:
-                    function = MonoAlignEqualFunction(args)
-                    for num_utterances, errors in function.run():
-                        pbar.update(num_utterances + errors)
+        transition_model, acoustic_model = read_gmm_model(self.model_path)
+        transition_accs = DoubleVector()
+        gmm_accs = AccumAmDiagGmm()
+        transition_model.InitStats(transition_accs)
+        gmm_accs.init(acoustic_model)
+        log_path = self.working_log_directory.joinpath("mono_align_equal.log")
+        with (
+            tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar,
+            kalpy_logger("kalpy.train", log_path),
+        ):
+            for result in run_kaldi_function(MonoAlignEqualFunction, arguments, pbar.update):
+                if isinstance(result, tuple):
+                    job_transition_accs, job_gmm_accs = result
+
+                    transition_accs.AddVec(1.0, job_transition_accs)
+                    gmm_accs.Add(1.0, job_gmm_accs)
 
         log_path = self.working_log_directory.joinpath("update.0.log")
-        with mfa_open(log_path, "w") as log_file:
-            acc_files = []
-            for j in self.jobs:
-                for dict_id in j.dictionary_ids:
-                    acc_files.append(j.construct_path(self.working_directory, "0", "acc", dict_id))
-            sum_proc = subprocess.Popen(
-                [thirdparty_binary("gmm-sum-accs"), "-"] + acc_files,
-                stderr=log_file,
-                stdout=subprocess.PIPE,
-                env=os.environ,
+        with (
+            kalpy_logger("kalpy.train", log_path) as train_logger,
+            redirect_stdout(train_logger),
+            redirect_stderr(train_logger),
+        ):
+            objf_impr, count = transition_model.mle_update(transition_accs)
+            logger.debug(
+                f"Transition model update: Overall {objf_impr/count} "
+                f"log-like improvement per frame over {count} frames."
             )
-            est_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("gmm-est"),
-                    "--min-gaussian-occupancy=3",
-                    f"--mix-up={self.current_gaussians}",
-                    f"--power={self.power}",
-                    self.model_path,
-                    "-",
-                    self.next_model_path,
-                ],
-                stderr=log_file,
-                stdin=sum_proc.stdout,
-                env=os.environ,
+            objf_impr, count = acoustic_model.mle_update(
+                gmm_accs,
+                min_gaussian_occupancy=3.0,
+                mixup=self.current_gaussians,
+                power=self.power,
             )
-            est_proc.communicate()
-        if est_proc.returncode != 0:
-            raise KaldiProcessingError([log_path])
-        if not GLOBAL_CONFIG.debug:
-            for f in acc_files:
-                os.remove(f)
+            logger.debug(
+                f"GMM update: Overall {objf_impr/count} "
+                f"objective function improvement per frame over {count} frames."
+            )
+            tot_like = gmm_accs.TotLogLike()
+            tot_t = gmm_accs.TotCount()
+            logger.debug(
+                f"Average Likelihood per frame for iteration {self.iteration} = {tot_like/tot_t} "
+                f"over {tot_t} frames."
+            )
+            write_gmm_model(str(self.next_model_path), transition_model, acoustic_model)
 
     def _trainer_initialization(self) -> None:
         """Monophone training initialization"""
@@ -326,58 +319,36 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
             return
         self.iteration = 0
         tree_path = self.working_directory.joinpath("tree")
-        feat_dim = self.worker.get_feat_dim()
-
-        feature_string = self.jobs[0].construct_feature_proc_string(
-            self.working_directory,
-            self.jobs[0].dictionary_ids[0],
-            self.feature_options["uses_splices"],
-            self.feature_options["splice_left_context"],
-            self.feature_options["splice_right_context"],
-            self.feature_options["uses_speaker_adaptation"],
-        )
-        shared_phones_path = os.path.join(self.worker.phones_dir, "sets.int")
         init_log_path = self.working_log_directory.joinpath("init.log")
-        temp_feats_path = self.working_directory.joinpath("temp_feats")
-        with mfa_open(init_log_path, "w") as log_file:
-            subprocess.call(
-                [
-                    thirdparty_binary("subset-feats"),
-                    "--n=10",
-                    feature_string,
-                    f"ark:{temp_feats_path}",
-                ],
-                stderr=log_file,
+        job = self.jobs[0]
+        dict_id = job.dictionary_ids[0]
+        feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
+        feats = []
+        with (
+            kalpy_logger("kalpy.train", init_log_path) as train_logger,
+            redirect_stdout(train_logger),
+            redirect_stderr(train_logger),
+        ):
+            for i, (_, mat) in enumerate(feature_archive):
+                if i > 10:
+                    break
+                feats.append(mat)
+            shared_phones = self.worker.shared_phones_set_symbols()
+            topo = read_topology(self.worker.topo_path)
+            gmm_init_mono(topo, feats, shared_phones, str(self.model_path), str(tree_path))
+            transition_model, acoustic_model = read_gmm_model(self.model_path)
+            num_gauss = acoustic_model.NumGauss()
+            tree = read_tree(tree_path)
+            train_logger.debug(
+                f"Initialized monophone model with {num_gauss} gaussians, "
+                f"{acoustic_model.NumPdfs()} pdfs"
             )
-            subprocess.call(
-                [
-                    thirdparty_binary("gmm-init-mono"),
-                    f"--shared-phones={shared_phones_path}",
-                    f"--train-feats=ark:{temp_feats_path}",
-                    os.path.join(self.worker.topo_path),
-                    str(feat_dim),
-                    self.model_path,
-                    tree_path,
-                ],
-                stderr=log_file,
+            train_logger.debug(
+                f"Transition model with {transition_model.NumTransitionIds()} transition ids, "
+                f"{transition_model.NumPdfs()} pdfs"
             )
-            proc = subprocess.Popen(
-                [thirdparty_binary("gmm-info"), "--print-args=false", self.model_path],
-                stderr=log_file,
-                stdout=subprocess.PIPE,
-                encoding="utf8",
-            )
-            stdout, stderr = proc.communicate()
-            if proc.returncode != 0:
-                raise KaldiProcessingError([init_log_path])
-            matches = re.search(r"gaussians (\d+)", stdout)
-            num_gauss = int(matches.groups()[0])
-        os.remove(temp_feats_path)
+            train_logger.debug(f"Tree with {tree.NumPdfs()}")
         self.initial_gaussians = num_gauss
         self.current_gaussians = num_gauss
-        if os.path.exists(self.model_path):
-            os.remove(
-                init_log_path
-            )  # Has some errors related to subsetting that trigger larger failures
         self.compile_train_graphs()
         self.mono_align_equal()

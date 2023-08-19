@@ -11,18 +11,24 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import sqlalchemy
+from _kalpy.matrix import DoubleMatrix, FloatMatrix
+from kalpy.data import Segment
+from kalpy.utils import read_kaldi_object
+from kalpy.utterance import Utterance as KalpyUtterance
 from sqlalchemy.orm import Session
 
 from montreal_forced_aligner.abc import TopLevelMfaWorker
-from montreal_forced_aligner.data import PhoneType, WorkflowType
+from montreal_forced_aligner.data import PhoneType, WordType, WorkflowType
 from montreal_forced_aligner.db import (
     CorpusWorkflow,
     Dictionary,
     Grapheme,
     Phone,
     PhoneInterval,
+    Pronunciation,
     Speaker,
     Utterance,
+    Word,
     WordInterval,
 )
 from montreal_forced_aligner.exceptions import KaldiProcessingError
@@ -33,10 +39,7 @@ from montreal_forced_aligner.helper import (
     split_phone_position,
 )
 from montreal_forced_aligner.models import AcousticModel
-from montreal_forced_aligner.online.alignment import (
-    OnlineAlignmentArguments,
-    OnlineAlignmentFunction,
-)
+from montreal_forced_aligner.online.alignment import align_utterance_online
 from montreal_forced_aligner.transcription.transcriber import TranscriberMixin
 from montreal_forced_aligner.utils import log_kaldi_errors
 
@@ -75,6 +78,7 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
         kw = self.acoustic_model.parameters
         kw.update(kwargs)
         super().__init__(**kw)
+        self.final_alignment = True
 
     def setup_acoustic_model(self) -> None:
         """Set up the acoustic model"""
@@ -282,7 +286,6 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
         """
         dictionary_id = utterance.speaker.dictionary_id
         self.acoustic_model.export_model(self.working_directory)
-        sox_string = utterance.file.sound_file.sox_string
         workflow = self.get_latest_workflow_run(WorkflowType.online_alignment, session)
         if workflow is None:
             workflow = CorpusWorkflow(
@@ -293,53 +296,32 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
             )
             session.add(workflow)
             session.flush()
-        if not sox_string:
-            sox_string = utterance.file.sound_file.sound_file_path
-        text_int_path = self.working_directory.joinpath("text.int")
-        word_mapping = self.word_mapping(utterance.speaker.dictionary_id)
-        with mfa_open(text_int_path, "w") as f:
-            normalized_text_int = " ".join(
-                [
-                    str(word_mapping[x]) if x in word_mapping else str(word_mapping[self.oov_word])
-                    for x in utterance.normalized_text.split()
-                ]
-            )
-            f.write(f"{utterance.kaldi_id} {normalized_text_int}\n")
-        if utterance.features:
-            feats_path = self.working_directory.joinpath("feats.scp")
-            with mfa_open(feats_path, "w") as f:
-                f.write(f"{utterance.kaldi_id} {utterance.features}\n")
-        else:
-            wav_path = self.working_directory.joinpath("wav.scp")
-            segment_path = self.working_directory.joinpath("segments.scp")
-            with mfa_open(wav_path, "w") as f:
-                f.write(f"{utterance.file_id} {sox_string}\n")
-            with mfa_open(segment_path, "w") as f:
-                f.write(
-                    f"{utterance.kaldi_id} {utterance.file_id} {utterance.begin} {utterance.end} {utterance.channel}\n"
-                )
-        spk2utt_path = self.working_directory.joinpath("spk2utt.scp")
-        utt2spk_path = self.working_directory.joinpath("utt2spk.scp")
-        with mfa_open(spk2utt_path, "w") as f:
-            f.write(f"{utterance.speaker.id} {utterance.kaldi_id}\n")
-        with mfa_open(utt2spk_path, "w") as f:
-            f.write(f"{utterance.kaldi_id} {utterance.speaker.id}\n")
+        segment = Segment(
+            str(utterance.file.sound_file.sound_file_path),
+            utterance.begin,
+            utterance.end,
+            utterance.channel,
+        )
+        cmvn_string = utterance.speaker.cmvn
+        cmvn = None
+        if cmvn_string:
+            cmvn = read_kaldi_object(DoubleMatrix, cmvn_string)
+        fmllr_string = utterance.speaker.fmllr
+        fmllr_trans = None
+        if fmllr_string:
+            fmllr_trans = read_kaldi_object(FloatMatrix, fmllr_string)
 
-        args = OnlineAlignmentArguments(
-            0,
-            self.db_string,
-            self.working_directory.joinpath("align.log"),
-            self.working_directory,
-            sox_string,
-            utterance.to_data(),
-            self.mfcc_options,
-            self.pitch_options,
-            self.feature_options,
-            self.lda_options,
-            self.align_options,
-            self.alignment_model_path,
-            self.tree_path,
-            dictionary_id,
+        text = utterance.normalized_text
+        if self.use_g2p:
+            text = utterance.normalized_character_text
+        utterance_data = KalpyUtterance(segment, text, cmvn_string, fmllr_string)
+        ctm = align_utterance_online(
+            self.acoustic_model,
+            utterance_data,
+            self.lexicon_compilers[dictionary_id],
+            cmvn=cmvn,
+            fmllr_trans=fmllr_trans,
+            **self.align_options,
         )
 
         max_phone_interval_id = session.query(sqlalchemy.func.max(PhoneInterval.id)).scalar()
@@ -348,44 +330,85 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
         max_word_interval_id = session.query(sqlalchemy.func.max(WordInterval.id)).scalar()
         if max_word_interval_id is None:
             max_word_interval_id = 0
-        phone_interval_mappings = []
-        word_interval_mappings = []
-        func = OnlineAlignmentFunction(args)
-        for result in func.run():
-            if isinstance(result, Exception):
-                raise result
-            _, word_intervals, phone_intervals, phone_word_mapping, log_likelihood = result
-            for interval in phone_intervals:
+        mapping_id = session.query(sqlalchemy.func.max(Word.mapping_id)).scalar()
+        if mapping_id is None:
+            mapping_id = -1
+        mapping_id += 1
+        word_index = self.get_next_primary_key(Word)
+        new_phone_interval_mappings = []
+        new_word_interval_mappings = []
+        words = (
+            session.query(Word.word, Word.id)
+            .filter(Word.dictionary_id == dictionary_id)
+            .filter(Word.word.in_(utterance.normalized_text.split()))
+        )
+        phone_to_phone_id = {}
+        word_mapping = {}
+        pronunciation_mapping = {}
+        ds = session.query(Phone.id, Phone.mapping_id).all()
+        for p_id, mapping_id in ds:
+            phone_to_phone_id[mapping_id] = p_id
+        new_words = []
+        for w, w_id in words:
+            word_mapping[w] = w_id
+        pronunciations = (
+            session.query(Word.word, Pronunciation.pronunciation, Pronunciation.id)
+            .join(Pronunciation.word)
+            .filter(Word.dictionary_id == dictionary_id)
+            .filter(Word.word.in_(utterance.normalized_text.split()))
+        )
+        for w, pron, p_id in pronunciations:
+            pronunciation_mapping[(w, pron)] = p_id
+
+        for word_interval in ctm.word_intervals:
+            if word_interval.label not in word_mapping:
+                new_words.append(
+                    {
+                        "id": word_index,
+                        "mapping_id": mapping_id,
+                        "word": word_interval.label,
+                        "dictionary_id": 1,
+                        "word_type": WordType.oov,
+                    }
+                )
+                word_mapping[word_interval.label] = word_index
+                word_id = word_index
+            else:
+                word_id = word_mapping[word_interval.label]
+            max_word_interval_id += 1
+            pronunciation_id = pronunciation_mapping.get(
+                (word_interval.label, word_interval.pronunciation), None
+            )
+
+            new_word_interval_mappings.append(
+                {
+                    "id": max_word_interval_id,
+                    "begin": word_interval.begin,
+                    "end": word_interval.end,
+                    "word_id": word_id,
+                    "pronunciation_id": pronunciation_id,
+                    "utterance_id": utterance.id,
+                    "workflow_id": workflow.id,
+                }
+            )
+            for interval in word_interval.phones:
                 max_phone_interval_id += 1
-                phone_interval_mappings.append(
+                new_phone_interval_mappings.append(
                     {
                         "id": max_phone_interval_id,
                         "begin": interval.begin,
                         "end": interval.end,
-                        "phone_id": interval.label,
+                        "phone_id": phone_to_phone_id[interval.symbol],
                         "utterance_id": utterance.id,
                         "workflow_id": workflow.id,
-                        "phone_goodness": interval.confidence,
+                        "word_interval_id": max_word_interval_id,
+                        "phone_goodness": interval.confidence if interval.confidence else 0.0,
                     }
                 )
-            for interval in word_intervals:
-                max_word_interval_id += 1
-                word_interval_mappings.append(
-                    {
-                        "id": max_word_interval_id,
-                        "begin": interval.begin,
-                        "end": interval.end,
-                        "word_id": interval.word_id,
-                        "pronunciation_id": interval.pronunciation_id,
-                        "utterance_id": utterance.id,
-                        "workflow_id": workflow.id,
-                    }
-                )
-            for i, index in enumerate(phone_word_mapping):
-                phone_interval_mappings[i]["word_interval_id"] = word_interval_mappings[index][
-                    "id"
-                ]
-            utterance.alignment_log_likelihood = log_likelihood
+        session.query(Utterance).filter(Utterance.id == utterance.id).update(
+            {Utterance.alignment_log_likelihood: ctm.likelihood}
+        )
+
         session.query(PhoneInterval).filter(PhoneInterval.utterance_id == utterance.id).filter(
             PhoneInterval.workflow_id == workflow.id
         ).delete()
@@ -393,12 +416,20 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
             WordInterval.workflow_id == workflow.id
         ).delete()
         session.flush()
-        session.bulk_insert_mappings(
-            WordInterval, word_interval_mappings, return_defaults=False, render_nulls=True
-        )
-        session.bulk_insert_mappings(
-            PhoneInterval, phone_interval_mappings, return_defaults=False, render_nulls=True
-        )
+        if new_words:
+
+            session.bulk_insert_mappings(Word, new_words, return_defaults=False, render_nulls=True)
+            session.flush()
+        if new_word_interval_mappings:
+            session.bulk_insert_mappings(
+                WordInterval, new_word_interval_mappings, return_defaults=False, render_nulls=True
+            )
+            session.bulk_insert_mappings(
+                PhoneInterval,
+                new_phone_interval_mappings,
+                return_defaults=False,
+                render_nulls=True,
+            )
         session.commit()
 
     def align(self, workflow_name=None) -> None:

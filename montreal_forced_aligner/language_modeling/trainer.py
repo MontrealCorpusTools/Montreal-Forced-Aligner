@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import logging
-import multiprocessing as mp
 import os
 import re
 import subprocess
+import threading
 import typing
 from pathlib import Path
-from queue import Empty
+from queue import Empty, Queue
 
 import sqlalchemy
 from tqdm.rich import tqdm
@@ -26,7 +26,7 @@ from montreal_forced_aligner.language_modeling.multiprocessing import (
     TrainLmFunction,
 )
 from montreal_forced_aligner.models import LanguageModel
-from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped, thirdparty_binary
+from montreal_forced_aligner.utils import KaldiProcessWorker, thirdparty_binary
 
 if typing.TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
@@ -400,8 +400,8 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
         """Train a large language model"""
         logger.info("Beginning training large ngram model...")
         log_path = self.working_log_directory.joinpath("lm_training.log")
-        return_queue = mp.Queue()
-        stopped = Stopped()
+        return_queue = Queue()
+        stopped = threading.Event()
         error_dict = {}
         procs = []
         count_paths = []
@@ -409,7 +409,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
         for j in self.jobs:
             args = TrainLmArguments(
                 j.id,
-                getattr(self, "db_string", ""),
+                getattr(self, "session", ""),
                 self.working_log_directory.joinpath(f"ngram_count.{j.id}.log"),
                 self.working_directory,
                 self.sym_path,
@@ -428,11 +428,11 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
                     if isinstance(result, Exception):
                         error_dict[getattr(result, "job_name", 0)] = result
                         continue
-                    if stopped.stop_check():
+                    if stopped.is_set():
                         continue
                 except Empty:
                     for proc in procs:
-                        if not proc.finished.stop_check():
+                        if not proc.finished.is_set():
                             break
                     else:
                         break

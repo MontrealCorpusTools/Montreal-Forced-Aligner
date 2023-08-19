@@ -4,10 +4,7 @@
       :toctree: generated/
 
        Counter
-       Stopped
-       ProcessWorker
-       run_mp
-       run_non_mp
+       run_kaldi_function
        thirdparty_binary
        log_kaldi_errors
        parse_logs

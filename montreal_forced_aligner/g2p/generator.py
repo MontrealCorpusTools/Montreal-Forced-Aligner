@@ -5,13 +5,15 @@ import csv
 import functools
 import itertools
 import logging
-import multiprocessing as mp
 import os
 import queue
 import statistics
+import threading
 import time
 import typing
+from multiprocessing.pool import ThreadPool
 from pathlib import Path
+from queue import Queue
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 import pynini
@@ -20,7 +22,7 @@ from praatio import textgrid
 from pynini import Fst, TokenType
 from pynini.lib import rewrite
 from pywrapfst import SymbolTable
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import selectinload
 from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import DatabaseMixin, KaldiFunction, TopLevelMfaWorker
@@ -33,7 +35,7 @@ from montreal_forced_aligner.g2p.mixins import G2PTopLevelMixin
 from montreal_forced_aligner.helper import comma_join, mfa_open, score_g2p
 from montreal_forced_aligner.models import G2PModel
 from montreal_forced_aligner.textgrid import construct_output_path
-from montreal_forced_aligner.utils import Stopped, run_kaldi_function
+from montreal_forced_aligner.utils import run_kaldi_function
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
@@ -284,7 +286,7 @@ class PhonetisaurusRewriter:
         return hypotheses
 
 
-class RewriterWorker(mp.Process):
+class RewriterWorker(threading.Thread):
     """
     Rewriter process
 
@@ -296,23 +298,23 @@ class RewriterWorker(mp.Process):
         Queue to put pronunciations
     rewriter: :class:`~montreal_forced_aligner.g2p.generator.Rewriter`
         Function to generate pronunciations of words
-    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
+    stopped: :class:`~threading.Event`
         Stop check
     """
 
     def __init__(
         self,
-        job_queue: mp.Queue,
-        return_queue: mp.Queue,
+        job_queue: Queue,
+        return_queue: Queue,
         rewriter: Rewriter,
-        stopped: Stopped,
+        stopped: threading.Event,
     ):
-        mp.Process.__init__(self)
+        super().__init__()
         self.job_queue = job_queue
         self.return_queue = return_queue
         self.rewriter = rewriter
         self.stopped = stopped
-        self.finished = Stopped()
+        self.finished = threading.Event()
 
     def run(self) -> None:
         """Run the rewriting function"""
@@ -321,7 +323,7 @@ class RewriterWorker(mp.Process):
                 word = self.job_queue.get(timeout=1)
             except queue.Empty:
                 break
-            if self.stopped.stop_check():
+            if self.stopped.is_set():
                 continue
             try:
                 rep = self.rewriter(word)
@@ -329,10 +331,10 @@ class RewriterWorker(mp.Process):
             except rewrite.Error:
                 pass
             except Exception as e:  # noqa
-                self.stopped.stop()
+                self.stopped.set()
                 self.return_queue.put(e)
                 raise
-        self.finished.stop()
+        self.finished.set()
         return
 
 
@@ -365,10 +367,10 @@ class G2PFunction(KaldiFunction):
         super().__init__(args)
         self.rewriter = args.rewriter
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, str]]:
+    def _run(self):
         """Run the function"""
 
-        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine()) as session:
+        with mfa_open(self.log_path, "w") as log_file, self.session() as session:
             query = (
                 session.query(Utterance.id, Utterance.normalized_text)
                 .filter(Utterance.job_id == self.job_name)
@@ -377,7 +379,7 @@ class G2PFunction(KaldiFunction):
             for id, text in query:
                 try:
                     pronunciation_text = self.rewriter(text)[0]
-                    yield id, pronunciation_text
+                    self.callback((id, pronunciation_text))
                 except pynini.lib.rewrite.Error:
                     log_file.write(f"Error on generating pronunciation for {text}\n")
 
@@ -536,8 +538,8 @@ class PyniniGenerator(G2PTopLevelMixin):
                     f"{comma_join(sorted(missing_graphemes))}"
                 )
         else:
-            stopped = Stopped()
-            job_queue = mp.Queue()
+            stopped = threading.Event()
+            job_queue = Queue()
             for word in self.words_to_g2p:
                 w, m = clean_up_word(word, self.g2p_model.meta["graphemes"])
                 missing_graphemes = missing_graphemes | m
@@ -553,7 +555,7 @@ class PyniniGenerator(G2PTopLevelMixin):
                 f"{comma_join(sorted(missing_graphemes))}"
             )
             error_dict = {}
-            return_queue = mp.Queue()
+            return_queue = Queue()
             procs = []
             for _ in range(GLOBAL_CONFIG.num_jobs):
                 p = RewriterWorker(
@@ -569,11 +571,11 @@ class PyniniGenerator(G2PTopLevelMixin):
                 while True:
                     try:
                         word, result = return_queue.get(timeout=1)
-                        if stopped.stop_check():
+                        if stopped.is_set():
                             continue
                     except queue.Empty:
                         for proc in procs:
-                            if not proc.finished.stop_check():
+                            if not proc.finished.is_set():
                                 break
                         else:
                             break
@@ -737,7 +739,7 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
             f"Generated an average of {hyp_pron_count /len(hypothesis_values)} variants "
             f"The gold set had an average of {gold_pron_count/len(hypothesis_values)} variants."
         )
-        with mp.Pool(GLOBAL_CONFIG.num_jobs) as pool:
+        with ThreadPool(GLOBAL_CONFIG.num_jobs) as pool:
             gen = pool.starmap(score_g2p, to_comp)
             for i, (edits, length) in enumerate(gen):
                 word = indices[i]
@@ -876,7 +878,7 @@ class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker)
         return [
             G2PArguments(
                 j.id,
-                getattr(self, "db_string", ""),
+                getattr(self, "session", ""),
                 self.working_log_directory.joinpath(f"g2p_utterances.{j.id}.log"),
                 self.rewriter,
             )

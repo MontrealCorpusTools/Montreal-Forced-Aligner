@@ -2,15 +2,17 @@
 from __future__ import annotations
 
 import logging
-import multiprocessing as mp
 import os
 import shutil
-import subprocess
 import time
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from queue import Empty
 from typing import TYPE_CHECKING, List
 
+from _kalpy.gmm import AccumAmDiagGmm, IsmoothStatsAmDiagGmmFromModel
+from _kalpy.matrix import DoubleVector
+from kalpy.gmm.utils import read_gmm_model, write_gmm_model
+from kalpy.utils import kalpy_logger
 from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import AdapterMixin
@@ -20,14 +22,8 @@ from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import WorkflowType
 from montreal_forced_aligner.db import CorpusWorkflow
 from montreal_forced_aligner.exceptions import KaldiProcessingError
-from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.models import AcousticModel
-from montreal_forced_aligner.utils import (
-    KaldiProcessWorker,
-    Stopped,
-    log_kaldi_errors,
-    thirdparty_binary,
-)
+from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.models import MetaDict
@@ -96,12 +92,9 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
             arguments.append(
                 AccStatsArguments(
                     j.id,
-                    getattr(self, "db_string", ""),
+                    getattr(self, "session", ""),
                     self.working_log_directory.joinpath(f"map_acc_stats.{j.id}.log"),
-                    j.dictionary_ids,
-                    feat_strings,
-                    j.construct_path_dictionary(self.working_directory, "ali", "ark"),
-                    j.construct_path_dictionary(self.working_directory, "map", "acc"),
+                    self.working_directory,
                     model_path,
                 )
             )
@@ -124,105 +117,62 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
             initial_mdl_path = self.working_directory.joinpath("unadapted.mdl")
             final_mdl_path = self.working_directory.joinpath("final.mdl")
         logger.info("Accumulating statistics...")
+        transition_model, acoustic_model = read_gmm_model(initial_mdl_path)
+        transition_accs = DoubleVector()
+        gmm_accs = AccumAmDiagGmm()
+        transition_model.InitStats(transition_accs)
+        gmm_accs.init(acoustic_model)
         with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
-            if GLOBAL_CONFIG.use_mp:
-                error_dict = {}
-                return_queue = mp.Queue()
-                stopped = Stopped()
-                procs = []
-                for i, args in enumerate(arguments):
-                    function = AccStatsFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, stopped)
-                    procs.append(p)
-                    p.start()
-                while True:
-                    try:
-                        result = return_queue.get(timeout=1)
-                        if isinstance(result, Exception):
-                            error_dict[getattr(result, "job_name", 0)] = result
-                            continue
-                        if stopped.stop_check():
-                            continue
-                    except Empty:
-                        for proc in procs:
-                            if not proc.finished.stop_check():
-                                break
-                        else:
-                            break
-                        continue
-                    num_utterances, errors = result
-                    pbar.update(num_utterances + errors)
-                for p in procs:
-                    p.join()
-                if error_dict:
-                    for v in error_dict.values():
-                        raise v
-            else:
-                for args in arguments:
-                    function = AccStatsFunction(args)
-                    for num_utterances, errors in function.run():
-                        pbar.update(num_utterances + errors)
+            for result in run_kaldi_function(AccStatsFunction, arguments, pbar.update):
+                if isinstance(result, tuple):
+                    job_transition_accs, job_gmm_accs = result
+                    transition_accs.AddVec(1.0, job_transition_accs)
+                    gmm_accs.Add(1.0, job_gmm_accs)
         log_path = self.working_log_directory.joinpath("map_model_est.log")
-        occs_path = self.working_directory.joinpath("final.occs")
-        with mfa_open(log_path, "w") as log_file:
-            acc_files = []
-            for j in arguments:
-                acc_files.extend(j.acc_paths.values())
-            sum_proc = subprocess.Popen(
-                [thirdparty_binary("gmm-sum-accs"), "-"] + acc_files,
-                stderr=log_file,
-                stdout=subprocess.PIPE,
-                env=os.environ,
+        with (
+            kalpy_logger("kalpy.train", log_path) as train_logger,
+            redirect_stdout(train_logger),
+            redirect_stderr(train_logger),
+        ):
+            IsmoothStatsAmDiagGmmFromModel(acoustic_model, self.mapping_tau, gmm_accs)
+            objf_impr, count = transition_model.mle_update(transition_accs)
+            logger.debug(
+                f"Transition model update: Overall {objf_impr/count} "
+                f"log-like improvement per frame over {count} frames."
             )
-            ismooth_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("gmm-ismooth-stats"),
-                    "--smooth-from-model",
-                    f"--tau={self.mapping_tau}",
-                    initial_mdl_path,
-                    "-",
-                    "-",
-                ],
-                stderr=log_file,
-                stdin=sum_proc.stdout,
-                stdout=subprocess.PIPE,
-                env=os.environ,
+            objf_impr, count = acoustic_model.mle_update(
+                gmm_accs, update_flags_str="m", remove_low_count_gaussians=False
             )
-            est_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("gmm-est"),
-                    "--update-flags=m",
-                    f"--write-occs={occs_path}",
-                    "--remove-low-count-gaussians=false",
-                    initial_mdl_path,
-                    "-",
-                    final_mdl_path,
-                ],
-                stdin=ismooth_proc.stdout,
-                stderr=log_file,
-                env=os.environ,
+            logger.debug(
+                f"GMM update: Overall {objf_impr/count} "
+                f"objective function improvement per frame over {count} frames."
             )
-            est_proc.communicate()
+            tot_like = gmm_accs.TotLogLike()
+            tot_t = gmm_accs.TotCount()
+            logger.debug(
+                f"Average Likelihood per frame = {tot_like/tot_t} " f"over {tot_t} frames."
+            )
+            write_gmm_model(str(final_mdl_path), transition_model, acoustic_model)
 
     @property
-    def align_directory(self) -> str:
+    def align_directory(self) -> Path:
         """Align directory"""
-        return os.path.join(self.output_directory, "adapted_align")
+        return self.output_directory.joinpath("adapted_align")
 
     @property
-    def working_log_directory(self) -> str:
+    def working_log_directory(self) -> Path:
         """Current log directory"""
         return self.working_directory.joinpath("log")
 
     @property
-    def model_path(self) -> str:
+    def model_path(self) -> Path:
         """Current acoustic model path"""
         if self.current_workflow.workflow_type == WorkflowType.acoustic_model_adaptation:
             return self.working_directory.joinpath("unadapted.mdl")
         return self.working_directory.joinpath("final.mdl")
 
     @property
-    def alignment_model_path(self) -> str:
+    def alignment_model_path(self) -> Path:
         """Current acoustic model path"""
         if self.current_workflow.workflow_type == WorkflowType.acoustic_model_adaptation:
             path = self.working_directory.joinpath("unadapted.alimdl")
@@ -232,7 +182,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         return super().alignment_model_path
 
     @property
-    def next_model_path(self) -> str:
+    def next_model_path(self) -> Path:
         """Mapped acoustic model path"""
         return self.working_directory.joinpath("final.mdl")
 
@@ -293,12 +243,6 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
             new_paths = j.construct_path_dictionary(self.working_directory, "ali", "ark")
             for k, v in old_paths.items():
                 shutil.copyfile(v, new_paths[k])
-            old_paths = j.construct_path_dictionary(
-                alignment_workflow.working_directory, "trans", "ark"
-            )
-            new_paths = j.construct_path_dictionary(self.working_directory, "trans", "ark")
-            for k, v in old_paths.items():
-                shutil.copyfile(v, new_paths[k])
         os.makedirs(self.align_directory, exist_ok=True)
         try:
             logger.info("Adapting pretrained model...")
@@ -307,10 +251,6 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
             shutil.copyfile(
                 self.working_directory.joinpath("final.mdl"),
                 os.path.join(self.align_directory, "final.mdl"),
-            )
-            shutil.copyfile(
-                self.working_directory.joinpath("final.occs"),
-                os.path.join(self.align_directory, "final.occs"),
             )
             shutil.copyfile(
                 self.working_directory.joinpath("tree"),

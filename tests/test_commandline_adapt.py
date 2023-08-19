@@ -22,7 +22,7 @@ def test_adapt_basic(
         english_acoustic_model,
         adapted_model_path,
         "--beam",
-        "15",
+        "100",
         "--clean",
         "--no_debug",
         "-p",

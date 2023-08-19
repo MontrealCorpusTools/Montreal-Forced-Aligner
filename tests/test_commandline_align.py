@@ -1,3 +1,4 @@
+import json
 import os
 
 import click.testing
@@ -6,11 +7,153 @@ from praatio import textgrid as tgio
 from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
+def test_align_one_lab(
+    basic_corpus_dir,
+    generated_dir,
+    english_us_mfa_dictionary,
+    temp_dir,
+    english_mfa_acoustic_model,
+    db_setup,
+):
+    output_directory = generated_dir.joinpath("basic_output")
+    wav_path = basic_corpus_dir.joinpath("michael", "acoustic_corpus.wav")
+    lab_path = basic_corpus_dir.joinpath("michael", "acoustic_corpus.lab")
+    output_path = output_directory.joinpath("align_one_output_lab.TextGrid")
+    command = [
+        "align_one",
+        wav_path,
+        lab_path,
+        english_us_mfa_dictionary,
+        english_mfa_acoustic_model,
+        output_path,
+        "-q",
+        "--clean",
+        "--debug",
+        "--verbose",
+        "-p",
+        "test",
+    ]
+    command = [str(x) for x in command]
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+
+    assert os.path.exists(output_path)
+    command = [
+        "align_one",
+        wav_path,
+        lab_path,
+        english_us_mfa_dictionary,
+        english_mfa_acoustic_model,
+        "-",
+        "-q",
+        "--clean",
+        "--debug",
+        "--verbose",
+        "--output_format",
+        "json",
+        "-p",
+        "test",
+    ]
+    command = [str(x) for x in command]
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+
+    t = json.loads(result.stdout)
+    assert t
+
+
+def test_align_one_tg(
+    multilingual_ipa_tg_corpus_dir,
+    generated_dir,
+    english_us_mfa_dictionary,
+    temp_dir,
+    english_mfa_acoustic_model,
+    db_setup,
+):
+    output_directory = generated_dir.joinpath("multilingual_align_one_output")
+    wav_path = multilingual_ipa_tg_corpus_dir.joinpath("speaker_two", "multilingual_ipa_us.flac")
+    lab_path = multilingual_ipa_tg_corpus_dir.joinpath(
+        "speaker_two", "multilingual_ipa_us.TextGrid"
+    )
+    output_path = output_directory.joinpath("align_one_output_tg.TextGrid")
+    command = [
+        "align_one",
+        wav_path,
+        lab_path,
+        english_us_mfa_dictionary,
+        english_mfa_acoustic_model,
+        output_path,
+        "-q",
+        "--clean",
+        "--debug",
+        "--verbose",
+        "-p",
+        "test",
+    ]
+    command = [str(x) for x in command]
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+
+    assert os.path.exists(output_path)
+    command = [
+        "align_one",
+        wav_path,
+        lab_path,
+        english_us_mfa_dictionary,
+        english_mfa_acoustic_model,
+        "-",
+        "-q",
+        "--clean",
+        "--debug",
+        "--verbose",
+        "--output_format",
+        "json",
+        "-p",
+        "test",
+    ]
+    command = [str(x) for x in command]
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+
+    t = json.loads(result.stdout)
+    assert t
+
+
 def test_align_no_speaker_adaptation(
     basic_corpus_initial_apostrophe,
-        generated_dir,
-        english_us_mfa_reduced_dict,
-        temp_dir, english_mfa_acoustic_model, db_setup
+    generated_dir,
+    english_us_mfa_reduced_dict,
+    temp_dir,
+    english_mfa_acoustic_model,
+    db_setup,
 ):
     output_directory = generated_dir.joinpath("basic_output")
     command = [
@@ -47,7 +190,7 @@ def test_align_no_speaker_adaptation(
     assert os.path.exists(output_directory)
 
     corpus_name = basic_corpus_initial_apostrophe.stem
-    temp_path = temp_dir.joinpath(corpus_name, corpus_name, 'split2', 'trans.1.1.scp')
+    temp_path = temp_dir.joinpath(corpus_name, corpus_name, "split2", "trans.1.1.scp")
     assert not temp_path.exists()
 
 
@@ -139,7 +282,6 @@ def test_align_duplicated(
     assert not result.return_value
 
     assert os.path.exists(output_directory)
-
     output_paths = [
         os.path.join(output_directory, "michael", "recording_0.TextGrid"),
         os.path.join(output_directory, "sickmichael", "recording_0.TextGrid"),
@@ -295,6 +437,8 @@ def test_align_evaluation(
         basic_reference_dir,
         "--custom_mapping_path",
         eval_mapping_path,
+        "--beam",
+        "100",
         "-p",
         "test",
     ]
@@ -594,6 +738,7 @@ def test_acoustic_g2p_model(
         basic_align_config_path,
         "--clean",
         "--debug",
+        "--no_use_mp",
         "-p",
         "test",
     ]

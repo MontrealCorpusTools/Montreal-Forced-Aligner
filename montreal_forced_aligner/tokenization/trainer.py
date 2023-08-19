@@ -43,9 +43,9 @@ class TokenizerAlignmentInitWorker(AlignmentInitWorker):
         Integer ID for the job
     return_queue: :class:`multiprocessing.Queue`
         Queue to return data
-    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
+    stopped: :class:`~threading.Event`
         Stop check
-    finished_adding: :class:`~montreal_forced_aligner.utils.Stopped`
+    finished_adding: :class:`~threading.Event`
         Check for whether the job queue is done
     args: :class:`~montreal_forced_aligner.g2p.phonetisaurus_trainer.AlignmentInitArguments`
         Arguments for initialization
@@ -63,13 +63,6 @@ class TokenizerAlignmentInitWorker(AlignmentInitWorker):
 
     def run(self) -> None:
         """Run the function"""
-        engine = sqlalchemy.create_engine(
-            self.db_string,
-            poolclass=sqlalchemy.NullPool,
-            pool_reset_on_return=None,
-            isolation_level="AUTOCOMMIT",
-            logging_name=f"{type(self).__name__}_engine",
-        ).execution_options(logging_token=f"{type(self).__name__}_engine")
         try:
             symbol_table = pywrapfst.SymbolTable()
             symbol_table.add_symbol(self.eps)
@@ -86,12 +79,10 @@ class TokenizerAlignmentInitWorker(AlignmentInitWorker):
                     valid_input_ngrams.add(line)
             count = 0
             data = {}
-            with mfa_open(self.log_path, "w") as log_file, sqlalchemy.orm.Session(
-                engine
-            ) as session:
+            with (mfa_open(self.log_path, "w") as log_file, self.session() as session):
                 far_writer = pywrapfst.FarWriter.create(self.far_path, arc_type="log")
                 for current_index, (input, output) in enumerate(self.data_generator(session)):
-                    if self.stopped.stop_check():
+                    if self.stopped.is_set():
                         continue
                     try:
                         key = f"{current_index:08x}"
@@ -179,7 +170,7 @@ class TokenizerAlignmentInitWorker(AlignmentInitWorker):
                         del fst
                         count += 1
                     except Exception as e:  # noqa
-                        self.stopped.stop()
+                        self.stopped.set()
                         self.return_queue.put(e)
             if data:
                 data = {k: float(v) for k, v in data.items()}
@@ -187,10 +178,10 @@ class TokenizerAlignmentInitWorker(AlignmentInitWorker):
             symbol_table.write_text(self.far_path.with_suffix(".syms"))
             return
         except Exception as e:
-            self.stopped.stop()
+            self.stopped.set()
             self.return_queue.put(e)
         finally:
-            self.finished.stop()
+            self.finished.set()
             del far_writer
 
 

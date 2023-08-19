@@ -21,11 +21,6 @@ Decoding graph
 
    CreateHclgFunction
    CreateHclgArguments
-   compose_hclg
-   compose_clg
-   compose_lg
-   compose_g
-   compose_g_carpa
 
 
 Speaker-independent transcription
@@ -53,8 +48,6 @@ Speaker-adapted transcription
 
    InitialFmllrFunction
    InitialFmllrArguments
-   LatGenFmllrFunction
-   LatGenFmllrArguments
    FmllrRescoreFunction
    FmllrRescoreArguments
    FinalFmllrFunction

@@ -6,8 +6,15 @@ import re
 import shutil
 import time
 import typing
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
+import pynini
+import pywrapfst
+from _kalpy.fstext import fst_determinize_star, fst_minimize_encoded, fst_push_special
+from kalpy.fstext.lexicon import G2PCompiler
+from kalpy.fstext.utils import kaldi_to_pynini, pynini_to_kaldi
+from kalpy.gmm.align import GmmAligner
 from sqlalchemy.orm import joinedload
 from tqdm.rich import tqdm
 
@@ -25,6 +32,8 @@ from montreal_forced_aligner.utils import parse_dictionary_file, run_kaldi_funct
 __all__ = ["PronunciationProbabilityTrainer"]
 
 logger = logging.getLogger("mfa")
+logger.write = lambda msg: logger.info(msg) if msg != "\n" else None
+logger.flush = lambda: None
 
 
 class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerMixin):
@@ -124,13 +133,20 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
         list[:class:`~montreal_forced_aligner.alignment.multiprocessing.GeneratePronunciationsArguments`]
             Arguments for processing
         """
+        align_options = self.align_options
+        align_options.pop("boost_silence", 1.0)
+        disambiguation_symbols = [self.phone_mapping[p] for p in self.disambiguation_symbols]
+        aligner = GmmAligner(
+            self.model_path, disambiguation_symbols=disambiguation_symbols, **align_options
+        )
 
         return [
             GeneratePronunciationsArguments(
                 j.id,
-                getattr(self, "db_string", ""),
+                getattr(self, "session", ""),
                 self.working_log_directory.joinpath(f"generate_pronunciations.{j.id}.log"),
-                self.model_path,
+                aligner,
+                self.lexicon_compilers,
                 True,
             )
             for j in self.jobs
@@ -150,7 +166,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
         with self.worker.session() as session:
             query = session.query(Utterance.id, Utterance.normalized_character_text)
             query = query.filter(Utterance.ignored == False)  # noqa
-            # query = query.filter(Utterance.oovs != '', Utterance.oovs != None)
+            # query = query.filter(sqlalchemy.or_(Utterance.oovs == '', Utterance.oovs == None))
             if self.subset:
                 query = query.filter_by(in_subset=True)
             for utt_id, text in query:
@@ -234,13 +250,14 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                 logger.debug(
                     f"Generating model for {d.name} took {time.time() - begin:.3f} seconds"
                 )
-                os.rename(d.lexicon_fst_path, d.lexicon_fst_path.with_suffix(".backup"))
+                if d.lexicon_fst_path.exists():
+                    os.rename(d.lexicon_fst_path, d.lexicon_fst_path.with_suffix(".backup"))
                 os.rename(self.fst_path, d.lexicon_fst_path)
 
-                if not GLOBAL_CONFIG.current_profile.debug:
+                if False and not GLOBAL_CONFIG.current_profile.debug:
                     os.remove(self.output_path)
-                os.remove(self.input_far_path)
-                os.remove(self.output_far_path)
+                    os.remove(self.input_far_path)
+                    os.remove(self.output_far_path)
                 for f in os.listdir(self.working_directory):
                     if any(f.endswith(x) for x in [".fst", ".like", ".far", ".enc"]):
                         os.remove(self.working_directory.joinpath(f))
@@ -255,17 +272,58 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                 logger.debug(
                     f"Generating model for {d.name} took {time.time() - begin:.3f} seconds"
                 )
-                os.rename(d.align_lexicon_path, d.align_lexicon_path.with_suffix(".backup"))
+                if d.align_lexicon_path.exists():
+                    os.rename(d.align_lexicon_path, d.align_lexicon_path.with_suffix(".backup"))
                 os.rename(self.fst_path, d.align_lexicon_path)
                 if not GLOBAL_CONFIG.current_profile.debug:
                     os.remove(self.output_alignment_path)
                     os.remove(self.input_path)
                     os.remove(self.input_far_path)
                     os.remove(self.output_far_path)
-                for f in os.listdir(self.working_directory):
-                    if any(f.endswith(x) for x in [".fst", ".like", ".far", ".enc"]):
-                        os.remove(self.working_directory.joinpath(f))
+                    for f in os.listdir(self.working_directory):
+                        if any(f.endswith(x) for x in [".fst", ".like", ".far", ".enc"]):
+                            os.remove(self.working_directory.joinpath(f))
                 d.use_g2p = True
+                fst = pynini.Fst.read(d.lexicon_fst_path)
+                align_fst = pynini.Fst.read(d.align_lexicon_path)
+                grapheme_table = pywrapfst.SymbolTable.read_text(d.grapheme_symbol_table_path)
+                phone_table = pywrapfst.SymbolTable.read_text(self.phone_symbol_table_path)
+                self.worker.lexicon_compilers[d.id] = G2PCompiler(
+                    fst,
+                    grapheme_table,
+                    phone_table,
+                    align_fst=align_fst,
+                    silence_phone=self.optional_silence_phone,
+                )
+                if GLOBAL_CONFIG.current_profile.debug and False:
+                    fst = pynini.Fst.read(d.lexicon_fst_path)
+                    grapheme_table = pywrapfst.SymbolTable.read_text(
+                        self.grapheme_symbol_table_path
+                    )
+                    phone_table = pywrapfst.SymbolTable.read_text(self.phone_symbol_table_path)
+                    query = session.query(Utterance.kaldi_id, Utterance.normalized_character_text)
+                    for utt_id, text in query:
+                        in_fst = pynini.accep(text, token_type=grapheme_table)
+                        logger.debug(f"{utt_id}: {text}")
+                        lg_fst = pynini.compose(in_fst, fst, compose_filter="alt_sequence")
+                        lg_fst = lg_fst.project("output").rmepsilon()
+                        weight_type = lg_fst.weight_type()
+                        weight_threshold = pywrapfst.Weight(weight_type, 2.0)
+                        state_threshold = 256 + 2 * lg_fst.num_states()
+                        lg_fst = pynini.determinize(
+                            lg_fst, nstate=state_threshold, weight=weight_threshold
+                        )
+
+                        lg_fst = pynini_to_kaldi(lg_fst)
+                        with redirect_stdout(logger), redirect_stderr(logger):
+                            fst_determinize_star(lg_fst, use_log=True)
+                            fst_minimize_encoded(lg_fst)
+                            fst_push_special(lg_fst)
+                        lg_fst = kaldi_to_pynini(lg_fst)
+                        path_string = (
+                            pynini.shortestpath(lg_fst).project("output").string(phone_table)
+                        )
+                        logger.debug(f"Output: {path_string}")
             session.commit()
             self.worker.use_g2p = True
 
@@ -286,7 +344,9 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
         for j in self.jobs:
             for p in j.construct_path_dictionary(previous_directory, "ali", "ark").values():
                 shutil.copy(p, wf.working_directory.joinpath(p.name))
-        for f in ["final.mdl", "final.alimdl", "final.occs", "lda.mat"]:
+            for p in j.construct_path_dictionary(previous_directory, "words", "ark").values():
+                shutil.copy(p, wf.working_directory.joinpath(p.name))
+        for f in ["final.mdl", "final.alimdl", "lda.mat", "tree"]:
             p = previous_directory.joinpath(f)
             if os.path.exists(p):
                 shutil.copy(p, wf.working_directory.joinpath(p.name))

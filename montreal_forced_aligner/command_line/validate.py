@@ -91,7 +91,7 @@ def validate_corpus_cli(context, **kwargs) -> None:
     if kwargs.get("profile", None) is not None:
         os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
-    GLOBAL_CONFIG.save()
+
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"]
     dictionary_path = kwargs["dictionary_path"]
@@ -156,7 +156,7 @@ def validate_dictionary_cli(*args, **kwargs) -> None:
     if kwargs.get("profile", None) is not None:
         os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
         GLOBAL_CONFIG.current_profile.update(kwargs)
-        GLOBAL_CONFIG.save()
+
     config_path = kwargs.get("config_path", None)
     g2p_model_path = kwargs["g2p_model_path"]
     dictionary_path = kwargs["dictionary_path"]

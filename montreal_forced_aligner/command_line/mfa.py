@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import atexit
-import multiprocessing as mp
 import sys
 import time
 import warnings
@@ -35,7 +34,6 @@ from montreal_forced_aligner.command_line.validate import (
     validate_dictionary_cli,
 )
 from montreal_forced_aligner.config import GLOBAL_CONFIG, update_command_history
-from montreal_forced_aligner.exceptions import DatabaseError
 from montreal_forced_aligner.utils import check_third_party
 
 BEGIN = time.time()
@@ -117,12 +115,12 @@ def mfa_cli(ctx: click.Context) -> None:
     if ctx.invoked_subcommand == "anchor":
 
         GLOBAL_CONFIG.current_profile.clean = False
-        GLOBAL_CONFIG.save()
     if "--help" in sys.argv or ctx.invoked_subcommand in [
         "configure",
         "version",
         "history",
         "server",
+        "align_one",
     ]:
         auto_server = False
         run_check = False
@@ -155,8 +153,6 @@ def mfa_cli(ctx: click.Context) -> None:
         atexit.register(cleanup_logger)
         if auto_server:
             atexit.register(stop_server)
-
-    mp.freeze_support()
 
 
 @click.command(

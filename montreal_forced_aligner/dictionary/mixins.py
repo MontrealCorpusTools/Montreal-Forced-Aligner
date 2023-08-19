@@ -1018,6 +1018,38 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
                 f.write(section + "\n\n")
             f.write("</Topology>\n")
 
+    def shared_phones_set_symbols(self):
+        phone_sets = []
+        if self.shared_silence_phones:
+            phone_sets.append([self.phone_mapping[x] for x in self.kaldi_silence_phones])
+        else:
+            for sp in self.silence_phones:
+                if self.position_dependent_phones:
+                    mapped = [sp + x for x in [""] + self.positions]
+                else:
+                    mapped = [sp]
+                phone_sets.append([self.phone_mapping[x] for x in mapped])
+        for group in self.kaldi_grouped_phones.values():
+            group = sorted(self.phone_mapping[x] for x in group)
+            phone_sets.append(group)
+        return phone_sets
+
+    def shared_phones_roots(self):
+        phone_sets = []
+        if self.shared_silence_phones:
+            phone_sets.append([self.phone_mapping[x] for x in self.kaldi_silence_phones])
+        else:
+            for sp in self.silence_phones:
+                if self.position_dependent_phones:
+                    mapped = [sp + x for x in [""] + self.positions]
+                else:
+                    mapped = [sp]
+                phone_sets.append([self.phone_mapping[x] for x in mapped])
+        for group in self.kaldi_grouped_phones.values():
+            group = sorted(self.phone_mapping[x] for x in group)
+            phone_sets.append(group)
+        return phone_sets
+
     def _write_phone_sets(self) -> None:
         """
         Write phone symbol sets to the temporary directory

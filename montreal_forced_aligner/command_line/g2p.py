@@ -52,7 +52,7 @@ __all__ = ["g2p_cli"]
     "-n",
     help="Number of pronunciations to generate.",
     type=click.INT,
-    default=0
+    default=0,
 )
 @click.option(
     "--dictionary_path",
@@ -76,7 +76,6 @@ def g2p_cli(context, **kwargs) -> None:
     if kwargs.get("profile", None) is not None:
         os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
-    GLOBAL_CONFIG.save()
 
     config_path = kwargs.get("config_path", None)
     input_path = kwargs["input_path"]

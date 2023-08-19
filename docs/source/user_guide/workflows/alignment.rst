@@ -30,7 +30,7 @@ API reference
 
 - :ref:`alignment_api`
 
-.. _single_alignment:
+.. _align_one:
 
 Align a single file ``(mfa align_one)``
 =======================================

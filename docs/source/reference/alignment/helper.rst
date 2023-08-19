@@ -23,7 +23,6 @@ Multiprocessing workers and functions
    AlignFunction
    FineTuneFunction
    CompileTrainGraphsFunction
-   compile_information_func
    AccStatsFunction
    AlignmentExtractionFunction
    ExportTextGridProcessWorker
@@ -41,7 +40,6 @@ Multiprocessing argument classes
    AlignArguments
    AccStatsArguments
    CompileTrainGraphsArguments
-   CompileInformationArguments
    AlignmentExtractionArguments
    ExportTextGridArguments
    FineTuneArguments

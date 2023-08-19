@@ -2,31 +2,34 @@
 from __future__ import annotations
 
 import logging
-import multiprocessing as mp
 import os
-import re
 import shutil
-import subprocess
 import time
-import typing
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from queue import Empty
-from typing import Dict, List
+from typing import List
 
+from _kalpy.gmm import AccumAmDiagGmm
+from _kalpy.matrix import DoubleVector
+from kalpy.feat.data import FeatureArchive
+from kalpy.gmm.data import AlignmentArchive
+from kalpy.gmm.train import TwoFeatsStatsAccumulator
+from kalpy.gmm.utils import read_gmm_model, write_gmm_model
+from kalpy.utils import kalpy_logger
+from sqlalchemy.orm import joinedload, subqueryload
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
 from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import MfaArguments
+from montreal_forced_aligner.db import Job
 from montreal_forced_aligner.exceptions import KaldiProcessingError
-from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import (
-    KaldiFunction,
-    KaldiProcessWorker,
-    Stopped,
     log_kaldi_errors,
     parse_logs,
-    thirdparty_binary,
+    run_kaldi_function,
+    thread_logger,
 )
 
 __all__ = ["SatTrainer", "AccStatsTwoFeatsFunction", "AccStatsTwoFeatsArguments"]
@@ -38,12 +41,8 @@ logger = logging.getLogger("mfa")
 class AccStatsTwoFeatsArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.sat.AccStatsTwoFeatsFunction`"""
 
-    dictionaries: List[str]
-    ali_paths: Dict[str, Path]
-    acc_paths: Dict[str, Path]
+    working_directory: Path
     model_path: Path
-    feature_strings: Dict[str, str]
-    si_feature_strings: Dict[str, str]
 
 
 class AccStatsTwoFeatsFunction(KaldiFunction):
@@ -68,52 +67,55 @@ class AccStatsTwoFeatsFunction(KaldiFunction):
         Arguments for the function
     """
 
-    progress_pattern = re.compile(r"^LOG \(gmm-acc-stats-twofeats.* Average like for this file.*")
-
     def __init__(self, args: AccStatsTwoFeatsArguments):
         super().__init__(args)
-        self.dictionaries = args.dictionaries
-        self.ali_paths = args.ali_paths
-        self.acc_paths = args.acc_paths
+        self.working_directory = args.working_directory
         self.model_path = args.model_path
-        self.feature_strings = args.feature_strings
-        self.si_feature_strings = args.si_feature_strings
 
-    def _run(self) -> typing.Generator[bool]:
+    def _run(self):
         """Run the function"""
+        with (
+            self.session() as session,
+            thread_logger("kalpy.train", self.log_path, job_name=self.job_name) as train_logger,
+        ):
+            job: Job = (
+                session.query(Job)
+                .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
+                .filter(Job.id == self.job_name)
+                .first()
+            )
+            for d in job.dictionaries:
+                train_logger.debug(f"Accumulating stats for dictionary {d.id}")
+                train_logger.debug(f"Accumulating stats for model: {self.model_path}")
+                dict_id = d.id
+                accumulator = TwoFeatsStatsAccumulator(self.model_path)
 
-        with mfa_open(self.log_path, "w") as log_file:
-            for dict_id in self.dictionaries:
-                ali_path = self.ali_paths[dict_id]
-                acc_path = self.acc_paths[dict_id]
-                feature_string = self.feature_strings[dict_id]
-                si_feature_string = self.si_feature_strings[dict_id]
-                ali_to_post_proc = subprocess.Popen(
-                    [thirdparty_binary("ali-to-post"), f"ark:{ali_path}", "ark:-"],
-                    stderr=log_file,
-                    stdout=subprocess.PIPE,
-                    env=os.environ,
+                fmllr_path = job.construct_path(
+                    job.corpus.current_subset_directory, "trans", "scp", dict_id
                 )
-                acc_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("gmm-acc-stats-twofeats"),
-                        self.model_path,
-                        feature_string,
-                        si_feature_string,
-                        "ark,s,cs:-",
-                        acc_path,
-                    ],
-                    stderr=subprocess.PIPE,
-                    encoding="utf8",
-                    stdin=ali_to_post_proc.stdout,
-                    env=os.environ,
+                if not fmllr_path.exists():
+                    fmllr_path = None
+                lda_mat_path = self.working_directory.joinpath("lda.mat")
+                if not lda_mat_path.exists():
+                    lda_mat_path = None
+                feat_path = job.construct_path(
+                    job.corpus.current_subset_directory, "feats", "scp", dictionary_id=dict_id
                 )
-                for line in acc_proc.stderr:
-                    log_file.write(line)
-                    m = self.progress_pattern.match(line.strip())
-                    if m:
-                        yield True
-                self.check_call(acc_proc)
+                train_logger.debug(f"Feature path: {feat_path}")
+                train_logger.debug(f"LDA transform path: {lda_mat_path}")
+                train_logger.debug(f"Speaker transform path: {fmllr_path}")
+                feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
+                si_feature_archive = FeatureArchive(
+                    feat_path,
+                    lda_mat_file_name=lda_mat_path,
+                    deltas=True,
+                )
+                ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                alignment_archive = AlignmentArchive(ali_path)
+                accumulator.accumulate_stats(
+                    feature_archive, si_feature_archive, alignment_archive, callback=self.callback
+                )
+                self.callback((accumulator.transition_accs, accumulator.gmm_accs))
 
 
 class SatTrainer(TriphoneTrainer):
@@ -171,36 +173,13 @@ class SatTrainer(TriphoneTrainer):
         """
         arguments = []
         for j in self.jobs:
-            feat_strings = {}
-            si_feat_strings = {}
-            for d_id in j.dictionary_ids:
-                feat_strings[d_id] = j.construct_feature_proc_string(
-                    self.working_directory,
-                    d_id,
-                    self.feature_options["uses_splices"],
-                    self.feature_options["splice_left_context"],
-                    self.feature_options["splice_right_context"],
-                    self.feature_options["uses_speaker_adaptation"],
-                )
-                si_feat_strings[d_id] = j.construct_feature_proc_string(
-                    self.working_directory,
-                    d_id,
-                    self.feature_options["uses_splices"],
-                    self.feature_options["splice_left_context"],
-                    self.feature_options["splice_right_context"],
-                    False,
-                )
             arguments.append(
                 AccStatsTwoFeatsArguments(
                     j.id,
-                    getattr(self, "db_string", ""),
+                    getattr(self, "session", ""),
                     self.working_log_directory.joinpath(f"acc_stats_two_feats.{j.id}.log"),
-                    j.dictionary_ids,
-                    j.construct_path_dictionary(self.working_directory, "ali", "ark"),
-                    j.construct_path_dictionary(self.working_directory, "two_feat_acc", "ark"),
+                    self.working_directory,
                     self.model_path,
-                    feat_strings,
-                    si_feat_strings,
                 )
             )
         return arguments
@@ -238,9 +217,9 @@ class SatTrainer(TriphoneTrainer):
             )
         for j in self.jobs:
             for path in j.construct_path_dictionary(
-                self.previous_aligner.working_directory, "trans", "ark"
+                j.corpus.current_subset_directory, "trans", "scp"
             ).values():
-                if os.path.exists(path):
+                if path.exists():
                     break
             else:
                 continue
@@ -251,14 +230,6 @@ class SatTrainer(TriphoneTrainer):
             self.calc_fmllr()
         self.uses_speaker_adaptation = True
         self.worker.uses_speaker_adaptation = True
-        for j in self.jobs:
-            transform_paths = j.construct_path_dictionary(
-                self.previous_aligner.working_directory, "trans", "ark"
-            )
-            output_paths = j.construct_path_dictionary(self.working_directory, "trans", "ark")
-            for k, path in transform_paths.items():
-                shutil.copy(path, output_paths[k])
-        self.tree_stats()
         self._setup_tree(init_from_previous=self.quick, initial_mix_up=self.quick)
 
         self.convert_alignments()
@@ -341,80 +312,53 @@ class SatTrainer(TriphoneTrainer):
         begin = time.time()
 
         arguments = self.acc_stats_two_feats_arguments()
+
+        transition_model, acoustic_model = read_gmm_model(self.model_path)
+        transition_accs = DoubleVector()
+        gmm_accs = AccumAmDiagGmm()
+        transition_model.InitStats(transition_accs)
+        gmm_accs.init(acoustic_model)
         with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
-            if GLOBAL_CONFIG.use_mp:
-                error_dict = {}
-                return_queue = mp.Queue()
-                stopped = Stopped()
-                procs = []
-                for i, args in enumerate(arguments):
-                    function = AccStatsTwoFeatsFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, stopped)
-                    procs.append(p)
-                    p.start()
-                while True:
-                    try:
-                        result = return_queue.get(timeout=1)
-                        if isinstance(result, Exception):
-                            error_dict[getattr(result, "job_name", 0)] = result
-                            continue
-                        if stopped.stop_check():
-                            continue
-                    except Empty:
-                        for proc in procs:
-                            if not proc.finished.stop_check():
-                                break
-                        else:
-                            break
-                        continue
-                    pbar.update(1)
-                for p in procs:
-                    p.join()
-                if error_dict:
-                    for v in error_dict.values():
-                        raise v
-            else:
-                for args in arguments:
-                    function = AccStatsTwoFeatsFunction(args)
-                    for _ in function.run():
-                        pbar.update(1)
+            for result in run_kaldi_function(AccStatsTwoFeatsFunction, arguments, pbar.update):
+                if isinstance(result, tuple):
+                    job_transition_accs, job_gmm_accs = result
+
+                    transition_accs.AddVec(1.0, job_transition_accs)
+                    gmm_accs.Add(1.0, job_gmm_accs)
 
         log_path = self.working_log_directory.joinpath("align_model_est.log")
-        with mfa_open(log_path, "w") as log_file:
 
-            acc_files = []
-            for x in arguments:
-                acc_files.extend(x.acc_paths.values())
-            sum_proc = subprocess.Popen(
-                [thirdparty_binary("gmm-sum-accs"), "-"] + acc_files,
-                stderr=log_file,
-                stdout=subprocess.PIPE,
-                env=os.environ,
+        with (
+            kalpy_logger("kalpy.train", log_path) as train_logger,
+            redirect_stdout(train_logger),
+            redirect_stderr(train_logger),
+        ):
+            objf_impr, count = transition_model.mle_update(transition_accs)
+            logger.debug(
+                f"Transition model update: Overall {objf_impr/count} "
+                f"log-like improvement per frame over {count} frames."
             )
-            est_command = [
-                thirdparty_binary("gmm-est"),
-                "--remove-low-count-gaussians=false",
-            ]
-            if not self.quick:
-                est_command.append(f"--power={self.power}")
-            else:
-                est_command.append(f"--write-occs={self.working_directory.joinpath('final.occs')}")
-            est_command.extend(
-                [
-                    self.model_path,
-                    "-",
-                    self.model_path.with_suffix(".alimdl"),
-                ]
+            power = self.power
+            if self.quick:
+                power = 0.2
+            objf_impr, count = acoustic_model.mle_update(
+                gmm_accs,
+                mixup=self.current_gaussians,
+                power=power,
+                remove_low_count_gaussians=False,
             )
-            est_proc = subprocess.Popen(
-                est_command,
-                stdin=sum_proc.stdout,
-                stderr=log_file,
-                env=os.environ,
+            logger.debug(
+                f"GMM update: Overall {objf_impr/count} "
+                f"objective function improvement per frame over {count} frames."
             )
-            est_proc.communicate()
-        parse_logs(self.working_log_directory)
-        if not GLOBAL_CONFIG.debug:
-            for f in acc_files:
-                os.remove(f)
+            tot_like = gmm_accs.TotLogLike()
+            tot_t = gmm_accs.TotCount()
+            logger.debug(
+                f"Average Likelihood per frame for iteration = {tot_like/tot_t} "
+                f"over {tot_t} frames."
+            )
+            write_gmm_model(
+                self.model_path.with_suffix(".alimdl"), transition_model, acoustic_model
+            )
+
         logger.debug(f"Alignment model creation took {time.time() - begin:.3f} seconds")

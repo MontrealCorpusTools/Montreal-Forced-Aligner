@@ -32,8 +32,39 @@ def test_align_sick(
             .filter(Word.word_type != WordType.silence)
             .count()
         )
-        assert word_interval_count == 372
+        assert word_interval_count == 370
     assert "AY_S" in a.phone_mapping
+    assert os.path.exists(os.path.join(export_directory, "michael", "acoustic_corpus.TextGrid"))
+    a.clean_working_directory()
+
+
+def test_align_sick_mfa(
+    english_us_mfa_dictionary,
+    english_mfa_acoustic_model,
+    basic_corpus_dir,
+    temp_dir,
+    test_align_config,
+    db_setup,
+):
+    a = PretrainedAligner(
+        corpus_directory=basic_corpus_dir,
+        dictionary_path=english_us_mfa_dictionary,
+        acoustic_model_path=english_mfa_acoustic_model,
+        oov_count_threshold=1,
+        **test_align_config
+    )
+    a.align()
+    export_directory = os.path.join(temp_dir, "test_align_mfa_export")
+    shutil.rmtree(export_directory, ignore_errors=True)
+    a.export_files(export_directory)
+    with a.session() as session:
+        word_interval_count = (
+            session.query(WordInterval)
+            .join(WordInterval.word)
+            .filter(Word.word_type != WordType.silence)
+            .count()
+        )
+        assert word_interval_count == 374
     assert os.path.exists(os.path.join(export_directory, "michael", "acoustic_corpus.TextGrid"))
     a.clean_working_directory()
 

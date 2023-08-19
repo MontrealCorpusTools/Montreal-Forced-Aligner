@@ -2,33 +2,36 @@
 from __future__ import annotations
 
 import logging
-import multiprocessing as mp
 import os
 import queue
-import subprocess
 import sys
+import threading
 import time
 import typing
 from pathlib import Path
+from queue import Queue
 
 import dataclassy
-import hdbscan
-import kneed
+
+try:
+    import hdbscan
+    import kneed
+
+    HDBSCAN_ENABLED = True
+except ImportError:
+    HDBSCAN_ENABLED = False
 import librosa
 import numpy as np
 import sqlalchemy
+from _kalpy.ivector import Plda, ivector_normalize_length, ivector_subtract_mean
+from _kalpy.matrix import FloatVector
+from kalpy.ivector.data import IvectorArchive
 from scipy.spatial import distance
 from sklearn import cluster, manifold, metrics, neighbors, preprocessing
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import joinedload
 
 from montreal_forced_aligner.abc import KaldiFunction
-from montreal_forced_aligner.config import GLOBAL_CONFIG, IVECTOR_DIMENSION, XVECTOR_DIMENSION
-from montreal_forced_aligner.corpus.features import (
-    PldaModel,
-    classify_plda,
-    compute_classification_stats,
-    pairwise_plda_distance_matrix,
-)
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import (
     ClusterType,
     DistanceMetric,
@@ -36,7 +39,6 @@ from montreal_forced_aligner.data import (
     MfaArguments,
 )
 from montreal_forced_aligner.db import File, Job, SoundFile, Speaker, Utterance
-from montreal_forced_aligner.utils import Stopped, read_feats, thirdparty_binary
 
 try:
     import warnings
@@ -75,7 +77,7 @@ logger = logging.getLogger("mfa")
 class PldaClassificationArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.diarization.multiprocessing.PldaClassificationFunction`"""
 
-    plda: PldaModel
+    plda: Plda
     train_ivector_path: Path
     num_utts_path: Path
     use_xvector: bool
@@ -86,7 +88,7 @@ class PldaClassificationArguments(MfaArguments):
 class ComputeEerArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.diarization.multiprocessing.ComputeEerFunction`"""
 
-    plda: PldaModel
+    plda: Plda
     metric: DistanceMetric
     use_xvector: bool
     limit_within_speaker: int
@@ -107,7 +109,7 @@ def visualize_clusters(
     manifold_algorithm: ManifoldAlgorithm,
     metric_type: DistanceMetric,
     n_neighbors: int = 10,
-    plda: typing.Optional[PldaModel] = None,
+    plda: typing.Optional[Plda] = None,
     quick=False,
 ):
     logger.debug(f"Generating 2D representation of ivectors with {manifold_algorithm.name}...")
@@ -124,7 +126,10 @@ def visualize_clusters(
     if metric_type is DistanceMetric.plda:
         logger.info("Generating precomputed distance matrix...")
         to_fit = metrics.pairwise_distances(
-            ivectors, ivectors, metric=plda.distance, n_jobs=GLOBAL_CONFIG.current_profile.num_jobs
+            ivectors,
+            ivectors,
+            metric=lambda x, y: plda.LogLikelihoodRatio(x, 1, y),
+            n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
         )
         np.fill_diagonal(to_fit, 0)
         metric = "precomputed"
@@ -281,21 +286,17 @@ def cluster_matrix(
         os.environ["OPENBLAS_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
         os.environ["MKL_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
     distance_threshold = kwargs.pop("distance_threshold", None)
-    plda: PldaModel = kwargs.pop("plda", None)
+    plda: Plda = kwargs.pop("plda", None)
     min_cluster_size = kwargs.pop("min_cluster_size", 15)
 
     score_metric = metric.value
-    if score_metric == "plda":
-        score_metric = plda
     to_fit = ivectors
     score_metric_params = None
     if score_metric == "plda" and cluster_type is not ClusterType.affinity:
         logger.debug("Generating precomputed distance matrix...")
         begin = time.time()
 
-        to_fit = to_fit.astype("float64")
-        psi = plda.psi.astype("float64")
-        to_fit = pairwise_plda_distance_matrix(to_fit, psi)
+        to_fit = plda.generate_affinity_matrix(to_fit).numpy()
         logger.debug(f"Precomputed distance matrix took {time.time() - begin:.3f} seconds")
         score_metric = "precomputed"
     if cluster_type is ClusterType.affinity:
@@ -389,6 +390,8 @@ def cluster_matrix(
             n_jobs=GLOBAL_CONFIG.current_profile.num_jobs, **kwargs
         ).fit_predict(to_fit)
     elif cluster_type is ClusterType.hdbscan:
+        if not HDBSCAN_ENABLED:
+            raise ImportError("Please install `hdbscan` package.")
         if score_metric == "cosine":
             to_fit = preprocessing.normalize(to_fit, norm="l2")
             score_metric = "euclidean"
@@ -496,50 +499,23 @@ class PldaClassificationFunction(KaldiFunction):
         self.num_utts_path = args.num_utts_path
         self.use_xvector = args.use_xvector
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
+    def _run(self):
         """Run the function"""
-        utterance_counts = {}
-        with open(self.num_utts_path) as f:
-            for line in f:
-                speaker, utt_count = line.strip().split()
-                utt_count = int(utt_count)
-                utterance_counts[int(speaker)] = utt_count
-        input_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ivector-subtract-global-mean"),
-                f"ark:{self.train_ivector_path}",
-                "ark,t:-",
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            env=os.environ,
+
+        ivector_archive = IvectorArchive(
+            self.train_ivector_path, num_utterances_file_name=self.num_utts_path
         )
+        speaker_ivectors = []
         speaker_ids = []
-        speaker_counts = []
-        if self.use_xvector:
-            dim = XVECTOR_DIMENSION
-        else:
-            dim = IVECTOR_DIMENSION
-        speaker_ivectors = np.empty((len(utterance_counts), dim))
-        for speaker_id, ivector in read_feats(input_proc, raw_id=True):
-            speaker_id = int(speaker_id)
-            if speaker_id not in utterance_counts:
-                continue
-            speaker_ivectors[len(speaker_ids), :] = ivector
+        num_utts = []
+        for speaker_id, ivector, utts in ivector_archive:
             speaker_ids.append(speaker_id)
-            speaker_counts.append(utterance_counts[speaker_id])
-        speaker_counts = np.array(speaker_counts)
-        speaker_ivectors = speaker_ivectors.astype("float64")
-        self.plda.psi = self.plda.psi.astype("float64")
-        speaker_ivectors = self.plda.process_ivectors(speaker_ivectors, counts=speaker_counts)
-        classification_args = compute_classification_stats(
-            speaker_ivectors, self.plda.psi, counts=speaker_counts
-        )
-        lines = []
-        for line in input_proc.stdout:
-            lines.append(line)
-        input_proc.wait()
-        with Session(self.db_engine()) as session:
+            num_utts.append(utts)
+            ivector_normalize_length(ivector)
+            speaker_ivectors.append(FloatVector(ivector))
+        ivector_subtract_mean(speaker_ivectors)
+        speaker_ivectors = self.plda.transform_ivectors(speaker_ivectors, num_utts)
+        with self.session() as session:
 
             job: Job = (
                 session.query(Job)
@@ -554,9 +530,11 @@ class PldaClassificationFunction(KaldiFunction):
                 .order_by(Utterance.kaldi_id)
             )
             for u_id, u_ivector in utterances:
-                ind, score = classify_plda(u_ivector.astype("float64"), *classification_args)
+                ivector = FloatVector()
+                ivector.from_numpy(u_ivector)
+                ind, score = self.plda.classify_utterance(ivector, speaker_ivectors, num_utts)
                 speaker = speaker_ids[ind]
-                yield u_id, speaker, score
+                self.callback((u_id, speaker, score))
 
 
 class ComputeEerFunction(KaldiFunction):
@@ -587,7 +565,7 @@ class ComputeEerFunction(KaldiFunction):
         self.limit_per_speaker = args.limit_per_speaker
 
     # noinspection PyTypeChecker
-    def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
+    def _run(self):
         """Run the function"""
         if self.use_xvector:
             columns = [Utterance.id, Utterance.speaker_id, Utterance.xvector]
@@ -595,7 +573,7 @@ class ComputeEerFunction(KaldiFunction):
         else:
             columns = [Utterance.id, Utterance.speaker_id, Utterance.plda_vector]
             filter = Utterance.plda_vector != None  # noqa
-        with Session(self.db_engine()) as session:
+        with self.session() as session:
             speakers = (
                 session.query(Speaker.id)
                 .join(Speaker.utterances)
@@ -650,7 +628,7 @@ class ComputeEerFunction(KaldiFunction):
                             else:
                                 score = distance.euclidean(u_ivector, u2_ivector)
                             mismatch_scores.append(score)
-                yield match_scores, mismatch_scores
+                self.callback((match_scores, mismatch_scores))
 
 
 class SpeechbrainClassificationFunction(KaldiFunction):
@@ -683,7 +661,7 @@ class SpeechbrainClassificationFunction(KaldiFunction):
             run_opts=run_opts,
         )
         device = torch.device("cuda" if self.cuda else "cpu")
-        with Session(self.db_engine()) as session:
+        with self.session() as session:
 
             job: Job = (
                 session.query(Job)
@@ -702,7 +680,7 @@ class SpeechbrainClassificationFunction(KaldiFunction):
                 new_speaker = text_lab[0]
                 del out_prob
                 del index
-                yield u_id, new_speaker, float(score.cpu().numpy())
+                self.callback((u_id, new_speaker, float(score.cpu().numpy())))
                 del text_lab
                 del new_speaker
                 del score
@@ -748,11 +726,11 @@ class SpeechbrainEmbeddingFunction(KaldiFunction):
             run_opts=run_opts,
         )
 
-        return_q = mp.Queue(2)
-        finished_adding = Stopped()
-        stopped = Stopped()
+        return_q = Queue(2)
+        finished_adding = threading.Event()
+        stopped = threading.Event()
         loader = UtteranceFileLoader(
-            self.job_name, self.db_string, return_q, stopped, finished_adding
+            self.job_name, self.session, return_q, stopped, finished_adding
         )
         loader.start()
         exception = None
@@ -761,13 +739,13 @@ class SpeechbrainEmbeddingFunction(KaldiFunction):
             try:
                 result = return_q.get(timeout=1)
             except queue.Empty:
-                if finished_adding.stop_check():
+                if finished_adding.is_set():
                     break
                 continue
-            if stopped.stop_check():
+            if stopped.is_set():
                 continue
             if isinstance(result, Exception):
-                stopped.stop()
+                stopped.set()
                 continue
 
             u_id, y = result
@@ -779,7 +757,7 @@ class SpeechbrainEmbeddingFunction(KaldiFunction):
                 .numpy()
                 .squeeze(axis=1)
             )
-            yield u_id, emb[0]
+            self.callback((u_id, emb[0]))
             del emb
             if self.cuda:
                 torch.cuda.empty_cache()
@@ -789,7 +767,7 @@ class SpeechbrainEmbeddingFunction(KaldiFunction):
             raise Exception
 
 
-class UtteranceFileLoader(mp.Process):
+class UtteranceFileLoader(threading.Thread):
     """
     Helper process for loading utterance waveforms in parallel with embedding extraction
 
@@ -801,23 +779,23 @@ class UtteranceFileLoader(mp.Process):
         Connection string for database
     return_q: multiprocessing.Queue
         Queue to put waveforms
-    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
+    stopped: :class:`~threading.Event`
         Check for whether the process to exit gracefully
-    finished_adding: :class:`~montreal_forced_aligner.utils.Stopped`
+    finished_adding: :class:`~threading.Event`
         Check for whether the worker has processed all utterances
     """
 
     def __init__(
         self,
         job_name: int,
-        db_string: str,
-        return_q: mp.Queue,
-        stopped: Stopped,
-        finished_adding: Stopped,
+        session: sqlalchemy.orm.scoped_session,
+        return_q: Queue,
+        stopped: threading.Event,
+        finished_adding: threading.Event,
     ):
         super().__init__()
         self.job_name = job_name
-        self.db_string = db_string
+        self.session = session
         self.return_q = return_q
         self.stopped = stopped
         self.finished_adding = finished_adding
@@ -826,14 +804,7 @@ class UtteranceFileLoader(mp.Process):
         """
         Run the waveform loading job
         """
-        db_engine = sqlalchemy.create_engine(
-            self.db_string,
-            poolclass=sqlalchemy.NullPool,
-            pool_reset_on_return=None,
-            isolation_level="AUTOCOMMIT",
-            logging_name=f"{type(self).__name__}_engine",
-        ).execution_options(logging_token=f"{type(self).__name__}_engine")
-        with Session(db_engine) as session:
+        with self.session() as session:
             try:
                 utterances = (
                     session.query(
@@ -847,7 +818,7 @@ class UtteranceFileLoader(mp.Process):
                     .filter(Utterance.job_id == self.job_name)
                 )
                 for u_id, begin, duration, sound_file_path in utterances:
-                    if self.stopped.stop_check():
+                    if self.stopped.is_set():
                         break
                     y, _ = librosa.load(
                         sound_file_path,
@@ -860,4 +831,4 @@ class UtteranceFileLoader(mp.Process):
             except Exception as e:
                 self.return_q.put(e)
             finally:
-                self.finished_adding.stop()
+                self.finished_adding.set()

@@ -41,7 +41,6 @@ dependencies:
   - coverage
   - coveralls
   - interrogate
-  - numba
   - kneed
   - matplotlib
   - seaborn

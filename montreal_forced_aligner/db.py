@@ -9,8 +9,11 @@ from pathlib import Path
 
 import librosa
 import numpy as np
+import pywrapfst
 import sqlalchemy
 import sqlalchemy.types as types
+from kalpy.data import KaldiMapping
+from kalpy.feat.data import FeatureArchive
 from pgvector.sqlalchemy import Vector
 from praatio import textgrid
 from praatio.utilities.constants import Interval
@@ -394,6 +397,34 @@ class Dictionary(MfaSqlBase):
             for w, mapping_id in query:
                 self._word_mapping[w] = mapping_id
         return self._word_mapping
+
+    @property
+    def word_table(self):
+        if not hasattr(self, "_word_table"):
+            if self.words_symbol_path.exists():
+                self._word_table = pywrapfst.SymbolTable.read_text(self.words_symbol_path)
+                return self._word_table
+            session = sqlalchemy.orm.Session.object_session(self)
+            query = (
+                session.query(Word.word, Word.mapping_id)
+                .filter(Word.dictionary_id == self.id)
+                .filter(Word.included == True)  # noqa
+                .order_by(Word.mapping_id)
+            )
+            self._word_table = pywrapfst.SymbolTable()
+            for w, mapping_id in query:
+                self._word_table.add_symbol(w, mapping_id)
+            self._word_table.write_text(self.words_symbol_path)
+        return self._word_table
+
+    @property
+    def phone_table(self):
+        if not hasattr(self, "_phone_table"):
+            if self.phone_symbol_table_path.exists():
+                self._phone_table = pywrapfst.SymbolTable.read_text(self.phone_symbol_table_path)
+            else:
+                return None
+        return self._phone_table
 
     @property
     def word_pronunciations(self):
@@ -1695,7 +1726,7 @@ class PhoneInterval(MfaSqlBase):
     )
 
     def __repr__(self):
-        return f"<PhoneInterval {self.kaldi_label} ({self.workflow.workflow_type}) from {self.begin}-{self.end} for utterance {self.utterance_id}>"
+        return f"<PhoneInterval {self.phone.kaldi_label} ({self.workflow.workflow_type}) from {self.begin}-{self.end} for utterance {self.utterance_id}>"
 
     @classmethod
     def from_ctm(
@@ -1903,6 +1934,44 @@ class Job(MfaSqlBase):
     def dictionary_ids(self) -> typing.List[int]:
         return [x.id for x in self.dictionaries]
 
+    def construct_feature_archive(
+        self, working_directory: Path, dictionary_id: typing.Optional[int] = None, **kwargs
+    ):
+
+        fmllr_path = self.construct_path(
+            self.corpus.current_subset_directory, "trans", "scp", dictionary_id
+        )
+        if not fmllr_path.exists():
+            fmllr_path = None
+            utt2spk = None
+        else:
+            utt2spk_path = self.construct_path(
+                self.corpus.current_subset_directory, "utt2spk", "scp", dictionary_id
+            )
+            utt2spk = KaldiMapping()
+            utt2spk.load(utt2spk_path)
+        lda_mat_path = working_directory.joinpath("lda.mat")
+        if not lda_mat_path.exists():
+            lda_mat_path = None
+        feat_path = self.construct_path(
+            self.corpus.current_subset_directory, "feats", "scp", dictionary_id=dictionary_id
+        )
+        vad_path = self.construct_path(
+            self.corpus.current_subset_directory, "vad", "scp", dictionary_id=dictionary_id
+        )
+        if not vad_path.exists():
+            vad_path = None
+        feature_archive = FeatureArchive(
+            feat_path,
+            utt2spk=utt2spk,
+            lda_mat_file_name=lda_mat_path,
+            transform_file_name=fmllr_path,
+            vad_file_name=vad_path,
+            deltas=True,
+            **kwargs,
+        )
+        return feature_archive
+
     @property
     def wav_scp_path(self) -> Path:
         return self.construct_path(self.corpus.split_directory, "wav", "scp")
@@ -1956,6 +2025,15 @@ class Job(MfaSqlBase):
         for d in self.dictionaries:
             paths[d.id] = self.construct_path(
                 self.corpus.current_subset_directory, "cmvn", "scp", d.id
+            )
+        return paths
+
+    @property
+    def per_dictionary_trans_scp_paths(self) -> typing.Dict[int, Path]:
+        paths = {}
+        for d in self.dictionaries:
+            paths[d.id] = self.construct_path(
+                self.corpus.current_subset_directory, "trans", "scp", d.id
             )
         return paths
 
@@ -2061,7 +2139,7 @@ class Job(MfaSqlBase):
             if not os.path.exists(lda_mat_path):
                 lda_mat_path = None
             fmllr_trans_path = self.construct_path(
-                self.corpus.current_subset_directory, "trans", "scp", dictionary_id
+                self.corpus.split_directory, "trans", "scp", dictionary_id
             )
 
             if not os.path.exists(fmllr_trans_path):

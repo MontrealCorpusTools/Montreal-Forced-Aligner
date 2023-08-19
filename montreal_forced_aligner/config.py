@@ -107,6 +107,7 @@ def load_command_history() -> List[Dict[str, Any]]:
             history = yaml.load(f, Loader=yaml.Loader)
             if not history:
                 history = []
+    history = [h for h in history if h["command"]]
     for h in history:
         h["command"] = re.sub(r"^\S+.py ", "mfa ", h["command"])
     return history
