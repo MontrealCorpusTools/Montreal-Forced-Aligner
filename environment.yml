@@ -47,6 +47,7 @@ dependencies:
   - pip
   - rich
   - rich-click
+  - kalpy
   - pip:
       - build
       - twine
