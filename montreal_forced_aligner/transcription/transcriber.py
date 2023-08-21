@@ -166,40 +166,22 @@ class TranscriberMixin(CorpusAligner):
             Arguments for processing
         """
         arguments = []
-        with self.session() as session:
-            for j in self.jobs:
-                speaker_mapping = {}
-                speaker_paths = {}
-                words_symbol_paths = {}
-
-                speakers = (
-                    session.query(Speaker)
-                    .join(Speaker.utterances)
-                    .options(joinedload(Speaker.dictionary, innerjoin=True))
-                    .filter(Utterance.job_id == j.id)
-                    .distinct()
+        
+        for j in self.jobs:
+            arguments.append(
+                TrainSpeakerLmArguments(
+                    j.id,
+                    getattr(self, "session", ""),
+                    self.working_log_directory.joinpath(f"train_lm.{j.id}.log"),
+                    self.model_path,
+                    self.tree_path,
+                    self.lexicon_compilers,
+                    self.order,
+                    self.method,
+                    self.target_num_ngrams,
+                    self.hclg_options,
                 )
-                for s in speakers:
-                    dict_id = s.dictionary_id
-                    if dict_id not in speaker_mapping:
-                        speaker_mapping[dict_id] = []
-                        words_symbol_paths[dict_id] = s.dictionary.words_symbol_path
-                    speaker_mapping[dict_id].append(s.id)
-                    speaker_paths[s.id] = os.path.join(self.data_directory, f"{s.id}.txt")
-                arguments.append(
-                    TrainSpeakerLmArguments(
-                        j.id,
-                        getattr(self, "session", ""),
-                        self.working_log_directory.joinpath(f"train_lm.{j.id}.log"),
-                        self.model_path,
-                        self.tree_path,
-                        self.lexicon_compilers,
-                        self.order,
-                        self.method,
-                        self.target_num_ngrams,
-                        self.hclg_options,
-                    )
-                )
+            )
         return arguments
 
     def train_speaker_lms(self) -> None:
