@@ -130,9 +130,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             "beam": self.beam,
             "max_active": self.max_active,
             "lattice_beam": self.lattice_beam,
-            "acoustic_scale": self.acoustic_scale,
-            "transition_scale": self.transition_scale,
-            "self_loop_scale": self.self_loop_scale,
+            "acoustic_scale": self.acoustic_scale
         }
 
     @property
