@@ -38,7 +38,6 @@ from montreal_forced_aligner.utils import get_mfa_version  # noqa
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 extensions = [
-    "sphinx_needs",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.coverage",
