@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import collections
 import logging
-import multiprocessing as mp
 import os
 import queue
 import subprocess
+import threading
 import time
 from pathlib import Path
+from queue import Queue
 
 import dataclassy
 import numpy
@@ -15,7 +16,7 @@ import pynini
 import pywrapfst
 import sqlalchemy
 from pynini.lib import rewrite
-from sqlalchemy.orm import scoped_session, sessionmaker
+from sqlalchemy.orm import scoped_session
 from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import MetaDict, TopLevelMfaWorker
@@ -36,7 +37,7 @@ from montreal_forced_aligner.g2p.generator import PyniniValidator
 from montreal_forced_aligner.g2p.trainer import G2PTrainer
 from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.models import G2PModel
-from montreal_forced_aligner.utils import Stopped, thirdparty_binary
+from montreal_forced_aligner.utils import thirdparty_binary
 
 __all__ = ["PhonetisaurusTrainerMixin", "PhonetisaurusTrainer"]
 
@@ -47,7 +48,7 @@ logger = logging.getLogger("mfa")
 class MaximizationArguments:
     """Arguments for the MaximizationWorker"""
 
-    db_string: str
+    session: scoped_session
     far_path: Path
     penalize_em: bool
     batch_size: int
@@ -57,7 +58,7 @@ class MaximizationArguments:
 class ExpectationArguments:
     """Arguments for the ExpectationWorker"""
 
-    db_string: str
+    session: scoped_session
     far_path: Path
     batch_size: int
 
@@ -66,7 +67,7 @@ class ExpectationArguments:
 class AlignmentExportArguments:
     """Arguments for the AlignmentExportWorker"""
 
-    db_string: str
+    session: scoped_session
     log_path: Path
     far_path: Path
     penalize: bool
@@ -86,7 +87,7 @@ class NgramCountArguments:
 class AlignmentInitArguments:
     """Arguments for the alignment initialization worker"""
 
-    db_string: str
+    session: scoped_session
     log_path: Path
     far_path: Path
     deletions: bool
@@ -101,7 +102,7 @@ class AlignmentInitArguments:
     batch_size: int
 
 
-class AlignmentInitWorker(mp.Process):
+class AlignmentInitWorker(threading.Thread):
     """
     Multiprocessing worker that initializes alignment FSTs for a subset of the data
 
@@ -111,9 +112,9 @@ class AlignmentInitWorker(mp.Process):
         Integer ID for the job
     return_queue: :class:`multiprocessing.Queue`
         Queue to return data
-    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
+    stopped: :class:`~threading.Event`
         Stop check
-    finished_adding: :class:`~montreal_forced_aligner.utils.Stopped`
+    finished_adding: :class:`~threading.Event`
         Check for whether the job queue is done
     args: :class:`~montreal_forced_aligner.g2p.phonetisaurus_trainer.AlignmentInitArguments`
         Arguments for initialization
@@ -122,16 +123,16 @@ class AlignmentInitWorker(mp.Process):
     def __init__(
         self,
         job_name: int,
-        return_queue: mp.Queue,
-        stopped: Stopped,
-        finished_adding: Stopped,
+        return_queue: Queue,
+        stopped: threading.Event,
+        finished_adding: threading.Event,
         args: AlignmentInitArguments,
     ):
-        mp.Process.__init__(self)
+        super().__init__()
         self.job_name = job_name
         self.return_queue = return_queue
         self.stopped = stopped
-        self.finished = Stopped()
+        self.finished = threading.Event()
         self.finished_adding = finished_adding
         self.deletions = args.deletions
         self.insertions = args.insertions
@@ -145,7 +146,7 @@ class AlignmentInitWorker(mp.Process):
         self.far_path = args.far_path
         self.sym_path = self.far_path.with_suffix(".syms")
         self.log_path = args.log_path
-        self.db_string = args.db_string
+        self.session = args.session
         self.batch_size = args.batch_size
 
     def data_generator(self, session):
@@ -163,13 +164,6 @@ class AlignmentInitWorker(mp.Process):
 
     def run(self) -> None:
         """Run the function"""
-        engine = sqlalchemy.create_engine(
-            self.db_string,
-            poolclass=sqlalchemy.NullPool,
-            pool_reset_on_return=None,
-            isolation_level="AUTOCOMMIT",
-            logging_name=f"{type(self).__name__}_engine",
-        ).execution_options(logging_token=f"{type(self).__name__}_engine")
         try:
             symbol_table = pywrapfst.SymbolTable()
             symbol_table.add_symbol(self.eps)
@@ -186,12 +180,10 @@ class AlignmentInitWorker(mp.Process):
                     valid_input_ngrams.add(line)
             count = 0
             data = {}
-            with mfa_open(self.log_path, "w") as log_file, sqlalchemy.orm.Session(
-                engine
-            ) as session:
+            with mfa_open(self.log_path, "w") as log_file, self.session() as session:
                 far_writer = pywrapfst.FarWriter.create(self.far_path, arc_type="log")
                 for current_index, (input, output) in enumerate(self.data_generator(session)):
-                    if self.stopped.stop_check():
+                    if self.stopped.is_set():
                         continue
                     try:
                         key = f"{current_index:08x}"
@@ -317,7 +309,7 @@ class AlignmentInitWorker(mp.Process):
                         del fst
                         count += 1
                     except Exception as e:  # noqa
-                        self.stopped.stop()
+                        self.stopped.set()
                         self.return_queue.put(e)
             if data:
                 data = {k: float(v) for k, v in data.items()}
@@ -325,14 +317,14 @@ class AlignmentInitWorker(mp.Process):
             symbol_table.write_text(self.far_path.with_suffix(".syms"))
             return
         except Exception as e:
-            self.stopped.stop()
+            self.stopped.set()
             self.return_queue.put(e)
         finally:
-            self.finished.stop()
+            self.finished.set()
             del far_writer
 
 
-class ExpectationWorker(mp.Process):
+class ExpectationWorker(threading.Thread):
     """
     Multiprocessing worker that runs the expectation step of training for a subset of the data
 
@@ -342,40 +334,36 @@ class ExpectationWorker(mp.Process):
         Integer ID for the job
     return_queue: :class:`multiprocessing.Queue`
         Queue to return data
-    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
+    stopped: :class:`~threading.Event`
         Stop check
     args: :class:`~montreal_forced_aligner.g2p.phonetisaurus_trainer.ExpectationArguments`
         Arguments for the function
     """
 
     def __init__(
-        self, job_name: int, return_queue: mp.Queue, stopped: Stopped, args: ExpectationArguments
+        self,
+        job_name: int,
+        return_queue: Queue,
+        stopped: threading.Event,
+        args: ExpectationArguments,
     ):
-        mp.Process.__init__(self)
+        super().__init__()
         self.job_name = job_name
-        self.db_string = args.db_string
+        self.session = args.session
         self.far_path = args.far_path
         self.batch_size = args.batch_size
         self.return_queue = return_queue
         self.stopped = stopped
-        self.finished = Stopped()
+        self.finished = threading.Event()
 
     def run(self) -> None:
         """Run the function"""
-        engine = sqlalchemy.create_engine(
-            self.db_string,
-            poolclass=sqlalchemy.NullPool,
-            pool_reset_on_return=None,
-            isolation_level="AUTOCOMMIT",
-            logging_name=f"{type(self).__name__}_engine",
-        ).execution_options(logging_token=f"{type(self).__name__}_engine")
-        Session = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
         far_reader = pywrapfst.FarReader.open(self.far_path)
         symbol_table = pywrapfst.SymbolTable.read_text(self.far_path.with_suffix(".syms"))
         symbol_mapper = {}
         data = {}
         count = 0
-        with Session() as session:
+        with self.session() as session:
             query = (
                 session.query(M2MSymbol.symbol, M2MSymbol.id)
                 .join(M2MSymbol.jobs)
@@ -384,7 +372,7 @@ class ExpectationWorker(mp.Process):
             for symbol, sym_id in query:
                 symbol_mapper[symbol_table.find(symbol)] = sym_id
         while not far_reader.done():
-            if self.stopped.stop_check():
+            if self.stopped.is_set():
                 break
             fst = far_reader.get_fst()
             zero = pywrapfst.Weight.zero("log")
@@ -416,18 +404,18 @@ class ExpectationWorker(mp.Process):
                 del fst
                 count += 1
             except Exception as e:  # noqa
-                self.stopped.stop()
+                self.stopped.set()
                 self.return_queue.put(e)
                 raise
         if data:
             data = {k: float(v) for k, v in data.items()}
             self.return_queue.put((data, count))
-        self.finished.stop()
+        self.finished.set()
         del far_reader
         return
 
 
-class MaximizationWorker(mp.Process):
+class MaximizationWorker(threading.Thread):
     """
     Multiprocessing worker that runs the maximization step of training for a subset of the data
 
@@ -437,21 +425,25 @@ class MaximizationWorker(mp.Process):
         Integer ID for the job
     return_queue: :class:`multiprocessing.Queue`
         Queue to return data
-    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
+    stopped: :class:`~threading.Event`
         Stop check
     args: :class:`~montreal_forced_aligner.g2p.phonetisaurus_trainer.MaximizationArguments`
         Arguments for maximization
     """
 
     def __init__(
-        self, job_name: int, return_queue: mp.Queue, stopped: Stopped, args: MaximizationArguments
+        self,
+        job_name: int,
+        return_queue: Queue,
+        stopped: threading.Event,
+        args: MaximizationArguments,
     ):
-        mp.Process.__init__(self)
+        super().__init__()
         self.job_name = job_name
         self.return_queue = return_queue
         self.stopped = stopped
-        self.finished = Stopped()
-        self.db_string = args.db_string
+        self.finished = threading.Event()
+        self.session = args.session
         self.penalize_em = args.penalize_em
         self.far_path = args.far_path
         self.batch_size = args.batch_size
@@ -460,17 +452,9 @@ class MaximizationWorker(mp.Process):
         """Run the function"""
         symbol_table = pywrapfst.SymbolTable.read_text(self.far_path.with_suffix(".syms"))
         count = 0
-        engine = sqlalchemy.create_engine(
-            self.db_string,
-            poolclass=sqlalchemy.NullPool,
-            pool_reset_on_return=None,
-            isolation_level="AUTOCOMMIT",
-            logging_name=f"{type(self).__name__}_engine",
-        ).execution_options(logging_token=f"{type(self).__name__}_engine")
         try:
-            Session = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
             alignment_model = {}
-            with Session() as session:
+            with self.session() as session:
                 query = (
                     session.query(M2MSymbol)
                     .join(M2MSymbol.jobs)
@@ -489,7 +473,7 @@ class MaximizationWorker(mp.Process):
                 self.far_path.with_suffix(self.far_path.suffix + ".temp"), arc_type="log"
             )
             while not far_reader.done():
-                if self.stopped.stop_check():
+                if self.stopped.is_set():
                     break
                 key = far_reader.get_key()
                 fst = far_reader.get_fst()
@@ -514,16 +498,16 @@ class MaximizationWorker(mp.Process):
             os.remove(self.far_path)
             os.rename(self.far_path.with_suffix(self.far_path.suffix + ".temp"), self.far_path)
         except Exception as e:
-            self.stopped.stop()
+            self.stopped.set()
             self.return_queue.put(e)
             raise
         finally:
             if count >= 1:
                 self.return_queue.put(count)
-            self.finished.stop()
+            self.finished.set()
 
 
-class AlignmentExporter(mp.Process):
+class AlignmentExporter(threading.Thread):
     """
     Multiprocessing worker to generate Ngram counts for aligned FST archives
 
@@ -531,21 +515,23 @@ class AlignmentExporter(mp.Process):
     ----------
     return_queue: :class:`multiprocessing.Queue`
         Queue to return data
-    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
+    stopped: :class:`~threading.Event`
         Stop check
     args: :class:`~montreal_forced_aligner.g2p.phonetisaurus_trainer.AlignmentExportArguments`
         Arguments for maximization
     """
 
-    def __init__(self, return_queue: mp.Queue, stopped: Stopped, args: AlignmentExportArguments):
-        mp.Process.__init__(self)
+    def __init__(
+        self, return_queue: Queue, stopped: threading.Event, args: AlignmentExportArguments
+    ):
+        super().__init__()
         self.return_queue = return_queue
         self.stopped = stopped
-        self.finished = Stopped()
+        self.finished = threading.Event()
         self.penalize = args.penalize
         self.far_path = args.far_path
         self.log_path = args.log_path
-        self.db_string = args.db_string
+        self.session = args.session
 
     def run(self) -> None:
         """Run the function"""
@@ -603,11 +589,11 @@ class AlignmentExporter(mp.Process):
                 f"Done {total - no_alignment_count}, no alignment for {no_alignment_count}"
             )
             log_file.flush()
-            self.finished.stop()
+            self.finished.set()
             del far_reader
 
 
-class NgramCountWorker(mp.Process):
+class NgramCountWorker(threading.Thread):
     """
     Multiprocessing worker to generate Ngram counts for aligned FST archives
 
@@ -615,17 +601,17 @@ class NgramCountWorker(mp.Process):
     ----------
     return_queue: :class:`multiprocessing.Queue`
         Queue to return data
-    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
+    stopped: :class:`~threading.Event`
         Stop check
     args: :class:`~montreal_forced_aligner.g2p.phonetisaurus_trainer.NgramCountArguments`
         Arguments for maximization
     """
 
-    def __init__(self, return_queue: mp.Queue, stopped: Stopped, args: NgramCountArguments):
-        mp.Process.__init__(self)
+    def __init__(self, return_queue: Queue, stopped: threading.Event, args: NgramCountArguments):
+        super().__init__()
         self.return_queue = return_queue
         self.stopped = stopped
-        self.finished = Stopped()
+        self.finished = threading.Event()
         self.order = args.order
         self.far_path = args.far_path
         self.log_path = args.log_path
@@ -661,7 +647,7 @@ class NgramCountWorker(mp.Process):
                 env=os.environ,
             )
             ngramcount_proc.communicate()
-            self.finished.stop()
+            self.finished.set()
 
 
 class PhonetisaurusTrainerMixin:
@@ -777,13 +763,13 @@ class PhonetisaurusTrainerMixin:
         logger.info("Creating alignment FSTs...")
         from montreal_forced_aligner.config import GLOBAL_CONFIG
 
-        return_queue = mp.Queue()
-        stopped = Stopped()
-        finished_adding = Stopped()
+        return_queue = Queue()
+        stopped = threading.Event()
+        finished_adding = threading.Event()
         procs = []
         for i in range(1, GLOBAL_CONFIG.num_jobs + 1):
             args = AlignmentInitArguments(
-                self.db_string,
+                self.session,
                 self.working_log_directory.joinpath(f"alignment_init.{i}.log"),
                 self.working_directory.joinpath(f"{i}.far"),
                 self.deletions,
@@ -808,25 +794,25 @@ class PhonetisaurusTrainerMixin:
             )
             procs[-1].start()
 
-        finished_adding.stop()
+        finished_adding.set()
         error_list = []
         symbols = {}
         job_symbols = {}
         symbol_id = 1
         with tqdm(
             total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet
-        ) as pbar, self.session(autoflush=False, autocommit=False) as session:
+        ) as pbar, self.session() as session:
             while True:
                 try:
                     result = return_queue.get(timeout=2)
                     if isinstance(result, Exception):
                         error_list.append(result)
                         continue
-                    if stopped.stop_check():
+                    if stopped.is_set():
                         continue
                 except queue.Empty:
                     for p in procs:
-                        if not p.finished.stop_check():
+                        if not p.finished.is_set():
                             break
                     else:
                         break
@@ -902,17 +888,17 @@ class PhonetisaurusTrainerMixin:
         logger.debug(f"Change: {change}")
 
         self.prev_total = self.total
-        with self.session(autoflush=False, autocommit=False) as session:
+        with self.session() as session:
             session.query(M2MSymbol).update(
                 {"weight": M2MSymbol.weight - float(self.total)}, synchronize_session=False
             )
             session.commit()
-        return_queue = mp.Queue()
-        stopped = Stopped()
+        return_queue = Queue()
+        stopped = threading.Event()
         procs = []
         for i in range(1, GLOBAL_CONFIG.num_jobs + 1):
             args = MaximizationArguments(
-                self.db_string,
+                self.session,
                 self.working_directory.joinpath(f"{i}.far"),
                 self.penalize_em,
                 self.batch_size,
@@ -928,11 +914,11 @@ class PhonetisaurusTrainerMixin:
                     if isinstance(result, Exception):
                         error_list.append(result)
                         continue
-                    if stopped.stop_check():
+                    if stopped.is_set():
                         continue
                 except queue.Empty:
                     for p in procs:
-                        if not p.finished.stop_check():
+                        if not p.finished.is_set():
                             break
                     else:
                         break
@@ -947,7 +933,7 @@ class PhonetisaurusTrainerMixin:
                 raise v
         if not last_iteration and change >= self.em_threshold:  # we're still converging
             self.total = pynini.Weight.zero("log")
-            with self.session(autoflush=False, autocommit=False) as session:
+            with self.session() as session:
                 session.query(M2MSymbol).update({"weight": 0.0})
                 session.commit()
         logger.info(f"Maximization done! Change from last iteration was {change:.3f}")
@@ -958,13 +944,13 @@ class PhonetisaurusTrainerMixin:
         Run the expectation step for training
         """
         logger.info("Performing expectation step...")
-        return_queue = mp.Queue()
-        stopped = Stopped()
+        return_queue = Queue()
+        stopped = threading.Event()
         error_list = []
         procs = []
         for i in range(1, GLOBAL_CONFIG.num_jobs + 1):
             args = ExpectationArguments(
-                self.db_string,
+                self.session,
                 self.working_directory.joinpath(f"{i}.far"),
                 self.batch_size,
             )
@@ -979,11 +965,11 @@ class PhonetisaurusTrainerMixin:
                     if isinstance(result, Exception):
                         error_list.append(result)
                         continue
-                    if stopped.stop_check():
+                    if stopped.is_set():
                         continue
                 except queue.Empty:
                     for p in procs:
-                        if not p.finished.stop_check():
+                        if not p.finished.is_set():
                             break
                     else:
                         break
@@ -1017,8 +1003,8 @@ class PhonetisaurusTrainerMixin:
             logger.info("Ngram model already exists.")
             return
         logger.info("Generating ngram counts...")
-        return_queue = mp.Queue()
-        stopped = Stopped()
+        return_queue = Queue()
+        stopped = threading.Event()
         error_list = []
         procs = []
         count_paths = []
@@ -1040,11 +1026,11 @@ class PhonetisaurusTrainerMixin:
                     if isinstance(result, Exception):
                         error_list.append(result)
                         continue
-                    if stopped.stop_check():
+                    if stopped.is_set():
                         continue
                 except queue.Empty:
                     for p in procs:
-                        if not p.finished.stop_check():
+                        if not p.finished.is_set():
                             break
                     else:
                         break
@@ -1295,14 +1281,14 @@ class PhonetisaurusTrainerMixin:
         """
         logger.info("Exporting final alignments...")
 
-        return_queue = mp.Queue()
-        stopped = Stopped()
+        return_queue = Queue()
+        stopped = threading.Event()
         error_list = []
         procs = []
         count_paths = []
         for i in range(1, GLOBAL_CONFIG.num_jobs + 1):
             args = AlignmentExportArguments(
-                self.db_string,
+                self.session,
                 self.working_log_directory.joinpath(f"ngram_count.{i}.log"),
                 self.working_directory.joinpath(f"{i}.far"),
                 self.penalize,
@@ -1318,11 +1304,11 @@ class PhonetisaurusTrainerMixin:
                     if isinstance(result, Exception):
                         error_list.append(result)
                         continue
-                    if stopped.stop_check():
+                    if stopped.is_set():
                         continue
                 except queue.Empty:
                     for p in procs:
-                        if not p.finished.stop_check():
+                        if not p.finished.is_set():
                             break
                     else:
                         break

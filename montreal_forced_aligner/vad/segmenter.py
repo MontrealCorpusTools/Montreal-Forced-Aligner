@@ -233,7 +233,7 @@ class Segmenter(
         return [
             SegmentVadArguments(
                 j.id,
-                getattr(self, "db_string", ""),
+                getattr(self, "session", ""),
                 self.working_log_directory.joinpath(f"segment_vad.{j.id}.log"),
                 j.construct_path(self.split_directory, "vad", "scp"),
                 self.segmentation_options,

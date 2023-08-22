@@ -26,7 +26,7 @@ from rich.theme import Theme
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
-    from montreal_forced_aligner.textgrid import CtmInterval
+    from montreal_forced_aligner.data import CtmInterval
 
 
 __all__ = [
@@ -36,17 +36,21 @@ __all__ = [
     "load_scp",
     "load_scp_safe",
     "score_wer",
+    "score_g2p",
     "edit_distance",
     "output_mapping",
     "parse_old_features",
     "compare_labels",
     "overlap_scoring",
+    "make_re_character_set_safe",
     "align_phones",
     "split_phone_position",
     "align_pronunciations",
     "configure_logger",
     "mfa_open",
     "load_configuration",
+    "format_correction",
+    "format_probability",
 ]
 
 

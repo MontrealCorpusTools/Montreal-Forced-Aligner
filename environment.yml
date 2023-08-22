@@ -41,13 +41,13 @@ dependencies:
   - coverage
   - coveralls
   - interrogate
-  - numba
   - kneed
   - matplotlib
   - seaborn
   - pip
   - rich
   - rich-click
+  - kalpy
   - pip:
       - build
       - twine

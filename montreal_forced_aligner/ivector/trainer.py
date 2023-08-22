@@ -3,25 +3,28 @@ from __future__ import annotations
 
 import logging
 import os
-import re
+import random
 import shutil
-import subprocess
 import time
 import typing
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from _kalpy import ivector
+from _kalpy.gmm import AccumDiagGmm, DiagGmm, FullGmm, MleDiagGmmOptions, StringToGmmFlags
+from _kalpy.matrix import FloatMatrix, MatrixResizeType
+from kalpy.utils import kalpy_logger, read_kaldi_object, write_kaldi_object
 from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import MetaDict, ModelExporterMixin, TopLevelMfaWorker
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
-from montreal_forced_aligner.config import GLOBAL_CONFIG, PLDA_DIMENSION
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.features import IvectorConfigMixin
 from montreal_forced_aligner.corpus.ivector_corpus import IvectorCorpusMixin
 from montreal_forced_aligner.data import WorkflowType
 from montreal_forced_aligner.db import CorpusWorkflow
 from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
-from montreal_forced_aligner.helper import load_configuration, mfa_open
+from montreal_forced_aligner.helper import load_configuration
 from montreal_forced_aligner.ivector.multiprocessing import (
     AccGlobalStatsArguments,
     AccGlobalStatsFunction,
@@ -33,12 +36,7 @@ from montreal_forced_aligner.ivector.multiprocessing import (
     GmmGselectFunction,
 )
 from montreal_forced_aligner.models import IvectorExtractorModel
-from montreal_forced_aligner.utils import (
-    log_kaldi_errors,
-    parse_logs,
-    run_kaldi_function,
-    thirdparty_binary,
-)
+from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
 
 __all__ = [
     "TrainableIvectorExtractor",
@@ -74,6 +72,9 @@ class IvectorModelTrainingMixin(AcousticModelTrainingMixin):
             "features": self.feature_options,
         }
         return data
+
+    def refresh_training_graph_compilers(self):
+        pass
 
     def compute_calculated_properties(self) -> None:
         """Not implemented"""
@@ -166,7 +167,11 @@ class DubmTrainer(IvectorModelTrainingMixin):
     @property
     def dubm_options(self) -> MetaDict:
         """Options for DUBM training"""
-        return {"subsample": self.subsample, "num_gselect": self.num_gselect}
+        return {
+            "subsample": self.subsample,
+            "uses_cmvn": self.uses_cmvn,
+            "num_gselect": self.num_gselect,
+        }
 
     def gmm_gselect_arguments(self) -> List[GmmGselectArguments]:
         """
@@ -182,12 +187,11 @@ class DubmTrainer(IvectorModelTrainingMixin):
             arguments.append(
                 GmmGselectArguments(
                     j.id,
-                    getattr(self, "db_string", ""),
+                    getattr(self, "session", ""),
                     self.working_log_directory.joinpath(f"gmm_gselect.{j.id}.log"),
-                    self.feature_options,
-                    self.dubm_options,
+                    self.working_directory,
                     self.model_path,
-                    j.construct_path(self.working_directory, "gselect", "ark"),
+                    self.dubm_options,
                 )
             )
         return arguments
@@ -209,16 +213,14 @@ class DubmTrainer(IvectorModelTrainingMixin):
             arguments.append(
                 AccGlobalStatsArguments(
                     j.id,
-                    getattr(self, "db_string", ""),
+                    getattr(self, "session", ""),
                     os.path.join(
                         self.working_log_directory,
                         f"acc_global_stats.{self.iteration}.{j.id}.log",
                     ),
-                    self.feature_options,
-                    self.dubm_options,
-                    j.construct_path(self.working_directory, "gselect", "ark"),
-                    j.construct_path(self.working_directory, f"global.{self.iteration}", "acc"),
+                    self.working_directory,
                     self.model_path,
+                    self.dubm_options,
                 )
             )
         return arguments
@@ -240,9 +242,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
         begin = time.time()
         logger.info("Selecting gaussians...")
         arguments = self.gmm_gselect_arguments()
-        with tqdm(
-            total=int(self.num_current_utterances / 10), disable=GLOBAL_CONFIG.quiet
-        ) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             for _ in run_kaldi_function(GmmGselectFunction, arguments, pbar.update):
                 pass
 
@@ -251,57 +251,61 @@ class DubmTrainer(IvectorModelTrainingMixin):
     def _trainer_initialization(self, initial_alignment_directory: Optional[str] = None) -> None:
         """DUBM training initialization"""
         log_path = self.working_log_directory.joinpath("gmm_init.log")
-        with self.session() as session, mfa_open(log_path, "w") as log_file:
-            alignment_workflow: CorpusWorkflow = (
-                session.query(CorpusWorkflow)
-                .filter(CorpusWorkflow.workflow_type == WorkflowType.alignment)
-                .first()
-            )
+        with kalpy_logger("kalpy.ivector", log_path) as ivector_logger:
             num_gauss_init = int(self.initial_gaussian_proportion * int(self.num_gaussians))
             self.iteration = 1
-            if self.use_alignment_features and alignment_workflow is not None:
-                model_path = os.path.join(alignment_workflow.working_directory, "final.mdl")
-                occs_path = os.path.join(alignment_workflow.working_directory, "final.occs")
-                gmm_init_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("init-ubm"),
-                        "--fullcov=false",
-                        "--intermediate-num-gauss=2000",
-                        f"--num-frames={self.num_frames}",
-                        f"--ubm-num-gauss={self.num_gaussians}",
-                        model_path,
-                        occs_path,
-                        self.model_path,
-                    ],
-                    stderr=log_file,
+            job = self.jobs[0]
+            options = MleDiagGmmOptions()
+            feature_archive = job.construct_feature_archive(self.worker.split_directory)
+            feats = FloatMatrix()
+            num_read = 0
+            dim = 0
+            random.seed(GLOBAL_CONFIG.current_profile.seed)
+            for _, current_feats in feature_archive:
+                for t in range(current_feats.NumRows()):
+
+                    if num_read == 0:
+                        dim = current_feats.NumCols()
+                        feats.Resize(self.num_frames, current_feats.NumCols())
+                    num_read += 1
+                    if num_read < self.num_frames:
+                        feats.Row(num_read - 1).CopyFromVec(current_feats.Row(t))
+                    else:
+                        keep_prob = self.num_frames / num_read
+                        if random.uniform(0, 1) <= keep_prob:
+                            feats.Row(random.randint(0, self.num_frames - 1)).CopyFromVec(
+                                current_feats.Row(t)
+                            )
+
+            if num_read < self.num_frames:
+                ivector_logger.warning(
+                    f"Number of frames {num_read} was less than the target number {self.num_frames}, using all frames"
                 )
-                gmm_init_proc.communicate()
+                feats.Resize(num_read, dim, MatrixResizeType.kCopyData)
             else:
-                job = self.jobs[0]
-                feature_string = job.construct_online_feature_proc_string()
-                feature_string = feature_string.replace(f".{job.id}.scp", ".scp")
-                feature_string = feature_string.replace(
-                    str(job.corpus.current_subset_directory), str(job.corpus.data_directory)
+                percent = self.num_frames * 100.0 / num_read
+                ivector_logger.info(
+                    f"Kept {self.num_frames} out of {num_read} input frames = {percent:.2f}%"
                 )
-                gmm_init_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("gmm-global-init-from-feats"),
-                        "--verbose=4",
-                        f"--num-threads={GLOBAL_CONFIG.num_jobs}",
-                        f"--num-frames={self.num_frames}",
-                        f"--num_gauss={self.num_gaussians}",
-                        f"--num_gauss_init={num_gauss_init}",
-                        f"--num_iters={self.num_iterations_init}",
-                        feature_string,
-                        self.model_path,
-                    ],
-                    stderr=log_file,
-                )
-                gmm_init_proc.communicate()
+            if num_gauss_init <= 0 or num_gauss_init > self.num_gaussians:
+                num_gauss_init = self.num_gaussians
+            gmm = DiagGmm(num_gauss_init, dim)
+            ivector_logger.info(
+                f"Initializing GMM means from random frames to {num_gauss_init} Gaussians."
+            )
+            gmm.init_from_random_frames(feats)
+            cur_num_gauss = num_gauss_init
+            gauss_inc = int((self.num_gaussians - num_gauss_init) / (self.num_iterations_init / 2))
+            for i in range(self.num_iterations_init):
+                gmm.train_one_iter(feats, options, i, GLOBAL_CONFIG.current_profile.num_jobs)
+                next_num_gauss = min(self.num_gaussians, cur_num_gauss, gauss_inc)
+                if next_num_gauss > gmm.NumGauss():
+                    gmm.Split(next_num_gauss, 0.1)
+                    cur_num_gauss = next_num_gauss
+            write_kaldi_object(gmm, self.model_path)
 
             # Store Gaussian selection indices on disk
             self.gmm_gselect()
-            parse_logs(self.working_log_directory)
 
     def acc_global_stats(self) -> None:
         """
@@ -322,51 +326,26 @@ class DubmTrainer(IvectorModelTrainingMixin):
         begin = time.time()
         logger.info("Accumulating global stats...")
         arguments = self.acc_global_stats_arguments()
-
+        gmm_accs = AccumDiagGmm()
+        model: DiagGmm = read_kaldi_object(DiagGmm, self.model_path)
+        gmm_accs.Resize(model, StringToGmmFlags("mvw"))
         with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
-            for _ in run_kaldi_function(AccGlobalStatsFunction, arguments, pbar.update):
-                pass
+            for result in run_kaldi_function(AccGlobalStatsFunction, arguments, pbar.update):
+                if isinstance(result, AccumDiagGmm):
+                    gmm_accs.Add(1.0, result)
 
         logger.debug(f"Accumulating stats took {time.time() - begin:.3f} seconds")
 
-        # Don't remove low-count Gaussians till the last tier,
-        # or gselect info won't be valid anymore
+        remove_low_count_gaussians = self.remove_low_count_gaussians
         if self.iteration < self.num_iterations:
-            opt = "--remove-low-count-gaussians=false"
-        else:
-            opt = f"--remove-low-count-gaussians={self.remove_low_count_gaussians}"
+            remove_low_count_gaussians = False
         log_path = self.working_log_directory.joinpath(f"update.{self.iteration}.log")
-        with mfa_open(log_path, "w") as log_file:
-            acc_files = []
-            for j in arguments:
-                acc_files.append(j.acc_path)
-            sum_proc = subprocess.Popen(
-                [thirdparty_binary("gmm-global-sum-accs"), "-"] + acc_files,
-                stderr=log_file,
-                stdout=subprocess.PIPE,
-                env=os.environ,
-            )
-            gmm_global_est_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("gmm-global-est"),
-                    opt,
-                    f"--min-gaussian-weight={self.min_gaussian_weight}",
-                    self.model_path,
-                    "-",
-                    self.next_model_path,
-                ],
-                stderr=log_file,
-                stdin=sum_proc.stdout,
-                env=os.environ,
-            )
-            gmm_global_est_proc.communicate()
-            # Clean up
-            if not GLOBAL_CONFIG.debug:
-                for p in acc_files:
-                    os.remove(p)
+        with kalpy_logger("kalpy.ivector", log_path):
+            model.mle_update(gmm_accs, remove_low_count_gaussians=remove_low_count_gaussians)
+            write_kaldi_object(model, self.next_model_path)
 
     @property
-    def exported_model_path(self) -> str:
+    def exported_model_path(self) -> Path:
         """Temporary model path to save intermediate model"""
         return self.working_log_directory.joinpath("dubm_model.zip")
 
@@ -393,14 +372,14 @@ class DubmTrainer(IvectorModelTrainingMixin):
             session.commit()
 
     @property
-    def model_path(self) -> str:
+    def model_path(self) -> Path:
         """Current iteration's DUBM model path"""
         if self.training_complete:
             return self.working_directory.joinpath("final.dubm")
         return self.working_directory.joinpath(f"{self.iteration}.dubm")
 
     @property
-    def next_model_path(self) -> str:
+    def next_model_path(self) -> Path:
         """Next iteration's DUBM model path"""
         if self.training_complete:
             return self.working_directory.joinpath("final.dubm")
@@ -433,11 +412,12 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
     ):
         super().__init__(**kwargs)
         self.subsample = subsample
+        self.sliding_cmvn = True
         self.num_iterations = num_iterations
         self.gaussian_min_count = gaussian_min_count
 
     @property
-    def exported_model_path(self) -> str:
+    def exported_model_path(self) -> Path:
         """Temporary directory path that trainer will save ivector extractor model"""
         return self.working_log_directory.joinpath("ivector_model.zip")
 
@@ -455,15 +435,13 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
             arguments.append(
                 AccIvectorStatsArguments(
                     j.id,
-                    getattr(self, "db_string", ""),
+                    getattr(self, "session", ""),
                     os.path.join(
                         self.working_log_directory, f"ivector_acc.{self.iteration}.{j.id}.log"
                     ),
-                    self.feature_options,
-                    self.ivector_options,
+                    self.working_directory,
                     self.ie_path,
-                    j.construct_path(self.working_directory, "post", "ark"),
-                    j.construct_path(self.working_directory, "ivector", "acc"),
+                    self.ivector_options,
                 )
             )
         return arguments
@@ -476,27 +454,19 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         log_path = os.path.join(log_directory, "init.log")
         diag_ubm_path = self.working_directory.joinpath("final.dubm")
 
-        full_ubm_path = self.working_directory.joinpath("final.ubm")
         if not os.path.exists(self.ie_path):
-            with mfa_open(log_path, "w") as log_file:
-                subprocess.check_call(
-                    [thirdparty_binary("gmm-global-to-fgmm"), diag_ubm_path, full_ubm_path],
-                    stderr=log_file,
-                )
-                subprocess.check_call(
-                    [
-                        thirdparty_binary("ivector-extractor-init"),
-                        f"--ivector-dim={self.ivector_dimension}",
-                        "--use-weights=false",
-                        full_ubm_path,
-                        self.ie_path,
-                    ],
-                    stderr=log_file,
-                )
+            with kalpy_logger("kalpy.ivector", log_path):
 
-        # Do Gaussian selection and posterior extraction
+                gmm = read_kaldi_object(DiagGmm, diag_ubm_path)
+                fgmm = FullGmm()
+                fgmm.CopyFromDiagGmm(gmm)
+
+                options = ivector.IvectorExtractorOptions()
+                options.ivector_dim = self.ivector_dimension
+                options.use_weights = False
+                extractor = ivector.IvectorExtractor(options, fgmm)
+                write_kaldi_object(extractor, self.ie_path)
         self.gauss_to_post()
-        parse_logs(log_directory)
 
     def gauss_to_post_arguments(self) -> List[GaussToPostArguments]:
         """
@@ -512,12 +482,11 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
             arguments.append(
                 GaussToPostArguments(
                     j.id,
-                    getattr(self, "db_string", ""),
+                    getattr(self, "session", ""),
                     self.working_log_directory.joinpath(f"gauss_to_post.{j.id}.log"),
-                    self.feature_options,
-                    self.ivector_options,
-                    j.construct_path(self.working_directory, "post", "ark"),
+                    self.working_directory,
                     self.dubm_path,
+                    self.ivector_options,
                 )
             )
         return arguments
@@ -555,6 +524,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         """Options for ivector training and extracting"""
         options = super().ivector_options
         options["subsample"] = self.subsample
+        options["uses_cmvn"] = self.uses_cmvn
         return options
 
     @property
@@ -572,21 +542,21 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         }
 
     @property
-    def ie_path(self) -> str:
+    def ie_path(self) -> Path:
         """Current ivector extractor model path"""
         if self.training_complete:
             return self.working_directory.joinpath("final.ie")
         return self.working_directory.joinpath(f"{self.iteration}.ie")
 
     @property
-    def next_ie_path(self) -> str:
+    def next_ie_path(self) -> Path:
         """Next iteration's ivector extractor model path"""
         if self.training_complete:
             return self.working_directory.joinpath("final.ie")
         return self.working_directory.joinpath(f"{self.iteration + 1}.ie")
 
     @property
-    def dubm_path(self) -> str:
+    def dubm_path(self) -> Path:
         """DUBM model path"""
         return self.working_directory.joinpath("final.dubm")
 
@@ -612,67 +582,27 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         logger.info("Accumulating ivector stats...")
         arguments = self.acc_ivector_stats_arguments()
 
+        model: ivector.IvectorExtractor = read_kaldi_object(ivector.IvectorExtractor, self.ie_path)
+        options = ivector.IvectorExtractorStatsOptions()
+        ivector_stats = ivector.IvectorExtractorStats(model, options)
         with tqdm(total=self.worker.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
-            for _ in run_kaldi_function(AccIvectorStatsFunction, arguments, pbar.update):
-                pass
+            for result in run_kaldi_function(AccIvectorStatsFunction, arguments, pbar.update):
+                if isinstance(result, ivector.IvectorExtractorStats):
+                    ivector_stats.Add(result)
 
         logger.debug(f"Accumulating stats took {time.time() - begin:.3f} seconds")
 
-        log_path = self.working_log_directory.joinpath(f"sum_acc.{self.iteration}.log")
-        acc_path = self.working_directory.joinpath(f"acc.{self.iteration}")
-        with mfa_open(log_path, "w") as log_file:
-            accinits = []
-            for j in arguments:
-                accinits.append(j.acc_path)
-            sum_accs_proc = subprocess.Popen(
-                [thirdparty_binary("ivector-extractor-sum-accs"), "--parallel=true"]
-                + accinits
-                + [acc_path],
-                stderr=log_file,
-                env=os.environ,
-            )
+        begin = time.time()
 
-            sum_accs_proc.communicate()
-        # clean up
-        for p in accinits:
-            if os.path.exists(p):
-                os.remove(p)
-        # Est extractor
-        log_path = self.working_log_directory.joinpath(f"update.{self.iteration}.log")
-        with mfa_open(log_path, "w") as log_file:
-            extractor_est_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("ivector-extractor-est"),
-                    f"--num-threads={len(self.jobs)}",
-                    f"--gaussian-min-count={self.gaussian_min_count}",
-                    self.ie_path,
-                    self.working_directory.joinpath(f"acc.{self.iteration}"),
-                    self.next_ie_path,
-                ],
-                stderr=subprocess.PIPE,
-                env=os.environ,
-            )
-            iteration_improvement = None
-            explained_variance = None
-            for line in extractor_est_proc.stderr:
-                line = line.decode("utf8")
-                log_file.write(line)
-                log_file.flush()
-                m = re.match(
-                    r"LOG.*Overall objective-function improvement per frame was (?P<improvement>[0-9.]+)",
-                    line,
-                )
-                if m:
-                    iteration_improvement = float(m.group("improvement"))
-                m = re.match(
-                    r"LOG.*variance explained by the iVectors is (?P<variance>[0-9.]+)\.", line
-                )
-                if m:
-                    explained_variance = float(m.group("variance"))
-            extractor_est_proc.wait()
-            logger.debug(
-                f"For iteration {self.iteration}, objective-function improvement was {iteration_improvement} per frame and variance explained by ivectors was {explained_variance}."
-            )
+        ivector_stats.update(
+            model,
+            gaussian_min_count=self.gaussian_min_count,
+            num_threads=GLOBAL_CONFIG.current_profile.num_jobs,
+        )
+        ivector_stats.IvectorVarianceDiagnostic(model)
+        write_kaldi_object(model, self.next_ie_path)
+
+        logger.debug(f"Ivector extractor update took {time.time() - begin:.3f} seconds")
 
     def train_iteration(self) -> None:
         """
@@ -714,49 +644,8 @@ class PldaTrainer(IvectorTrainer):
         """No initialization"""
         pass
 
-    def compute_lda(self):
-
-        lda_path = self.working_directory.joinpath("ivector_lda.mat")
-        log_path = self.working_log_directory.joinpath("lda.log")
-        utt2spk_path = os.path.join(self.corpus_output_directory, "utt2spk.scp")
-        with tqdm(total=self.worker.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar, mfa_open(
-            log_path, "w"
-        ) as log_file:
-            normalize_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("ivector-normalize-length"),
-                    f"scp:{self.worker.utterance_ivector_path}",
-                    "ark:-",
-                ],
-                stdout=subprocess.PIPE,
-                stderr=log_file,
-                env=os.environ,
-            )
-            lda_compute_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("ivector-compute-lda"),
-                    f"--dim={PLDA_DIMENSION}",
-                    "--total-covariance-factor=0.1",
-                    "ark:-",
-                    f"ark:{utt2spk_path}",
-                    lda_path,
-                ],
-                stdin=subprocess.PIPE,
-                stderr=log_file,
-                env=os.environ,
-            )
-            for line in normalize_proc.stdout:
-                lda_compute_proc.stdin.write(line)
-                lda_compute_proc.stdin.flush()
-                pbar.update(1)
-
-            lda_compute_proc.stdin.close()
-            lda_compute_proc.wait()
-        assert os.path.exists(lda_path)
-
     def train(self):
         """Train PLDA"""
-        self.compute_lda()
         self.worker.compute_plda()
         self.worker.compute_speaker_ivectors()
         os.rename(

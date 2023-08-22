@@ -56,4 +56,3 @@ def test_configure(
     global_config.verbose = True
     global_config.use_mp = False
     global_config.temporary_directory = temp_dir
-    global_config.save()

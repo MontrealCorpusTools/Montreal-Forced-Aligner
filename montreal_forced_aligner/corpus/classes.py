@@ -88,7 +88,7 @@ class FileData:
         """
         text_type: TextFileType = TextFileType.NONE
         if text_path is not None:
-            if text_path.lower().endswith(".textgrid"):
+            if str(text_path).lower().endswith(".textgrid"):
                 text_type = TextFileType.TEXTGRID
             else:
                 text_type = TextFileType.LAB

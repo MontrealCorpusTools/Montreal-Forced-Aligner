@@ -86,7 +86,7 @@ def global_config():
     GLOBAL_CONFIG.current_profile.database_limited_mode = True
     GLOBAL_CONFIG.current_profile.auto_server = False
     GLOBAL_CONFIG.current_profile.temporary_directory = get_temporary_directory()
-    GLOBAL_CONFIG.save()
+
     yield GLOBAL_CONFIG
 
 
@@ -651,9 +651,10 @@ def basic_corpus_initial_apostrophe(corpus_root_dir, wav_dir, lab_dir):
         os.makedirs(s_dir, exist_ok=True)
         for name in files:
             shutil.copyfile(wav_dir.joinpath(name + ".wav"), s_dir.joinpath(name + ".wav"))
-            with open(s_dir.joinpath(name + ".txt"), 'w') as outf, \
-                open(lab_dir.joinpath(name + ".lab"), 'r') as inf:
-                outf.write("'"+inf.read())
+            with open(s_dir.joinpath(name + ".txt"), "w") as outf, open(
+                lab_dir.joinpath(name + ".lab"), "r"
+            ) as inf:
+                outf.write("'" + inf.read())
     return path
 
 

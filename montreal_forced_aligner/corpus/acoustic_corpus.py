@@ -2,18 +2,22 @@
 from __future__ import annotations
 
 import logging
-import multiprocessing as mp
 import os
-import subprocess
 import sys
+import threading
 import time
 import typing
 from abc import ABCMeta
+from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from queue import Empty
+from queue import Empty, Queue
 from typing import List, Optional
 
 import sqlalchemy
+from kalpy.data import KaldiMapping
+from kalpy.feat.cmvn import CmvnComputer
+from kalpy.feat.data import FeatureArchive
+from kalpy.utils import kalpy_logger
 from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import MfaWorker
@@ -29,23 +33,18 @@ from montreal_forced_aligner.corpus.features import (
     FinalFeatureFunction,
     MfccArguments,
     MfccFunction,
-    PitchRangeArguments,
-    PitchRangeFunction,
     VadArguments,
 )
 from montreal_forced_aligner.corpus.helper import find_exts
 from montreal_forced_aligner.corpus.multiprocessing import (
     AcousticDirectoryParser,
     CorpusProcessWorker,
-    ExportKaldiFilesArguments,
-    ExportKaldiFilesFunction,
 )
 from montreal_forced_aligner.data import DatabaseImportData, PhoneType, WorkflowType
 from montreal_forced_aligner.db import (
     Corpus,
     CorpusWorkflow,
     File,
-    Job,
     Phone,
     PhoneInterval,
     SoundFile,
@@ -56,22 +55,10 @@ from montreal_forced_aligner.db import (
 )
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
-from montreal_forced_aligner.exceptions import (
-    FeatureGenerationError,
-    KaldiProcessingError,
-    SoundFileError,
-    TextGridParseError,
-    TextParseError,
-)
+from montreal_forced_aligner.exceptions import SoundFileError, TextGridParseError, TextParseError
 from montreal_forced_aligner.helper import load_scp, mfa_open
 from montreal_forced_aligner.textgrid import parse_aligned_textgrid
-from montreal_forced_aligner.utils import (
-    Counter,
-    KaldiProcessWorker,
-    Stopped,
-    run_kaldi_function,
-    thirdparty_binary,
-)
+from montreal_forced_aligner.utils import Counter, run_kaldi_function
 
 __all__ = [
     "AcousticCorpusMixin",
@@ -103,7 +90,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
     ----------
     sound_file_errors: list[str]
         List of sound files with errors in loading
-    stopped: Stopped
+    stopped: :class:`~threading.Event`
         Stop check for loading the corpus
     """
 
@@ -111,7 +98,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         super().__init__(**kwargs)
         self.audio_directory = audio_directory
         self.sound_file_errors = []
-        self.stopped = Stopped()
+        self.stopped = threading.Event()
         self.features_generated = False
         self.transcription_done = False
         self.alignment_evaluation_done = False
@@ -301,7 +288,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                             pbar.update(1)
 
             if GLOBAL_CONFIG.use_mp:
-                with mp.Pool(GLOBAL_CONFIG.num_jobs) as pool:
+                with ThreadPool(GLOBAL_CONFIG.num_jobs) as pool:
                     gen = pool.starmap(parse_aligned_textgrid, jobs)
                     for i, intervals in enumerate(gen):
                         pbar.update(1)
@@ -366,19 +353,11 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         self._create_dummy_dictionary()
         self.initialize_jobs()
         self.normalize_text()
-        self.create_corpus_split()
         self.generate_features()
 
     def generate_final_features(self) -> None:
         """
         Generate features for the corpus
-
-        Parameters
-        ----------
-        compute_cmvn: bool
-            Flag for whether to compute CMVN, defaults to True
-        voiced_only: bool
-            Flag for whether to select only voiced frames, defaults to False
         """
         logger.info("Generating final features...")
         time_begin = time.time()
@@ -442,13 +421,6 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
     def generate_features(self) -> None:
         """
         Generate features for the corpus
-
-        Parameters
-        ----------
-        compute_cmvn: bool
-            Flag for whether to compute CMVN, defaults to True
-        voiced_only: bool
-            Flag for whether to select only voiced frames, defaults to False
         """
         with self.session() as session:
             final_features_check = session.query(Corpus).first().features_generated
@@ -482,25 +454,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             c = session.query(Corpus).first()
             c.current_subset = 0
             session.commit()
-        if self.features_generated:
-            logger.info("Creating corpus split with features...")
-            super().create_corpus_split()
-        else:
-            logger.info("Creating corpus split for feature generation...")
-            os.makedirs(self.split_directory.joinpath("log"), exist_ok=True)
-            with self.session() as session, tqdm(
-                total=self.num_utterances + self.num_files, disable=GLOBAL_CONFIG.quiet
-            ) as pbar:
-                jobs = session.query(Job)
-                arguments = [
-                    ExportKaldiFilesArguments(
-                        j.id, self.db_string, None, self.split_directory, True
-                    )
-                    for j in jobs
-                ]
-
-                for _ in run_kaldi_function(ExportKaldiFilesFunction, arguments, pbar.update):
-                    pass
+        logger.info("Creating corpus split...")
+        super().create_corpus_split()
 
     def compute_vad_arguments(self) -> List[VadArguments]:
         """
@@ -514,10 +469,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         return [
             VadArguments(
                 j.id,
-                getattr(self, "db_string", ""),
+                getattr(self, "session", ""),
                 self.split_directory.joinpath("log", f"compute_vad.{j.id}.log"),
-                j.construct_path(self.split_directory, "feats", "scp"),
-                j.construct_path(self.split_directory, "vad", "scp"),
                 self.vad_options,
             )
             for j in self.jobs
@@ -536,6 +489,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         if iteration is not None:
             base_log += f".{iteration}"
         arguments = []
+        thread_lock = threading.Lock()
         for j in self.jobs:
             feat_strings = {}
             for d_id in j.dictionary_ids:
@@ -550,16 +504,13 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             arguments.append(
                 CalcFmllrArguments(
                     j.id,
-                    getattr(self, "db_string", ""),
+                    getattr(self, "session", ""),
                     self.working_log_directory.joinpath(f"{base_log}.{j.id}.log"),
-                    j.dictionary_ids,
-                    feat_strings,
-                    j.construct_path_dictionary(self.working_directory, "ali", "ark"),
+                    self.working_directory,
                     self.alignment_model_path,
                     self.model_path,
-                    j.construct_path_dictionary(self.data_directory, "spk2utt", "scp"),
-                    j.construct_path_dictionary(self.working_directory, "trans", "ark"),
                     self.fmllr_options,
+                    thread_lock,
                 )
             )
         return arguments
@@ -576,11 +527,11 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         return [
             MfccArguments(
                 j.id,
-                self.db_string,
+                self.session,
                 self.split_directory.joinpath("log", f"make_mfcc.{j.id}.log"),
                 self.split_directory,
-                self.mfcc_options,
-                self.pitch_options,
+                self.mfcc_computer,
+                self.pitch_computer,
             )
             for j in self.jobs
         ]
@@ -597,53 +548,16 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         return [
             FinalFeatureArguments(
                 j.id,
-                self.db_string,
+                self.session,
                 self.split_directory.joinpath("log", f"generate_final_features.{j.id}.log"),
                 self.split_directory,
                 self.uses_cmvn,
+                getattr(self, "sliding_cmvn", False),
                 self.uses_voiced,
                 getattr(self, "subsample", None),
             )
             for j in self.jobs
         ]
-
-    def pitch_range_arguments(self) -> List[PitchRangeArguments]:
-        """
-        Generate Job arguments for :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
-
-        Returns
-        -------
-        list[:class:`~montreal_forced_aligner.corpus.features.MfccArguments`]
-            Arguments for processing
-        """
-        return [
-            PitchRangeArguments(
-                j.id,
-                self.db_string,
-                self.split_directory,
-                "log",
-                f"compute_pitch_range.{j.id}.log",
-            ).joinpath(
-                self.split_directory,
-                self.pitch_options,
-            )
-            for j in self.jobs
-        ]
-
-    def compute_speaker_pitch_ranges(self):
-        logger.info("Calculating per-speaker f0 ranges...")
-        log_directory = self.split_directory.joinpath("log")
-        os.makedirs(log_directory, exist_ok=True)
-        arguments = self.pitch_range_arguments()
-        update_mapping = []
-        with tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
-            for speaker_id, min_f0, max_f0 in run_kaldi_function(
-                PitchRangeFunction, arguments, pbar.update
-            ):
-                update_mapping.append({"id": speaker_id, "min_f0": min_f0, "max_f0": max_f0})
-        with self.session() as session:
-            bulk_update(session, Speaker, update_mapping)
-            session.commit()
 
     def mfcc(self) -> None:
         """
@@ -680,23 +594,21 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             Relevant Kaldi binary
         """
         self._write_spk2utt()
-        spk2utt = self.corpus_output_directory.joinpath("spk2utt.scp")
-        feats = self.corpus_output_directory.joinpath("feats.scp")
-        cmvn_ark = self.corpus_output_directory.joinpath("cmvn.ark")
-        cmvn_scp = self.corpus_output_directory.joinpath("cmvn.scp")
+        spk2utt_path = self.corpus_output_directory.joinpath("spk2utt.scp")
+        feats_scp_path = self.corpus_output_directory.joinpath("feats.scp")
+        cmvn_ark_path = self.corpus_output_directory.joinpath("cmvn.ark")
         log_path = self.features_log_directory.joinpath("cmvn.log")
-        with mfa_open(log_path, "w") as logf:
-            subprocess.call(
-                [
-                    thirdparty_binary("compute-cmvn-stats"),
-                    f"--spk2utt=ark:{spk2utt}",
-                    f"scp:{feats}",
-                    f"ark,scp:{cmvn_ark},{cmvn_scp}",
-                ],
-                stderr=logf,
-                env=os.environ,
-            )
+        with kalpy_logger("kalpy.cmvn", log_path) as cmvn_logger:
+            cmvn_logger.info(f"Reading features from: {feats_scp_path}")
+            cmvn_logger.info(f"Reading spk2utt from: {spk2utt_path}")
+            spk2utt = KaldiMapping(list_mapping=True)
+            spk2utt.load(spk2utt_path)
+            mfcc_archive = FeatureArchive(feats_scp_path)
+            computer = CmvnComputer()
+            computer.export_cmvn(cmvn_ark_path, mfcc_archive, spk2utt, write_scp=True)
+            mfcc_archive.close()
         update_mapping = []
+        cmvn_scp = self.corpus_output_directory.joinpath("cmvn.scp")
         with self.session() as session:
             for s, cmvn in load_scp(cmvn_scp).items():
                 if isinstance(cmvn, list):
@@ -704,7 +616,6 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 update_mapping.append({"id": int(s), "cmvn": cmvn})
             bulk_update(session, Speaker, update_mapping)
             session.commit()
-
             for j in self.jobs:
                 query = (
                     session.query(Speaker.id, Speaker.cmvn)
@@ -713,7 +624,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     .distinct()
                 )
                 with mfa_open(j.construct_path(self.split_directory, "cmvn", "scp"), "w") as f:
-                    for s_id, cmvn in query:
+                    for s_id, cmvn in sorted(query, key=lambda x: str(x)):
                         f.write(f"{s_id} {cmvn}\n")
 
     def calc_fmllr(self, iteration: Optional[int] = None) -> None:
@@ -737,60 +648,15 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
         arguments = self.calc_fmllr_arguments(iteration=iteration)
         with tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
-            if GLOBAL_CONFIG.use_mp:
-                error_dict = {}
-                return_queue = mp.Queue()
-                stopped = Stopped()
-                procs = []
-                for i, args in enumerate(arguments):
-                    function = CalcFmllrFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, stopped)
-                    procs.append(p)
-                    p.start()
-                while True:
-                    try:
-                        result = return_queue.get(timeout=1)
-                        if isinstance(result, Exception):
-                            error_dict[getattr(result, "job_name", 0)] = result
-                            continue
-                        if stopped.stop_check():
-                            continue
-                    except Empty:
-                        for proc in procs:
-                            if not proc.finished.stop_check():
-                                break
-                        else:
-                            break
-                        continue
-                    pbar.update(1)
-                for p in procs:
-                    p.join()
-                if error_dict:
-                    for v in error_dict.values():
-                        raise v
-            else:
-                for args in arguments:
-                    function = CalcFmllrFunction(args)
-                    for _ in function.run():
-                        pbar.update(1)
+            for _ in run_kaldi_function(CalcFmllrFunction, arguments, pbar.update):
+                pass
 
         self.uses_speaker_adaptation = True
         update_mapping = []
         if not GLOBAL_CONFIG.current_profile.single_speaker:
-            for args in arguments:
-                for p in args.trans_paths.values():
-                    ark_p = self.split_directory.joinpath(p.name)
-                    scp_p = ark_p.with_suffix(".scp")
-                    compose_proc = subprocess.Popen(
-                        [
-                            thirdparty_binary("copy-matrix"),
-                            f"ark:{p}",
-                            f"ark,scp:{ark_p},{scp_p}",
-                        ],
-                        stderr=subprocess.DEVNULL,
-                        env=os.environ,
-                    )
-                    compose_proc.communicate()
+            for j in self.jobs:
+                for d_id in j.dictionary_ids:
+                    scp_p = j.construct_path(self.split_directory, "trans", "scp", d_id)
                     with mfa_open(scp_p) as f:
                         for line in f:
                             line = line.strip()
@@ -823,47 +689,13 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
         arguments = self.compute_vad_arguments()
         with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
-            if GLOBAL_CONFIG.use_mp:
-                error_dict = {}
-                return_queue = mp.Queue()
-                stopped = Stopped()
-                procs = []
-                for i, args in enumerate(arguments):
-                    function = ComputeVadFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, stopped)
-                    procs.append(p)
-                    p.start()
-                while True:
-                    try:
-                        result = return_queue.get(timeout=1)
-                        if stopped.stop_check():
-                            continue
-                    except Empty:
-                        for proc in procs:
-                            if not proc.finished.stop_check():
-                                break
-                        else:
-                            break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
-                        continue
-                    done, no_feats, unvoiced = result
-                    pbar.update(done + no_feats + unvoiced)
-                for p in procs:
-                    p.join()
-                if error_dict:
-                    for v in error_dict.values():
-                        raise v
-            else:
-                for args in arguments:
-                    function = ComputeVadFunction(args)
-                    for done, no_feats, unvoiced in function.run():
-                        pbar.update(done + no_feats + unvoiced)
+            for _ in run_kaldi_function(ComputeVadFunction, arguments, pbar.update):
+                pass
         vad_lines = []
         utterance_mapping = []
-        for args in arguments:
-            with mfa_open(args.vad_scp_path) as inf:
+        for j in self.jobs:
+            vad_scp_path = j.construct_path(self.split_directory, "vad", "scp")
+            with mfa_open(vad_scp_path) as inf:
                 for line in inf:
                     vad_lines.append(line)
                     utt_id, ark = line.strip().split(maxsplit=1)
@@ -888,7 +720,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 for line in f:
                     lines.append(line)
         with open(self.corpus_output_directory.joinpath("feats.scp"), "w", encoding="utf8") as f:
-            for line in sorted(lines):
+            for line in sorted(lines, key=lambda x: x.split(maxsplit=1)[0]):
                 f.write(line)
 
     def _write_feats(self) -> None:
@@ -916,56 +748,24 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         """
         job = self.jobs[0]
         dict_id = None
-        log_path = self.features_log_directory.joinpath("feat-to-dim.log")
         if job.dictionary_ids:
             dict_id = self.jobs[0].dictionary_ids[0]
-        feature_string = job.construct_feature_proc_string(
-            self.working_directory,
-            dict_id,
-            self.feature_options["uses_splices"],
-            self.feature_options["splice_left_context"],
-            self.feature_options["splice_right_context"],
-            self.feature_options["uses_speaker_adaptation"],
-        )
-        with mfa_open(log_path, "w") as log_file:
-            subset_ark_path = self.split_directory.joinpath("temp.ark")
-            subset_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("subset-feats"),
-                    "--n=1",
-                    feature_string,
-                    f"ark:{subset_ark_path}",
-                ],
-                stderr=log_file,
-                env=os.environ,
-            )
-            subset_proc.wait()
-            dim_proc = subprocess.Popen(
-                [thirdparty_binary("feat-to-dim"), f"ark:{subset_ark_path}", "-"],
-                stdout=subprocess.PIPE,
-                stderr=log_file,
-                env=os.environ,
-                encoding="utf8",
-            )
-            feats = dim_proc.stdout.readline().strip()
-            dim_proc.wait()
-        if not feats:
-            with mfa_open(log_path) as f:
-                logged = f.read()
-            raise FeatureGenerationError(logged)
-        feats = int(feats)
-        os.remove(subset_ark_path)
-        return feats
+        feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
+        feat_dim = None
+        for _, feats in feature_archive:
+            feat_dim = feats.NumCols()
+            break
+        return feat_dim
 
     def _load_corpus_from_source_mp(self) -> None:
         """
         Load a corpus using multiprocessing
         """
         begin_time = time.process_time()
-        job_queue = mp.Queue()
-        return_queue = mp.Queue()
-        finished_adding = Stopped()
-        stopped = Stopped()
+        job_queue = Queue()
+        return_queue = Queue()
+        finished_adding = threading.Event()
+        stopped = threading.Event()
         file_counts = Counter()
         error_dict = {}
         procs = []
@@ -1007,11 +807,11 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                                     error_dict[error_type] = []
                                 error_dict[error_type].append(error)
                             continue
-                        if self.stopped.stop_check():
+                        if self.stopped.is_set():
                             continue
                     except Empty:
                         for proc in procs:
-                            if not proc.finished_processing.stop_check():
+                            if not proc.finished_processing.is_set():
                                 break
                         else:
                             break
@@ -1050,27 +850,27 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     "Detected ctrl-c, please wait a moment while we clean everything up..."
                 )
                 self.stopped.set_sigint_source()
-            self.stopped.stop()
-            finished_adding.stop()
+            self.stopped.set()
+            finished_adding.set()
             while True:
                 try:
                     _ = job_queue.get(timeout=1)
-                    if self.stopped.stop_check():
+                    if self.stopped.is_set():
                         continue
                 except Empty:
                     for proc in procs:
-                        if not proc.finished_processing.stop_check():
+                        if not proc.finished_processing.is_set():
                             break
                     else:
                         break
                 try:
                     _ = return_queue.get(timeout=1)
                     _ = job_queue.get(timeout=1)
-                    if self.stopped.stop_check():
+                    if self.stopped.is_set():
                         continue
                 except Empty:
                     for proc in procs:
-                        if not proc.finished_processing.stop_check():
+                        if not proc.finished_processing.is_set():
                             break
                     else:
                         break
@@ -1079,7 +879,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             parser.join()
             for p in procs:
                 p.join()
-            if self.stopped.stop_check():
+            if self.stopped.is_set():
                 logger.info(f"Stopped parsing early ({time.process_time() - begin_time} seconds)")
                 if self.stopped.source():
                     sys.exit(0)
@@ -1099,7 +899,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         if self.audio_directory and os.path.exists(self.audio_directory):
             use_audio_directory = True
             for root, _, files in os.walk(self.audio_directory, followlinks=True):
-                if self.stopped.stop_check():
+                if self.stopped.is_set():
                     return
                 exts = find_exts(files)
                 exts.wav_files = {k: os.path.join(root, v) for k, v in exts.wav_files.items()}
@@ -1116,7 +916,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 relative_path = (
                     root.replace(str(self.corpus_directory), "").lstrip("/").lstrip("\\")
                 )
-                if self.stopped.stop_check():
+                if self.stopped.is_set():
                     return
                 if not use_audio_directory:
                     all_sound_files = {}
@@ -1218,10 +1018,6 @@ class AcousticCorpusPronunciationMixin(
         begin = time.time()
         self.write_lexicon_information()
         logger.debug(f"Wrote lexicon information in {time.time() - begin:.3f} seconds")
-
-        begin = time.time()
-        self.create_corpus_split()
-        logger.debug(f"Created corpus split directory in {time.time() - begin:.3f} seconds")
 
         begin = time.time()
         self.generate_features()

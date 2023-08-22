@@ -27,6 +27,7 @@ def test_transcribe(
         "-q",
         "--clean",
         "--debug",
+        "--no_use_mp",
         "-v",
         "--config_path",
         transcribe_config_path,
@@ -47,7 +48,7 @@ def test_transcribe(
 
 def test_transcribe_arpa(
     basic_corpus_dir,
-    basic_dict_path,
+    english_dictionary,
     english_acoustic_model,
     generated_dir,
     transcription_language_model_arpa,
@@ -60,7 +61,7 @@ def test_transcribe_arpa(
     command = [
         "transcribe",
         basic_corpus_dir,
-        basic_dict_path,
+        english_dictionary,
         english_acoustic_model,
         transcription_language_model_arpa,
         output_path,
@@ -69,7 +70,6 @@ def test_transcribe_arpa(
         "--no_debug",
         "-v",
         "--use_mp",
-        "false",
         "--config_path",
         transcribe_config_path,
     ]

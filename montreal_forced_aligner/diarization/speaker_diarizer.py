@@ -8,7 +8,6 @@ import collections
 import csv
 import logging
 import os
-import pickle
 import random
 import shutil
 import subprocess
@@ -21,12 +20,14 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 import numpy as np
 import sqlalchemy
 import yaml
+from _kalpy.ivector import Plda, ivector_normalize_length
+from _kalpy.matrix import FloatVector
+from kalpy.utils import read_kaldi_object
 from sklearn import decomposition, metrics
 from sqlalchemy.orm import joinedload, selectinload
 from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import FileExporterMixin, TopLevelMfaWorker
-from montreal_forced_aligner.alignment.multiprocessing import construct_output_path
 from montreal_forced_aligner.config import (
     GLOBAL_CONFIG,
     IVECTOR_DIMENSION,
@@ -34,11 +35,7 @@ from montreal_forced_aligner.config import (
     PLDA_DIMENSION,
     XVECTOR_DIMENSION,
 )
-from montreal_forced_aligner.corpus.features import (
-    ExportIvectorsArguments,
-    ExportIvectorsFunction,
-    PldaModel,
-)
+from montreal_forced_aligner.corpus.features import ExportIvectorsArguments, ExportIvectorsFunction
 from montreal_forced_aligner.corpus.ivector_corpus import IvectorCorpusMixin
 from montreal_forced_aligner.data import (
     ClusterType,
@@ -70,7 +67,7 @@ from montreal_forced_aligner.diarization.multiprocessing import (
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.helper import load_configuration, mfa_open
 from montreal_forced_aligner.models import IvectorExtractorModel
-from montreal_forced_aligner.textgrid import export_textgrid
+from montreal_forced_aligner.textgrid import construct_output_path, export_textgrid
 from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function, thirdparty_binary
 
 try:
@@ -142,6 +139,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         linkage: str = "average",
         **kwargs,
     ):
+        self.sliding_cmvn = True
         self.use_xvector = False
         self.ivector_extractor = None
         self.ivector_extractor_path = ivector_extractor_path
@@ -309,7 +307,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         return [
             PldaClassificationArguments(
                 j.id,
-                getattr(self, "db_string", ""),
+                getattr(self, "session", ""),
                 self.working_log_directory.joinpath(f"plda_classification.{j.id}.log"),
                 self.plda,
                 self.speaker_ivector_path,
@@ -356,14 +354,12 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
 
             if self.use_xvector:
                 arguments = [
-                    SpeechbrainArguments(j.id, self.db_string, None, self.cuda, self.cluster)
+                    SpeechbrainArguments(j.id, self.session, None, self.cuda, self.cluster)
                     for j in self.jobs
                 ]
                 func = SpeechbrainClassificationFunction
             else:
-                plda_transform_path = self.working_directory.joinpath("plda.pkl")
-                with open(plda_transform_path, "rb") as f:
-                    self.plda: PldaModel = pickle.load(f)
+                self.plda = read_kaldi_object(Plda, self.plda_path)
                 arguments = self.plda_classification_arguments()
                 func = PldaClassificationFunction
             for utt_id, classified_speaker, score in run_kaldi_function(
@@ -394,7 +390,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 }
                 writer.writerow(line)
 
-            if self.stopped.stop_check():
+            if self.stopped.is_set():
                 logger.debug("Stopping clustering early.")
                 return
             if speaker_mapping:
@@ -638,7 +634,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             arguments = [
                 ExportIvectorsArguments(
                     j.id,
-                    self.db_string,
+                    self.session,
                     j.construct_path(self.working_log_directory, "export_ivectors", "log"),
                     self.use_xvector,
                 )
@@ -688,16 +684,14 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             unk_count = 0
             if self.use_xvector:
                 arguments = [
-                    SpeechbrainArguments(j.id, self.db_string, None, self.cuda, self.cluster)
+                    SpeechbrainArguments(j.id, self.session, None, self.cuda, self.cluster)
                     for j in self.jobs
                 ]
                 func = SpeechbrainClassificationFunction
                 score_threshold = self.initial_sb_score_threshold
                 self.export_xvectors()
             else:
-                plda_transform_path = self.working_directory.joinpath("plda.pkl")
-                with open(plda_transform_path, "rb") as f:
-                    self.plda: PldaModel = pickle.load(f)
+                self.plda = read_kaldi_object(Plda, self.plda_path)
                 arguments = self.plda_classification_arguments()
                 func = PldaClassificationFunction
                 score_threshold = self.initial_plda_score_threshold
@@ -817,9 +811,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
 
             utterance_mapping = []
             self.classification_score = 0
-            plda_transform_path = self.working_directory.joinpath("plda.pkl")
-            with open(plda_transform_path, "rb") as f:
-                self.plda: PldaModel = pickle.load(f)
+            self.plda = read_kaldi_object(Plda, self.plda_path)
             arguments = self.plda_classification_arguments()
             func = PldaClassificationFunction
             utt2spk = {k: v for k, v in session.query(Utterance.id, Utterance.speaker_id)}
@@ -892,7 +884,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                         continue
                     utterance_ids = []
                     for i, (u_id, ivector) in enumerate(query):
-                        if self.stopped.stop_check():
+                        if self.stopped.is_set():
                             break
                         utterance_ids.append(u_id)
                         ivectors[i, :] = ivector
@@ -1092,9 +1084,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         os.environ["OPENBLAS_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
         os.environ["MKL_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
         if self.metric is DistanceMetric.plda:
-            plda_transform_path = self.working_directory.joinpath("plda.pkl")
-            with open(plda_transform_path, "rb") as f:
-                self.plda: PldaModel = pickle.load(f)
+            self.plda = read_kaldi_object(Plda, self.plda_path)
         if self.evaluation_mode and GLOBAL_CONFIG.current_profile.debug:
             self.calculate_eer()
         logger.info("Clustering utterances (this may take a while, please be patient)...")
@@ -1116,14 +1106,14 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 ivectors = np.empty((query.count(), IVECTOR_DIMENSION))
             utterance_ids = []
             for i, (u_id, ivector) in enumerate(query):
-                if self.stopped.stop_check():
+                if self.stopped.is_set():
                     break
                 utterance_ids.append(u_id)
                 ivectors[i, :] = ivector
             num_utterances = ivectors.shape[0]
             kwargs = {}
 
-            if self.stopped.stop_check():
+            if self.stopped.is_set():
                 logger.debug("Stopping clustering early.")
                 return
             kwargs["min_cluster_size"] = self.min_cluster_size
@@ -1150,7 +1140,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 working_directory=self.working_directory,
                 **kwargs,
             )
-            if self.stopped.stop_check():
+            if self.stopped.is_set():
                 logger.debug("Stopping clustering early.")
                 return
             if GLOBAL_CONFIG.current_profile.debug:
@@ -1183,7 +1173,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                     next_speaker_id += 1
                 for u_id in utterance_ids:
                     utterance_mapping.append({"id": u_id, "speaker_id": speaker_id})
-            if self.stopped.stop_check():
+            if self.stopped.is_set():
                 logger.debug("Stopping clustering early.")
                 return
             if speaker_mapping:
@@ -1265,7 +1255,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             arguments = [
                 ComputeEerArguments(
                     j.id,
-                    self.db_string,
+                    self.session,
                     None,
                     self.plda,
                     self.metric,
@@ -1277,9 +1267,8 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             ]
             match_scores = []
             mismatch_scores = []
-            for matches, mismatches in run_kaldi_function(
-                ComputeEerFunction, arguments, pbar.update
-            ):
+            for result in run_kaldi_function(ComputeEerFunction, arguments, pbar.update):
+                matches, mismatches = result
                 match_scores.extend(matches)
                 mismatch_scores.extend(mismatches)
             random.shuffle(mismatches)
@@ -1314,7 +1303,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             begin = time.time()
             update_mapping = {}
             arguments = [
-                SpeechbrainArguments(j.id, self.db_string, None, self.cuda, self.cluster)
+                SpeechbrainArguments(j.id, self.session, None, self.cuda, self.cluster)
                 for j in self.jobs
             ]
             embeddings = []
@@ -1359,7 +1348,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
 
     def refresh_plda_vectors(self):
         logger.info("Refreshing PLDA vectors...")
-        self.plda = PldaModel.load(self.plda_path)
+        self.plda = read_kaldi_object(Plda, self.plda_path)
         with self.session() as session, tqdm(
             total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar:
@@ -1368,24 +1357,17 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             else:
                 ivector_column = Utterance.ivector
             update_mapping = []
-            utterance_ids = []
-            ivectors = []
             utterances = session.query(Utterance.id, ivector_column).filter(
                 ivector_column != None  # noqa
             )
             for utt_id, ivector in utterances:
                 pbar.update(1)
-                utterance_ids.append(utt_id)
-                ivectors.append(ivector)
-            ivectors = np.array(ivectors)
-            ivectors = self.plda.process_ivectors(ivectors)
-            for i, utt_id in enumerate(utterance_ids):
-                update_mapping.append({"id": utt_id, "plda_vector": ivectors[i, :]})
+                update_mapping.append(
+                    {"id": utt_id, "plda_vector": self.plda.transform_ivector(ivector, 1).numpy()}
+                )
+
             bulk_update(session, Utterance, update_mapping)
             session.commit()
-        plda_transform_path = self.working_directory.joinpath("plda.pkl")
-        with open(plda_transform_path, "wb") as f:
-            pickle.dump(self.plda, f)
 
     def refresh_speaker_vectors(self) -> None:
         """Refresh speaker vectors following clustering or classification"""
@@ -1399,7 +1381,6 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 ivector_column = Utterance.ivector
             update_mapping = {}
             speaker_ids = []
-            ivectors = []
             speakers = session.query(Speaker.id)
             for (s_id,) in speakers:
                 query = session.query(ivector_column).filter(Utterance.speaker_id == s_id)
@@ -1409,19 +1390,21 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 if not s_ivectors:
                     continue
                 mean_ivector = np.mean(np.array(s_ivectors), axis=0)
+                speaker_mean = FloatVector()
+                speaker_mean.from_numpy(mean_ivector)
+                ivector_normalize_length(speaker_mean)
+
                 speaker_ids.append(s_id)
-                ivectors.append(mean_ivector)
                 if self.use_xvector:
                     key = "xvector"
                 else:
                     key = "ivector"
-                update_mapping[s_id] = {"id": s_id, key: mean_ivector}
+                update_mapping[s_id] = {"id": s_id, key: speaker_mean.numpy()}
+                if self.plda is not None:
+                    update_mapping[s_id]["plda_vector"] = self.plda.transform_ivector(
+                        speaker_mean, len(s_ivectors)
+                    ).numpy()
                 pbar.update(1)
-            ivectors = np.array(ivectors)
-            if self.plda is not None:
-                ivectors = self.plda.process_ivectors(ivectors)
-                for i, speaker_id in enumerate(speaker_ids):
-                    update_mapping[speaker_id]["plda_vector"] = ivectors[i, :]
             bulk_update(session, Speaker, list(update_mapping.values()))
             session.commit()
 
@@ -1445,6 +1428,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 for i, (xvector,) in enumerate(u_query):
                     embeddings[i, :] = xvector
                 speaker_xvector = np.mean(embeddings, axis=0)
+                print(speaker_xvector.shape)
                 update_mapping.append({"id": s_id, "xvector": speaker_xvector})
                 pbar.update(1)
             bulk_update(session, Speaker, update_mapping)

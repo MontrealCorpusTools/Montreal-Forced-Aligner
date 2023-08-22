@@ -3,16 +3,17 @@
 import csv
 import functools
 import logging
-import multiprocessing as mp
 import os
 import queue
+import threading
 import time
 import typing
+from multiprocessing.pool import ThreadPool
 from pathlib import Path
+from queue import Queue
 
 import pynini
 import pywrapfst
-import sqlalchemy
 from praatio import textgrid
 from pynini import Fst
 from pynini.lib import rewrite
@@ -31,7 +32,7 @@ from montreal_forced_aligner.exceptions import PyniniGenerationError
 from montreal_forced_aligner.g2p.generator import PhonetisaurusRewriter, Rewriter, RewriterWorker
 from montreal_forced_aligner.helper import edit_distance, mfa_open
 from montreal_forced_aligner.models import TokenizerModel
-from montreal_forced_aligner.utils import Stopped, run_kaldi_function
+from montreal_forced_aligner.utils import run_kaldi_function
 
 if typing.TYPE_CHECKING:
     from dataclasses import dataclass
@@ -197,20 +198,13 @@ class TokenizerFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator:
         """Run the function"""
-        engine = sqlalchemy.create_engine(
-            self.db_string,
-            poolclass=sqlalchemy.NullPool,
-            pool_reset_on_return=None,
-            isolation_level="AUTOCOMMIT",
-            logging_name=f"{type(self).__name__}_engine",
-        ).execution_options(logging_token=f"{type(self).__name__}_engine")
-        with sqlalchemy.orm.Session(engine) as session:
+        with self.session() as session:
             utterances = session.query(Utterance.id, Utterance.normalized_text).filter(
                 Utterance.job_id == self.job_name
             )
             for u_id, text in utterances:
                 tokenized_text = self.rewriter(text)
-                yield u_id, tokenized_text
+                self.callback((u_id, tokenized_text))
 
 
 class CorpusTokenizer(AcousticCorpusMixin, TopLevelMfaWorker, DictionaryMixin):
@@ -312,7 +306,7 @@ class CorpusTokenizer(AcousticCorpusMixin, TopLevelMfaWorker, DictionaryMixin):
                     tg.save(output_path, includeBlankSpaces=True, format=output_format)
 
     def tokenize_arguments(self) -> typing.List[TokenizerArguments]:
-        return [TokenizerArguments(j.id, self.db_string, None, self.rewriter) for j in self.jobs]
+        return [TokenizerArguments(j.id, self.session, None, self.rewriter) for j in self.jobs]
 
     def tokenize_utterances(self) -> None:
         """
@@ -400,12 +394,12 @@ class TokenizerValidator(CorpusTokenizer):
                     result = self.rewriter(utterance)
                     to_return[utterance] = result
         else:
-            stopped = Stopped()
-            job_queue = mp.Queue()
+            stopped = threading.Event()
+            job_queue = Queue()
             for utterance in self.utterances_to_tokenize:
                 job_queue.put(utterance)
             error_dict = {}
-            return_queue = mp.Queue()
+            return_queue = Queue()
             procs = []
             for _ in range(GLOBAL_CONFIG.num_jobs):
                 p = RewriterWorker(
@@ -420,11 +414,11 @@ class TokenizerValidator(CorpusTokenizer):
                 while True:
                     try:
                         utterance, result = return_queue.get(timeout=1)
-                        if stopped.stop_check():
+                        if stopped.is_set():
                             continue
                     except queue.Empty:
                         for proc in procs:
-                            if not proc.finished.stop_check():
+                            if not proc.finished.is_set():
                                 break
                         else:
                             break
@@ -520,7 +514,7 @@ class TokenizerValidator(CorpusTokenizer):
                 incorrect += 1
                 indices.append(word)
                 to_comp.append((gold, hyp))  # Multiple hypotheses to compare
-        with mp.Pool(GLOBAL_CONFIG.num_jobs) as pool:
+        with ThreadPool(GLOBAL_CONFIG.num_jobs) as pool:
             gen = pool.starmap(edit_distance, to_comp)
             for i, (edits) in enumerate(gen):
                 word = indices[i]

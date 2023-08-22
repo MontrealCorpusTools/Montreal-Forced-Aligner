@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 import typing
 from abc import ABCMeta, abstractmethod
@@ -41,7 +42,7 @@ from montreal_forced_aligner.db import (
 )
 from montreal_forced_aligner.exceptions import CorpusError
 from montreal_forced_aligner.helper import output_mapping
-from montreal_forced_aligner.utils import Stopped, run_kaldi_function
+from montreal_forced_aligner.utils import run_kaldi_function
 
 __all__ = ["CorpusMixin"]
 
@@ -79,7 +80,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
     ----------
     jobs: list[:class:`~montreal_forced_aligner.corpus.multiprocessing.Job`]
         List of jobs for processing the corpus and splitting speakers
-    stopped: Stopped
+    stopped: :class:`~threading.Event`
         Stop check for loading the corpus
     decode_error_files: list[str]
         List of text files that could not be loaded with utf8
@@ -106,7 +107,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         self.speaker_characters = speaker_characters
         self.ignore_speakers = ignore_speakers
         self.oov_count_threshold = oov_count_threshold
-        self.stopped = Stopped()
+        self.stopped = threading.Event()
         self.decode_error_files = []
         self.textgrid_read_errors = []
         self._num_speakers = None
@@ -307,9 +308,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         ) as pbar:
             jobs = session.query(Job)
             arguments = [
-                ExportKaldiFilesArguments(
-                    j.id, self.db_string, None, self.split_directory, for_features=False
-                )
+                ExportKaldiFilesArguments(j.id, self.session, None, self.split_directory)
                 for j in jobs
             ]
 
@@ -626,7 +625,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             return [
                 NormalizeTextArguments(
                     j.id,
-                    self.db_string,
+                    self.session,
                     None,
                     self.word_break_markers,
                     self.punctuation,
@@ -1189,7 +1188,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 )
                 self._jobs = jobs.all()
                 arguments = [
-                    ExportKaldiFilesArguments(j.id, self.db_string, None, subset_directory, False)
+                    ExportKaldiFilesArguments(j.id, self.session, None, subset_directory)
                     for j in self._jobs
                 ]
 
@@ -1220,7 +1219,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 self._num_speakers = session.query(sqlalchemy.func.count(Speaker.id)).scalar()
         return self._num_speakers
 
-    def subset_directory(self, subset: typing.Optional[int]) -> str:
+    def subset_directory(self, subset: typing.Optional[int]) -> Path:
         """
         Construct a subset directory for the corpus
 

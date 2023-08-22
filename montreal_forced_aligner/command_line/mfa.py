@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import atexit
-import multiprocessing as mp
 import sys
 import time
 import warnings
@@ -12,6 +11,7 @@ import rich_click as click
 
 from montreal_forced_aligner.command_line.adapt import adapt_model_cli
 from montreal_forced_aligner.command_line.align import align_corpus_cli
+from montreal_forced_aligner.command_line.align_one import align_one_cli
 from montreal_forced_aligner.command_line.anchor import anchor_cli
 from montreal_forced_aligner.command_line.configure import configure_cli
 from montreal_forced_aligner.command_line.create_segments import create_segments_cli
@@ -34,7 +34,6 @@ from montreal_forced_aligner.command_line.validate import (
     validate_dictionary_cli,
 )
 from montreal_forced_aligner.config import GLOBAL_CONFIG, update_command_history
-from montreal_forced_aligner.exceptions import DatabaseError
 from montreal_forced_aligner.utils import check_third_party
 
 BEGIN = time.time()
@@ -116,12 +115,12 @@ def mfa_cli(ctx: click.Context) -> None:
     if ctx.invoked_subcommand == "anchor":
 
         GLOBAL_CONFIG.current_profile.clean = False
-        GLOBAL_CONFIG.save()
     if "--help" in sys.argv or ctx.invoked_subcommand in [
         "configure",
         "version",
         "history",
         "server",
+        "align_one",
     ]:
         auto_server = False
         run_check = False
@@ -155,8 +154,6 @@ def mfa_cli(ctx: click.Context) -> None:
         if auto_server:
             atexit.register(stop_server)
 
-    mp.freeze_support()
-
 
 @click.command(
     name="version",
@@ -172,6 +169,7 @@ def version_cli():
 
 mfa_cli.add_command(adapt_model_cli)
 mfa_cli.add_command(align_corpus_cli)
+mfa_cli.add_command(align_one_cli)
 mfa_cli.add_command(anchor_cli)
 mfa_cli.add_command(diarize_speakers_cli)
 mfa_cli.add_command(create_segments_cli)

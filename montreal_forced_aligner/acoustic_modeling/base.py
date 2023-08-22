@@ -2,17 +2,17 @@
 from __future__ import annotations
 
 import logging
-import multiprocessing as mp
 import os
-import re
-import subprocess
 import time
 from abc import abstractmethod
 from pathlib import Path
-from queue import Empty
 from typing import TYPE_CHECKING, List
 
 import sqlalchemy.engine
+from _kalpy.gmm import AccumAmDiagGmm
+from _kalpy.matrix import DoubleVector
+from kalpy.gmm.utils import read_gmm_model, write_gmm_model
+from kalpy.utils import kalpy_logger
 from sqlalchemy.orm import Session
 from tqdm.rich import tqdm
 
@@ -24,19 +24,12 @@ from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunc
 from montreal_forced_aligner.corpus.features import FeatureConfigMixin
 from montreal_forced_aligner.db import CorpusWorkflow, Utterance
 from montreal_forced_aligner.exceptions import KaldiProcessingError
-from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.models import AcousticModel
-from montreal_forced_aligner.utils import (
-    KaldiProcessWorker,
-    Stopped,
-    log_kaldi_errors,
-    parse_logs,
-    thirdparty_binary,
-)
+from montreal_forced_aligner.utils import log_kaldi_errors, parse_logs, run_kaldi_function
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
-    from montreal_forced_aligner.corpus.multiprocessing import Job
+    from montreal_forced_aligner.db import Job
 
 
 __all__ = ["AcousticModelTrainingMixin"]
@@ -134,29 +127,14 @@ class AcousticModelTrainingMixin(
         """
         arguments = []
         for j in self.jobs:
-            feat_strings = {}
-            for d_id in j.dictionary_ids:
-                feat_strings[d_id] = j.construct_feature_proc_string(
-                    self.working_directory,
-                    d_id,
-                    self.feature_options["uses_splices"],
-                    self.feature_options["splice_left_context"],
-                    self.feature_options["splice_right_context"],
-                    self.feature_options["uses_speaker_adaptation"],
-                )
             arguments.append(
                 AccStatsArguments(
                     j.id,
-                    self.db_string,
+                    self.session,
                     os.path.join(
                         self.working_directory, "log", f"acc.{self.iteration}.{j.id}.log"
                     ),
-                    j.dictionary_ids,
-                    feat_strings,
-                    j.construct_path_dictionary(self.working_directory, "ali", "ark"),
-                    j.construct_path_dictionary(
-                        self.working_directory, str(self.iteration), "acc"
-                    ),
+                    self.working_directory,
                     self.model_path,
                 )
             )
@@ -290,13 +268,6 @@ class AcousticModelTrainingMixin(
             return self.working_directory.joinpath("final.mdl")
         return self.working_directory.joinpath(f"{self.iteration + 1}.mdl")
 
-    @property
-    def next_occs_path(self) -> Path:
-        """Next iteration's occs file path"""
-        if self.workflow.done:
-            return self.working_directory.joinpath("final.occs")
-        return self.working_directory.joinpath(f"{self.iteration + 1}.occs")
-
     @abstractmethod
     def compute_calculated_properties(self) -> None:
         """Compute any calculated properties such as alignment iterations"""
@@ -327,111 +298,42 @@ class AcousticModelTrainingMixin(
         """
         logger.info("Accumulating statistics...")
         arguments = self.acc_stats_arguments()
+
+        transition_model, acoustic_model = read_gmm_model(self.model_path)
+        transition_accs = DoubleVector()
+        gmm_accs = AccumAmDiagGmm()
+        transition_model.InitStats(transition_accs)
+        gmm_accs.init(acoustic_model)
         with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
-            if GLOBAL_CONFIG.use_mp:
-                error_dict = {}
-                return_queue = mp.Queue()
-                stopped = Stopped()
-                procs = []
-                for i, args in enumerate(arguments):
-                    function = AccStatsFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, stopped)
-                    procs.append(p)
-                    p.start()
-                while True:
-                    try:
-                        result = return_queue.get(timeout=1)
-                        if isinstance(result, Exception):
-                            error_dict[getattr(result, "job_name", 0)] = result
-                            continue
-                        if stopped.stop_check():
-                            continue
-                    except Empty:
-                        for proc in procs:
-                            if not proc.finished.stop_check():
-                                break
-                        else:
-                            break
-                        continue
-                    num_utterances, errors = result
-                    pbar.update(num_utterances + errors)
-                for p in procs:
-                    p.join()
-                if error_dict:
-                    for v in error_dict.values():
-                        raise v
-            else:
-                for args in arguments:
-                    function = AccStatsFunction(args)
-                    for num_utterances, errors in function.run():
-                        pbar.update(num_utterances + errors)
+            for result in run_kaldi_function(AccStatsFunction, arguments, pbar.update):
+                if isinstance(result, tuple):
+                    job_transition_accs, job_gmm_accs = result
+
+                    transition_accs.AddVec(1.0, job_transition_accs)
+                    gmm_accs.Add(1.0, job_gmm_accs)
 
         log_path = self.working_log_directory.joinpath(f"update.{self.iteration}.log")
-        with mfa_open(log_path, "w") as log_file:
-            acc_files = []
-            for a in arguments:
-                acc_files.extend(a.acc_paths.values())
-            sum_proc = subprocess.Popen(
-                [thirdparty_binary("gmm-sum-accs"), "-"] + acc_files,
-                stdout=subprocess.PIPE,
-                stderr=log_file,
-                env=os.environ,
+        with kalpy_logger("kalpy.train", log_path) as train_logger:
+            objf_impr, count = transition_model.mle_update(transition_accs)
+            train_logger.debug(
+                f"Transition model update: Overall {objf_impr/count} "
+                f"log-like improvement per frame over {count} frames."
             )
-            est_command = [
-                thirdparty_binary("gmm-est"),
-                f"--write-occs={self.next_occs_path}",
-                f"--mix-up={self.current_gaussians}",
-            ]
-            if self.power > 0:
-                est_command.append(f"--power={self.power}")
-            est_command.extend(
-                [
-                    self.model_path,
-                    "-",
-                    self.next_model_path,
-                ]
+            objf_impr, count = acoustic_model.mle_update(
+                gmm_accs, mixup=self.current_gaussians, power=self.power
             )
-            est_proc = subprocess.Popen(
-                est_command,
-                stdin=sum_proc.stdout,
-                stderr=log_file,
-                env=os.environ,
+            train_logger.debug(
+                f"GMM update: Overall {objf_impr/count} "
+                f"objective function improvement per frame over {count} frames."
             )
-            est_proc.communicate()
-        avg_like_pattern = re.compile(
-            r"Overall avg like per frame.* = (?P<like>[-.,\d]+) over (?P<frames>[.\d+e]+) frames"
-        )
-        average_logdet_pattern = re.compile(
-            r"Overall average logdet is (?P<logdet>[-.,\d]+) over (?P<frames>[.\d+e]+) frames"
-        )
-        avg_like_sum = 0
-        avg_like_frames = 0
-        average_logdet_sum = 0
-        average_logdet_frames = 0
-        for a in arguments:
-            with mfa_open(a.log_path, "r") as f:
-                for line in f:
-                    m = avg_like_pattern.search(line)
-                    if m:
-                        like = float(m.group("like"))
-                        frames = float(m.group("frames"))
-                        avg_like_sum += like * frames
-                        avg_like_frames += frames
-                    m = average_logdet_pattern.search(line)
-                    if m:
-                        logdet = float(m.group("logdet"))
-                        frames = float(m.group("frames"))
-                        average_logdet_sum += logdet * frames
-                        average_logdet_frames += frames
-        if avg_like_frames:
-            log_like = avg_like_sum / avg_like_frames
-            if average_logdet_frames:
-                log_like += average_logdet_sum / average_logdet_frames
-            logger.debug(f"Likelihood for iteration {self.iteration}: {log_like}")
-
-        if not GLOBAL_CONFIG.debug:
-            for f in acc_files:
-                os.remove(f)
+            tot_like = gmm_accs.TotLogLike()
+            tot_t = gmm_accs.TotCount()
+            train_logger.debug(
+                f"Average Likelihood per frame for iteration {self.iteration} = {tot_like/tot_t} "
+                f"over {tot_t} frames."
+            )
+            logger.debug(f"Log likelihood for iteration {self.iteration}: {tot_like/tot_t}")
+            write_gmm_model(str(self.next_model_path), transition_model, acoustic_model)
 
     def align_iteration(self) -> None:
         """Run alignment for a training iteration"""
@@ -440,12 +342,6 @@ class AcousticModelTrainingMixin(
         logger.debug(
             f"Generating alignments for iteration {self.iteration} took {time.time()-begin} seconds"
         )
-        # logger.debug(f"Analyzing information for alignment in iteration {self.iteration}...")
-        # begin = time.time()
-        # self.compile_information()
-        # logger.debug(
-        #    f"Analyzing iteration {self.iteration} alignments took {time.time()-begin} seconds"
-        # )
 
     @property
     def initialized(self) -> bool:
@@ -522,12 +418,6 @@ class AcousticModelTrainingMixin(
             self.working_directory.joinpath(f"{self.num_iterations+1}.mdl"),
             self.working_directory.joinpath("final.mdl"),
         )
-        final_occs_path = self.working_directory.joinpath("final.occs")
-        if not os.path.exists(final_occs_path):
-            os.rename(
-                self.working_directory.joinpath(f"{self.num_iterations+1}.occs"),
-                final_occs_path,
-            )
         ali_model_path = self.working_directory.joinpath(f"{self.num_iterations+1}.alimdl")
         if os.path.exists(ali_model_path):
             os.rename(
@@ -542,10 +432,6 @@ class AcousticModelTrainingMixin(
                     os.remove(model_path)
                 except FileNotFoundError:
                     pass
-                try:
-                    os.remove(self.working_directory.joinpath(f"{i}.occs"))
-                except FileNotFoundError:
-                    pass
             for file in os.listdir(self.working_directory):
                 if any(file.startswith(x) for x in ["fsts.", "trans.", "ali."]):
                     os.remove(self.working_directory.joinpath(file))
@@ -554,6 +440,14 @@ class AcousticModelTrainingMixin(
             session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update({"done": True})
             session.commit()
         self.worker.current_trainer = None
+
+    @property
+    def dictionary_base_names(self):
+        return self.worker.dictionary_base_names
+
+    @property
+    def lexicon_compilers(self):
+        return self.worker.lexicon_compilers
 
     @property
     def gaussian_increment(self) -> int:

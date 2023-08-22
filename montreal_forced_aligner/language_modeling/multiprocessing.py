@@ -7,24 +7,22 @@ import typing
 from pathlib import Path
 
 import sqlalchemy
-from sqlalchemy.orm import Session, joinedload, subqueryload
+from _kalpy.fstext import VectorFst
+from kalpy.decoder.decode_graph import DecodeGraphCompiler
+from kalpy.fstext.lexicon import LexiconCompiler
+from sqlalchemy.orm import joinedload, subqueryload
 
+from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import MfaArguments, WordType
 from montreal_forced_aligner.db import Job, Phone, PhoneInterval, Speaker, Utterance, Word
 from montreal_forced_aligner.helper import mfa_open
-from montreal_forced_aligner.transcription.multiprocessing import (
-    compose_clg,
-    compose_hclg,
-    compose_lg,
-)
-from montreal_forced_aligner.utils import KaldiFunction, thirdparty_binary
+from montreal_forced_aligner.utils import thirdparty_binary
 
 if typing.TYPE_CHECKING:
     from dataclasses import dataclass
 
     from montreal_forced_aligner.abc import MetaDict
-
 else:
     from dataclassy import dataclass
 
@@ -55,6 +53,8 @@ class TrainSpeakerLmArguments(MfaArguments):
     """
 
     model_path: Path
+    tree_path: Path
+    lexicon_compilers: typing.Dict[int, LexiconCompiler]
     order: int
     method: str
     target_num_ngrams: int
@@ -118,7 +118,7 @@ class TrainLmFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[bool]:
         """Run the function"""
-        with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
+        with self.session() as session, mfa_open(self.log_path, "w") as log_file:
             word_query = session.query(Word.word).filter(Word.word_type == WordType.speech)
             included_words = set(x[0] for x in word_query)
             utterance_query = session.query(Utterance.normalized_text, Utterance.text).filter(
@@ -158,7 +158,7 @@ class TrainLmFunction(KaldiFunction):
                 )
                 farcompile_proc.stdin.write(f"{text}\n".encode("utf8"))
                 farcompile_proc.stdin.flush()
-                yield 1
+                self.callback(1)
             farcompile_proc.stdin.close()
             self.check_call(ngramcount_proc)
 
@@ -192,7 +192,7 @@ class TrainPhoneLmFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[bool]:
         """Run the function"""
-        with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
+        with self.session() as session, mfa_open(self.log_path, "w") as log_file:
             if GLOBAL_CONFIG.current_profile.use_postgres:
                 string_agg_function = sqlalchemy.func.string_agg
             else:
@@ -233,7 +233,7 @@ class TrainPhoneLmFunction(KaldiFunction):
             for utt_id, phones in session.execute(pronunciation_query):
                 farcompile_proc.stdin.write(f"{phones}\n".encode("utf8"))
                 farcompile_proc.stdin.flush()
-                yield utt_id, phones
+                self.callback((utt_id, phones))
             farcompile_proc.stdin.close()
             self.check_call(ngramcount_proc)
 
@@ -262,6 +262,8 @@ class TrainSpeakerLmFunction(KaldiFunction):
     def __init__(self, args: TrainSpeakerLmArguments):
         super().__init__(args)
         self.model_path = args.model_path
+        self.tree_path = args.tree_path
+        self.lexicon_compilers = args.lexicon_compilers
         self.order = args.order
         self.method = args.method
         self.target_num_ngrams = args.target_num_ngrams
@@ -269,7 +271,7 @@ class TrainSpeakerLmFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[bool]:
         """Run the function"""
-        with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
+        with self.session() as session, mfa_open(self.log_path, "w") as log_file:
 
             job: Job = (
                 session.query(Job)
@@ -289,7 +291,7 @@ class TrainSpeakerLmFunction(KaldiFunction):
                     .distinct()
                 )
                 for (speaker_id,) in speakers:
-
+                    print(speaker_id)
                     hclg_path = d.temp_directory.joinpath(f"{speaker_id}.fst")
                     if os.path.exists(hclg_path):
                         continue
@@ -345,73 +347,12 @@ class TrainSpeakerLmFunction(KaldiFunction):
                         farcompile_proc.stdin.flush()
                     farcompile_proc.stdin.close()
                     shrink_proc.wait()
-                    context_width = self.hclg_options["context_width"]
-                    central_pos = self.hclg_options["central_pos"]
-                    lg_path = d.temp_directory.joinpath(f"LG.{speaker_id}.fst")
-                    hclga_path = d.temp_directory.joinpath(f"HCLGa.{speaker_id}.fst")
-                    ilabels_temp = d.temp_directory.joinpath(
-                        f"ilabels_{context_width}_{central_pos}.{speaker_id}"
-                    )
-                    out_disambig = d.temp_directory.joinpath(
-                        f"disambig_ilabels_{context_width}_{central_pos}.int"
-                    )
-                    clg_path = d.temp_directory.joinpath(
-                        f"CLG_{context_width}_{central_pos}.{speaker_id}.fst"
-                    )
-
-                    log_file.write("Generating LG.fst...")
-                    compose_lg(d.lexicon_disambig_fst_path, mod_path, lg_path, log_file)
-                    log_file.write("Generating CLG.fst...")
-                    compose_clg(
-                        d.disambiguation_symbols_int_path,
-                        out_disambig,
-                        context_width,
-                        central_pos,
-                        ilabels_temp,
-                        lg_path,
-                        clg_path,
-                        log_file,
-                    )
-                    log_file.write("Generating HCLGa.fst...")
-                    compose_hclg(
+                    compiler = DecodeGraphCompiler(
                         self.model_path,
-                        ilabels_temp,
-                        self.hclg_options["transition_scale"],
-                        clg_path,
-                        hclga_path,
-                        log_file,
+                        self.tree_path,
+                        self.lexicon_compilers[dict_id],
+                        **self.hclg_options,
                     )
-                    log_file.write("Generating HCLG.fst...")
-                    self_loop_proc = subprocess.Popen(
-                        [
-                            thirdparty_binary("add-self-loops"),
-                            f"--self-loop-scale={self.hclg_options['self_loop_scale']}",
-                            "--reorder=true",
-                            self.model_path,
-                            hclga_path,
-                        ],
-                        stderr=log_file,
-                        stdout=subprocess.PIPE,
-                        env=os.environ,
-                    )
-                    convert_proc = subprocess.Popen(
-                        [
-                            thirdparty_binary("fstconvert"),
-                            "--v=100",
-                            "--fst_type=const",
-                            "-",
-                            hclg_path,
-                        ],
-                        stdin=self_loop_proc.stdout,
-                        stderr=log_file,
-                        env=os.environ,
-                    )
-                    convert_proc.communicate()
-                    self.check_call(convert_proc)
-                    os.remove(mod_path)
-                    os.remove(lg_path)
-                    os.remove(clg_path)
-                    os.remove(hclga_path)
-                    os.remove(ilabels_temp)
-                    os.remove(out_disambig)
-                    yield os.path.exists(hclg_path)
+                    compiler.g_fst = VectorFst.Read(str(mod_path))
+                    compiler.export_hclg("", hclg_path)
+                    self.callback(os.path.exists(hclg_path))

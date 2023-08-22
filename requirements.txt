@@ -12,5 +12,5 @@ sqlalchemy>=2.0
 click
 rich
 rich-click
-numba
 numpy
+pynini

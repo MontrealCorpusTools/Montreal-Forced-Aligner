@@ -45,6 +45,7 @@ def test_add(basic_corpus_dir, generated_dir, global_config, db_setup):
         assert len(corpus.get_utterances(file=new_file_name, speaker=new_speaker)) == 0
 
         corpus.add_file(new_file, session)
+        session.commit()
         corpus.add_utterance(new_utterance, session)
         session.commit()
 

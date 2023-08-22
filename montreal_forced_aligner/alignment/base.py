@@ -6,17 +6,24 @@ import csv
 import functools
 import io
 import logging
-import multiprocessing as mp
 import os
+import re
 import shutil
 import subprocess
+import threading
 import time
 import typing
+from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from queue import Empty
+from queue import Empty, Queue
 from typing import Dict, List, Optional
 
 import sqlalchemy
+from kalpy.feat.mfcc import MfccComputer
+from kalpy.feat.pitch import PitchComputer
+from kalpy.fstext.lexicon import LexiconCompiler
+from kalpy.gmm.align import GmmAligner
+from kalpy.gmm.utils import read_transition_model
 from sqlalchemy.orm import joinedload, subqueryload
 from tqdm.rich import tqdm
 
@@ -33,8 +40,6 @@ from montreal_forced_aligner.alignment.multiprocessing import (
     FineTuneFunction,
     GeneratePronunciationsArguments,
     GeneratePronunciationsFunction,
-    construct_output_path,
-    construct_output_tiers,
 )
 from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
@@ -42,6 +47,7 @@ from montreal_forced_aligner.data import (
     CtmInterval,
     PronunciationProbabilityCounter,
     TextFileType,
+    WordType,
     WorkflowType,
 )
 from montreal_forced_aligner.db import (
@@ -60,29 +66,22 @@ from montreal_forced_aligner.db import (
     Utterance,
     Word,
     WordInterval,
-    WordType,
     bulk_update,
 )
-from montreal_forced_aligner.exceptions import (
-    AlignerError,
-    AlignmentExportError,
-    KaldiProcessingError,
-)
+from montreal_forced_aligner.exceptions import AlignmentExportError, KaldiProcessingError
 from montreal_forced_aligner.helper import (
     align_phones,
     format_correction,
     format_probability,
     mfa_open,
 )
-from montreal_forced_aligner.textgrid import export_textgrid, output_textgrid_writing_errors
-from montreal_forced_aligner.utils import (
-    Counter,
-    KaldiProcessWorker,
-    Stopped,
-    log_kaldi_errors,
-    run_kaldi_function,
-    thirdparty_binary,
+from montreal_forced_aligner.textgrid import (
+    construct_output_path,
+    construct_output_tiers,
+    export_textgrid,
+    output_textgrid_writing_errors,
 )
+from montreal_forced_aligner.utils import Counter, log_kaldi_errors, run_kaldi_function
 
 if typing.TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
@@ -119,10 +118,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
     @property
     def hclg_options(self) -> MetaDict:
         """Options for constructing HCLG FSTs"""
-        context_width, central_pos = self.get_tree_info()
         return {
-            "context_width": context_width,
-            "central_pos": central_pos,
             "self_loop_scale": self.self_loop_scale,
             "transition_scale": self.transition_scale,
         }
@@ -131,15 +127,10 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
     def decode_options(self) -> MetaDict:
         """Options needed for decoding"""
         return {
-            "first_beam": getattr(self, "first_beam", 10),
             "beam": self.beam,
-            "first_max_active": getattr(self, "first_max_active", 2000),
             "max_active": self.max_active,
             "lattice_beam": self.lattice_beam,
-            "acoustic_scale": self.acoustic_scale,
-            "transition_scale": self.transition_scale,
-            "self_loop_scale": self.self_loop_scale,
-            "uses_speaker_adaptation": self.uses_speaker_adaptation,
+            "acoustic_scale": self.acoustic_scale
         }
 
     @property
@@ -156,7 +147,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         return [
             AnalyzeAlignmentsArguments(
                 j.id,
-                getattr(self, "db_string", ""),
+                getattr(self, "session", ""),
                 self.working_log_directory.joinpath(f"calculate_speech_post.{j.id}.log"),
                 self.model_path,
                 self.align_options,
@@ -252,18 +243,22 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             WorkflowType.phone_transcription,
         ):
             from_transcription = True
+
+        transition_model = read_transition_model(str(self.alignment_model_path))
         for j in self.jobs:
             arguments.append(
                 AlignmentExtractionArguments(
                     j.id,
-                    getattr(self, "db_string", ""),
+                    getattr(self, "session", ""),
                     self.working_log_directory.joinpath(f"get_phone_ctm.{j.id}.log"),
-                    self.alignment_model_path,
+                    self.working_directory,
+                    getattr(self, "lexicon_compilers", {}),
+                    transition_model,
                     round(self.frame_shift / 1000, 4),
-                    self.phone_symbol_table_path,
                     self.score_options,
                     self.phone_confidence,
                     from_transcription,
+                    self.use_g2p,
                 )
             )
 
@@ -288,7 +283,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         return [
             ExportTextGridArguments(
                 j.id,
-                getattr(self, "db_string", ""),
+                getattr(self, "session", ""),
                 self.working_log_directory.joinpath(f"export_textgrids.{j.id}.log"),
                 self.export_frame_shift,
                 GLOBAL_CONFIG.cleanup_textgrids,
@@ -311,13 +306,19 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         list[:class:`~montreal_forced_aligner.alignment.multiprocessing.GeneratePronunciationsArguments`]
             Arguments for processing
         """
-
+        align_options = self.align_options
+        align_options.pop("boost_silence", 1.0)
+        disambiguation_symbols = [self.phone_mapping[p] for p in self.disambiguation_symbols]
+        aligner = GmmAligner(
+            self.model_path, disambiguation_symbols=disambiguation_symbols, **align_options
+        )
         return [
             GeneratePronunciationsArguments(
                 j.id,
-                getattr(self, "db_string", ""),
+                getattr(self, "session", ""),
                 self.working_log_directory.joinpath(f"generate_pronunciations.{j.id}.log"),
-                self.model_path,
+                aligner,
+                getattr(self, "lexicon_compilers", {}),
                 False,
             )
             for j in self.jobs
@@ -337,29 +338,36 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         if acoustic_model is not None:
             acoustic_model.export_model(self.working_directory)
         perform_speaker_adaptation = self.uses_speaker_adaptation
+        final_alignment = self.final_alignment
+        if perform_speaker_adaptation:
+            self.final_alignment = False
         try:
+            self.uses_speaker_adaptation = False
+
+            if (
+                acoustic_model is not None
+                and acoustic_model.meta["features"]["uses_speaker_adaptation"]
+                and perform_speaker_adaptation
+            ):
+                assert self.alignment_model_path.suffix == ".alimdl"
             self.compile_train_graphs()
 
             logger.info("Performing first-pass alignment...")
-            self.uses_speaker_adaptation = False
             for j in self.jobs:
                 paths = j.construct_path_dictionary(self.working_directory, "trans", "ark")
                 for p in paths.values():
                     if os.path.exists(p):
                         os.remove(p)
+
             self.align_utterances()
             if (
                 acoustic_model is not None
                 and acoustic_model.meta["features"]["uses_speaker_adaptation"]
                 and perform_speaker_adaptation
             ):
-                if self.alignment_model_path.suffix == ".mdl":
-                    if os.path.exists(self.alignment_model_path.with_suffix(".alimdl")):
-                        raise AlignerError(
-                            "Not using speaker independent model when it is available"
-                        )
                 self.calc_fmllr()
-
+                if final_alignment:
+                    self.final_alignment = True
                 self.uses_speaker_adaptation = True
                 assert self.alignment_model_path.suffix == ".mdl"
                 logger.info("Performing second-pass alignment...")
@@ -370,7 +378,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 elif self.fine_tune:
                     self.fine_tune_alignments()
 
-                self.compile_information()
             with self.session() as session:
                 session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update(
                     {"done": True}
@@ -392,11 +399,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         """
         Multiprocessing function that computes pronunciation probabilities from alignments
 
-        Parameters
-        ----------
-        compute_silence_probabilities: bool
-            Flag for whether to compute silence probabilities for pronunciations, defaults to True
-
         See Also
         --------
         :class:`~montreal_forced_aligner.alignment.multiprocessing.GeneratePronunciationsFunction`
@@ -417,46 +419,11 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         logger.info("Generating pronunciations...")
         arguments = self.generate_pronunciations_arguments()
         with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
-            if GLOBAL_CONFIG.use_mp:
-                error_dict = {}
-                return_queue = mp.Queue()
-                stopped = Stopped()
-                procs = []
-                for i, args in enumerate(arguments):
-                    function = GeneratePronunciationsFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, stopped)
-                    procs.append(p)
-                    p.start()
-                while True:
-                    try:
-                        result = return_queue.get(timeout=1)
-                        if isinstance(result, Exception):
-                            error_dict[getattr(result, "job_name", 0)] = result
-                            continue
-                        if stopped.stop_check():
-                            continue
-                    except Empty:
-                        for proc in procs:
-                            if not proc.finished.stop_check():
-                                break
-                        else:
-                            break
-                        continue
-                    dict_id, utterance_counter = result
-                    dictionary_counters[dict_id].add_counts(utterance_counter)
-                    pbar.update(1)
-                for p in procs:
-                    p.join()
-                if error_dict:
-                    for v in error_dict.values():
-                        raise v
-            else:
-                logger.debug("Not using multiprocessing...")
-                for args in arguments:
-                    function = GeneratePronunciationsFunction(args)
-                    for dict_id, utterance_counter in function.run():
-                        dictionary_counters[dict_id].add_counts(utterance_counter)
-                        pbar.update(1)
+            for result in run_kaldi_function(
+                GeneratePronunciationsFunction, arguments, pbar.update
+            ):
+                dict_id, utterance_counter = result
+                dictionary_counters[dict_id].add_counts(utterance_counter)
 
         initial_key = ("<s>", "")
         final_key = ("</s>", "")
@@ -514,6 +481,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     pron_counts = counter.word_pronunciation_counts[w]
                     max_value = max(pron_counts.values())
                     for p, c in pron_counts.items():
+                        if self.position_dependent_phones:
+                            p = re.sub(r"_[BSEI]\b", "", p)
                         pron_mapping[(w, p)]["count"] = c
                         pron_mapping[(w, p)]["probability"] = format_probability(c / max_value)
 
@@ -797,6 +766,14 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             arguments = self.alignment_extraction_arguments()
             has_words = False
             phone_interval_count = 0
+            current_dict_id = None
+
+            phone_to_phone_id = {}
+            word_mapping = {}
+            pronunciation_mapping = {}
+            ds = session.query(Phone.id, Phone.mapping_id).all()
+            for p_id, mapping_id in ds:
+                phone_to_phone_id[mapping_id] = p_id
             new_words = []
             if GLOBAL_CONFIG.current_profile.use_postgres:
                 conn = self.db_engine.raw_connection()
@@ -838,56 +815,75 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 phone_writer.writeheader()
             for (
                 utterance,
-                word_intervals,
-                phone_intervals,
-                phone_word_mapping,
+                dict_id,
+                ctm,
             ) in run_kaldi_function(AlignmentExtractionFunction, arguments, pbar.update):
+                if dict_id != current_dict_id:
+                    words = session.query(Word.word, Word.id).filter(Word.dictionary_id == dict_id)
+                    word_mapping = {}
+                    pronunciation_mapping = {}
+                    for w, w_id in words:
+                        word_mapping[w] = w_id
+                    pronunciations = (
+                        session.query(Word.word, Pronunciation.pronunciation, Pronunciation.id)
+                        .join(Pronunciation.word)
+                        .filter(Word.dictionary_id == dict_id)
+                    )
+                    for w, pron, p_id in pronunciations:
+                        pronunciation_mapping[(w, pron)] = p_id
+                    current_dict_id = dict_id
+
                 new_phone_interval_mappings = []
                 new_word_interval_mappings = []
-                for interval in phone_intervals:
-                    max_phone_interval_id += 1
-                    new_phone_interval_mappings.append(
-                        {
-                            "id": max_phone_interval_id,
-                            "begin": interval.begin,
-                            "end": interval.end,
-                            "phone_id": interval.label,
-                            "utterance_id": utterance,
-                            "workflow_id": workflow.id,
-                            "phone_goodness": interval.confidence if interval.confidence else 0.0,
-                        }
-                    )
-                for interval in word_intervals:
-                    word_id = interval.word_id
-                    if isinstance(word_id, str):
+                for word_interval in ctm.word_intervals:
+                    if word_interval.label not in word_mapping:
                         new_words.append(
                             {
                                 "id": word_index,
                                 "mapping_id": mapping_id,
-                                "word": word_id,
+                                "word": word_interval.label,
                                 "dictionary_id": 1,
                                 "word_type": WordType.oov,
                             }
                         )
+                        word_mapping[word_interval.label] = word_index
                         word_id = word_index
                         word_index += 1
                         mapping_id += 1
+                    else:
+                        word_id = word_mapping[word_interval.label]
                     max_word_interval_id += 1
+                    pronunciation_id = pronunciation_mapping.get(
+                        (word_interval.label, word_interval.pronunciation), None
+                    )
+
                     new_word_interval_mappings.append(
                         {
                             "id": max_word_interval_id,
-                            "begin": interval.begin,
-                            "end": interval.end,
+                            "begin": word_interval.begin,
+                            "end": word_interval.end,
                             "word_id": word_id,
-                            "pronunciation_id": interval.pronunciation_id,
+                            "pronunciation_id": pronunciation_id,
                             "utterance_id": utterance,
                             "workflow_id": workflow.id,
                         }
                     )
-                for i, index in enumerate(phone_word_mapping):
-                    new_phone_interval_mappings[i][
-                        "word_interval_id"
-                    ] = new_word_interval_mappings[index]["id"]
+                    for interval in word_interval.phones:
+                        max_phone_interval_id += 1
+                        new_phone_interval_mappings.append(
+                            {
+                                "id": max_phone_interval_id,
+                                "begin": interval.begin,
+                                "end": interval.end,
+                                "phone_id": phone_to_phone_id[interval.symbol],
+                                "utterance_id": utterance,
+                                "workflow_id": workflow.id,
+                                "word_interval_id": max_word_interval_id,
+                                "phone_goodness": interval.confidence
+                                if interval.confidence
+                                else 0.0,
+                            }
+                        )
                 phone_writer.writerows(new_phone_interval_mappings)
                 word_writer.writerows(new_word_interval_mappings)
                 if new_word_interval_mappings:
@@ -992,66 +988,17 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
     def fine_tune_alignments(self) -> None:
         """
         Fine tune aligned boundaries to millisecond precision
-
-        Parameters
-        ----------
-        workflow: :class:`~montreal_forced_aligner.data.WorkflowType`
-            Workflow type to fine tune
-
         """
         logger.info("Fine tuning alignments...")
         begin = time.time()
         with self.session() as session, tqdm(
             total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar:
-            update_mappings = []
             arguments = self.fine_tune_arguments()
-            if GLOBAL_CONFIG.use_mp:
-                error_dict = {}
-                return_queue = mp.Queue()
-                stopped = Stopped()
-                procs = []
-                for i, args in enumerate(arguments):
-                    function = FineTuneFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, stopped)
-                    procs.append(p)
-                    p.start()
-                while True:
-                    try:
-                        result = return_queue.get(timeout=1)
-                        if isinstance(result, Exception):
-                            error_dict[getattr(result, "job_name", 0)] = result
-                            continue
-                        if stopped.stop_check():
-                            continue
-                    except Empty:
-                        for proc in procs:
-                            if not proc.finished.stop_check():
-                                break
-                        else:
-                            break
-                        continue
-
-                    update_mappings.extend(result[0])
-                    update_mappings.extend([{"id": x, "begin": 0, "end": 0} for x in result[1]])
-                    pbar.update(1)
-                for p in procs:
-                    p.join()
-
-                if error_dict:
-                    for v in error_dict.values():
-                        raise v
-
-            else:
-                logger.debug("Not using multiprocessing...")
-                for args in arguments:
-                    function = FineTuneFunction(args)
-                    for result in function.run():
-                        update_mappings.extend(result[0])
-                        update_mappings.extend(
-                            [{"id": x, "begin": 0, "end": 0} for x in result[1]]
-                        )
-                        pbar.update(1)
+            update_mappings = []
+            for result in run_kaldi_function(FineTuneFunction, arguments, pbar.update):
+                update_mappings.extend(result[0])
+                update_mappings.extend([{"id": x, "begin": 0, "end": 0} for x in result[1]])
             bulk_update(session, PhoneInterval, update_mappings)
             session.flush()
             session.execute(PhoneInterval.__table__.delete().where(PhoneInterval.end == 0))
@@ -1083,55 +1030,39 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             Arguments for processing
         """
         args = []
+        fst, group_table, phone_to_group_mapping = self.compile_phone_group_lexicon_fst()
+        lexicon_compiler = LexiconCompiler(
+            position_dependent_phones=self.position_dependent_phones,
+            phones=self.non_silence_phones,
+        )
+        lexicon_compiler.word_table = group_table
+        lexicon_compiler._fst = fst
+        options = self.mfcc_options
+        options["frame_shift"] = 1
+        mfcc_computer = MfccComputer(**options)
+        pitch_computer = None
+        if self.use_pitch:
+            options = self.pitch_options
+            options["frame_shift"] = 1
+            pitch_computer = PitchComputer(**options)
         for j in self.jobs:
             log_path = self.working_log_directory.joinpath(f"fine_tune.{j.id}.log")
             args.append(
                 FineTuneArguments(
                     j.id,
-                    getattr(self, "db_string", ""),
+                    getattr(self, "session", ""),
                     log_path,
-                    self.phone_symbol_table_path,
-                    self.disambiguation_symbols_int_path,
-                    self.tree_path,
+                    mfcc_computer,
+                    pitch_computer,
+                    lexicon_compiler,
                     self.model_path,
-                    self.frame_shift,
-                    self.mfcc_options,
-                    self.pitch_options,
-                    self.lda_options,
+                    self.tree_path,
                     self.align_options,
-                    self.position_dependent_phones,
-                    self.kaldi_grouped_phones,
+                    phone_to_group_mapping,
+                    self.mfcc_computer.frame_shift,
                 )
             )
         return args
-
-    def get_tree_info(self) -> typing.Tuple[int, int]:
-        """
-        Get the context width and central position for the acoustic model
-
-        Returns
-        -------
-        int
-            Context width
-        int
-            Central position
-        """
-        tree_proc = subprocess.Popen(
-            [thirdparty_binary("tree-info"), self.tree_path],
-            encoding="utf8",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        stdout, _ = tree_proc.communicate()
-        context_width = 1
-        central_pos = 0
-        for line in stdout.split("\n"):
-            text = line.strip().split(" ")
-            if text[0] == "context-width":
-                context_width = int(text[1])
-            elif text[0] == "central-position":
-                central_pos = int(text[1])
-        return context_width, central_pos
 
     def export_textgrids(
         self,
@@ -1173,11 +1104,11 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     .join(File.text_file)
                 )
                 if GLOBAL_CONFIG.use_mp and GLOBAL_CONFIG.num_jobs > 1:
-                    stopped = Stopped()
+                    stopped = threading.Event()
 
-                    finished_adding = Stopped()
-                    for_write_queue = mp.Queue()
-                    return_queue = mp.Queue()
+                    finished_adding = threading.Event()
+                    for_write_queue = Queue()
+                    return_queue = Queue()
                     export_args = self.export_textgrid_arguments(
                         output_format, include_original_text
                     )
@@ -1185,7 +1116,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     export_procs = []
                     for j in range(len(self.jobs)):
                         export_proc = ExportTextGridProcessWorker(
-                            self.db_string,
+                            self.session,
                             for_write_queue,
                             return_queue,
                             stopped,
@@ -1199,18 +1130,18 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         for args in files:
                             for_write_queue.put(args)
                         time.sleep(1)
-                        finished_adding.stop()
+                        finished_adding.set()
                         while True:
                             try:
                                 result = return_queue.get(timeout=1)
                                 if isinstance(result, AlignmentExportError):
                                     error_dict[getattr(result, "path", 0)] = result
                                     continue
-                                if self.stopped.stop_check():
+                                if self.stopped.is_set():
                                     continue
                             except Empty:
                                 for proc in export_procs:
-                                    if not proc.finished_processing.stop_check():
+                                    if not proc.finished_processing.is_set():
                                         break
                                 else:
                                     break
@@ -1218,7 +1149,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                             if isinstance(result, int):
                                 pbar.update(1)
                     except Exception:
-                        stopped.stop()
+                        stopped.set()
                         raise
                     finally:
                         for i in range(len(self.jobs)):
@@ -1430,7 +1361,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     continue
                 indices.append(u)
                 to_comp.append((reference_phones, comparison_phones))
-            with mp.Pool(GLOBAL_CONFIG.num_jobs) as pool:
+            with ThreadPool(GLOBAL_CONFIG.num_jobs) as pool:
                 gen = pool.starmap(score_func, to_comp)
                 for i, (score, phone_error_rate, errors) in enumerate(gen):
                     if score is None:

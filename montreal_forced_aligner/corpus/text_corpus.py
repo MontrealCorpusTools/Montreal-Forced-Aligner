@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import logging
-import multiprocessing as mp
 import os
 import sys
+import threading
 import time
 from pathlib import Path
-from queue import Empty
+from queue import Empty, Queue
 
 from tqdm.rich import tqdm
 
@@ -20,7 +20,6 @@ from montreal_forced_aligner.corpus.multiprocessing import CorpusProcessWorker
 from montreal_forced_aligner.data import DatabaseImportData
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
 from montreal_forced_aligner.exceptions import TextGridParseError, TextParseError
-from montreal_forced_aligner.utils import Stopped
 
 logger = logging.getLogger("mfa")
 
@@ -43,12 +42,12 @@ class TextCorpusMixin(CorpusMixin):
         Load a corpus using multiprocessing
         """
         if self.stopped is None:
-            self.stopped = Stopped()
+            self.stopped = threading.Event()
         begin_time = time.time()
-        job_queue = mp.Queue()
-        return_queue = mp.Queue()
+        job_queue = Queue()
+        return_queue = Queue()
         error_dict = {}
-        finished_adding = Stopped()
+        finished_adding = threading.Event()
         procs = []
         for i in range(GLOBAL_CONFIG.num_jobs):
             p = CorpusProcessWorker(
@@ -72,10 +71,10 @@ class TextCorpusMixin(CorpusMixin):
                         root.replace(str(self.corpus_directory), "").lstrip("/").lstrip("\\")
                     )
 
-                    if self.stopped.stop_check():
+                    if self.stopped.is_set():
                         break
                     for file_name in exts.identifiers:
-                        if self.stopped.stop_check():
+                        if self.stopped.is_set():
                             break
                         wav_path = None
                         if file_name in exts.lab_files:
@@ -91,7 +90,7 @@ class TextCorpusMixin(CorpusMixin):
                         file_count += 1
                         pbar.total = file_count
 
-                finished_adding.stop()
+                finished_adding.set()
 
                 while True:
                     try:
@@ -106,11 +105,11 @@ class TextCorpusMixin(CorpusMixin):
                                     error_dict[error_type] = []
                                 error_dict[error_type].append(error)
                             continue
-                        if self.stopped.stop_check():
+                        if self.stopped.is_set():
                             continue
                     except Empty:
                         for proc in procs:
-                            if not proc.finished_processing.stop_check():
+                            if not proc.finished_processing.is_set():
                                 break
                         else:
                             break
@@ -146,26 +145,26 @@ class TextCorpusMixin(CorpusMixin):
 
         except KeyboardInterrupt:
             logger.info("Detected ctrl-c, please wait a moment while we clean everything up...")
-            self.stopped.stop()
-            finished_adding.stop()
+            self.stopped.set()
+            finished_adding.set()
             self.stopped.set_sigint_source()
             while True:
                 try:
                     _ = return_queue.get(timeout=1)
-                    if self.stopped.stop_check():
+                    if self.stopped.is_set():
                         continue
                 except Empty:
                     for proc in procs:
-                        if not proc.finished_processing.stop_check():
+                        if not proc.finished_processing.is_set():
                             break
                     else:
                         break
         finally:
 
-            finished_adding.stop()
+            finished_adding.set()
             for p in procs:
                 p.join()
-            if self.stopped.stop_check():
+            if self.stopped.is_set():
                 logger.info(f"Stopped parsing early ({time.time() - begin_time:.3f} seconds)")
                 if self.stopped.source():
                     sys.exit(0)

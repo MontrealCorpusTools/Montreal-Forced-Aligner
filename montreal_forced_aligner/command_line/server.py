@@ -35,7 +35,6 @@ def init_cli(context, **kwargs):
     if kwargs.get("profile", None) is not None:
         os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
-    GLOBAL_CONFIG.save()
     initialize_server()
 
 
@@ -54,7 +53,6 @@ def start_cli(context, **kwargs):
     if kwargs.get("profile", None) is not None:
         os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
-    GLOBAL_CONFIG.save()
     start_server()
 
 
@@ -80,7 +78,6 @@ def stop_cli(context, **kwargs):
     if kwargs.get("profile", None) is not None:
         os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
-    GLOBAL_CONFIG.save()
     stop_server(mode=kwargs.get("mode", "fast"))
 
 
@@ -99,5 +96,4 @@ def delete_cli(context, **kwargs):
     if kwargs.get("profile", None) is not None:
         os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     GLOBAL_CONFIG.current_profile.update(kwargs)
-    GLOBAL_CONFIG.save()
     delete_server()

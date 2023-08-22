@@ -73,7 +73,7 @@ exclude_lines = [
     "except Exception as e:",
     "except Exception:",
     "if call_back",
-    "if stop_check",
+    "if is_set",
     "if TYPE_CHECKING:",
     "def history_save_handler() -> None:",
     "class ExitHooks(object):",

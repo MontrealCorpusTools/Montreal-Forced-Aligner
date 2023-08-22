@@ -18,6 +18,7 @@ import dataclassy
 import pynini
 import pywrapfst
 from praatio.utilities.constants import Interval, TextgridFormats
+from sqlalchemy.orm import scoped_session
 
 from montreal_forced_aligner.exceptions import CtmError
 
@@ -38,10 +39,25 @@ __all__ = [
     "DistanceMetric",
     "WorkflowType",
     "DatasetType",
-    "M_LOG_2PI",
+    "ArpaNgramModel",
+    "WORD_BEGIN_SYMBOL",
+    "WORD_END_SYMBOL",
+    "OOV_WORD",
+    "BRACKETED_WORD",
+    "CUTOFF_WORD",
+    "SIL_WORD",
+    "SIL_PHONE",
+    "OOV_PHONE",
 ]
 
-M_LOG_2PI = 1.8378770664093454835606594728112
+WORD_BEGIN_SYMBOL = "#1"
+WORD_END_SYMBOL = "#2"
+OOV_WORD = "<unk>"
+BRACKETED_WORD = "<bracketed>"
+CUTOFF_WORD = "<cutoff>"
+SIL_WORD = "<eps>"
+SIL_PHONE = "sil"
+OOV_PHONE = "spn"
 
 
 # noinspection PyUnresolvedReferences
@@ -107,7 +123,7 @@ class MfaArguments:
     """
 
     job_name: int
-    db_string: str
+    session: scoped_session
     log_path: Path
 
 

@@ -4,18 +4,18 @@ from __future__ import annotations
 import collections
 import json
 import logging
-import multiprocessing as mp
 import os
-import re
 import shutil
-import subprocess
 import time
 import typing
 from pathlib import Path
-from queue import Empty
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from sqlalchemy.orm import Session, joinedload, subqueryload
+from _kalpy.hmm import AlignmentToPosterior
+from _kalpy.matrix import DoubleVector
+from kalpy.gmm.data import AlignmentArchive
+from kalpy.gmm.utils import read_gmm_model
+from sqlalchemy.orm import joinedload, subqueryload
 from tqdm.rich import tqdm
 
 from montreal_forced_aligner.abc import KaldiFunction, ModelExporterMixin, TopLevelMfaWorker
@@ -33,12 +33,7 @@ from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
 from montreal_forced_aligner.helper import load_configuration, mfa_open, parse_old_features
 from montreal_forced_aligner.models import AcousticModel, DictionaryModel
 from montreal_forced_aligner.transcription.transcriber import TranscriberMixin
-from montreal_forced_aligner.utils import (
-    KaldiProcessWorker,
-    Stopped,
-    log_kaldi_errors,
-    thirdparty_binary,
-)
+from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
@@ -61,6 +56,7 @@ logger = logging.getLogger("mfa")
 class TransitionAccArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.acoustic_modeling.trainer.TransitionAccFunction`"""
 
+    working_directory: Path
     model_path: Path
 
 
@@ -81,64 +77,34 @@ class TransitionAccFunction(KaldiFunction):
         Arguments for the function
     """
 
-    done_pattern = re.compile(
-        r"^LOG \(post-to-tacc.*Done computing transition stats over (?P<utterances>\d+) utterances.*$"
-    )
-
     def __init__(self, args: TransitionAccArguments):
         super().__init__(args)
+        self.working_directory = args.working_directory
         self.model_path = args.model_path
 
     def _run(self) -> typing.Generator[typing.Tuple[int, str]]:
         """Run the function"""
 
-        with mfa_open(self.log_path, "w") as log_file, Session(self.db_engine()) as session:
+        with self.session() as session:
             job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
                 .filter(Job.id == self.job_name)
                 .first()
             )
-            workflow: CorpusWorkflow = (
-                session.query(CorpusWorkflow)
-                .filter(CorpusWorkflow.current == True)  # noqa
-                .first()
-            )
+            transition_model, acoustic_model = read_gmm_model(self.model_path)
             for dict_id in job.dictionary_ids:
-                ali_path = job.construct_path(workflow.working_directory, "ali", "ark", dict_id)
-
-                tacc_path = job.construct_path(workflow.working_directory, "t", "acc", dict_id)
-
-                ali_post_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("ali-to-post"),
-                        f"ark:{ali_path}",
-                        "ark:-",
-                    ],
-                    stdout=subprocess.PIPE,
-                    env=os.environ,
-                    stderr=log_file,
-                )
-
-                tacc_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("post-to-tacc"),
-                        self.model_path,
-                        "ark:-",
-                        tacc_path,
-                    ],
-                    stdin=ali_post_proc.stdout,
-                    env=os.environ,
-                    stderr=subprocess.PIPE,
-                    encoding="utf8",
-                )
-                for line in tacc_proc.stderr:
-                    log_file.write(line)
-                    m = self.done_pattern.match(line.strip())
-                    if m:
-                        progress_update = int(m.group("utterances"))
-                        yield progress_update
-                self.check_call(tacc_proc)
+                ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                transition_accs = DoubleVector(transition_model.NumTransitionIds() + 1)
+                alignment_archive = AlignmentArchive(ali_path)
+                for alignment in alignment_archive:
+                    post = AlignmentToPosterior(alignment.alignment)
+                    for i in range(len(post)):
+                        for j in range(len(post[i])):
+                            tid = post[i][j][0]
+                            transition_accs[tid] += post[i][j][1]
+                    self.callback(1)
+                self.callback(transition_accs)
 
 
 class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
@@ -207,6 +173,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             training_configuration = TrainableAligner.default_training_configurations()
         for k, v in training_configuration:
             self.add_config(k, v)
+        self.final_alignment = True
 
     @classmethod
     def default_training_configurations(cls) -> List[Tuple[str, Dict[str, Any]]]:
@@ -521,11 +488,6 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         self.training_configs[self.final_identifier].export_model(output_model_path)
         logger.info(f"Saved model to {output_model_path}")
 
-    @property
-    def tree_path(self) -> str:
-        """Tree path of the final model"""
-        return self.training_configs[self.final_identifier].tree_path
-
     def train(self) -> None:
         """
         Run through the training configurations to produce a final acoustic model
@@ -596,8 +558,9 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         return [
             TransitionAccArguments(
                 j.id,
-                getattr(self, "db_string", ""),
+                getattr(self, "session", ""),
                 self.working_log_directory.joinpath(f"test_utterances.{j.id}.log"),
+                self.working_directory,
                 self.model_path,
             )
             for j in self.jobs
@@ -607,124 +570,31 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         """
         Calculate the counts of pdfs corresponding to phones
         """
-        try:
 
-            logger.info("Accumulating transition stats...")
+        logger.info("Accumulating transition stats...")
 
-            begin = time.time()
-            log_directory = self.working_log_directory
-            os.makedirs(log_directory, exist_ok=True)
-            arguments = self.transition_acc_arguments()
-            with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
-                if GLOBAL_CONFIG.use_mp:
-                    error_dict = {}
-                    return_queue = mp.Queue()
-                    stopped = Stopped()
-                    procs = []
-                    for i, args in enumerate(arguments):
-                        function = TransitionAccFunction(args)
-                        p = KaldiProcessWorker(i, return_queue, function, stopped)
-                        procs.append(p)
-                        p.start()
-                    while True:
-                        try:
-                            result = return_queue.get(timeout=1)
-                            if stopped.stop_check():
-                                continue
-                        except Empty:
-                            for proc in procs:
-                                if not proc.finished.stop_check():
-                                    break
-                            else:
-                                break
-                            continue
-                        if isinstance(result, KaldiProcessingError):
-                            error_dict[result.job_name] = result
-                            continue
-                        pbar.update(result)
-                    for p in procs:
-                        p.join()
-                    if error_dict:
-                        for v in error_dict.values():
-                            raise v
-                else:
-                    logger.debug("Not using multiprocessing...")
-                    for args in arguments:
-                        function = TransitionAccFunction(args)
-                        for result in function.run():
-                            pbar.update(result)
-            t_accs = []
-            for j in self.jobs:
-                for dict_id in j.dictionary_ids:
-                    t_accs.append(j.construct_path(self.working_directory, "t", "acc", dict_id))
-            subprocess.check_call(
-                [
-                    thirdparty_binary("vector-sum"),
-                    "--binary=false",
-                    *t_accs,
-                    self.working_directory.joinpath("final.tacc"),
-                ],
-                stderr=subprocess.DEVNULL,
-            )
-            for f in t_accs:
-                os.remove(f)
-            smoothing = 1
-            show_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("show-transitions"),
-                    self.phone_symbol_table_path,
-                    self.model_path,
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                encoding="utf8",
-                env=os.environ,
-            )
-            phone_pdfs = {}
-            phone, pdf = None, None
-            max_pdf = 0
-            max_phone = 0
-            for line in show_proc.stdout:
-                line = line.strip()
-                m = re.match(
-                    r"^Transition-state.*phone = (?P<phone>[^ ]+) .*pdf = (?P<pdf>\d+)$", line
-                )
-                if m:
-                    phone = m.group("phone")
-                    pdf = int(m.group("pdf"))
-                    if pdf > max_pdf:
-                        max_pdf = pdf
-                    if self.phone_mapping[phone] > max_phone:
-                        max_phone = self.phone_mapping[phone]
-                else:
-                    m = re.search(r"Transition-id = (?P<transition_id>\d+)", line)
-                    if m:
-                        transition_id = int(m.group("transition_id"))
-                        phone_pdfs[transition_id] = (phone, pdf)
-            with mfa_open(self.working_directory.joinpath("final.tacc"), "r") as f:
-                data = f.read().strip().split()[1:-1]
-
-                transition_counts = {
-                    i: smoothing + int(float(x)) for i, x in enumerate(data) if i != 0
-                }
-            assert len(transition_counts) == len(phone_pdfs)
-            pdf_counts = collections.Counter()
-            pdf_phone_counts = collections.Counter()
-            phone_pdf_mapping = collections.defaultdict(collections.Counter)
-            for transition_id, (phone, pdf) in phone_pdfs.items():
-                pdf_counts[pdf] += transition_counts[transition_id]
-                pdf_phone_counts[(phone, pdf)] += transition_counts[transition_id]
-                phone_pdf_mapping[phone][pdf] += transition_counts[transition_id]
-            with mfa_open(self.working_directory.joinpath("phone_pdf.counts"), "w") as f:
-                json.dump(phone_pdf_mapping, f, ensure_ascii=False)
-            logger.debug(f"Accumulating transition stats took {time.time() - begin:.3f} seconds")
-            logger.info("Finished accumulating transition stats!")
-
-        except Exception as e:
-            if isinstance(e, KaldiProcessingError):
-                log_kaldi_errors(e.error_logs)
-                e.update_log_file()
-            raise
+        begin = time.time()
+        log_directory = self.working_log_directory
+        os.makedirs(log_directory, exist_ok=True)
+        arguments = self.transition_acc_arguments()
+        transition_model, acoustic_model = read_gmm_model(self.model_path)
+        transition_accs = DoubleVector(transition_model.NumTransitionIds() + 1)
+        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            for result in run_kaldi_function(TransitionAccFunction, arguments, pbar.update):
+                if not isinstance(result, int):
+                    transition_accs.AddVec(1.0, result)
+        smoothing = 1
+        phone_pdf_mapping = collections.defaultdict(collections.Counter)
+        for tid in range(1, transition_model.NumTransitionIds() + 1):
+            pdf_id = transition_model.TransitionIdToPdf(tid)
+            phone_id = transition_model.TransitionIdToPhone(tid)
+            phone = self.reversed_phone_mapping[phone_id]
+            t_count = smoothing + float(transition_accs[tid])
+            phone_pdf_mapping[phone][pdf_id] += t_count
+        with mfa_open(self.working_directory.joinpath("phone_pdf.counts"), "w") as f:
+            json.dump(phone_pdf_mapping, f, ensure_ascii=False)
+        logger.debug(f"Accumulating transition stats took {time.time() - begin:.3f} seconds")
+        logger.info("Finished accumulating transition stats!")
 
     def finalize_training(self):
         self.compute_phone_pdf_counts()
@@ -785,37 +655,29 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             Reference Kaldi script
         """
         wf = self.current_workflow
-        if wf.done:
+        if wf.done and wf.working_directory.exists():
             logger.debug(f"Skipping {self.current_aligner.identifier} alignments")
             return
         try:
             self.current_acoustic_model.export_model(self.working_directory)
             self.uses_speaker_adaptation = False
+            if self.current_acoustic_model.meta["features"]["uses_speaker_adaptation"]:
+
+                self.uses_speaker_adaptation = False
+                for j in self.jobs:
+                    for path in j.construct_path_dictionary(
+                        j.corpus.current_subset_directory, "trans", "scp"
+                    ).values():
+                        path.unlink(missing_ok=True)
             self.compile_train_graphs()
             self.align_utterances()
             if self.current_acoustic_model.meta["features"]["uses_speaker_adaptation"]:
-
-                arguments = self.calc_fmllr_arguments()
-                missing_transforms = False
-                for arg in arguments:
-                    for path in arg.trans_paths.values():
-                        if not os.path.exists(path):
-                            missing_transforms = True
-                if missing_transforms:
-                    assert self.alignment_model_path.suffix == ".alimdl"
-                    self.calc_fmllr()
+                assert self.alignment_model_path.suffix == ".alimdl"
+                self.calc_fmllr()
                 self.uses_speaker_adaptation = True
                 assert self.alignment_model_path.suffix == ".mdl"
+
                 self.align_utterances()
-            if self.current_subset:
-                logger.debug(
-                    f"Analyzing alignment diagnostics for {self.current_aligner.identifier} on {self.current_subset} utterances"
-                )
-            else:
-                logger.debug(
-                    f"Analyzing alignment diagnostics for {self.current_aligner.identifier} on the full corpus"
-                )
-            self.compile_information()
             with self.session() as session:
                 session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update(
                     {"done": True}

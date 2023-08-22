@@ -29,7 +29,7 @@ Multiprocessing workers and functions
 .. autosummary::
    :toctree: generated/
 
-   tree_stats_func
+   TreeStatsFunction
    ConvertAlignmentsFunction
 
 

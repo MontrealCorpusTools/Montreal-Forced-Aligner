@@ -29,6 +29,7 @@ from typing import (
 
 import sqlalchemy
 import yaml
+from sqlalchemy.orm import scoped_session, sessionmaker
 
 from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.db import CorpusWorkflow, MfaSqlBase
@@ -49,6 +50,7 @@ __all__ = [
     "MfaWorker",
     "TopLevelMfaWorker",
     "MetaDict",
+    "DatabaseMixin",
     "FileExporterMixin",
     "ModelExporterMixin",
     "TemporaryDirectoryMixin",
@@ -69,27 +71,15 @@ class KaldiFunction(metaclass=abc.ABCMeta):
 
     def __init__(self, args: MfaArguments):
         self.args = args
-        self.db_string = self.args.db_string
+        self.session = self.args.session
         self.job_name = self.args.job_name
         self.log_path = self.args.log_path
+        self.callback = None
 
-    def db_engine(self):
-        db_string = self.db_string
-        if not GLOBAL_CONFIG.current_profile.use_postgres:
-            db_string += "?mode=ro&nolock=1&uri=true"
-
-        return sqlalchemy.create_engine(
-            self.db_string,
-            poolclass=sqlalchemy.NullPool,
-            isolation_level="AUTOCOMMIT",
-            logging_name=f"{type(self).__name__}_engine",
-            pool_reset_on_return=None,
-        ).execution_options(logging_token=f"{type(self).__name__}_engine")
-
-    def run(self) -> typing.Generator:
+    def run(self):
         """Run the function, calls subclassed object's ``_run`` with error handling"""
         try:
-            yield from self._run()
+            self._run()
         except Exception:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             error_text = "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
@@ -267,9 +257,10 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         else:
             exist_check = self.db_path.exists()
         self.database_initialized = True
+        if GLOBAL_CONFIG.current_profile.clean or getattr(self, "dirty", False):
+            self.clean_working_directory()
         if exist_check:
             if GLOBAL_CONFIG.current_profile.clean or getattr(self, "dirty", False):
-                self.clean_working_directory()
                 self.delete_database()
             else:
                 return
@@ -381,20 +372,17 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         if not GLOBAL_CONFIG.use_postgres:
             if kwargs.pop("read_only", False):
                 db_string += "?mode=ro&nolock=1&uri=true"
-            kwargs["poolclass"] = sqlalchemy.NullPool
-        else:
-            kwargs["pool_size"] = 10
-            kwargs["max_overflow"] = 10
+        kwargs["pool_size"] = 10
+        kwargs["max_overflow"] = 10
         e = sqlalchemy.create_engine(
             db_string,
-            logging_name="main_process_engine",
             **kwargs,
-        ).execution_options(logging_token="main_process_engine")
+        )
 
         return e
 
     @property
-    def session(self, **kwargs) -> sqlalchemy.orm.sessionmaker:
+    def session(self, **kwargs) -> sqlalchemy.orm.scoped_session:
         """
         Construct database session
 
@@ -409,7 +397,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
             SqlAlchemy session
         """
         if self._session is None:
-            self._session = sqlalchemy.orm.sessionmaker(bind=self.db_engine, **kwargs)
+            self._session = scoped_session(sessionmaker(bind=self.db_engine, **kwargs))
         return self._session
 
 

@@ -7,29 +7,29 @@ from __future__ import annotations
 
 import datetime
 import logging
-import multiprocessing as mp
 import os
+import pathlib
 import re
 import shutil
 import subprocess
+import threading
 import time
 import typing
+from contextlib import contextmanager
 from pathlib import Path
-from queue import Empty
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from queue import Empty, Queue
+from typing import Any, Dict, List
 
-import numpy as np
 import sqlalchemy
 from sqlalchemy.orm import Session
 
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.config import GLOBAL_CONFIG
-from montreal_forced_aligner.data import CtmInterval, DatasetType, MfaArguments
+from montreal_forced_aligner.data import CtmInterval, DatasetType
 from montreal_forced_aligner.db import Corpus, Dictionary
 from montreal_forced_aligner.exceptions import (
     DictionaryError,
     KaldiProcessingError,
-    MultiprocessingError,
     ThirdpartyError,
 )
 from montreal_forced_aligner.helper import mfa_open
@@ -43,15 +43,12 @@ __all__ = [
     "parse_logs",
     "inspect_database",
     "Counter",
-    "Stopped",
-    "ProcessWorker",
     "ProgressCallback",
     "KaldiProcessWorker",
     "parse_ctm_output",
-    "read_feats",
-    "run_mp",
-    "run_non_mp",
     "run_kaldi_function",
+    "thread_logger",
+    "parse_dictionary_file",
 ]
 canary_kaldi_bins = [
     "compute-mfcc-feats",
@@ -124,7 +121,7 @@ def get_class_for_dataset_type(dataset_type: DatasetType):
 
     Returns
     -------
-    Union[None, AcousticCorpus, TextCorpus, AcousticCorpusWithPronunciations, DictionaryTextCorpus,MultispeakerDictionary]
+    typing.Union[None, AcousticCorpus, TextCorpus, AcousticCorpusWithPronunciations, DictionaryTextCorpus,MultispeakerDictionary]
         Class to use for the current database file
     """
     from montreal_forced_aligner.corpus.acoustic_corpus import (
@@ -343,77 +340,6 @@ def log_kaldi_errors(error_logs: List[str]) -> None:
                 logger.debug("\t" + line.strip())
 
 
-def read_feats(
-    proc: subprocess.Popen, raw_id=False
-) -> typing.Generator[typing.Union[str, int], np.array]:
-    """
-    Inspired by https://github.com/it-muslim/kaldi-helpers/blob/master/kaldi-helpers/kaldi_io.py#L87
-
-    Reading from stdout, import feats (or feats-like) data as a numpy array
-    As feats are generated "on-fly" in kaldi, there is no a feats file
-    (except most simple cases like raw mfcc, plp or fbank).  So, that is why
-    we take feats as a command rather that a file path. Can be applied to
-    other commands (like gmm-compute-likes) generating an output in same
-    format as feats, i.e:
-    utterance_id_1  [
-      70.31843 -2.872698 -0.06561285 22.71824 -15.57525 ...
-      78.39457 -1.907646 -1.593253 23.57921 -14.74229 ...
-      ...
-      57.27236 -16.17824 -15.33368 -5.945696 0.04276848 ... -0.5812851 ]
-    utterance_id_2  [
-      64.00951 -8.952017 4.134113 33.16264 11.09073 ...
-      ...
-
-    Parameters
-    ----------
-    proc : subprocess.Popen
-        A process that generates features or feature-like specifications
-
-    Yields
-    -------
-    int or str
-        Utterance ID
-    numpy.array
-        features
-    """
-    feats = []
-    # current_row = 0
-    current_id = None
-    for line in proc.stdout:
-        line = line.decode("ascii").strip()
-        if "[" in line and "]" in line:
-            line = line.replace("]", "").replace("[", "").split()
-            ids = line.pop(0)
-            if raw_id:
-                utt_id = ids
-            else:
-                utt_id = int(ids.split("-")[-1])
-            feats = np.array([float(x) for x in line])
-            yield utt_id, feats
-            feats = []
-            continue
-        elif "[" in line:
-            ids = line.strip().split()[0]
-            if raw_id:
-                utt_id = ids
-            else:
-                utt_id = int(ids.split("-")[-1])
-            if current_id is None:
-                current_id = utt_id
-            if current_id != utt_id:
-                feats = np.array(feats)
-                yield current_id, feats
-                feats = []
-                current_id = utt_id
-            continue
-        if not line:
-            continue
-        feats.append([float(x) for x in line.replace("]", "").split()])
-    if current_id is not None:
-        feats = np.array(feats)
-        yield current_id, feats
-
-
 def parse_logs(log_directory: Path) -> None:
     """
     Parse the output of a Kaldi run for any errors and raise relevant MFA exceptions
@@ -459,25 +385,25 @@ class Counter(object):
 
     Attributes
     ----------
-    val: :func:`~multiprocessing.Value`
-        Integer to increment
-    lock: :class:`~multiprocessing.Lock`
-        Lock for process safety
+    lock: :class:`~threading.Lock`
+        Lock for threading safety
     """
 
-    def __init__(self, init_val: int = 0):
-        self.val = mp.Value("i", init_val)
-        self.lock = mp.Lock()
+    def __init__(
+        self,
+    ):
+        self._value = 0
+        self.lock = threading.Lock()
 
     def increment(self, value=1) -> None:
         """Increment the counter"""
         with self.lock:
-            self.val.value += value
+            self._value += value
 
     def value(self) -> int:
         """Get the current value of the counter"""
         with self.lock:
-            return self.val.value
+            return self._value
 
 
 class ProgressCallback(object):
@@ -491,7 +417,7 @@ class ProgressCallback(object):
         self.total_callback = total_callback
         self._progress = 0
         self.callback_interval = 1
-        self.lock = mp.Lock()
+        self.lock = threading.Lock()
         self.start_time = None
 
     @property
@@ -564,52 +490,7 @@ class ProgressCallback(object):
                 self.callback(self._progress, str(remaining_time))
 
 
-class Stopped(object):
-    """
-    Multiprocessing class for detecting whether processes should stop processing and exit ASAP
-
-    Attributes
-    ----------
-    val: :func:`~multiprocessing.Value`
-        0 if not stopped, 1 if stopped
-    lock: :class:`~multiprocessing.Lock`
-        Lock for process safety
-    _source: multiprocessing.Value
-        1 if it was a Ctrl+C event that stopped it, 0 otherwise
-    """
-
-    def __init__(self, initval: Union[bool, int] = False):
-        self.val = mp.Value("i", initval)
-        self.lock = mp.Lock()
-        self._source = mp.Value("i", 0)
-
-    def reset(self) -> None:
-        """Signal that work should stop asap"""
-        with self.lock:
-            self.val.value = False
-
-    def stop(self) -> None:
-        """Signal that work should stop asap"""
-        with self.lock:
-            self.val.value = True
-
-    def stop_check(self) -> int:
-        """Check whether a process should stop"""
-        with self.lock:
-            return self.val.value
-
-    def set_sigint_source(self) -> None:
-        """Set the source as a ctrl+c"""
-        with self.lock:
-            self._source.value = True
-
-    def source(self) -> int:
-        """Get the source value"""
-        with self.lock:
-            return self._source.value
-
-
-class ProcessWorker(mp.Process):
+class KaldiProcessWorker(threading.Thread):
     """
     Multiprocessing function work
 
@@ -617,88 +498,33 @@ class ProcessWorker(mp.Process):
     ----------
     job_name: int
         Integer number of job
-    job_q: :class:`~multiprocessing.Queue`
-        Job queue to pull arguments from
-    function: Callable
-        Multiprocessing function to call on arguments from job_q
-    return_dict: dict
-        Dictionary for collecting errors
-    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
-        Stop check
-    return_info: dict[int, Any], optional
-        Optional dictionary to fill if the function should return information to main thread
-    """
-
-    def __init__(
-        self,
-        job_name: int,
-        job_q: mp.Queue,
-        function: Callable,
-        return_q: mp.Queue,
-        stopped: Stopped,
-    ):
-        mp.Process.__init__(self)
-        self.job_name = job_name
-        self.function = function
-        self.job_q = job_q
-        self.return_q = return_q
-        self.stopped = stopped
-        self.finished_processing = Stopped()
-
-    def run(self) -> None:
-        """
-        Run through the arguments in the queue apply the function to them
-        """
-        while True:
-            try:
-                arguments = self.job_q.get(timeout=1)
-            except Empty:
-                self.finished_processing.stop()
-                break
-            try:
-                if isinstance(arguments, MfaArguments):
-                    result = self.function(arguments)
-                else:
-                    result = self.function(*arguments)
-                self.return_q.put((self.job_name, result))
-            except Exception as e:
-                self.stopped.stop()
-                if isinstance(e, (KaldiProcessingError, MultiprocessingError)):
-                    e.job_name = self.job_name
-                self.return_q.put((self.job_name, e))
-
-
-class KaldiProcessWorker(mp.Process):
-    """
-    Multiprocessing function work
-
-    Parameters
-    ----------
-    job_name: int
-        Integer number of job
-    return_q: :class:`~multiprocessing.Queue`
+    return_q: :class:`~queue.Queue`
         Queue for returning results
     function: KaldiFunction
         Multiprocessing function to call on arguments from job_q
-    error_dict: dict
-        Dictionary for collecting errors
-    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
+    stopped: :class:`~threading.Event`
         Stop check
     """
 
     def __init__(
         self,
         job_name: int,
-        return_q: mp.Queue,
+        return_q: Queue,
         function: KaldiFunction,
-        stopped: Stopped,
+        stopped: threading.Event,
     ):
-        mp.Process.__init__(self)
+        super().__init__(name=str(job_name))
         self.job_name = job_name
         self.function = function
+        self.function.callback = self.add_to_return_queue
         self.return_q = return_q
         self.stopped = stopped
-        self.finished = Stopped()
+        self.finished = threading.Event()
+
+    def add_to_return_queue(self, result):
+        if self.stopped.is_set():
+            return
+        self.return_q.put(result)
 
     def run(self) -> None:
         """
@@ -709,165 +535,155 @@ class KaldiProcessWorker(mp.Process):
         os.environ["OPENBLAS_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
         os.environ["MKL_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
         try:
-            for result in self.function.run():
-                self.return_q.put(result)
+            self.function.run()
         except Exception as e:
-            self.stopped.stop()
+            self.stopped.set()
             if isinstance(e, KaldiProcessingError):
                 e.job_name = self.job_name
             self.return_q.put(e)
         finally:
-            self.finished.stop()
+            self.finished.set()
 
 
-def run_kaldi_function(function, arguments, progress_callback, stopped: Stopped = None):
+@contextmanager
+def thread_logger(
+    log_name: str, log_path: typing.Union[pathlib.Path, str], job_name: int = None
+) -> logging.Logger:
+    kalpy_logging = logging.getLogger(log_name)
+    if job_name is None:
+        log_filter = IgnoreThreadsFilter()
+    else:
+        log_filter = ThreadFilter(job_name)
+    file_handler = logging.FileHandler(log_path, encoding="utf8", mode="w")
+    file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(thread)d - %(threadName)s - %(levelname)s - %(message)s"
+    )
+    file_handler.setFormatter(formatter)
+    file_handler.addFilter(log_filter)
+    try:
+        kalpy_logging.addHandler(file_handler)
+        yield kalpy_logging
+    finally:
+        file_handler.close()
+        kalpy_logging.removeHandler(file_handler)
+
+
+class ThreadFilter(logging.Filter):
+    """Only accept log records from a specific thread or thread name"""
+
+    def __init__(self, thread_name):
+        self._thread_name = str(thread_name)
+
+    def filter(self, record):
+        if self._thread_name is not None and record.threadName != self._thread_name:
+            return False
+        return True
+
+
+class IgnoreThreadsFilter(logging.Filter):
+    """Only accepts log records that originated from the main thread"""
+
+    def __init__(self):
+        self._main_thread_id = threading.main_thread().ident
+
+    def filter(self, record):
+        return record.thread == self._main_thread_id
+
+
+def run_kaldi_function(
+    function, arguments, progress_callback: typing.Callable = None, stopped: threading.Event = None
+):
     if stopped is None:
-        stopped = Stopped()
+        stopped = threading.Event()
+    error_dict = {}
+    return_queue = Queue(10000)
     if GLOBAL_CONFIG.use_mp:
-        error_dict = {}
-        return_queue = mp.Queue(10000)
         procs = []
-        for i, args in enumerate(arguments):
+        for args in arguments:
             f = function(args)
-            p = KaldiProcessWorker(i, return_queue, f, stopped)
+            p = KaldiProcessWorker(args.job_name, return_queue, f, stopped)
             procs.append(p)
             p.start()
-        while True:
-            try:
-                result = return_queue.get(timeout=1)
-                if isinstance(result, Exception):
-                    error_dict[getattr(result, "job_name", 0)] = result
-                    continue
-                if stopped.stop_check():
-                    continue
-            except Empty:
-                for proc in procs:
-                    if not proc.finished.stop_check():
+        try:
+            while True:
+                try:
+                    result = return_queue.get(timeout=1)
+                    if isinstance(result, Exception):
+                        error_dict[getattr(result, "job_name", 0)] = result
+                        stopped.set()
+                        continue
+                    if stopped.is_set():
+                        continue
+                    yield result
+                    if progress_callback is not None:
+                        if isinstance(result, int):
+                            progress_callback(result)
+                        else:
+                            progress_callback(1)
+                except Empty:
+                    for proc in procs:
+                        if not proc.finished.is_set():
+                            break
+                    else:
                         break
-                else:
-                    break
-                continue
-            yield result
-            progress_callback(1)
-        for p in procs:
-            p.join()
+                    continue
+                # except (KeyboardInterrupt, SystemExit):
+                #    logger.debug("Received ctrl+c event")
+                #    stopped.set()
+                #    continue
+                except Exception as e:
+                    if isinstance(e, KeyboardInterrupt):
+                        logger.debug("Received ctrl+c event")
+                    stopped.set()
+                    error_dict["main_thread"] = e
+                    continue
+
+        finally:
+            for p in procs:
+                p.join()
 
         if error_dict:
             for v in error_dict.values():
                 raise v
-
+        # if stopped.set():
+        #    sys.exit(1)
     else:
         for args in arguments:
             f = function(args)
-            for result in f.run():
-                if stopped.stop_check():
-                    break
-                yield result
-                progress_callback(1)
+            p = KaldiProcessWorker(args.job_name, return_queue, f, stopped)
+            p.start()
+            try:
+                while True:
+                    try:
+                        result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            stopped.set()
+                            continue
+                        if stopped.is_set():
+                            continue
+                        yield result
+                        if progress_callback is not None:
+                            if isinstance(result, int):
+                                progress_callback(result)
+                            else:
+                                progress_callback(1)
+                    except Empty:
+                        if not p.finished.is_set():
+                            continue
+                        else:
+                            break
+                    except (KeyboardInterrupt, SystemExit):
+                        logger.debug("Received ctrl+c event")
+                        stopped.set()
+                        continue
+                    except Exception as e:
+                        if isinstance(e, KeyboardInterrupt):
+                            logger.debug("Received ctrl+c event")
+                        stopped.set()
+                        error_dict["main_thread"] = e
+                        continue
 
-
-def run_non_mp(
-    function: Callable,
-    argument_list: List[Union[Tuple[Any, ...], MfaArguments]],
-    log_directory: str,
-    return_info: bool = False,
-) -> Optional[Dict[Any, Any]]:
-    """
-    Similar to :func:`run_mp`, but no additional processes are used and the jobs are evaluated in sequential order
-
-    Parameters
-    ----------
-    function: Callable
-        Multiprocessing function to evaluate
-    argument_list: list
-        List of arguments to process
-    log_directory: str
-        Directory that all log information from the processes goes to
-    return_info: dict, optional
-        If the function returns information, supply the return dict to populate
-
-    Returns
-    -------
-    dict, optional
-        If the function returns information, returns the dictionary it was supplied with
-    """
-    if return_info:
-        info = {}
-        for i, args in enumerate(argument_list):
-            if isinstance(args, MfaArguments):
-                info[i] = function(args)
-            else:
-                info[i] = function(*args)
-        parse_logs(log_directory)
-        return info
-
-    for args in argument_list:
-        if isinstance(args, MfaArguments):
-            function(args)
-        else:
-            function(*args)
-    parse_logs(log_directory)
-
-
-def run_mp(
-    function: Callable,
-    argument_list: List[Union[Tuple[Any, ...], MfaArguments]],
-    log_directory: str,
-    return_info: bool = False,
-) -> Optional[Dict[int, Any]]:
-    """
-    Apply a function for each job in parallel
-
-    Parameters
-    ----------
-    function: Callable
-        Multiprocessing function to apply
-    argument_list: list
-        Arguments for each job
-    log_directory: str
-        Directory that all log information from the processes goes to
-    return_info: dict, optional
-        If the function returns information, supply the return dict to populate
-    """
-
-    os.environ["OMP_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
-    os.environ["OPENBLAS_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
-    os.environ["MKL_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
-    stopped = Stopped()
-    job_queue = mp.Queue()
-    return_queue = mp.Queue()
-    error_dict = {}
-    info = {}
-    for a in argument_list:
-        job_queue.put(a)
-    procs = []
-    for i in range(len(argument_list)):
-        p = ProcessWorker(i, job_queue, function, return_queue, stopped)
-        procs.append(p)
-        p.start()
-
-    while True:
-        try:
-            job_name, result = return_queue.get(timeout=1)
-            if stopped.stop_check():
-                continue
-        except Empty:
-            for proc in procs:
-                if not proc.finished_processing.stop_check():
-                    break
-            else:
-                break
-            continue
-        if isinstance(result, (KaldiProcessingError, MultiprocessingError)):
-            error_dict[job_name] = result
-            continue
-        info[job_name] = result
-    for p in procs:
-        p.join()
-    if error_dict:
-        for v in error_dict.values():
-            raise v
-
-    parse_logs(log_directory)
-    if return_info:
-        return info
+            finally:
+                p.join()

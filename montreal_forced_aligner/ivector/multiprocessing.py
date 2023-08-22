@@ -2,18 +2,21 @@
 from __future__ import annotations
 
 import os
-import re
-import subprocess
 import typing
 from pathlib import Path
 
-from sqlalchemy.orm import Session, joinedload
+from _kalpy.gmm import DiagGmm
+from _kalpy.hmm import PosteriorWriter, RandomAccessPosteriorReader, ScalePosterior
+from _kalpy.util import Int32VectorVectorWriter
+from kalpy.ivector.data import GselectArchive
+from kalpy.ivector.train import GlobalGmmStatsAccumulator, IvectorExtractorStatsAccumulator
+from kalpy.utils import generate_read_specifier, generate_write_specifier, read_kaldi_object
+from sqlalchemy.orm import joinedload
 
-from montreal_forced_aligner.abc import MetaDict
+from montreal_forced_aligner.abc import KaldiFunction, MetaDict
 from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.db import Job
-from montreal_forced_aligner.helper import mfa_open
-from montreal_forced_aligner.utils import KaldiFunction, thirdparty_binary
+from montreal_forced_aligner.utils import thread_logger
 
 __all__ = [
     "GmmGselectFunction",
@@ -30,39 +33,33 @@ __all__ = [
 class GmmGselectArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.GmmGselectFunction`"""
 
-    feature_options: MetaDict
-    ivector_options: MetaDict
+    working_directory: Path
     dubm_model: Path
-    gselect_path: Path
+    ivector_options: MetaDict
 
 
 class AccGlobalStatsArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.AccGlobalStatsFunction`"""
 
-    feature_options: MetaDict
-    ivector_options: MetaDict
-    gselect_path: Path
-    acc_path: Path
+    working_directory: Path
     dubm_model: Path
+    ivector_options: MetaDict
 
 
 class GaussToPostArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.GaussToPostFunction`"""
 
-    feature_options: MetaDict
-    ivector_options: MetaDict
-    post_path: Path
+    working_directory: Path
     dubm_model: Path
+    ivector_options: MetaDict
 
 
 class AccIvectorStatsArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.AccIvectorStatsFunction`"""
 
-    feature_options: MetaDict
-    ivector_options: MetaDict
+    working_directory: Path
     ie_path: Path
-    post_path: Path
-    acc_path: Path
+    ivector_options: MetaDict
 
 
 class GmmGselectFunction(KaldiFunction):
@@ -86,49 +83,65 @@ class GmmGselectFunction(KaldiFunction):
         Arguments for the function
     """
 
-    progress_pattern = re.compile(r"^LOG.*For (?P<done_count>\d+)'th.*")
-
     def __init__(self, args: GmmGselectArguments):
         super().__init__(args)
-        self.feature_options = args.feature_options
-        self.ivector_options = args.ivector_options
+        self.working_directory = args.working_directory
         self.dubm_model = args.dubm_model
-        self.gselect_path = args.gselect_path
+        self.ivector_options = args.ivector_options
 
     def _run(self) -> typing.Generator[None]:
         """Run the function"""
-        if os.path.exists(self.gselect_path):
-            return
-        with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
+        with (
+            self.session() as session,
+            thread_logger(
+                "kalpy.ivector", self.log_path, job_name=self.job_name
+            ) as ivector_logger,
+        ):
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
                 .filter(Job.id == self.job_name)
                 .first()
             )
-            current_done_count = 0
-            feature_string = job.construct_online_feature_proc_string()
-
-            gselect_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("gmm-gselect"),
-                    f"--n={self.ivector_options['num_gselect']}",
-                    self.dubm_model,
-                    feature_string,
-                    f"ark:{self.gselect_path}",
-                ],
-                stderr=subprocess.PIPE,
-                env=os.environ,
-                encoding="utf8",
+            gselect_path = job.construct_path(self.working_directory, "gselect", "ark")
+            if os.path.exists(gselect_path):
+                return
+            feature_archive = job.construct_feature_archive(
+                job.corpus.split_directory,
+                subsample_n=self.ivector_options["subsample"],
+                use_sliding_cmvn=self.ivector_options["uses_cmvn"],
             )
-            for line in gselect_proc.stderr:
-                log_file.write(line)
-                m = self.progress_pattern.match(line)
-                if m:
-                    new_done_count = int(m.group("done_count"))
-                    yield new_done_count - current_done_count
-                    current_done_count = new_done_count
-            self.check_call(gselect_proc)
+            gmm = read_kaldi_object(DiagGmm, self.dubm_model)
+            gselect_writer = Int32VectorVectorWriter(generate_write_specifier(gselect_path))
+            num_done = 0
+            num_skipped = 0
+            tot_like = 0.0
+            tot_t = 0.0
+            for utt_id, feats in feature_archive:
+                tot_t_this_file = feats.NumRows()
+                if tot_t_this_file == 0:
+                    ivector_logger.warning(f"Skipping {utt_id} due to zero-length features.")
+                    num_skipped += 1
+                    continue
+                gselect, tot_like_this_file = gmm.gaussian_selection(
+                    feats, self.ivector_options["num_gselect"]
+                )
+                gselect_writer.Write(utt_id, gselect)
+                num_done += 1
+                tot_like += tot_like_this_file
+                tot_t += tot_t_this_file
+                if num_done % 10 == 0:
+                    self.callback(10)
+                    ivector_logger.info(
+                        f"For {num_done}'th utterance, "
+                        f"average UBM log-likelihood over {tot_t_this_file} frames "
+                        f"is {tot_like_this_file/tot_t_this_file}."
+                    )
+            gselect_writer.Close()
+            ivector_logger.info(
+                f"Done {num_done} utterances, skipped {num_skipped}, "
+                f"average UBM log-likelihood over {tot_t} frames is {tot_like/tot_t}."
+            )
 
 
 class GaussToPostFunction(KaldiFunction):
@@ -154,66 +167,74 @@ class GaussToPostFunction(KaldiFunction):
         Arguments for the function
     """
 
-    progress_pattern = re.compile(
-        r"^VLOG.*Processed utterance (?P<utterance>.*), average likelihood.*$"
-    )
-
     def __init__(self, args: GaussToPostArguments):
         super().__init__(args)
-        self.feature_options = args.feature_options
-        self.ivector_options = args.ivector_options
+        self.working_directory = args.working_directory
         self.dubm_model = args.dubm_model
-        self.post_path = args.post_path
+        self.ivector_options = args.ivector_options
 
     def _run(self) -> typing.Generator[None]:
         """Run the function"""
-        if os.path.exists(self.post_path):
-            return
         modified_posterior_scale = (
             self.ivector_options["posterior_scale"] * self.ivector_options["subsample"]
         )
-        with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
+        with (
+            self.session() as session,
+            thread_logger(
+                "kalpy.ivector", self.log_path, job_name=self.job_name
+            ) as ivector_logger,
+        ):
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
                 .filter(Job.id == self.job_name)
                 .first()
             )
-            feature_string = job.construct_online_feature_proc_string()
-            gmm_global_get_post_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("gmm-global-get-post"),
-                    "--verbose=2",
-                    f"--n={self.ivector_options['num_gselect']}",
-                    f"--min-post={self.ivector_options['min_post']}",
-                    self.dubm_model,
-                    feature_string,
-                    "ark:-",
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=os.environ,
+            post_path = job.construct_path(self.working_directory, "post", "ark")
+            if os.path.exists(post_path):
+                return
+            feature_archive = job.construct_feature_archive(
+                job.corpus.split_directory,
+                subsample_n=self.ivector_options["subsample"],
+                use_sliding_cmvn=self.ivector_options["uses_cmvn"],
             )
-            scale_post_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("scale-post"),
-                    "ark,s,cs:-",
-                    str(modified_posterior_scale),
-                    f"ark:{self.post_path}",
-                ],
-                stdin=gmm_global_get_post_proc.stdout,
-                stderr=log_file,
-                env=os.environ,
+            gmm: DiagGmm = read_kaldi_object(DiagGmm, self.dubm_model)
+            num_done = 0
+            num_skipped = 0
+            tot_like = 0.0
+            tot_t = 0.0
+            post_writer = PosteriorWriter(generate_write_specifier(post_path))
+            for utt_id, feats in feature_archive:
+                tot_t_this_file = feats.NumRows()
+                if tot_t_this_file == 0:
+                    ivector_logger.warning(f"Skipping {utt_id} due to zero-length features.")
+                    num_skipped += 1
+                    continue
+                if feats.NumCols() != gmm.Dim():
+                    ivector_logger.warning(
+                        f"Dimension mismatch for utterance {utt_id}: "
+                        f"got {feats.NumCols()}, expected {gmm.Dim()}"
+                    )
+                    num_skipped += 1
+                    continue
+                post, tot_like_this_file = gmm.generate_post(
+                    feats,
+                    num_post=self.ivector_options["num_gselect"],
+                    min_post=self.ivector_options["min_post"],
+                )
+                ScalePosterior(modified_posterior_scale, post)
+                tot_like += tot_like_this_file
+                tot_t += tot_t_this_file
+                post_writer.Write(utt_id, post)
+                num_done += 1
+                if num_done % 10 == 0:
+                    self.callback(10)
+            post_writer.Close()
+
+            ivector_logger.info(
+                f"Done {num_done} utterances, skipped {num_skipped}, "
+                f"average UBM log-likelihood over {tot_t} frames is {tot_like/tot_t}."
             )
-            for line in gmm_global_get_post_proc.stderr:
-                line = line.decode("utf8")
-                log_file.write(line)
-                log_file.flush()
-                m = self.progress_pattern.match(line)
-                if m:
-                    utterance = int(m.group("utterance").split("-")[-1])
-                    yield utterance
-            self.check_call(scale_post_proc)
 
 
 class AccGlobalStatsFunction(KaldiFunction):
@@ -237,48 +258,34 @@ class AccGlobalStatsFunction(KaldiFunction):
         Arguments for the function
     """
 
-    progress_pattern = re.compile(r"^VLOG.*File '(?P<file>.*)': Average likelihood =.*$")
-
     def __init__(self, args: AccGlobalStatsArguments):
         super().__init__(args)
-        self.feature_options = args.feature_options
         self.ivector_options = args.ivector_options
         self.dubm_model = args.dubm_model
-        self.gselect_path = args.gselect_path
-        self.acc_path = args.acc_path
+        self.working_directory = args.working_directory
 
-    def _run(self) -> typing.Generator[None]:
+    def _run(self):
         """Run the function"""
-        with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
+        with (
+            self.session() as session,
+            thread_logger("kalpy.ivector", self.log_path, job_name=self.job_name),
+        ):
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
                 .filter(Job.id == self.job_name)
                 .first()
             )
-            feature_string = job.construct_online_feature_proc_string()
-            command = [
-                thirdparty_binary("gmm-global-acc-stats"),
-                "--verbose=2",
-                f"--gselect=ark,s,cs:{self.gselect_path}",
-                self.dubm_model,
-                feature_string,
-                self.acc_path,
-            ]
-            gmm_global_acc_proc = subprocess.Popen(
-                command,
-                stderr=subprocess.PIPE,
-                env=os.environ,
-                encoding="utf8",
+            feature_archive = job.construct_feature_archive(
+                job.corpus.split_directory,
+                subsample_n=self.ivector_options["subsample"],
+                use_sliding_cmvn=self.ivector_options["uses_cmvn"],
             )
-            for line in gmm_global_acc_proc.stderr:
-                log_file.write(line)
-                log_file.flush()
-                m = self.progress_pattern.match(line)
-                if m:
-                    utt_id = int(m.group("file").split("-")[-1])
-                    yield utt_id
-            self.check_call(gmm_global_acc_proc)
+            gselect_path = job.construct_path(self.working_directory, "gselect", "ark")
+            gselect_archive = GselectArchive(gselect_path)
+            accumulator = GlobalGmmStatsAccumulator(self.dubm_model)
+            accumulator.accumulate_stats(feature_archive, gselect_archive, callback=self.callback)
+            self.callback(accumulator.gmm_accs)
 
 
 class AccIvectorStatsFunction(KaldiFunction):
@@ -302,46 +309,32 @@ class AccIvectorStatsFunction(KaldiFunction):
         Arguments for the function
     """
 
-    progress_pattern = re.compile(r"VLOG.* Per frame, auxf is: weight.*")
-
     def __init__(self, args: AccIvectorStatsArguments):
         super().__init__(args)
-        self.feature_options = args.feature_options
-        self.ivector_options = args.ivector_options
+        self.working_directory = args.working_directory
         self.ie_path = args.ie_path
-        self.post_path = args.post_path
-        self.acc_path = args.acc_path
+        self.ivector_options = args.ivector_options
 
-    def _run(self) -> typing.Generator[None]:
+    def _run(self):
         """Run the function"""
-        with Session(self.db_engine()) as session, mfa_open(self.log_path, "w") as log_file:
+        with (
+            self.session() as session,
+            thread_logger("kalpy.ivector", self.log_path, job_name=self.job_name),
+        ):
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
                 .filter(Job.id == self.job_name)
                 .first()
             )
-            feature_string = job.construct_online_feature_proc_string()
-            acc_stats_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("ivector-extractor-acc-stats"),
-                    "--verbose=4",
-                    self.ie_path,
-                    feature_string,
-                    f"ark,s,cs:{self.post_path}",
-                    self.acc_path,
-                ],
-                stderr=subprocess.PIPE,
-                env=os.environ,
-                encoding="utf8",
+            feature_archive = job.construct_feature_archive(
+                job.corpus.split_directory,
+                subsample_n=self.ivector_options["subsample"],
+                use_sliding_cmvn=self.ivector_options["uses_cmvn"],
             )
-            for line in acc_stats_proc.stderr:
-                m = self.progress_pattern.match(line)
-                if m:
-                    yield 1
-                    continue
-                elif "VLOG" in line:
-                    continue
-                log_file.write(line)
-                log_file.flush()
-            self.check_call(acc_stats_proc)
+            post_path = job.construct_path(self.working_directory, "post", "ark")
+            post_reader = RandomAccessPosteriorReader(generate_read_specifier(post_path))
+            accumulator = IvectorExtractorStatsAccumulator(self.ie_path)
+            accumulator.accumulate_stats(feature_archive, post_reader, callback=self.callback)
+            self.callback(accumulator.ivector_stats)
+            post_reader.Close()

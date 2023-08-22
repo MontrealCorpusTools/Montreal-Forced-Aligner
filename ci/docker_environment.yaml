@@ -31,7 +31,6 @@ dependencies:
   - pytorch
   - torchaudio
   - setuptools_scm
-  - numba
   - kneed
   - matplotlib
   - seaborn
