@@ -35,3 +35,4 @@ dependencies:
   - seaborn
   - rich
   - rich-click
+  - kalpy
