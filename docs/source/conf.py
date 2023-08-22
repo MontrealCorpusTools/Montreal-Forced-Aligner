@@ -38,6 +38,7 @@ from montreal_forced_aligner.utils import get_mfa_version  # noqa
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 extensions = [
+    "sphinx_needs",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.coverage",
@@ -45,23 +46,138 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.extlinks",
     "myst_parser",
+    "external_links",
+    # "numpydoc",
     "sphinx.ext.napoleon",
     "sphinx_design",
     "sphinx.ext.viewcode",
     "sphinx_click",
+    # "sphinx_autodoc_typehints",
 ]
 myst_enable_extensions = ["colon_fence"]
 locale_dirs = ["locale/"]  # path is example but recommended.
 gettext_compact = False  # optional.
 panels_add_bootstrap_css = False
 intersphinx_mapping = {
+    "sqlalchemy": ("https://docs.sqlalchemy.org/en/14/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
+    "python": ("https://docs.python.org/3", None),
+    "Bio": ("https://biopython.org/docs/latest/api/", None),
+    "click": ("https://click.palletsprojects.com/en/8.1.x/", None),
+}
+rst_prolog = """
+.. role:: ipa_inline
+   :class: ipa-inline ipa-highlight
+"""
+
+
+extlinks = {
+    "mfa_pr": ("https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/%s", "PR #%s"),
 }
 
 xref_links = {
+    "mfa_models": ("MFA Models", "https://mfa-models.readthedocs.io/"),
+    "anchor": ("Anchor Annotator", "https://anchor-annotator.readthedocs.io/en/latest/"),
+    "speechbrain": ("SpeechBrain", "https://speechbrain.github.io/"),
+    "scikit-learn": ("scikit-learn", "https://scikit-learn.org/stable/index.html"),
+    "click": ("click", "https://click.palletsprojects.com/en/8.1.x/"),
+    "pgvector": ("pgvector", "https://github.com/pgvector/pgvector"),
+    "pretrained_acoustic_models": (
+        "MFA acoustic models",
+        "https://mfa-models.readthedocs.io/en/latest/acoustic/index.html",
+    ),
+    "pretrained_tokenizer_models": (
+        "MFA tokenizer models",
+        "https://mfa-models.readthedocs.io/en/latest/tokenizer/index.html",
+    ),
+    "pretrained_dictionaries": (
+        "MFA dictionaries",
+        "https://mfa-models.readthedocs.io/en/latest/dictionary/index.html",
+    ),
+    "pretrained_g2p": (
+        "MFA G2P models",
+        "https://mfa-models.readthedocs.io/en/latest/g2p/index.html",
+    ),
+    "pretrained_ivector_extractor": (
+        "MFA G2P models",
+        "https://mfa-models.readthedocs.io/en/latest/ivector/index.html",
+    ),
+    "pretrained_language_models": (
+        "MFA language models",
+        "https://mfa-models.readthedocs.io/en/latest/language_model/index.html",
+    ),
+    "mfa_mailing_list": ("MFA mailing list", "https://groups.google.com/g/mfa-users"),
+    "mfa_github": (
+        "MFA GitHub Repo",
+        "https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner",
+    ),
+    "mfa_github_issues": (
+        "MFA GitHub Issues",
+        "https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/issues",
+    ),
+    "memcauliffe.com": ("Michael McAuliffe's blog", "https://memcauliffe.com"),
+    "@wavable": ("@wavable", "https://twitter.com/wavable"),
+    "sonderegger": ("Morgan Sonderegger", "http://people.linguistics.mcgill.ca/~morgan/"),
+    "wagner": ("Michael Wagner", "https://prosodylab.org/"),
+    "coles": ("Arlie Coles", "https://a-coles.github.io/"),
+    "chodroff": ("Eleanor Chodroff", "https://www.eleanorchodroff.com/"),
+    "dias": ("Danoja Dias", "https://medium.com/breaktheloop"),
+    "rutgers_spanish_portuguese": (
+        "Rutgers University Department of Spanish and Portuguese",
+        "https://span-port.rutgers.edu/",
+    ),
+    "stengel-eskin": ("Elias Stengel-Eskin", "https://esteng.github.io/"),
+    "socolof": ("Michaela Socolof", "https://mcqll.org/people/socolof.michaela/"),
+    "mihuc": ("Sarah Mihuc", "https://www.cs.mcgill.ca/~smihuc/"),
+    "wsl": ("Windows Subsystem for Linux", "https://docs.microsoft.com/en-us/windows/wsl/install"),
+    "kaldi": ("Kaldi", "http://kaldi-asr.org/"),
+    "kaldi_github": ("Kaldi GitHub", "https://github.com/kaldi-asr/kaldi"),
+    "htk": ("HTK", "http://htk.eng.cam.ac.uk/"),
+    "phonetisaurus": ("Phonetisaurus", "https://github.com/AdolfVonKleist/Phonetisaurus"),
+    "opengrm_ngram": ("OpenGrm-NGram", "https://www.openfst.org/twiki/bin/view/GRM/NGramLibrary"),
+    "openfst": ("OpenFst", "https://www.openfst.org/twiki/bin/view/FST"),
+    "baumwelch": ("Baum-Welch", "https://www.opengrm.org/twiki/bin/view/GRM/BaumWelch"),
+    "pynini": ("Pynini", "https://www.openfst.org/twiki/bin/view/GRM/Pynini"),
+    "prosodylab_aligner": ("Prosodylab-aligner", "http://prosodylab.org/tools/aligner/"),
+    "p2fa": (
+        "Penn Phonetics Forced Aligner",
+        "https://www.ling.upenn.edu/phonetics/old_website_2015/p2fa/",
+    ),
+    "fave": ("FAVE-align", "https://github.com/JoFrhwld/FAVE/wiki/FAVE-align"),
+    "maus": ("MAUS", "http://www.bas.uni-muenchen.de/Bas/BasMAUS.html"),
+    "praat": ("Praat", "http://www.fon.hum.uva.nl/praat/"),
+    "easy_align": ("EasyAlign", "http://latlcui.unige.ch/phonetique/easyalign.php"),
+    "gentle": ("Gentle", "https://lowerquality.com/gentle/"),
+    "chodroff_kaldi": ("Kaldi tutorial", "https://eleanorchodroff.com/tutorial/kaldi/index.html"),
+    "chodroff_phonetics": (
+        "Corpus Phonetics Tutorial",
+        "https://eleanorchodroff.com/tutorial/intro.html",
+    ),
+    "coqui": ("Coqui", "https://coqui.ai/"),
+    "conda_installation": (
+        "Conda installation",
+        "https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html",
+    ),
+    "miniconda": (
+        "Miniconda",
+        "https://docs.conda.io/en/latest/miniconda.html",
+    ),
+    "conda_forge": ("Conda Forge", "https://conda-forge.org/"),
+    "pydata_sphinx_theme": (
+        "Pydata Sphinx Theme",
+        "https://pydata-sphinx-theme.readthedocs.io/en/latest/",
+    ),
+    "mfa_reorg_scripts": (
+        "MFA-reorganization-scripts repository",
+        "https://github.com/MontrealCorpusTools/MFA-reorganization-scripts",
+    ),
+    "corpus_creation_scripts": (
+        "@mmcauliffe's corpus creation scripts",
+        "https://github.com/mmcauliffe/corpus-creation-scripts",
+    ),
     "kalpy": (
         "Kalpy",
-        "https://github.com/mmcauliffe/kalpy",
+        "https://kalpy.readthedocs.io/en/latest/",
     ),
     "kalpy_github": (
         "Kalpy GitHub Repo",
@@ -83,6 +199,8 @@ autodoc_type_aliases = {
     "MultispeakerDictionary": "montreal_forced_aligner.dictionary.MultispeakerDictionary",
     "Trainer": "montreal_forced_aligner.abc.Trainer",
     "Aligner": "montreal_forced_aligner.abc.Aligner",
+    "multiprocessing.context.Process": "multiprocessing.Process",
+    "mp.Process": "multiprocessing.Process",
     "MetaDict": "dict[str, Any]",
 }
 
@@ -307,6 +425,8 @@ html_css_files = [
 # html_use_smartypants = True
 
 # Custom sidebar templates, maps document names to template names.
+#
+# html_sidebars = { '**': ['globaltoc.html', 'relations.html', 'sourcelink.html', 'searchbox.html'], }
 
 html_sidebars = {"**": ["search-field.html", "sidebar-nav-bs.html", "sidebar-ethical-ads.html"]}
 # Additional templates that should be rendered to pages, maps page names to
