@@ -22,8 +22,8 @@ import sys
 from datetime import date
 
 sys.path.insert(0, os.path.abspath("../../"))
-import kalpy  # noqa
-from kalpy.utils import get_kalpy_version  # noqa
+import montreal_forced_aligner  # noqa
+from montreal_forced_aligner.utils import get_mfa_version  # noqa
 
 # -- General configuration ------------------------------------------------
 
@@ -45,138 +45,27 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.extlinks",
     "myst_parser",
-    "external_links",
-    # "numpydoc",
     "sphinx.ext.napoleon",
     "sphinx_design",
     "sphinx.ext.viewcode",
     "sphinx_click",
-    # "sphinx_autodoc_typehints",
 ]
 myst_enable_extensions = ["colon_fence"]
 locale_dirs = ["locale/"]  # path is example but recommended.
 gettext_compact = False  # optional.
 panels_add_bootstrap_css = False
 intersphinx_mapping = {
-    "sqlalchemy": ("https://docs.sqlalchemy.org/en/14/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
-    "python": ("https://docs.python.org/3", None),
-    "Bio": ("https://biopython.org/docs/latest/api/", None),
-    "click": ("https://click.palletsprojects.com/en/8.1.x/", None),
-}
-rst_prolog = """
-.. role:: ipa_inline
-   :class: ipa-inline ipa-highlight
-"""
-
-
-extlinks = {
-    "mfa_pr": ("https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/%s", "PR #%s"),
 }
 
 xref_links = {
-    "mfa_models": ("MFA Models", "https://mfa-models.readthedocs.io/"),
-    "anchor": ("Anchor Annotator", "https://anchor-annotator.readthedocs.io/en/latest/"),
-    "speechbrain": ("SpeechBrain", "https://speechbrain.github.io/"),
-    "scikit-learn": ("scikit-learn", "https://scikit-learn.org/stable/index.html"),
-    "click": ("click", "https://click.palletsprojects.com/en/8.1.x/"),
-    "pgvector": ("pgvector", "https://github.com/pgvector/pgvector"),
-    "pretrained_acoustic_models": (
-        "MFA acoustic models",
-        "https://mfa-models.readthedocs.io/en/latest/acoustic/index.html",
-    ),
-    "pretrained_tokenizer_models": (
-        "MFA tokenizer models",
-        "https://mfa-models.readthedocs.io/en/latest/tokenizer/index.html",
-    ),
-    "pretrained_dictionaries": (
-        "MFA dictionaries",
-        "https://mfa-models.readthedocs.io/en/latest/dictionary/index.html",
-    ),
-    "pretrained_g2p": (
-        "MFA G2P models",
-        "https://mfa-models.readthedocs.io/en/latest/g2p/index.html",
-    ),
-    "pretrained_ivector_extractor": (
-        "MFA G2P models",
-        "https://mfa-models.readthedocs.io/en/latest/ivector/index.html",
-    ),
-    "pretrained_language_models": (
-        "MFA language models",
-        "https://mfa-models.readthedocs.io/en/latest/language_model/index.html",
-    ),
-    "mfa_mailing_list": ("MFA mailing list", "https://groups.google.com/g/mfa-users"),
-    "mfa_github": (
-        "MFA GitHub Repo",
-        "https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner",
-    ),
     "kalpy": (
         "Kalpy",
         "https://github.com/mmcauliffe/kalpy",
     ),
-    "mfa_github_issues": (
-        "MFA GitHub Issues",
-        "https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/issues",
-    ),
-    "memcauliffe.com": ("Michael McAuliffe's blog", "https://memcauliffe.com"),
-    "@wavable": ("@wavable", "https://twitter.com/wavable"),
-    "sonderegger": ("Morgan Sonderegger", "http://people.linguistics.mcgill.ca/~morgan/"),
-    "wagner": ("Michael Wagner", "https://prosodylab.org/"),
-    "coles": ("Arlie Coles", "https://a-coles.github.io/"),
-    "chodroff": ("Eleanor Chodroff", "https://www.eleanorchodroff.com/"),
-    "dias": ("Danoja Dias", "https://medium.com/breaktheloop"),
-    "rutgers_spanish_portuguese": (
-        "Rutgers University Department of Spanish and Portuguese",
-        "https://span-port.rutgers.edu/",
-    ),
-    "stengel-eskin": ("Elias Stengel-Eskin", "https://esteng.github.io/"),
-    "socolof": ("Michaela Socolof", "https://mcqll.org/people/socolof.michaela/"),
-    "mihuc": ("Sarah Mihuc", "https://www.cs.mcgill.ca/~smihuc/"),
-    "wsl": ("Windows Subsystem for Linux", "https://docs.microsoft.com/en-us/windows/wsl/install"),
-    "kaldi": ("Kaldi", "http://kaldi-asr.org/"),
-    "kaldi_github": ("Kaldi GitHub", "https://github.com/kaldi-asr/kaldi"),
-    "htk": ("HTK", "http://htk.eng.cam.ac.uk/"),
-    "phonetisaurus": ("Phonetisaurus", "https://github.com/AdolfVonKleist/Phonetisaurus"),
-    "opengrm_ngram": ("OpenGrm-NGram", "https://www.openfst.org/twiki/bin/view/GRM/NGramLibrary"),
-    "openfst": ("OpenFst", "https://www.openfst.org/twiki/bin/view/FST"),
-    "baumwelch": ("Baum-Welch", "https://www.opengrm.org/twiki/bin/view/GRM/BaumWelch"),
-    "pynini": ("Pynini", "https://www.openfst.org/twiki/bin/view/GRM/Pynini"),
-    "prosodylab_aligner": ("Prosodylab-aligner", "http://prosodylab.org/tools/aligner/"),
-    "p2fa": (
-        "Penn Phonetics Forced Aligner",
-        "https://www.ling.upenn.edu/phonetics/old_website_2015/p2fa/",
-    ),
-    "fave": ("FAVE-align", "https://github.com/JoFrhwld/FAVE/wiki/FAVE-align"),
-    "maus": ("MAUS", "http://www.bas.uni-muenchen.de/Bas/BasMAUS.html"),
-    "praat": ("Praat", "http://www.fon.hum.uva.nl/praat/"),
-    "easy_align": ("EasyAlign", "http://latlcui.unige.ch/phonetique/easyalign.php"),
-    "gentle": ("Gentle", "https://lowerquality.com/gentle/"),
-    "chodroff_kaldi": ("Kaldi tutorial", "https://eleanorchodroff.com/tutorial/kaldi/index.html"),
-    "chodroff_phonetics": (
-        "Corpus Phonetics Tutorial",
-        "https://eleanorchodroff.com/tutorial/intro.html",
-    ),
-    "coqui": ("Coqui", "https://coqui.ai/"),
-    "conda_installation": (
-        "Conda installation",
-        "https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html",
-    ),
-    "miniconda": (
-        "Miniconda",
-        "https://docs.conda.io/en/latest/miniconda.html",
-    ),
-    "conda_forge": ("Conda Forge", "https://conda-forge.org/"),
-    "pydata_sphinx_theme": (
-        "Pydata Sphinx Theme",
-        "https://pydata-sphinx-theme.readthedocs.io/en/latest/",
-    ),
-    "mfa_reorg_scripts": (
-        "MFA-reorganization-scripts repository",
-        "https://github.com/MontrealCorpusTools/MFA-reorganization-scripts",
-    ),
-    "corpus_creation_scripts": (
-        "@mmcauliffe's corpus creation scripts",
-        "https://github.com/mmcauliffe/corpus-creation-scripts",
+    "kalpy_github": (
+        "Kalpy GitHub Repo",
+        "https://github.com/mmcauliffe/kalpy",
     ),
 }
 
@@ -190,13 +79,20 @@ autodoc_typehints = "none"
 # autodoc_typehints_description_target = 'documented'
 # autoclass_content = 'both'
 autodoc_docstring_signature = True
-autodoc_type_aliases = {}
+autodoc_type_aliases = {
+    "MultispeakerDictionary": "montreal_forced_aligner.dictionary.MultispeakerDictionary",
+    "Trainer": "montreal_forced_aligner.abc.Trainer",
+    "Aligner": "montreal_forced_aligner.abc.Aligner",
+    "MetaDict": "dict[str, Any]",
+}
 
 napoleon_preprocess_types = False
 napoleon_attr_annotations = False
 napoleon_use_param = True
 napoleon_use_ivar = True
-napoleon_type_aliases = {}
+napoleon_type_aliases = {
+    "Labels": "list[str]",
+}
 typehints_fully_qualified = False
 # numpydoc_xref_param_type = True
 # numpydoc_show_inherited_class_members = False
@@ -222,8 +118,8 @@ source_suffix = ".rst"
 master_doc = "index"
 
 # General information about the project.
-project = "Kalpy"
-copyright = f"2023-{date.today().year}, Montreal Corpus Tools"
+project = "Montreal Forced Aligner"
+copyright = f"2018-{date.today().year}, Montreal Corpus Tools"
 author = "Montreal Corpus Tools"
 
 # The version info for the project you're documenting, acts as replacement for
@@ -231,9 +127,9 @@ author = "Montreal Corpus Tools"
 # built documents.
 #
 # The short X.Y version.
-version = ".".join(get_kalpy_version().split(".", maxsplit=2)[:2])
+version = ".".join(get_mfa_version().split(".", maxsplit=2)[:2])
 # The full version, including alpha/beta/rc tags.
-release = get_kalpy_version()
+release = get_mfa_version()
 
 # The language for content autogenerated by Sphinx. Refer to documentation
 # for a list of supported languages.
@@ -276,7 +172,20 @@ add_function_parentheses = False
 # show_authors = False
 
 # nitpicky = True
-nitpick_ignore = []
+nitpick_ignore = [
+    ("py:class", "optional"),
+    ("py:class", "callable"),
+    ("py:class", "WordsType"),
+    ("py:class", "TextIO"),
+    ("py:class", "SegmentationType"),
+    ("py:class", "CtmErrorDict"),
+    ("py:class", "kwargs"),
+    ("py:class", "Labels"),
+    ("py:class", "multiprocessing.Value"),
+    ("py:class", "praatio.utilities.constants.Interval"),
+    ("py:class", "montreal_forced_aligner.abc.MetaDict"),
+    ("py:class", "multiprocessing.context.Process"),
+]
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = "sphinx"
@@ -308,29 +217,30 @@ html_favicon = "_static/favicon.ico"
 html_theme_options = {
     "external_links": [
         {
-            "url": "https://montreal-forced-aligner.readthedocs.io/",
-            "name": "Montreal Forced Aligner",
+            "url": "https://mfa-models.readthedocs.io/",
+            "name": "Pretrained MFA models",
         },
     ],
     "icon_links": [
         {
             "name": "GitHub",
-            "url": "https://github.com/mmcauliffe/kalpy",
+            "url": "https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner",
             "icon": "fab fa-github",
         },
         {
             "name": "PyPI",
-            "url": "https://pypi.org/project/kalpy-kaldi/",
+            "url": "https://pypi.org/project/Montreal-Forced-Aligner/",
             "icon": "fas fa-box",
         },
         {
             "name": "PyPI",
-            "url": "https://anaconda.org/conda-forge/kalpy",
+            "url": "https://anaconda.org/conda-forge/montreal-forced-aligner",
             "icon": "fas fa-toolbox",
         },
     ],
     "logo": {
-        "text": "Kalpy",
+        "text": "Montreal Forced Aligner",
+        # "image_dark": "logo-dark.svg",
     },
     "analytics": {
         "google_analytics_id": "G-5NGNLY0CWX",
@@ -341,8 +251,8 @@ html_theme_options = {
     # "collapse_navigation": True,
 }
 html_context = {
-    "github_user": "mmcauliffe",
-    "github_repo": "kalpy",
+    "github_user": "MontrealCorpusTools",
+    "github_repo": "Montreal-Forced-Aligner",
     "github_version": "main",
     "doc_path": "docs/source",
 }
@@ -397,8 +307,6 @@ html_css_files = [
 # html_use_smartypants = True
 
 # Custom sidebar templates, maps document names to template names.
-#
-# html_sidebars = { '**': ['globaltoc.html', 'relations.html', 'sourcelink.html', 'searchbox.html'], }
 
 html_sidebars = {"**": ["search-field.html", "sidebar-nav-bs.html", "sidebar-ethical-ads.html"]}
 # Additional templates that should be rendered to pages, maps page names to
@@ -458,4 +366,107 @@ html_sidebars = {"**": ["search-field.html", "sidebar-nav-bs.html", "sidebar-eth
 # html_search_scorer = 'scorer.js'
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = "kalpydoc"
+htmlhelp_basename = "MontrealForcedAlignerdoc"
+
+# -- Options for LaTeX output ---------------------------------------------
+
+latex_elements = {
+    # The paper size ('letterpaper' or 'a4paper').
+    #
+    # 'papersize': 'letterpaper',
+    # The font size ('10pt', '11pt' or '12pt').
+    #
+    # 'pointsize': '10pt',
+    # Additional stuff for the LaTeX preamble.
+    #
+    # 'preamble': '',
+    # Latex figure (float) alignment
+    #
+    # 'figure_align': 'htbp',
+}
+
+# Grouping the document tree into LaTeX files. List of tuples
+# (source start file, target name, title,
+#  author, documentclass [howto, manual, or own class]).
+latex_documents = [
+    (
+        master_doc,
+        "MontrealForcedAligner.tex",
+        "Montreal Forced Aligner Documentation",
+        "Montreal Corpus Tools",
+        "manual",
+    ),
+]
+
+# The name of an image file (relative to this directory) to place at the top of
+# the title page.
+#
+# latex_logo = None
+
+# For "manual" documents, if this is true, then toplevel headings are parts,
+# not chapters.
+#
+# latex_use_parts = False
+
+# If true, show page references after internal links.
+#
+# latex_show_pagerefs = False
+
+# If true, show URL addresses after external links.
+#
+# latex_show_urls = False
+
+# Documents to append as an appendix to all manuals.
+#
+# latex_appendices = []
+
+# If false, no module index is generated.
+#
+# latex_domain_indices = True
+
+
+# -- Options for manual page output ---------------------------------------
+
+# One entry per manual page. List of tuples
+# (source start file, name, description, authors, manual section).
+man_pages = [
+    (master_doc, "montrealforcedaligner", "Montreal Forced Aligner Documentation", [author], 1)
+]
+
+# If true, show URL addresses after external links.
+#
+# man_show_urls = False
+
+
+# -- Options for Texinfo output -------------------------------------------
+
+# Grouping the document tree into Texinfo files. List of tuples
+# (source start file, target name, title, author,
+#  dir menu entry, description, category)
+texinfo_documents = [
+    (
+        master_doc,
+        "MontrealForcedAligner",
+        "Montreal Forced Aligner Documentation",
+        author,
+        "MontrealForcedAligner",
+        "One line description of project.",
+        "Miscellaneous",
+    ),
+]
+
+# Documents to append as an appendix to all manuals.
+#
+# texinfo_appendices = []
+
+# If false, no module index is generated.
+#
+# texinfo_domain_indices = True
+
+# How to display URL addresses: 'footnote', 'no', or 'inline'.
+#
+# texinfo_show_urls = 'footnote'
+
+# If true, do not generate a @detailmenu in the "Top" node's menu.
+#
+# texinfo_no_detailmenu = False
