@@ -35,4 +35,5 @@ dependencies:
   - seaborn
   - rich
   - rich-click
-  - kalpy =*=cpu*
+  - kaldi =*=cpu*
+  - kalpy
