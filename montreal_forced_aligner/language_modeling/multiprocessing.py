@@ -12,8 +12,8 @@ from kalpy.decoder.decode_graph import DecodeGraphCompiler
 from kalpy.fstext.lexicon import LexiconCompiler
 from sqlalchemy.orm import joinedload, subqueryload
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import KaldiFunction
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import MfaArguments, WordType
 from montreal_forced_aligner.db import Job, Phone, PhoneInterval, Speaker, Utterance, Word
 from montreal_forced_aligner.helper import mfa_open
@@ -193,7 +193,7 @@ class TrainPhoneLmFunction(KaldiFunction):
     def _run(self) -> typing.Generator[bool]:
         """Run the function"""
         with self.session() as session, mfa_open(self.log_path, "w") as log_file:
-            if GLOBAL_CONFIG.current_profile.use_postgres:
+            if config.USE_POSTGRES:
                 string_agg_function = sqlalchemy.func.string_agg
             else:
                 string_agg_function = sqlalchemy.func.group_concat

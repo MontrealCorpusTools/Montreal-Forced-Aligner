@@ -25,8 +25,8 @@ from pywrapfst import SymbolTable
 from sqlalchemy.orm import selectinload
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import DatabaseMixin, KaldiFunction, TopLevelMfaWorker
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.text_corpus import DictionaryTextCorpusMixin, TextCorpusMixin
 from montreal_forced_aligner.data import MfaArguments, TextgridFormats, WordType, WorkflowType
 from montreal_forced_aligner.db import File, Utterance, Word, bulk_update
@@ -516,8 +516,8 @@ class PyniniGenerator(G2PTopLevelMixin):
         logger.info("Generating pronunciations...")
         to_return = {}
         skipped_words = 0
-        if num_words < 30 or GLOBAL_CONFIG.num_jobs == 1:
-            with tqdm(total=num_words, disable=GLOBAL_CONFIG.quiet) as pbar:
+        if num_words < 30 or config.NUM_JOBS == 1:
+            with tqdm(total=num_words, disable=config.QUIET) as pbar:
                 for word in self.words_to_g2p:
                     w, m = clean_up_word(word, self.g2p_model.meta["graphemes"])
                     pbar.update(1)
@@ -557,7 +557,7 @@ class PyniniGenerator(G2PTopLevelMixin):
             error_dict = {}
             return_queue = Queue()
             procs = []
-            for _ in range(GLOBAL_CONFIG.num_jobs):
+            for _ in range(config.NUM_JOBS):
                 p = RewriterWorker(
                     job_queue,
                     return_queue,
@@ -567,7 +567,7 @@ class PyniniGenerator(G2PTopLevelMixin):
                 procs.append(p)
                 p.start()
             num_words -= skipped_words
-            with tqdm(total=num_words, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=num_words, disable=config.QUIET) as pbar:
                 while True:
                     try:
                         word, result = return_queue.get(timeout=1)
@@ -601,7 +601,7 @@ class PyniniConsoleGenerator(PyniniGenerator):
 
     @property
     def working_directory(self) -> Path:
-        return GLOBAL_CONFIG.current_profile.temporary_directory.joinpath("g2p_stdin")
+        return config.TEMPORARY_DIRECTORY.joinpath("g2p_stdin")
 
     def cleanup(self) -> None:
         pass
@@ -739,7 +739,7 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
             f"Generated an average of {hyp_pron_count /len(hypothesis_values)} variants "
             f"The gold set had an average of {gold_pron_count/len(hypothesis_values)} variants."
         )
-        with ThreadPool(GLOBAL_CONFIG.num_jobs) as pool:
+        with ThreadPool(config.NUM_JOBS) as pool:
             gen = pool.starmap(score_g2p, to_comp)
             for i, (edits, length) in enumerate(gen):
                 word = indices[i]
@@ -905,7 +905,7 @@ class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker)
         if self.rewriter is None:
             self.setup()
         logger.info("Generating pronunciations...")
-        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
             update_mapping = []
             for utt_id, pronunciation in run_kaldi_function(
                 G2PFunction, self.g2p_arguments(), pbar.update

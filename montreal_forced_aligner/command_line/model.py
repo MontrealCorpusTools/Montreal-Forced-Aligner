@@ -2,15 +2,14 @@
 from __future__ import annotations
 
 import logging
-import os
 import shutil
 import typing
 from pathlib import Path
 
 import rich_click as click
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.utils import common_options, validate_dictionary
-from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.data import PhoneSetType
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionary
 from montreal_forced_aligner.exceptions import (
@@ -90,7 +89,7 @@ def list_model_cli(model_type: str) -> None:
     """
     List of locally saved models.
     """
-    manager = ModelManager(token=GLOBAL_CONFIG.github_token)
+    manager = ModelManager(token=config.GITHUB_TOKEN)
     manager.print_local_models(model_type)
 
 
@@ -102,13 +101,10 @@ def inspect_model_cli(model_type: str, model: str) -> None:
     """
     Inspect a model and print out its metadata.
     """
-    from montreal_forced_aligner.config import GLOBAL_CONFIG, get_temporary_directory
 
-    GLOBAL_CONFIG.current_profile.clean = True
-    GLOBAL_CONFIG.current_profile.temporary_directory = get_temporary_directory().joinpath(
-        "model_inspect"
-    )
-    shutil.rmtree(GLOBAL_CONFIG.current_profile.temporary_directory, ignore_errors=True)
+    config.CLEAN = True
+    config.TEMPORARY_DIRECTORY = config.get_temporary_directory().joinpath("model_inspect")
+    shutil.rmtree(config.TEMPORARY_DIRECTORY, ignore_errors=True)
     if model_type and model_type not in MODEL_TYPES:
         raise ModelTypeNotSupportedError(model_type, MODEL_TYPES)
     elif model_type:
@@ -135,7 +131,7 @@ def inspect_model_cli(model_type: str, model: str) -> None:
             if path is None:
                 raise PretrainedModelNotFoundError(model)
         model = path
-    working_dir = get_temporary_directory().joinpath("models", "inspect")
+    working_dir = config.get_temporary_directory().joinpath("models", "inspect")
     if isinstance(model, str):
         model = Path(model)
     ext = model.suffix
@@ -166,9 +162,10 @@ def add_words_cli(context, **kwargs) -> None:
     so long as the new pronunciations do not contain any new phones
     """
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
+        config.profile = kwargs.pop("profile")
+    config.update_configuration(kwargs)
 
+    config.CLEAN = True
     dictionary_path = kwargs.get("dictionary_path", None)
     new_pronunciations_path = kwargs.get("new_pronunciations_path", None)
     base_dictionary = MultispeakerDictionary(dictionary_path=dictionary_path)
@@ -189,6 +186,8 @@ def add_words_cli(context, **kwargs) -> None:
         base_dictionary.dictionary_model.path,
         probability=True,
     )
+    new_pronunciations.cleanup_connections()
+    base_dictionary.cleanup_connections()
 
 
 @model_cli.command(name="save", short_help="Save a model")
@@ -202,8 +201,8 @@ def add_words_cli(context, **kwargs) -> None:
 @click.option(
     "--overwrite/--no_overwrite",
     "overwrite",
-    help=f"Overwrite output files when they exist, default is {GLOBAL_CONFIG.overwrite}",
-    default=GLOBAL_CONFIG.overwrite,
+    help=f"Overwrite output files when they exist, default is {config.OVERWRITE}",
+    default=config.OVERWRITE,
 )
 @click.help_option("-h", "--help")
 def save_model_cli(path: Path, model_type: str, name: str, overwrite: bool) -> None:

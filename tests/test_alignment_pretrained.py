@@ -35,6 +35,7 @@ def test_align_sick(
         assert word_interval_count == 370
     assert "AY_S" in a.phone_mapping
     assert os.path.exists(os.path.join(export_directory, "michael", "acoustic_corpus.TextGrid"))
+    a.cleanup()
     a.clean_working_directory()
 
 
@@ -66,6 +67,7 @@ def test_align_sick_mfa(
         )
         assert word_interval_count == 374
     assert os.path.exists(os.path.join(export_directory, "michael", "acoustic_corpus.TextGrid"))
+    a.cleanup()
     a.clean_working_directory()
 
 
@@ -119,4 +121,5 @@ def test_align_one(
         assert utterance.alignment_log_likelihood is not None
         assert utterance.features is None
         assert len(utterance.phone_intervals) > 0
+    a.cleanup()
     a.clean_working_directory()

@@ -30,8 +30,8 @@ from scipy.spatial import distance
 from sklearn import cluster, manifold, metrics, neighbors, preprocessing
 from sqlalchemy.orm import joinedload
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import KaldiFunction
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import (
     ClusterType,
     DistanceMetric,
@@ -129,7 +129,7 @@ def visualize_clusters(
             ivectors,
             ivectors,
             metric=lambda x, y: plda.LogLikelihoodRatio(x, 1, y),
-            n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
+            n_jobs=config.NUM_JOBS,
         )
         np.fill_diagonal(to_fit, 0)
         metric = "precomputed"
@@ -140,7 +140,7 @@ def visualize_clusters(
         points = manifold.MDS(
             dissimilarity=metric,
             random_state=0,
-            n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
+            n_jobs=config.NUM_JOBS,
             max_iter=mds_iterations,
             metric=False,
             normalized_stress=True,
@@ -151,7 +151,7 @@ def visualize_clusters(
             random_state=0,
             perplexity=n_neighbors,
             init="pca" if metric != "precomputed" else "random",
-            n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
+            n_jobs=config.NUM_JOBS,
             angle=tsne_angle,
             n_iter=tsne_iterations,
         ).fit_transform(to_fit)
@@ -160,11 +160,11 @@ def visualize_clusters(
             affinity="nearest_neighbors",
             random_state=0,
             n_neighbors=n_neighbors,
-            n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
+            n_jobs=config.NUM_JOBS,
         ).fit_transform(to_fit)
     elif manifold_algorithm is ManifoldAlgorithm.isomap:
         points = manifold.Isomap(
-            metric=metric, n_neighbors=n_neighbors, n_jobs=GLOBAL_CONFIG.current_profile.num_jobs
+            metric=metric, n_neighbors=n_neighbors, n_jobs=config.NUM_JOBS
         ).fit_transform(to_fit)
     else:
         raise NotImplementedError
@@ -202,7 +202,7 @@ def calculate_distance_threshold(
         n_neighbors=min_samples,
         metric=metric,
         metric_params=score_metric_params,
-        n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
+        n_jobs=config.NUM_JOBS,
     ).fit(to_fit)
     distances, indices = nbrs.kneighbors(to_fit)
     distances = distances[:, min_samples - 1]
@@ -216,7 +216,7 @@ def calculate_distance_threshold(
     logger.debug(
         f"Distance threshold was set to {threshold} (range = {min_distance:.4f} - {max_distance:.4f})"
     )
-    if GLOBAL_CONFIG.current_profile.debug and not no_visuals:
+    if config.DEBUG and not no_visuals:
         import seaborn as sns
         from matplotlib import pyplot as plt
 
@@ -235,7 +235,7 @@ def calculate_distance_threshold(
             plt.savefig(plot_path, transparent=True)
         else:
             close_string = "Closing k-distance plot."
-        if GLOBAL_CONFIG.current_profile.verbose:
+        if config.VERBOSE:
             plt.show(block=False)
             plt.pause(10)
             logger.debug(close_string)
@@ -273,7 +273,6 @@ def cluster_matrix(
     numpy.ndarray
         Cluster labels for each utterance
     """
-    from montreal_forced_aligner.config import GLOBAL_CONFIG
 
     logger.debug(f"Running {cluster_type}...")
 
@@ -282,9 +281,9 @@ def cluster_matrix(
         os.environ["OPENBLAS_NUM_THREADS"] = "1"
         os.environ["MKL_NUM_THREADS"] = "1"
     else:
-        os.environ["OMP_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
-        os.environ["OPENBLAS_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
-        os.environ["MKL_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
+        os.environ["OMP_NUM_THREADS"] = f"{config.NUM_JOBS}"
+        os.environ["OPENBLAS_NUM_THREADS"] = f"{config.NUM_JOBS}"
+        os.environ["MKL_NUM_THREADS"] = f"{config.NUM_JOBS}"
     distance_threshold = kwargs.pop("distance_threshold", None)
     plda: Plda = kwargs.pop("plda", None)
     min_cluster_size = kwargs.pop("min_cluster_size", 15)
@@ -311,7 +310,7 @@ def cluster_matrix(
                 to_fit,
                 to_fit,
                 metric=plda.log_likelihood,
-                n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
+                n_jobs=config.NUM_JOBS,
             )
 
             score_metric = "precomputed"
@@ -319,8 +318,8 @@ def cluster_matrix(
         c_labels = cluster.AffinityPropagation(
             affinity=affinity,
             copy=False,
-            random_state=GLOBAL_CONFIG.current_profile.seed,
-            verbose=GLOBAL_CONFIG.current_profile.verbose,
+            random_state=config.SEED,
+            verbose=config.VERBOSE,
             **kwargs,
         ).fit_predict(to_fit)
     elif cluster_type is ClusterType.agglomerative:
@@ -352,15 +351,15 @@ def cluster_matrix(
             logger.info("Generating precomputed distance matrix...")
             affinity = "precomputed_nearest_neighbors"
             to_fit = metrics.pairwise_distances(
-                to_fit, to_fit, metric=score_metric, n_jobs=GLOBAL_CONFIG.current_profile.num_jobs
+                to_fit, to_fit, metric=score_metric, n_jobs=config.NUM_JOBS
             )
             np.fill_diagonal(to_fit, 0)
             score_metric = "precomputed"
         c_labels = cluster.SpectralClustering(
             affinity=affinity,
-            n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
-            random_state=GLOBAL_CONFIG.current_profile.seed,
-            verbose=GLOBAL_CONFIG.current_profile.verbose,
+            n_jobs=config.NUM_JOBS,
+            random_state=config.SEED,
+            verbose=config.VERBOSE,
             **kwargs,
         ).fit_predict(to_fit)
     elif cluster_type is ClusterType.dbscan:
@@ -379,16 +378,14 @@ def cluster_matrix(
             min_samples=min_cluster_size,
             metric=score_metric,
             eps=eps,
-            n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
+            n_jobs=config.NUM_JOBS,
             **kwargs,
         ).fit_predict(to_fit)
     elif cluster_type is ClusterType.meanshift:
         if score_metric == "cosine":
             to_fit = preprocessing.normalize(to_fit, norm="l2")
             score_metric = "euclidean"
-        c_labels = cluster.MeanShift(
-            n_jobs=GLOBAL_CONFIG.current_profile.num_jobs, **kwargs
-        ).fit_predict(to_fit)
+        c_labels = cluster.MeanShift(n_jobs=config.NUM_JOBS, **kwargs).fit_predict(to_fit)
     elif cluster_type is ClusterType.hdbscan:
         if not HDBSCAN_ENABLED:
             raise ImportError("Please install `hdbscan` package.")
@@ -417,7 +414,7 @@ def cluster_matrix(
             cluster_selection_epsilon=eps,
             metric=score_metric,
             algorithm=algorithm,
-            core_dist_n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
+            core_dist_n_jobs=config.NUM_JOBS,
             **kwargs,
         ).fit_predict(to_fit)
     elif cluster_type is ClusterType.optics:
@@ -436,7 +433,7 @@ def cluster_matrix(
             min_samples=min_cluster_size,
             max_eps=eps,
             metric=score_metric,
-            n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
+            n_jobs=config.NUM_JOBS,
             **kwargs,
         ).fit_predict(to_fit)
     elif cluster_type is ClusterType.kmeans:
@@ -444,7 +441,7 @@ def cluster_matrix(
             to_fit = preprocessing.normalize(to_fit, norm="l2")
             score_metric = "euclidean"
         c_labels = cluster.MiniBatchKMeans(
-            verbose=GLOBAL_CONFIG.current_profile.verbose, n_init="auto", **kwargs
+            verbose=config.VERBOSE, n_init="auto", **kwargs
         ).fit_predict(to_fit)
     else:
         raise NotImplementedError(f"The cluster type '{cluster_type}' is not supported.")
@@ -466,9 +463,9 @@ def cluster_matrix(
             )
             if strict:
                 raise
-    os.environ["OMP_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
-    os.environ["OPENBLAS_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
-    os.environ["MKL_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
+    os.environ["OMP_NUM_THREADS"] = f"{config.BLAS_NUM_THREADS}"
+    os.environ["OPENBLAS_NUM_THREADS"] = f"{config.BLAS_NUM_THREADS}"
+    os.environ["MKL_NUM_THREADS"] = f"{config.BLAS_NUM_THREADS}"
 
     return c_labels
 
@@ -654,7 +651,7 @@ class SpeechbrainClassificationFunction(KaldiFunction):
         model = EncoderClassifier.from_hparams(
             source="speechbrain/spkrec-ecapa-voxceleb",
             savedir=os.path.join(
-                GLOBAL_CONFIG.current_profile.temporary_directory,
+                config.TEMPORARY_DIRECTORY,
                 "models",
                 "SpeakerRecognition",
             ),
@@ -719,7 +716,7 @@ class SpeechbrainEmbeddingFunction(KaldiFunction):
         model = model_class.from_hparams(
             source="speechbrain/spkrec-ecapa-voxceleb",
             savedir=os.path.join(
-                GLOBAL_CONFIG.current_profile.temporary_directory,
+                config.TEMPORARY_DIRECTORY,
                 "models",
                 "SpeakerRecognition",
             ),

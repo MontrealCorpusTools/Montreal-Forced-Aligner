@@ -18,8 +18,8 @@ from kalpy.gmm.utils import read_gmm_model
 from sqlalchemy.orm import joinedload, subqueryload
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import KaldiFunction, ModelExporterMixin, TopLevelMfaWorker
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import MfaArguments, WorkflowType
 from montreal_forced_aligner.db import (
     CorpusWorkflow,
@@ -286,10 +286,10 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             workflows: typing.Dict[str, CorpusWorkflow] = {
                 x.name: x for x in session.query(CorpusWorkflow)
             }
-            for i, (identifier, config) in enumerate(self.training_configs.items()):
-                if isinstance(config, str):
+            for i, (identifier, c) in enumerate(self.training_configs.items()):
+                if isinstance(c, str):
                     continue
-                config.non_silence_phones = self.non_silence_phones
+                c.non_silence_phones = self.non_silence_phones
                 ali_identifier = f"{identifier}_ali"
                 if identifier not in workflows:
                     self.create_new_current_workflow(
@@ -579,7 +579,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         arguments = self.transition_acc_arguments()
         transition_model, acoustic_model = read_gmm_model(self.model_path)
         transition_accs = DoubleVector(transition_model.NumTransitionIds() + 1)
-        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
             for result in run_kaldi_function(TransitionAccFunction, arguments, pbar.update):
                 if not isinstance(result, int):
                     transition_accs.AddVec(1.0, result)

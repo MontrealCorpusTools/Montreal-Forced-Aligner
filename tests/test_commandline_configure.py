@@ -1,13 +1,11 @@
 import os
 
 import click.testing
-import pytest
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.mfa import mfa_cli
-from montreal_forced_aligner.config import generate_config_path
 
 
-@pytest.mark.skip()
 def test_configure(
     temp_dir,
     basic_corpus_dir,
@@ -17,7 +15,7 @@ def test_configure(
     english_acoustic_model,
     global_config,
 ):
-    path = generate_config_path()
+    path = config.generate_config_path()
     if os.path.exists(path):
         os.remove(path)
     command = [
@@ -29,30 +27,32 @@ def test_configure(
         "10",
         "--disable_mp",
         "--always_verbose",
+        "-p",
+        "test",
     ]
     command = [str(x) for x in command]
     click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
     assert os.path.exists(path)
-    global_config.load()
+    config.load_configuration()
 
-    assert global_config.current_profile_name == "test"
-    assert global_config.current_profile.num_jobs == 10
-    assert not global_config.current_profile.use_mp
-    assert global_config.current_profile.verbose
-    assert global_config.current_profile.clean
+    assert config.CURRENT_PROFILE_NAME == "test"
+    assert config.NUM_JOBS == 10
+    assert not config.USE_MP
+    assert config.VERBOSE
+    assert config.CLEAN
 
-    command = ["configure", "--never_clean", "--enable_mp", "--never_verbose"]
+    command = ["configure", "--never_clean", "--enable_mp", "--never_verbose", "-p", "test"]
     click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
 
     assert os.path.exists(path)
-    global_config.load()
-    assert global_config.current_profile_name == "test"
-    assert global_config.current_profile.use_mp
-    assert not global_config.current_profile.verbose
-    assert not global_config.current_profile.clean
+    config.load_configuration()
+    assert config.CURRENT_PROFILE_NAME == "test"
+    assert config.USE_MP
+    assert not config.VERBOSE
+    assert not config.CLEAN
 
-    global_config.clean = True
-    global_config.debug = True
-    global_config.verbose = True
-    global_config.use_mp = False
-    global_config.temporary_directory = temp_dir
+    config.CLEAN = True
+    config.DEBUG = True
+    config.VERBOSE = True
+    config.USE_MP = False
+    config.TEMPORARY_DIRECTORY = temp_dir

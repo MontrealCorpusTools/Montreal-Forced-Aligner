@@ -184,10 +184,6 @@ def configure_logger(identifier: str, log_file: Optional[Path] = None) -> None:
         Logger identifier
     log_file: str
         Path to file to write all messages to
-    quiet: bool
-        Flag for whether logger should write to stdout
-    verbose: bool
-        Flag for writing debug level information to stdout
     """
     from montreal_forced_aligner.config import MfaConfiguration
 
@@ -200,7 +196,7 @@ def configure_logger(identifier: str, log_file: Optional[Path] = None) -> None:
         formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
-    elif not config.current_profile.quiet:
+    if not config.current_profile.quiet:
         handler = RichHandler(
             rich_tracebacks=True, log_time_format="", console=console, show_path=False
         )

@@ -16,8 +16,8 @@ import sqlalchemy
 from sqlalchemy.orm import joinedload, selectinload
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import FileExporterMixin, MetaDict, TopLevelMfaWorker
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
 from montreal_forced_aligner.corpus.features import VadConfigMixin
 from montreal_forced_aligner.data import TextFileType, WorkflowType
@@ -83,9 +83,7 @@ class SpeechbrainSegmenterMixin:
         self.speechbrain = speechbrain
         self.segment_padding = segment_padding
         if self.speechbrain:
-            model_dir = os.path.join(
-                GLOBAL_CONFIG.current_profile.temporary_directory, "models", "VAD"
-            )
+            model_dir = os.path.join(config.TEMPORARY_DIRECTORY, "models", "VAD")
             os.makedirs(model_dir, exist_ok=True)
             run_opts = None
             if self.cuda:
@@ -258,7 +256,7 @@ class Segmenter(
         kwargs = self.segmentation_options
         kwargs.pop("frame_shift")
         with tqdm(
-            total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
+            total=self.num_utterances, disable=config.QUIET
         ) as pbar, self.session() as session:
             utt_index = session.query(sqlalchemy.func.max(Utterance.id)).scalar()
             if not utt_index:
@@ -321,7 +319,7 @@ class Segmenter(
         new_utts = []
 
         with tqdm(
-            total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
+            total=self.num_utterances, disable=config.QUIET
         ) as pbar, self.session() as session:
             utterances = session.query(
                 Utterance.id, Utterance.channel, Utterance.speaker_id, Utterance.file_id

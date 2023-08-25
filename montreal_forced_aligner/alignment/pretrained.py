@@ -285,14 +285,13 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
             Session to use
         """
         dictionary_id = utterance.speaker.dictionary_id
-        self.acoustic_model.export_model(self.working_directory)
         workflow = self.get_latest_workflow_run(WorkflowType.online_alignment, session)
         if workflow is None:
             workflow = CorpusWorkflow(
-                name=f"{utterance.id}_ali",
+                name="online_alignment",
                 workflow_type=WorkflowType.online_alignment,
                 time_stamp=datetime.datetime.now(),
-                working_directory=self.working_directory,
+                working_directory=self.output_directory.joinpath("online_alignment"),
             )
             session.add(workflow)
             session.flush()
@@ -323,6 +322,14 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
             fmllr_trans=fmllr_trans,
             **self.align_options,
         )
+        alignment_workflows = [
+            x
+            for x, in session.query(CorpusWorkflow.id).filter(
+                CorpusWorkflow.workflow_type.in_(
+                    [WorkflowType.online_alignment, WorkflowType.alignment]
+                )
+            )
+        ]
 
         max_phone_interval_id = session.query(sqlalchemy.func.max(PhoneInterval.id)).scalar()
         if max_phone_interval_id is None:
@@ -359,7 +366,6 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
         )
         for w, pron, p_id in pronunciations:
             pronunciation_mapping[(w, pron)] = p_id
-
         for word_interval in ctm.word_intervals:
             if word_interval.label not in word_mapping:
                 new_words.append(
@@ -408,13 +414,13 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
         session.query(Utterance).filter(Utterance.id == utterance.id).update(
             {Utterance.alignment_log_likelihood: ctm.likelihood}
         )
-
         session.query(PhoneInterval).filter(PhoneInterval.utterance_id == utterance.id).filter(
-            PhoneInterval.workflow_id == workflow.id
-        ).delete()
+            PhoneInterval.workflow_id.in_(alignment_workflows)
+        ).delete(synchronize_session=False)
+        session.flush()
         session.query(WordInterval).filter(WordInterval.utterance_id == utterance.id).filter(
-            WordInterval.workflow_id == workflow.id
-        ).delete()
+            WordInterval.workflow_id.in_(alignment_workflows)
+        ).delete(synchronize_session=False)
         session.flush()
         if new_words:
 
@@ -424,6 +430,7 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
             session.bulk_insert_mappings(
                 WordInterval, new_word_interval_mappings, return_defaults=False, render_nulls=True
             )
+            session.flush()
             session.bulk_insert_mappings(
                 PhoneInterval,
                 new_phone_interval_mappings,

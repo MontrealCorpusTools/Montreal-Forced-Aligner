@@ -22,7 +22,7 @@ from kalpy.fstext.lexicon import Pronunciation as KalpyPronunciation
 from sqlalchemy.orm import selectinload
 from tqdm.rich import tqdm
 
-from montreal_forced_aligner.config import GLOBAL_CONFIG
+from montreal_forced_aligner import config
 from montreal_forced_aligner.data import PhoneType, WordType
 from montreal_forced_aligner.db import (
     Corpus,
@@ -226,6 +226,36 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
     def num_dictionaries(self) -> int:
         """Number of pronunciation dictionaries"""
         return len(self.dictionary_lookup)
+
+    def load_alignment_lexicon_compilers(self):
+        with self.session() as session:
+            for d in session.query(Dictionary):
+                self.lexicon_compilers[d.id] = LexiconCompiler(
+                    disambiguation=False,
+                    silence_probability=self.silence_probability,
+                    initial_silence_probability=self.initial_silence_probability,
+                    final_silence_correction=self.final_silence_correction,
+                    final_non_silence_correction=self.final_non_silence_correction,
+                    silence_word=self.silence_word,
+                    oov_word=self.oov_word,
+                    silence_phone=self.optional_silence_phone,
+                    oov_phone=self.oov_phone,
+                    position_dependent_phones=self.position_dependent_phones,
+                    ignore_case=self.ignore_case,
+                    phones=self.non_silence_phones,
+                )
+                if d.lexicon_fst_path.exists():
+                    self.lexicon_compilers[d.id].load_l_from_file(d.lexicon_fst_path)
+                elif d.lexicon_disambig_fst_path.exists():
+                    self.lexicon_compilers[d.id].load_l_from_file(d.lexicon_disambig_fst_path)
+                if d.align_lexicon_path.exists():
+                    self.lexicon_compilers[d.id].load_l_align_from_file(d.align_lexicon_path)
+                elif d.align_lexicon_disambig_path.exists():
+                    self.lexicon_compilers[d.id].load_l_align_from_file(
+                        d.align_lexicon_disambig_path
+                    )
+                self.lexicon_compilers[d.id].word_table = d.word_table
+                self.lexicon_compilers[d.id].phone_table = d.phone_table
 
     def dictionary_setup(self) -> Tuple[typing.Set[str], collections.Counter]:
         """Set up the dictionary for processing"""
@@ -636,7 +666,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         with self.session() as session:
             num_words = session.query(Word).count()
             logger.info("Applying phonological rules...")
-            with tqdm(total=num_words, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=num_words, disable=config.QUIET) as pbar:
                 new_pron_objs = []
                 rule_application_objs = []
                 dialect_ids = {d.name: d.id for d in session.query(Dialect).all()}
@@ -1551,4 +1581,4 @@ class MultispeakerDictionary(MultispeakerDictionaryMixin):
     @property
     def output_directory(self) -> str:
         """Root temporary directory to store all dictionary information"""
-        return GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(self.identifier)
+        return config.TEMPORARY_DIRECTORY.joinpath(self.identifier)

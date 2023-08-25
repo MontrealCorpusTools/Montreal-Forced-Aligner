@@ -1,13 +1,12 @@
 """Command line functions for generating pronunciations using G2P models"""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import rich_click as click
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.utils import common_options, validate_tokenizer_model
-from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.tokenization.tokenizer import CorpusTokenizer
 
 __all__ = ["tokenize_cli"]
@@ -43,8 +42,8 @@ def tokenize_cli(context, **kwargs) -> None:
     Tokenize utterances with a trained tokenizer model
     """
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
+        config.profile = kwargs.pop("profile")
+    config.update_configuration(kwargs)
 
     config_path = kwargs.get("config_path", None)
     input_path = kwargs["input_path"]

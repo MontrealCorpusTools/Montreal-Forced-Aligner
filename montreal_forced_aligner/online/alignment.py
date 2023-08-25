@@ -47,7 +47,7 @@ def align_utterance_online(
     )
     fst = graph_compiler.compile_fst(utterance.transcript)
     aligner = GmmAligner(
-        acoustic_model.alignment_model_path,
+        acoustic_model.alignment_model_path if fmllr_trans is None else acoustic_model.model_path,
         beam=beam,
         retry_beam=retry_beam,
         transition_scale=transition_scale,

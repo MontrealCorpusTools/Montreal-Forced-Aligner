@@ -1,13 +1,12 @@
 """Command line functions for training G2P models"""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import rich_click as click
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.utils import common_options, validate_dictionary
-from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.g2p.phonetisaurus_trainer import PhonetisaurusTrainer
 from montreal_forced_aligner.g2p.trainer import PyniniTrainer
 
@@ -56,8 +55,8 @@ def train_g2p_cli(context, **kwargs) -> None:
     Train a G2P model from a pronunciation dictionary.
     """
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
+        config.profile = kwargs.pop("profile")
+    config.update_configuration(kwargs)
     config_path = kwargs.get("config_path", None)
     dictionary_path = kwargs["dictionary_path"]
     phonetisaurus = kwargs["phonetisaurus"]

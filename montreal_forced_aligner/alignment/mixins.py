@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, List
 from kalpy.gmm.align import GmmAligner
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.alignment.multiprocessing import (
     AlignArguments,
     AlignFunction,
@@ -21,7 +22,6 @@ from montreal_forced_aligner.alignment.multiprocessing import (
     PhoneConfidenceArguments,
     PhoneConfidenceFunction,
 )
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.db import CorpusWorkflow, Job, PhoneInterval, Utterance, bulk_update
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 from montreal_forced_aligner.exceptions import NoAlignmentsError
@@ -255,7 +255,7 @@ class AlignMixin(DictionaryMixin):
         os.makedirs(log_directory, exist_ok=True)
         logger.info("Compiling training graphs...")
         arguments = self.compile_train_graphs_arguments()
-        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
             for _ in run_kaldi_function(CompileTrainGraphsFunction, arguments, pbar.update):
                 pass
         logger.debug(f"Compiling training graphs took {time.time() - begin:.3f} seconds")
@@ -268,7 +268,7 @@ class AlignMixin(DictionaryMixin):
         begin = time.time()
 
         with self.session() as session, tqdm(
-            total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet
+            total=self.num_current_utterances, disable=config.QUIET
         ) as pbar:
             arguments = self.phone_confidence_arguments()
             interval_update_mappings = []
@@ -303,7 +303,7 @@ class AlignMixin(DictionaryMixin):
                 utterances.update({"alignment_log_likelihood": None})
                 session.commit()
             self.working_log_directory.mkdir(parents=True, exist_ok=True)
-            with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
                 log_like_sum = 0
                 log_like_count = 0
                 update_mappings = []

@@ -25,8 +25,8 @@ from kalpy.ivector.extractor import IvectorExtractor
 from kalpy.utils import generate_write_specifier
 from sqlalchemy.orm import joinedload
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import KaldiFunction
-from montreal_forced_aligner.config import IVECTOR_DIMENSION
 from montreal_forced_aligner.data import MfaArguments, PhoneType
 from montreal_forced_aligner.db import File, Job, Phone, SoundFile, Utterance
 from montreal_forced_aligner.helper import mfa_open
@@ -193,7 +193,7 @@ class MfccFunction(KaldiFunction):
         self.pitch_computer = args.pitch_computer
         self.mfcc_computer = args.mfcc_computer
 
-    def _run(self) -> typing.Generator[int]:
+    def _run(self):
         """Run the function"""
         with (
             self.session() as session,
@@ -202,7 +202,7 @@ class MfccFunction(KaldiFunction):
             job: typing.Optional[Job] = session.get(Job, self.job_name)
             raw_ark_path = job.construct_path(self.data_directory, "feats", "ark")
             raw_pitch_ark_path = job.construct_path(self.data_directory, "pitch", "ark")
-            if os.path.exists(raw_ark_path):
+            if raw_ark_path.exists():
                 return
             min_length = 0.1
             utterances = (
@@ -211,7 +211,6 @@ class MfccFunction(KaldiFunction):
                 .join(File.sound_file)
                 .filter(
                     Utterance.job_id == self.job_name,
-                    Utterance.ignored == False,  # noqa
                     Utterance.duration >= min_length,
                 )
                 .order_by(Utterance.kaldi_id)
@@ -895,7 +894,7 @@ class IvectorConfigMixin(VadConfigMixin):
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.ivector_dimension = IVECTOR_DIMENSION
+        self.ivector_dimension = config.IVECTOR_DIMENSION
         self.num_gselect = num_gselect
         self.posterior_scale = posterior_scale
         self.min_post = min_post

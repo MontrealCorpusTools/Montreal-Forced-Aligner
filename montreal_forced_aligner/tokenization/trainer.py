@@ -11,8 +11,8 @@ import pynini
 import pywrapfst
 import sqlalchemy
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import MetaDict, TopLevelMfaWorker
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
 from montreal_forced_aligner.data import WorkflowType
 from montreal_forced_aligner.db import M2M2Job, M2MSymbol, Utterance
@@ -398,7 +398,7 @@ class PhonetisaurusTokenizerTrainer(PhonetisaurusTrainerMixin, TokenizerMixin):
         if directory:
             os.makedirs(directory, exist_ok=True)
         model.dump(output_model_path)
-        if not GLOBAL_CONFIG.current_profile.debug:
+        if not config.DEBUG:
             model.clean_up()
         # self.clean_up()
         logger.info(f"Saved model to {output_model_path}")
@@ -595,7 +595,7 @@ class TokenizerTrainer(PyniniTrainerMixin, TokenizerMixin):
         if directory:
             os.makedirs(directory, exist_ok=True)
         model.dump(output_model_path)
-        if not GLOBAL_CONFIG.current_profile.debug:
+        if not config.DEBUG:
             model.clean_up()
         # self.clean_up()
         logger.info(f"Saved model to {output_model_path}")

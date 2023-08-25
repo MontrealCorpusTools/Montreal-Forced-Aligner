@@ -6,7 +6,6 @@ import re
 import shutil
 import time
 import typing
-from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 import pynini
@@ -18,12 +17,12 @@ from kalpy.gmm.align import GmmAligner
 from sqlalchemy.orm import joinedload
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
 from montreal_forced_aligner.alignment.multiprocessing import (
     GeneratePronunciationsArguments,
     GeneratePronunciationsFunction,
 )
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.db import CorpusWorkflow, Dictionary, Pronunciation, Utterance, Word
 from montreal_forced_aligner.g2p.trainer import PyniniTrainerMixin
 from montreal_forced_aligner.helper import mfa_open
@@ -202,7 +201,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                 )
                 for x in self.worker.dictionary_lookup.values()
             }
-            with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
                 for dict_id, utt_id, phones in run_kaldi_function(
                     GeneratePronunciationsFunction, arguments, pbar.update
                 ):
@@ -254,7 +253,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                     os.rename(d.lexicon_fst_path, d.lexicon_fst_path.with_suffix(".backup"))
                 os.rename(self.fst_path, d.lexicon_fst_path)
 
-                if False and not GLOBAL_CONFIG.current_profile.debug:
+                if False and not config.DEBUG:
                     os.remove(self.output_path)
                     os.remove(self.input_far_path)
                     os.remove(self.output_far_path)
@@ -275,7 +274,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                 if d.align_lexicon_path.exists():
                     os.rename(d.align_lexicon_path, d.align_lexicon_path.with_suffix(".backup"))
                 os.rename(self.fst_path, d.align_lexicon_path)
-                if not GLOBAL_CONFIG.current_profile.debug:
+                if not config.DEBUG:
                     os.remove(self.output_alignment_path)
                     os.remove(self.input_path)
                     os.remove(self.input_far_path)
@@ -295,7 +294,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                     align_fst=align_fst,
                     silence_phone=self.optional_silence_phone,
                 )
-                if GLOBAL_CONFIG.current_profile.debug and False:
+                if config.DEBUG and False:
                     fst = pynini.Fst.read(d.lexicon_fst_path)
                     grapheme_table = pywrapfst.SymbolTable.read_text(
                         self.grapheme_symbol_table_path
@@ -315,10 +314,9 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                         )
 
                         lg_fst = pynini_to_kaldi(lg_fst)
-                        with redirect_stdout(logger), redirect_stderr(logger):
-                            fst_determinize_star(lg_fst, use_log=True)
-                            fst_minimize_encoded(lg_fst)
-                            fst_push_special(lg_fst)
+                        fst_determinize_star(lg_fst, use_log=True)
+                        fst_minimize_encoded(lg_fst)
+                        fst_push_special(lg_fst)
                         lg_fst = kaldi_to_pynini(lg_fst)
                         path_string = (
                             pynini.shortestpath(lg_fst).project("output").string(phone_table)

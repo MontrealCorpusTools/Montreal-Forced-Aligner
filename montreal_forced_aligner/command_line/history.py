@@ -3,7 +3,7 @@ import time
 
 import rich_click as click
 
-from montreal_forced_aligner.config import GLOBAL_CONFIG, load_command_history
+from montreal_forced_aligner import config
 
 __all__ = ["history_cli"]
 
@@ -19,15 +19,15 @@ logger = logging.getLogger("mfa")
     "--verbose/--no_verbose",
     "-v/-nv",
     "verbose",
-    help=f"Output debug messages, default is {GLOBAL_CONFIG.verbose}",
-    default=GLOBAL_CONFIG.verbose,
+    help=f"Output debug messages, default is {config.VERBOSE}",
+    default=config.VERBOSE,
 )
 @click.help_option("-h", "--help")
 def history_cli(depth: int, verbose: bool) -> None:
     """
     List previous MFA commands
     """
-    history = load_command_history()[-depth:]
+    history = config.load_command_history()[-depth:]
     if verbose:
         logger.info("command\tDate\tExecution time\tVersion\tExit code\tException")
         for h in history:

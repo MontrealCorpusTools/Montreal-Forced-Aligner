@@ -1,6 +1,8 @@
 import os
+import pathlib
 import shutil
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.dictionary import MultispeakerDictionary
 from montreal_forced_aligner.g2p.generator import (
     PyniniCorpusGenerator,
@@ -26,11 +28,12 @@ def test_check_bracketed(basic_dict_path, db_setup):
     expected_result = ["uh", "sick", ""]
     dictionary_config = MultispeakerDictionary(dictionary_path=basic_dict_path)
     assert [x for x in word_set if not dictionary_config.check_bracketed(x)] == expected_result
+    dictionary_config.cleanup_connections()
 
 
-def test_training(basic_dict_path, basic_g2p_model_path, temp_dir, global_config, db_setup):
+def test_training(basic_dict_path, basic_g2p_model_path, temp_dir, db_setup):
     output_directory = os.path.join(temp_dir, "g2p_tests", "train")
-    global_config.temporary_directory = output_directory
+    config.TEMPORARY_DIRECTORY = pathlib.Path(output_directory)
     trainer = PyniniTrainer(
         dictionary_path=basic_dict_path,
         random_starts=1,
@@ -49,14 +52,12 @@ def test_training(basic_dict_path, basic_g2p_model_path, temp_dir, global_config
     trainer.cleanup()
 
 
-def test_generator(
-    basic_g2p_model_path, basic_corpus_dir, g2p_basic_output, temp_dir, global_config, db_setup
-):
+def test_generator(basic_g2p_model_path, basic_corpus_dir, g2p_basic_output, temp_dir, db_setup):
     output_directory = os.path.join(temp_dir, "g2p_tests", "gen")
-    global_config.temporary_directory = output_directory
+    config.TEMPORARY_DIRECTORY = pathlib.Path(output_directory)
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
-    global_config.clean = True
+    config.CLEAN = True
     gen = PyniniCorpusGenerator(
         g2p_model_path=basic_g2p_model_path,
         corpus_directory=basic_corpus_dir,
@@ -72,10 +73,10 @@ def test_generator(
     gen.cleanup()
 
 
-def test_generator_pretrained(english_g2p_model, temp_dir, global_config, db_setup):
+def test_generator_pretrained(english_g2p_model, temp_dir, db_setup):
     words = ["petted", "petted-patted", "pedal"]
     output_directory = os.path.join(temp_dir, "g2p_tests")
-    global_config.temporary_directory = output_directory
+    config.TEMPORARY_DIRECTORY = pathlib.Path(output_directory)
     word_list_path = os.path.join(output_directory, "word_list.txt")
     os.makedirs(output_directory, exist_ok=True)
     with mfa_open(word_list_path, "w") as f:

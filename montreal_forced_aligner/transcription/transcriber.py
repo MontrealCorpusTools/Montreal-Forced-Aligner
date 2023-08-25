@@ -27,9 +27,9 @@ from praatio import textgrid
 from sqlalchemy.orm import joinedload, selectinload
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import TopLevelMfaWorker
 from montreal_forced_aligner.alignment.base import CorpusAligner
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import (
     ArpaNgramModel,
     TextFileType,
@@ -166,7 +166,7 @@ class TranscriberMixin(CorpusAligner):
             Arguments for processing
         """
         arguments = []
-        
+
         for j in self.jobs:
             arguments.append(
                 TrainSpeakerLmArguments(
@@ -191,7 +191,7 @@ class TranscriberMixin(CorpusAligner):
         os.makedirs(log_directory, exist_ok=True)
         logger.info("Compiling per speaker biased language models...")
         arguments = self.train_speaker_lm_arguments()
-        with tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_speakers, disable=config.QUIET) as pbar:
             for _ in run_kaldi_function(TrainSpeakerLmFunction, arguments, pbar.update):
                 pass
         logger.debug(f"Compiling speaker language models took {time.time() - begin:.3f} seconds")
@@ -219,7 +219,7 @@ class TranscriberMixin(CorpusAligner):
         """
         arguments = self.lm_rescore_arguments()
         logger.info("Rescoring lattices with medium G.fst...")
-        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
             for _ in run_kaldi_function(LmRescoreFunction, arguments, pbar.update):
                 pass
 
@@ -236,7 +236,7 @@ class TranscriberMixin(CorpusAligner):
         """
         logger.info("Rescoring lattices with large G.carpa...")
         arguments = self.carpa_lm_rescore_arguments()
-        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
             for _ in run_kaldi_function(CarpaLmRescoreFunction, arguments, pbar.update):
                 pass
 
@@ -262,7 +262,7 @@ class TranscriberMixin(CorpusAligner):
         count_paths = []
         allowed_bigrams = collections.defaultdict(set)
         with self.session() as session, tqdm(
-            total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet
+            total=self.num_current_utterances, disable=config.QUIET
         ) as pbar:
 
             with mfa_open(self.phones_dir.joinpath("phone_boundaries.int"), "w") as f:
@@ -625,7 +625,7 @@ class TranscriberMixin(CorpusAligner):
                         {"id": utt.id, "word_error_rate": 0.0, "character_error_rate": 0.0}
                     )
 
-            with ThreadPool(GLOBAL_CONFIG.num_jobs) as pool:
+            with ThreadPool(config.NUM_JOBS) as pool:
                 gen = pool.starmap(score_wer, to_comp)
                 for i, (word_edits, word_length, character_edits, character_length) in enumerate(
                     gen
@@ -674,7 +674,7 @@ class TranscriberMixin(CorpusAligner):
             Arguments for function
         """
         logger.info("Generating lattices...")
-        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
             workflow = self.current_workflow
             arguments = self.decode_arguments(workflow.workflow_type)
             log_likelihood_sum = 0
@@ -706,7 +706,7 @@ class TranscriberMixin(CorpusAligner):
         """
         logger.info("Calculating initial fMLLR transforms...")
         arguments = self.initial_fmllr_arguments()
-        with tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_speakers, disable=config.QUIET) as pbar:
             for _ in run_kaldi_function(InitialFmllrFunction, arguments, pbar.update):
                 pass
 
@@ -723,7 +723,7 @@ class TranscriberMixin(CorpusAligner):
         """
         logger.info("Calculating final fMLLR transforms...")
         arguments = self.final_fmllr_arguments()
-        with tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_speakers, disable=config.QUIET) as pbar:
             for _ in run_kaldi_function(FinalFmllrFunction, arguments, pbar.update):
                 pass
 
@@ -740,7 +740,7 @@ class TranscriberMixin(CorpusAligner):
         """
         logger.info("Rescoring fMLLR lattices with final transform...")
         arguments = self.fmllr_rescore_arguments()
-        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
             for _ in run_kaldi_function(FmllrRescoreFunction, arguments, pbar.update):
                 pass
 
@@ -1064,7 +1064,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
 
         arguments = self.create_hclgs_arguments()
         logger.info("Generating HCLG.fst...")
-        with tqdm(total=len(arguments), disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=len(arguments), disable=config.QUIET) as pbar:
             for _ in run_kaldi_function(CreateHclgFunction, arguments, pbar.update):
                 pass
 

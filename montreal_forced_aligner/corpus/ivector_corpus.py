@@ -31,7 +31,7 @@ from kalpy.utils import (
 )
 from tqdm.rich import tqdm
 
-from montreal_forced_aligner.config import GLOBAL_CONFIG, IVECTOR_DIMENSION
+from montreal_forced_aligner import config
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
 from montreal_forced_aligner.corpus.features import (
     ExtractIvectorsArguments,
@@ -153,7 +153,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
             return
         with (
             self.session() as session,
-            tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar,
+            tqdm(total=self.num_utterances, disable=config.QUIET) as pbar,
             mfa_open(num_utts_path, "w") as num_utts_archive,
             kalpy_logger("kalpy.ivector", log_path),
         ):
@@ -162,10 +162,14 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
             )
             spk2utt = KaldiMapping(list_mapping=True)
             spk2utt.load(spk2utt_path)
-            query = session.query(Speaker.id, Utterance.ivector_ark).join(Utterance.speaker)
+            query = (
+                session.query(Speaker.id, Utterance.ivector_ark)
+                .join(Utterance.speaker)
+                .order_by(Speaker.id)
+            )
             current_speaker = None
             utt_count = 0
-            speaker_mean = FloatVector(IVECTOR_DIMENSION)
+            speaker_mean = FloatVector(config.IVECTOR_DIMENSION)
             for speaker_id, ivector_path in query:
                 if current_speaker is None:
                     current_speaker = speaker_id
@@ -174,7 +178,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
 
                     speaker_mean_archive.Write(str(speaker_id), speaker_mean)
                     num_utts_archive.write(f"{speaker_id} {utt_count}\n")
-                    speaker_mean = FloatVector(IVECTOR_DIMENSION)
+                    speaker_mean = FloatVector(config.IVECTOR_DIMENSION)
                     utt_count = 0
                     current_speaker = speaker_id
                     pbar.update(1)
@@ -204,7 +208,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
             return
 
         with (
-            tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar,
+            tqdm(total=self.num_utterances, disable=config.QUIET) as pbar,
             kalpy_logger("kalpy.ivector", log_path) as ivector_logger,
         ):
             plda_config = PldaEstimationConfig()
@@ -220,7 +224,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                 spk2utt.load(spk2utt_path)
                 ivector_archive = IvectorArchive(ivector_scp_path)
                 for utt_list in spk2utt.values():
-                    ivector_mat = DoubleMatrix(len(utt_list), IVECTOR_DIMENSION)
+                    ivector_mat = DoubleMatrix(len(utt_list), config.IVECTOR_DIMENSION)
                     for i, utt_id in enumerate(utt_list):
                         ivector = ivector_archive[utt_id]
 
@@ -277,7 +281,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                 return
         logger.info("Extracting ivectors...")
         arguments = self.extract_ivectors_arguments()
-        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
             for _ in run_kaldi_function(ExtractIvectorsFunction, arguments, pbar.update):
                 pass
         self.collect_utterance_ivectors()
@@ -297,7 +301,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
             query = session.query(Utterance.id, Utterance.ivector).filter(
                 Utterance.ivector != None  # noqa
             )
-            ivectors = np.empty((query.count(), IVECTOR_DIMENSION))
+            ivectors = np.empty((query.count(), config.IVECTOR_DIMENSION))
             update_mapping = []
             for i, (u_id, ivector) in enumerate(query):
                 kaldi_ivector = FloatVector()
@@ -328,16 +332,16 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         """Collect trained per-utterance ivectors"""
         logger.info("Collecting ivectors...")
         with self.session() as session, tqdm(
-            total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
+            total=self.num_utterances, disable=config.QUIET
         ) as pbar:
             update_mapping = {}
+
+            ivector_sum = FloatVector(config.IVECTOR_DIMENSION)
+            ivectors = {}
+            count = 0
             for j in self.jobs:
                 ivector_scp_path = j.construct_path(self.split_directory, "ivectors", "scp")
-
-                ivector_sum = FloatVector(IVECTOR_DIMENSION)
-                count = 0
                 with mfa_open(ivector_scp_path) as f:
-                    ivectors = {}
                     for line in f:
                         line = line.strip()
                         utt_id, ivector_ark_path = line.split(maxsplit=1)
@@ -348,13 +352,12 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                         ivector_normalize_length(ivector)
                         count += 1
                         ivector_sum.AddVec(1.0, ivector)
-                ivector_sum.Scale(1.0 / count)
-                for utt_id, ivector in ivectors.items():
-                    ivector.AddVec(-1.0, ivector_sum)
+            for utt_id, ivector in ivectors.items():
+                ivector.AddVec(-1.0 / count, ivector_sum)
 
-                    ivector_normalize_length(ivector)
-                    update_mapping[utt_id]["ivector"] = ivector.numpy()
-                    pbar.update(1)
+                ivector_normalize_length(ivector)
+                update_mapping[utt_id]["ivector"] = ivector.numpy()
+                pbar.update(1)
             bulk_update(session, Utterance, list(update_mapping.values()))
             session.flush()
             session.execute(
@@ -379,7 +382,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         if not os.path.exists(speaker_ivector_ark_path):
             self.compute_speaker_ivectors()
         with self.session() as session, tqdm(
-            total=self.num_speakers, disable=GLOBAL_CONFIG.quiet
+            total=self.num_speakers, disable=config.QUIET
         ) as pbar:
             ivector_archive = IvectorArchive(
                 speaker_ivector_ark_path, num_utterances_file_name=num_utts_path

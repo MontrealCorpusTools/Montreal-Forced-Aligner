@@ -24,7 +24,7 @@ def test_generate_pretrained(
         "False",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -38,6 +38,7 @@ def test_generate_pretrained(
     d = MultispeakerDictionary(output_path)
     d.dictionary_setup()
     assert d.num_speech_words > 0
+    d.cleanup_connections()
 
 
 def test_generate_pretrained_dictionary(
@@ -59,7 +60,7 @@ def test_generate_pretrained_dictionary(
         "False",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -73,6 +74,7 @@ def test_generate_pretrained_dictionary(
     d = MultispeakerDictionary(output_path)
     d.dictionary_setup()
     assert d.num_speech_words == 2
+    d.cleanup_connections()
 
 
 def test_generate_pretrained_threshold(
@@ -90,7 +92,7 @@ def test_generate_pretrained_threshold(
         "0.95",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -105,6 +107,7 @@ def test_generate_pretrained_threshold(
     d.dictionary_setup()
 
     assert d.num_speech_words > 0
+    d.cleanup_connections()
 
 
 def test_generate_pretrained_corpus(
@@ -122,7 +125,7 @@ def test_generate_pretrained_corpus(
         "2",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -165,7 +168,7 @@ def test_train_g2p(
         train_g2p_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -196,7 +199,7 @@ def test_train_g2p_phonetisaurus(
         train_g2p_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -228,7 +231,7 @@ def test_generate_dict(
         g2p_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -242,6 +245,7 @@ def test_generate_dict(
     d = MultispeakerDictionary(dictionary_path=g2p_basic_output)
     d.dictionary_setup()
     assert d.num_speech_words > 0
+    d.cleanup_connections()
 
 
 def test_generate_dict_phonetisaurus(
@@ -264,7 +268,7 @@ def test_generate_dict_phonetisaurus(
         g2p_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -278,6 +282,7 @@ def test_generate_dict_phonetisaurus(
     d = MultispeakerDictionary(dictionary_path=g2p_basic_phonetisaurus_output)
     d.dictionary_setup()
     assert d.num_speech_words > 0
+    d.cleanup_connections()
 
 
 def test_generate_dict_text_only(
@@ -301,7 +306,7 @@ def test_generate_dict_text_only(
         g2p_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -315,6 +320,7 @@ def test_generate_dict_text_only(
     d = MultispeakerDictionary(dictionary_path=g2p_basic_output)
     d.dictionary_setup()
     assert d.num_speech_words > 0
+    d.cleanup_connections()
 
 
 def test_generate_dict_textgrid(
@@ -338,7 +344,7 @@ def test_generate_dict_textgrid(
         g2p_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -352,3 +358,4 @@ def test_generate_dict_textgrid(
     d = MultispeakerDictionary(dictionary_path=output_file)
     d.dictionary_setup()
     assert d.num_speech_words > 0
+    d.cleanup_connections()

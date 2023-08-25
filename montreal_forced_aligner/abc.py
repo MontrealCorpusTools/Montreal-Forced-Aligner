@@ -31,7 +31,7 @@ import sqlalchemy
 import yaml
 from sqlalchemy.orm import scoped_session, sessionmaker
 
-from montreal_forced_aligner.config import GLOBAL_CONFIG
+from montreal_forced_aligner import config
 from montreal_forced_aligner.db import CorpusWorkflow, MfaSqlBase
 from montreal_forced_aligner.exceptions import (
     DatabaseError,
@@ -215,12 +215,23 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         self._session = None
         self.database_initialized = False
 
+    def cleanup_connections(self) -> None:
+        if getattr(self, "_session", None) is not None:
+            self._session.remove()
+            del self._session
+            self._session = None
+
+        if getattr(self, "_db_engine", None) is not None:
+            self._db_engine.dispose()
+            del self._db_engine
+            self._db_engine = None
+
     def delete_database(self) -> None:
         """
         Reset all schemas
         """
 
-        if GLOBAL_CONFIG.current_profile.use_postgres:
+        if config.USE_POSTGRES:
             MfaSqlBase.metadata.drop_all(self.db_engine)
         elif self.db_path.exists():
             os.remove(self.db_path)
@@ -233,7 +244,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
             return
         from montreal_forced_aligner.command_line.utils import check_databases
 
-        if GLOBAL_CONFIG.current_profile.use_postgres:
+        if config.USE_POSTGRES:
             exist_check = True
             try:
                 check_databases(self.identifier)
@@ -242,7 +253,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
                     subprocess.check_call(
                         [
                             "createdb",
-                            f"--host={GLOBAL_CONFIG.database_socket}",
+                            f"--host={config.database_socket()}",
                             self.identifier,
                         ],
                         stderr=subprocess.DEVNULL,
@@ -250,23 +261,23 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
                     )
                 except Exception:
                     raise DatabaseError(
-                        f"There was an error connecting to the {GLOBAL_CONFIG.current_profile_name} MFA database server. "
+                        f"There was an error connecting to the {config.CURRENT_PROFILE_NAME} MFA database server. "
                         "Please ensure the server is initialized (mfa server init) or running (mfa server start)"
                     )
                 exist_check = False
         else:
             exist_check = self.db_path.exists()
         self.database_initialized = True
-        if GLOBAL_CONFIG.current_profile.clean or getattr(self, "dirty", False):
+        if config.CLEAN or getattr(self, "dirty", False):
             self.clean_working_directory()
         if exist_check:
-            if GLOBAL_CONFIG.current_profile.clean or getattr(self, "dirty", False):
+            if config.CLEAN or getattr(self, "dirty", False):
                 self.delete_database()
             else:
                 return
 
         os.makedirs(self.output_directory, exist_ok=True)
-        if GLOBAL_CONFIG.current_profile.use_postgres:
+        if config.USE_POSTGRES:
             with self.db_engine.connect() as conn:
                 conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS vector"))
                 conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
@@ -345,10 +356,8 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
     @property
     def db_string(self) -> str:
         """Connection string for the database"""
-        if GLOBAL_CONFIG.use_postgres:
-            return (
-                f"postgresql+psycopg2://@/{self.identifier}?host={GLOBAL_CONFIG.database_socket}"
-            )
+        if config.USE_POSTGRES:
+            return f"postgresql+psycopg2://@/{self.identifier}?host={config.database_socket()}"
         else:
             return f"sqlite:///{self.db_path}"
 
@@ -369,7 +378,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
             SqlAlchemy engine
         """
         db_string = self.db_string
-        if not GLOBAL_CONFIG.use_postgres:
+        if not config.USE_POSTGRES:
             if kwargs.pop("read_only", False):
                 db_string += "?mode=ro&nolock=1&uri=true"
         kwargs["pool_size"] = 10
@@ -542,12 +551,13 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         if skipped:
             logger.warning(f"Skipped the following configuration keys: {comma_join(skipped)}")
 
-    def __del__(self):
+    def cleanup_logger(self):
         """Ensure that loggers are cleaned up on delete"""
         logger = logging.getLogger("mfa")
         handlers = logger.handlers[:]
         for handler in handlers:
-            handler.close()
+            if isinstance(handler, logging.FileHandler):
+                handler.close()
             logger.removeHandler(handler)
 
     def setup(self) -> None:
@@ -653,18 +663,14 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         Clean up loggers and output final message for top-level workers
         """
         try:
-            if getattr(self, "_session", None) is not None:
-                del self._session
-                self._session = None
-
-            if getattr(self, "_db_engine", None) is not None:
-                del self._db_engine
-                self._db_engine = None
+            if hasattr(self, "cleanup_connections"):
+                self.cleanup_connections()
             if self.dirty:
                 logger.error("There was an error in the run, please see the log.")
             else:
                 logger.info(f"Done! Everything took {time.time() - self.start_time:.3f} seconds")
             self.save_worker_config()
+            self.cleanup_logger()
         except (NameError, ValueError):  # already cleaned up
             pass
 
@@ -675,7 +681,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         with mfa_open(self.worker_config_path, "w") as f:
             yaml.dump(self.configuration, f)
 
-    def _validate_previous_configuration(self, conf: MetaDict) -> bool:
+    def _validate_previous_configuration(self, conf: MetaDict) -> None:
         """
         Validate the current configuration against a previous configuration
 
@@ -683,26 +689,18 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         ----------
         conf: dict[str, Any]
             Previous run's configuration
-
-        Returns
-        -------
-        bool
-            Flag for whether the current run is compatible with the previous one
         """
         from montreal_forced_aligner.utils import get_mfa_version
 
         self.dirty = False
         current_version = get_mfa_version()
-        if (
-            not GLOBAL_CONFIG.current_profile.debug
-            and conf.get("version", current_version) != current_version
-        ):
+        if not config.DEBUG and conf.get("version", current_version) != current_version:
             logger.debug(
                 f"Previous run was on {conf['version']} version (new run: {current_version})"
             )
             self.dirty = True
 
-    def check_previous_run(self) -> bool:
+    def check_previous_run(self) -> None:
         """
         Check whether a previous run has any conflicting settings with the current run.
 
@@ -714,13 +712,12 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         if not os.path.exists(self.worker_config_path):
             return True
         conf = load_configuration(self.worker_config_path)
-        clean = self._validate_previous_configuration(conf)
-        if not GLOBAL_CONFIG.current_profile.clean and self.dirty:
+        self._validate_previous_configuration(conf)
+        if not config.CLEAN and self.dirty:
             logger.warning(
                 "The previous run had a different configuration than the current, which may cause issues."
                 " Please see the log for details or use --clean flag if issues are encountered."
             )
-        return clean
 
     @property
     def identifier(self) -> str:
@@ -730,7 +727,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
     @property
     def output_directory(self) -> Path:
         """Root temporary directory to store all of this worker's files"""
-        return GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(self.identifier)
+        return config.TEMPORARY_DIRECTORY.joinpath(self.identifier)
 
     @property
     def log_file(self) -> Path:
@@ -741,7 +738,6 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         """
         Construct a logger for a command line run
         """
-        from montreal_forced_aligner.config import GLOBAL_CONFIG
         from montreal_forced_aligner.helper import configure_logger
         from montreal_forced_aligner.utils import get_mfa_version
 
@@ -756,13 +752,13 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         configure_logger("mfa", log_file=self.log_file)
         logger = logging.getLogger("mfa")
         logger.debug(f"Beginning run for {self.data_source_identifier}")
-        logger.debug(f'Using "{GLOBAL_CONFIG.current_profile_name}" profile')
-        if GLOBAL_CONFIG.use_mp:
-            logger.debug(f"Using multiprocessing with {GLOBAL_CONFIG.num_jobs}")
+        logger.debug(f'Using "{config.CURRENT_PROFILE_NAME}" profile')
+        if config.USE_MP:
+            logger.debug(f"Using multiprocessing with {config.NUM_JOBS}")
         else:
-            logger.debug(f"NOT using multiprocessing with {GLOBAL_CONFIG.num_jobs}")
+            logger.debug(f"NOT using multiprocessing with {config.NUM_JOBS}")
         logger.debug(f"Set up logger for MFA version: {current_version}")
-        if clean or GLOBAL_CONFIG.clean:
+        if clean or config.CLEAN:
             logger.debug("Cleaned previous run")
 
 

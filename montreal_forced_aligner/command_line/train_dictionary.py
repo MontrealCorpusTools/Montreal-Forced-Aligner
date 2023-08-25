@@ -1,18 +1,17 @@
 """Command line functions for training dictionaries with pronunciation probabilities"""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import rich_click as click
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.alignment.pretrained import DictionaryTrainer
 from montreal_forced_aligner.command_line.utils import (
     common_options,
     validate_acoustic_model,
     validate_dictionary,
 )
-from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 
 __all__ = ["train_dictionary_cli"]
 
@@ -69,8 +68,8 @@ def train_dictionary_cli(context, **kwargs) -> None:
     Calculate pronunciation probabilities for a dictionary based on alignment results in a corpus.
     """
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
+        config.profile = kwargs.pop("profile")
+    config.update_configuration(kwargs)
     config_path = kwargs.get("config_path", None)
     acoustic_model_path = kwargs["acoustic_model_path"]
     corpus_directory = kwargs["corpus_directory"]

@@ -34,7 +34,7 @@ def test_align_one_lab(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -62,7 +62,7 @@ def test_align_one_lab(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -105,7 +105,7 @@ def test_align_one_tg(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -133,7 +133,7 @@ def test_align_one_tg(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -177,7 +177,7 @@ def test_align_no_speaker_adaptation(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -221,7 +221,7 @@ def test_align_single_speaker(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -266,12 +266,12 @@ def test_align_duplicated(
         basic_align_config_path,
         "-q",
         "--clean",
-        "--no_debug",
+        "--debug",
         "-p",
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -320,7 +320,7 @@ def test_align_multilingual(
         "--no_use_postgres",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -359,7 +359,7 @@ def test_align_multilingual_speaker_dict(
         "--use_postgres",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -396,7 +396,7 @@ def test_align_multilingual_tg_speaker_dict(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -443,7 +443,7 @@ def test_align_evaluation(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -484,7 +484,7 @@ def test_align_split(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -520,7 +520,7 @@ def test_align_stereo(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -561,7 +561,7 @@ def test_align_mp3s(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -602,7 +602,7 @@ def test_align_opus(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -643,7 +643,7 @@ def test_swedish_cv(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -692,7 +692,7 @@ def test_swedish_mfa(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)

@@ -1,8 +1,7 @@
 """Command line functionality for managing servers"""
-import os
-
 import rich_click as click
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.utils import (
     common_options,
     delete_server,
@@ -10,7 +9,6 @@ from montreal_forced_aligner.command_line.utils import (
     start_server,
     stop_server,
 )
-from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 
 
 @click.group(name="server", short_help="Start, stop, and delete MFA database servers")
@@ -33,8 +31,8 @@ def server_cli():
 @click.pass_context
 def init_cli(context, **kwargs):
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
+        config.CURRENT_PROFILE_NAME = kwargs.pop("profile")
+    config.update_configuration(kwargs)
     initialize_server()
 
 
@@ -51,8 +49,8 @@ def init_cli(context, **kwargs):
 @click.pass_context
 def start_cli(context, **kwargs):
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
+        config.CURRENT_PROFILE_NAME = kwargs.pop("profile")
+    config.update_configuration(kwargs)
     start_server()
 
 
@@ -76,8 +74,8 @@ def start_cli(context, **kwargs):
 @click.pass_context
 def stop_cli(context, **kwargs):
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
+        config.CURRENT_PROFILE_NAME = kwargs.pop("profile")
+    config.update_configuration(kwargs)
     stop_server(mode=kwargs.get("mode", "fast"))
 
 
@@ -94,6 +92,6 @@ def stop_cli(context, **kwargs):
 @click.pass_context
 def delete_cli(context, **kwargs):
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
+        config.CURRENT_PROFILE_NAME = kwargs.pop("profile")
+    config.update_configuration(kwargs)
     delete_server()

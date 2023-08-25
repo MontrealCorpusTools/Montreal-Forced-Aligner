@@ -22,8 +22,8 @@ import pywrapfst
 from pynini import Fst
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import MetaDict, MfaWorker, TopLevelMfaWorker, TrainerMixin
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import WordType, WorkflowType
 from montreal_forced_aligner.db import Pronunciation, Word
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
@@ -518,7 +518,7 @@ class PyniniTrainerMixin:
                 train_opts.append(f"--max_iters={self.num_iterations}")
             # Constructs the actual command vectors (plus an index for logging
             # purposes).
-            random.seed(GLOBAL_CONFIG.current_profile.seed)
+            random.seed(config.SEED)
             starts = [
                 (
                     RandomStart(
@@ -542,15 +542,13 @@ class PyniniTrainerMixin:
             # Actually runs starts.
             logger.info("Calculating alignments...")
             begin = time.time()
-            with tqdm(
-                total=num_commands * self.num_iterations, disable=GLOBAL_CONFIG.quiet
-            ) as pbar:
+            with tqdm(total=num_commands * self.num_iterations, disable=config.QUIET) as pbar:
                 for start in starts:
                     job_queue.put(start)
                 error_dict = {}
                 return_queue = Queue()
                 procs = []
-                for i in range(GLOBAL_CONFIG.num_jobs):
+                for i in range(config.NUM_JOBS):
                     log_path = self.working_log_directory.joinpath(f"baumwelch.{i}.log")
                     p = RandomStartWorker(
                         i,
@@ -706,7 +704,7 @@ class PyniniTrainer(
 
     def initialize_training(self) -> None:
         """Initialize training G2P model"""
-        random.seed(GLOBAL_CONFIG.current_profile.seed)
+        random.seed(config.SEED)
         self._sym_path = self.phone_symbol_table_path
         self.output_token_type = pynini.SymbolTable.read_text(self.phone_symbol_table_path)
         with self.session() as session:
@@ -732,7 +730,7 @@ class PyniniTrainer(
                 self.g2p_validation_dictionary = {
                     k: v for k, v in word_dict.items() if k in validation_words
                 }
-                if GLOBAL_CONFIG.debug:
+                if config.DEBUG:
                     with mfa_open(
                         self.working_directory.joinpath("validation_set.txt"),
                         "w",
@@ -776,7 +774,7 @@ class PyniniTrainer(
         """
         Clean up temporary files
         """
-        if GLOBAL_CONFIG.debug:
+        if config.DEBUG:
             return
         for name in os.listdir(self.working_directory):
             path = self.working_directory.joinpath(name)
@@ -848,7 +846,7 @@ class PyniniTrainer(
         gen = PyniniValidator(
             g2p_model_path=temp_model_path,
             word_list=list(self.g2p_validation_dictionary.keys()),
-            num_jobs=GLOBAL_CONFIG.num_jobs,
+            num_jobs=config.NUM_JOBS,
             num_pronunciations=self.num_pronunciations,
         )
         gen.evaluate_g2p_model(self.g2p_training_dictionary)

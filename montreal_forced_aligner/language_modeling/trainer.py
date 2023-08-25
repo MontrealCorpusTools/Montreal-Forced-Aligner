@@ -13,8 +13,8 @@ from queue import Empty, Queue
 import sqlalchemy
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import DatabaseMixin, MfaWorker, TopLevelMfaWorker, TrainerMixin
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.text_corpus import TextCorpusMixin
 from montreal_forced_aligner.data import WordType, WorkflowType
 from montreal_forced_aligner.db import Dictionary, Utterance, Word
@@ -421,7 +421,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
             procs.append(p)
             p.start()
             count_paths.append(self.working_directory.joinpath(f"{j.id}.cnts"))
-        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
             while True:
                 try:
                     result = return_queue.get(timeout=1)

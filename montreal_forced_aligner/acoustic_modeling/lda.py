@@ -5,7 +5,6 @@ import logging
 import os
 import shutil
 import typing
-from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import TYPE_CHECKING, List
 
@@ -19,9 +18,9 @@ from kalpy.utils import kalpy_logger, write_kaldi_object
 from sqlalchemy.orm import joinedload
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import MfaArguments, PhoneType
 from montreal_forced_aligner.db import Job, Phone
 from montreal_forced_aligner.utils import parse_logs, run_kaldi_function, thread_logger
@@ -339,7 +338,7 @@ class LdaTrainer(TriphoneTrainer):
             os.remove(worker_lda_path)
         arguments = self.lda_acc_stats_arguments()
         lda = None
-        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
             for result in run_kaldi_function(LdaAccStatsFunction, arguments, pbar.update):
                 if not isinstance(result, str):
                     if lda is None:
@@ -349,11 +348,7 @@ class LdaTrainer(TriphoneTrainer):
 
         log_path = self.working_log_directory.joinpath("lda_est.log")
 
-        with (
-            kalpy_logger("kalpy.lda", log_path) as train_logger,
-            redirect_stdout(train_logger),
-            redirect_stderr(train_logger),
-        ):
+        with kalpy_logger("kalpy.lda", log_path):
             options = LdaEstimateOptions()
             options.dim = self.lda_dimension
             lda_mat, lda_full_mat = lda.estimate(options)
@@ -400,7 +395,7 @@ class LdaTrainer(TriphoneTrainer):
         logger.info("Re-calculating LDA...")
         arguments = self.calc_lda_mllt_arguments()
         mllt_accs = None
-        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
             for result in run_kaldi_function(CalcLdaMlltFunction, arguments, pbar.update):
                 if not isinstance(result, str):
                     if mllt_accs is None:
@@ -412,11 +407,7 @@ class LdaTrainer(TriphoneTrainer):
             self.working_log_directory, f"transform_means.{self.iteration}.log"
         )
 
-        with (
-            kalpy_logger("kalpy.lda", log_path) as train_logger,
-            redirect_stdout(train_logger),
-            redirect_stderr(train_logger),
-        ):
+        with kalpy_logger("kalpy.lda", log_path):
             mat, objf_impr, count = mllt_accs.update()
             transition_model, acoustic_model = read_gmm_model(self.model_path)
             acoustic_model.transform_means(mat)

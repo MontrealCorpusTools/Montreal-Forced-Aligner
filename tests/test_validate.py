@@ -1,14 +1,14 @@
 import itertools
-import os
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.validation.corpus_validator import TrainingValidator
 
 
 def test_training_validator_arpa(
-    multilingual_ipa_tg_corpus_dir, english_dictionary, temp_dir, global_config, db_setup
+    multilingual_ipa_tg_corpus_dir, english_dictionary, temp_dir, db_setup
 ):
-    output_directory = os.path.join(temp_dir, "training_validator")
-    global_config.temporary_directory = output_directory
+    output_directory = temp_dir.joinpath("training_validator")
+    config.TEMPORARY_DIRECTORY = output_directory
     validator = TrainingValidator(
         corpus_directory=multilingual_ipa_tg_corpus_dir,
         dictionary_path=english_dictionary,
@@ -53,13 +53,14 @@ def test_training_validator_arpa(
             validator.positions,
         )
     }
+    validator.cleanup_connections()
 
 
 def test_training_validator_ipa(
-    multilingual_ipa_tg_corpus_dir, english_us_mfa_dictionary, temp_dir, global_config, db_setup
+    multilingual_ipa_tg_corpus_dir, english_us_mfa_dictionary, temp_dir, db_setup
 ):
-    output_directory = os.path.join(temp_dir, "training_validator_ipa")
-    global_config.temporary_directory = output_directory
+    output_directory = temp_dir.joinpath("training_validator_ipa")
+    config.TEMPORARY_DIRECTORY = output_directory
     validator = TrainingValidator(
         corpus_directory=multilingual_ipa_tg_corpus_dir,
         dictionary_path=english_us_mfa_dictionary,
@@ -81,3 +82,4 @@ def test_training_validator_ipa(
         )
     }
     assert all(x in validator.extra_questions_mapping["dental"] for x in dental)
+    validator.cleanup_connections()
