@@ -16,10 +16,10 @@ from kalpy.utils import kalpy_logger
 from sqlalchemy.orm import Session
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import MfaWorker, ModelExporterMixin, TrainerMixin
 from montreal_forced_aligner.alignment import AlignMixin
 from montreal_forced_aligner.alignment.multiprocessing import AccStatsArguments, AccStatsFunction
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
 from montreal_forced_aligner.corpus.features import FeatureConfigMixin
 from montreal_forced_aligner.db import CorpusWorkflow, Utterance
@@ -304,7 +304,7 @@ class AcousticModelTrainingMixin(
         gmm_accs = AccumAmDiagGmm()
         transition_model.InitStats(transition_accs)
         gmm_accs.init(acoustic_model)
-        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
             for result in run_kaldi_function(AccStatsFunction, arguments, pbar.update):
                 if isinstance(result, tuple):
                     job_transition_accs, job_gmm_accs = result
@@ -425,7 +425,7 @@ class AcousticModelTrainingMixin(
                 self.working_directory.joinpath("final.alimdl"),
             )
         self.export_model(self.exported_model_path)
-        if not GLOBAL_CONFIG.debug:
+        if not config.DEBUG:
             for i in range(1, self.num_iterations + 1):
                 model_path = self.working_directory.joinpath(f"{i}.mdl")
                 try:

@@ -1,13 +1,12 @@
 """Command line functions for training language models"""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import rich_click as click
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.utils import common_options, validate_dictionary
-from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.language_modeling.trainer import (
     MfaLmArpaTrainer,
     MfaLmCorpusTrainer,
@@ -52,8 +51,8 @@ def train_lm_cli(context, **kwargs) -> None:
     Train a language model from a corpus or convert an existing ARPA-format language model to an MFA language model.
     """
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
+        config.profile = kwargs.pop("profile")
+    config.update_configuration(kwargs)
 
     config_path = kwargs.get("config_path", None)
     dictionary_path = kwargs.get("dictionary_path", None)

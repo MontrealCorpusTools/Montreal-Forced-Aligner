@@ -11,8 +11,8 @@ from queue import Empty, Queue
 
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import MfaWorker, TemporaryDirectoryMixin
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.base import CorpusMixin
 from montreal_forced_aligner.corpus.classes import FileData
 from montreal_forced_aligner.corpus.helper import find_exts
@@ -49,7 +49,7 @@ class TextCorpusMixin(CorpusMixin):
         error_dict = {}
         finished_adding = threading.Event()
         procs = []
-        for i in range(GLOBAL_CONFIG.num_jobs):
+        for i in range(config.NUM_JOBS):
             p = CorpusProcessWorker(
                 i,
                 job_queue,
@@ -64,7 +64,7 @@ class TextCorpusMixin(CorpusMixin):
         import_data = DatabaseImportData()
         try:
             file_count = 0
-            with tqdm(total=1, disable=GLOBAL_CONFIG.quiet) as pbar, self.session() as session:
+            with tqdm(total=1, disable=config.QUIET) as pbar, self.session() as session:
                 for root, _, files in os.walk(self.corpus_directory, followlinks=True):
                     exts = find_exts(files)
                     relative_path = (
@@ -170,7 +170,7 @@ class TextCorpusMixin(CorpusMixin):
                     sys.exit(0)
             else:
                 logger.debug(
-                    f"Parsed corpus directory with {GLOBAL_CONFIG.num_jobs} jobs in {time.time() - begin_time:.3f} seconds"
+                    f"Parsed corpus directory with {config.NUM_JOBS} jobs in {time.time() - begin_time:.3f} seconds"
                 )
 
     def _load_corpus_from_source(self) -> None:
@@ -305,7 +305,7 @@ class TextCorpus(TextCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
     @property
     def output_directory(self) -> Path:
         """Root temporary directory to store all corpus and dictionary files"""
-        return GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(self.identifier)
+        return config.TEMPORARY_DIRECTORY.joinpath(self.identifier)
 
     @property
     def working_directory(self) -> Path:
@@ -340,7 +340,7 @@ class DictionaryTextCorpus(DictionaryTextCorpusMixin, MfaWorker, TemporaryDirect
     @property
     def output_directory(self) -> Path:
         """Root temporary directory to store all corpus and dictionary files"""
-        return GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(self.identifier)
+        return config.TEMPORARY_DIRECTORY.joinpath(self.identifier)
 
     @property
     def working_directory(self) -> Path:

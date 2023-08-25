@@ -19,8 +19,8 @@ from pynini.lib import rewrite
 from sqlalchemy.orm import scoped_session
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import MetaDict, TopLevelMfaWorker
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import WordType, WorkflowType
 from montreal_forced_aligner.db import (
     Job,
@@ -761,13 +761,12 @@ class PhonetisaurusTrainerMixin:
         """
 
         logger.info("Creating alignment FSTs...")
-        from montreal_forced_aligner.config import GLOBAL_CONFIG
 
         return_queue = Queue()
         stopped = threading.Event()
         finished_adding = threading.Event()
         procs = []
-        for i in range(1, GLOBAL_CONFIG.num_jobs + 1):
+        for i in range(1, config.NUM_JOBS + 1):
             args = AlignmentInitArguments(
                 self.session,
                 self.working_log_directory.joinpath(f"alignment_init.{i}.log"),
@@ -800,7 +799,7 @@ class PhonetisaurusTrainerMixin:
         job_symbols = {}
         symbol_id = 1
         with tqdm(
-            total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet
+            total=self.g2p_num_training_pronunciations, disable=config.QUIET
         ) as pbar, self.session() as session:
             while True:
                 try:
@@ -896,7 +895,7 @@ class PhonetisaurusTrainerMixin:
         return_queue = Queue()
         stopped = threading.Event()
         procs = []
-        for i in range(1, GLOBAL_CONFIG.num_jobs + 1):
+        for i in range(1, config.NUM_JOBS + 1):
             args = MaximizationArguments(
                 self.session,
                 self.working_directory.joinpath(f"{i}.far"),
@@ -907,7 +906,7 @@ class PhonetisaurusTrainerMixin:
             procs[-1].start()
 
         error_list = []
-        with tqdm(total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.g2p_num_training_pronunciations, disable=config.QUIET) as pbar:
             while True:
                 try:
                     result = return_queue.get(timeout=1)
@@ -948,7 +947,7 @@ class PhonetisaurusTrainerMixin:
         stopped = threading.Event()
         error_list = []
         procs = []
-        for i in range(1, GLOBAL_CONFIG.num_jobs + 1):
+        for i in range(1, config.NUM_JOBS + 1):
             args = ExpectationArguments(
                 self.session,
                 self.working_directory.joinpath(f"{i}.far"),
@@ -958,7 +957,7 @@ class PhonetisaurusTrainerMixin:
             procs[-1].start()
         mappings = {}
         zero = pynini.Weight.zero("log")
-        with tqdm(total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.g2p_num_training_pronunciations, disable=config.QUIET) as pbar:
             while True:
                 try:
                     result = return_queue.get(timeout=1)
@@ -1008,7 +1007,7 @@ class PhonetisaurusTrainerMixin:
         error_list = []
         procs = []
         count_paths = []
-        for i in range(1, GLOBAL_CONFIG.num_jobs + 1):
+        for i in range(1, config.NUM_JOBS + 1):
             args = NgramCountArguments(
                 self.working_log_directory.joinpath(f"ngram_count.{i}.log"),
                 self.working_directory.joinpath(f"{i}.far"),
@@ -1019,7 +1018,7 @@ class PhonetisaurusTrainerMixin:
             count_paths.append(args.far_path.with_suffix(".cnts"))
             procs[-1].start()
 
-        with tqdm(total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.g2p_num_training_pronunciations, disable=config.QUIET) as pbar:
             while True:
                 try:
                     result = return_queue.get(timeout=1)
@@ -1286,7 +1285,7 @@ class PhonetisaurusTrainerMixin:
         error_list = []
         procs = []
         count_paths = []
-        for i in range(1, GLOBAL_CONFIG.num_jobs + 1):
+        for i in range(1, config.NUM_JOBS + 1):
             args = AlignmentExportArguments(
                 self.session,
                 self.working_log_directory.joinpath(f"ngram_count.{i}.log"),
@@ -1297,7 +1296,7 @@ class PhonetisaurusTrainerMixin:
             count_paths.append(args.far_path.with_suffix(".cnts"))
             procs[-1].start()
 
-        with tqdm(total=self.g2p_num_training_pronunciations, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.g2p_num_training_pronunciations, disable=config.QUIET) as pbar:
             while True:
                 try:
                     result = return_queue.get(timeout=1)
@@ -1333,7 +1332,7 @@ class PhonetisaurusTrainerMixin:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
         )
-        for j in range(1, GLOBAL_CONFIG.num_jobs + 1):
+        for j in range(1, config.NUM_JOBS + 1):
             text_path = self.working_directory.joinpath(f"{j}.strings")
             with mfa_open(text_path, "r") as f:
                 for line in f:
@@ -1642,7 +1641,7 @@ class PhonetisaurusTrainer(
             session.query(Job).delete()
             session.commit()
 
-            job_objs = [{"id": j} for j in range(1, GLOBAL_CONFIG.num_jobs + 1)]
+            job_objs = [{"id": j} for j in range(1, config.NUM_JOBS + 1)]
             self.g2p_num_training_pronunciations = 0
             self.g2p_num_validation_pronunciations = 0
             self.g2p_num_training_words = 0
@@ -1650,17 +1649,14 @@ class PhonetisaurusTrainer(
             # Below we partition sorted list of words to try to have each process handling different symbol tables
             # so they're not completely overlapping and using more memory
             num_words = session.query(Word.id).count()
-            words_per_job = int(num_words / GLOBAL_CONFIG.num_jobs) + 1
+            words_per_job = int(num_words / config.NUM_JOBS) + 1
             current_job = 1
             words = session.query(Word.id).filter(
                 Word.word_type.in_([WordType.speech, WordType.clitic])
             )
             mappings = []
             for i, (w,) in enumerate(words):
-                if (
-                    i >= (current_job) * words_per_job
-                    and current_job != GLOBAL_CONFIG.num_jobs + 1
-                ):
+                if i >= (current_job) * words_per_job and current_job != config.NUM_JOBS + 1:
                     current_job += 1
                 mappings.append({"word_id": w, "job_id": current_job, "training": 1})
             session.bulk_insert_mappings(Job, job_objs)

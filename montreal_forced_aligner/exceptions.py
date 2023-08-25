@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Collection, Dict, List, Optional
 
 import requests.structures
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.helper import comma_join
 
 if TYPE_CHECKING:
@@ -187,10 +188,10 @@ class DatabaseError(MFAError):
 
     def __init__(self, message=None):
         if message is None:
-            from montreal_forced_aligner.config import GLOBAL_CONFIG
+            from montreal_forced_aligner import config
 
             message = (
-                f"There was an error connecting to the {GLOBAL_CONFIG.current_profile_name} MFA database server. "
+                f"There was an error connecting to the {config.CURRENT_PROFILE_NAME} MFA database server. "
                 "Please ensure the server is initialized (mfa server init) or running (mfa server start)"
             )
         super().__init__(message)
@@ -913,7 +914,6 @@ class KaldiProcessingError(MFAError):
 
     def refresh_message(self) -> None:
         """Regenerate the exceptions message"""
-        from montreal_forced_aligner.config import GLOBAL_CONFIG
 
         self.message_lines = [
             f"There were {len(self.error_logs)} job(s) with errors when running Kaldi binaries.",
@@ -921,7 +921,7 @@ class KaldiProcessingError(MFAError):
         ]
         for error_log in self.error_logs:
             self.message_lines.append(str(error_log))
-            if GLOBAL_CONFIG.current_profile.verbose:
+            if config.VERBOSE:
                 with open(error_log, "r", encoding="utf8") as f:
                     for line in f:
                         self.message_lines.append(line.strip())

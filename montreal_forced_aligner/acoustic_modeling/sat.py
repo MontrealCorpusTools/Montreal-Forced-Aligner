@@ -5,7 +5,6 @@ import logging
 import os
 import shutil
 import time
-from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import List
 
@@ -19,9 +18,9 @@ from kalpy.utils import kalpy_logger
 from sqlalchemy.orm import joinedload, subqueryload
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.db import Job
 from montreal_forced_aligner.exceptions import KaldiProcessingError
@@ -318,7 +317,7 @@ class SatTrainer(TriphoneTrainer):
         gmm_accs = AccumAmDiagGmm()
         transition_model.InitStats(transition_accs)
         gmm_accs.init(acoustic_model)
-        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
             for result in run_kaldi_function(AccStatsTwoFeatsFunction, arguments, pbar.update):
                 if isinstance(result, tuple):
                     job_transition_accs, job_gmm_accs = result
@@ -328,11 +327,7 @@ class SatTrainer(TriphoneTrainer):
 
         log_path = self.working_log_directory.joinpath("align_model_est.log")
 
-        with (
-            kalpy_logger("kalpy.train", log_path) as train_logger,
-            redirect_stdout(train_logger),
-            redirect_stderr(train_logger),
-        ):
+        with kalpy_logger("kalpy.train", log_path):
             objf_impr, count = transition_model.mle_update(transition_accs)
             logger.debug(
                 f"Transition model update: Overall {objf_impr/count} "

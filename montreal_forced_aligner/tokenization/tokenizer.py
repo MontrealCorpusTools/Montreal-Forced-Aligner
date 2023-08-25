@@ -21,9 +21,8 @@ from pywrapfst import SymbolTable
 from sqlalchemy.orm import joinedload, selectinload
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import KaldiFunction, TopLevelMfaWorker
-from montreal_forced_aligner.alignment.multiprocessing import construct_output_path
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
 from montreal_forced_aligner.data import MfaArguments, TextgridFormats
 from montreal_forced_aligner.db import File, Utterance, bulk_update
@@ -32,6 +31,7 @@ from montreal_forced_aligner.exceptions import PyniniGenerationError
 from montreal_forced_aligner.g2p.generator import PhonetisaurusRewriter, Rewriter, RewriterWorker
 from montreal_forced_aligner.helper import edit_distance, mfa_open
 from montreal_forced_aligner.models import TokenizerModel
+from montreal_forced_aligner.textgrid import construct_output_path
 from montreal_forced_aligner.utils import run_kaldi_function
 
 if typing.TYPE_CHECKING:
@@ -322,7 +322,7 @@ class CorpusTokenizer(AcousticCorpusMixin, TopLevelMfaWorker, DictionaryMixin):
             self.setup()
         logger.info("Tokenizing utterances...")
         args = self.tokenize_arguments()
-        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
             update_mapping = []
             for utt_id, tokenized in run_kaldi_function(TokenizerFunction, args, pbar.update):
                 update_mapping.append({"id": utt_id, "text": tokenized})
@@ -387,8 +387,8 @@ class TokenizerValidator(CorpusTokenizer):
             self.setup()
         logger.info("Tokenizing utterances...")
         to_return = {}
-        if num_utterances < 30 or GLOBAL_CONFIG.num_jobs == 1:
-            with tqdm(total=num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        if num_utterances < 30 or config.NUM_JOBS == 1:
+            with tqdm(total=num_utterances, disable=config.QUIET) as pbar:
                 for utterance in self.utterances_to_tokenize:
                     pbar.update(1)
                     result = self.rewriter(utterance)
@@ -401,7 +401,7 @@ class TokenizerValidator(CorpusTokenizer):
             error_dict = {}
             return_queue = Queue()
             procs = []
-            for _ in range(GLOBAL_CONFIG.num_jobs):
+            for _ in range(config.NUM_JOBS):
                 p = RewriterWorker(
                     job_queue,
                     return_queue,
@@ -410,7 +410,7 @@ class TokenizerValidator(CorpusTokenizer):
                 )
                 procs.append(p)
                 p.start()
-            with tqdm(total=num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=num_utterances, disable=config.QUIET) as pbar:
                 while True:
                     try:
                         utterance, result = return_queue.get(timeout=1)
@@ -514,7 +514,7 @@ class TokenizerValidator(CorpusTokenizer):
                 incorrect += 1
                 indices.append(word)
                 to_comp.append((gold, hyp))  # Multiple hypotheses to compare
-        with ThreadPool(GLOBAL_CONFIG.num_jobs) as pool:
+        with ThreadPool(config.NUM_JOBS) as pool:
             gen = pool.starmap(edit_distance, to_comp)
             for i, (edits) in enumerate(gen):
                 word = indices[i]

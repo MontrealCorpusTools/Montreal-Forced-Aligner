@@ -29,7 +29,7 @@ def test_create_segments(
         basic_segment_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -64,7 +64,7 @@ def test_create_segments_speechbrain(
         basic_segment_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)

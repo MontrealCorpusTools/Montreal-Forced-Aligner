@@ -6,13 +6,13 @@ from pathlib import Path
 
 import rich_click as click
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.alignment import AdaptingAligner
 from montreal_forced_aligner.command_line.utils import (
     common_options,
     validate_acoustic_model,
     validate_dictionary,
 )
-from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 
 __all__ = ["adapt_model_cli"]
 
@@ -80,8 +80,8 @@ def adapt_model_cli(context, **kwargs) -> None:
     Adapt an acoustic model to a new corpus.
     """
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
+        os.environ[config.MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
+    config.update_configuration(kwargs)
     config_path = kwargs.get("config_path", None)
     output_directory = kwargs.get("output_directory", None)
     output_model_path = kwargs.get("output_model_path", None)

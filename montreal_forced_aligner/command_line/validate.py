@@ -1,17 +1,16 @@
 """Command line functions for validating corpora"""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import rich_click as click
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.utils import (
     common_options,
     validate_acoustic_model,
     validate_dictionary,
 )
-from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.validation.corpus_validator import (
     PretrainedValidator,
     TrainingValidator,
@@ -89,8 +88,8 @@ def validate_corpus_cli(context, **kwargs) -> None:
     Validate a corpus for use in MFA.
     """
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
+        config.profile = kwargs.pop("profile")
+    config.update_configuration(kwargs)
 
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"]
@@ -154,9 +153,9 @@ def validate_dictionary_cli(*args, **kwargs) -> None:
     Validate a dictionary using a G2P model to detect unlikely pronunciations.
     """
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-        GLOBAL_CONFIG.current_profile.update(kwargs)
-
+        config.profile = kwargs.pop("profile")
+        config.update_configuration(kwargs)
+    config.CLEAN = True
     config_path = kwargs.get("config_path", None)
     g2p_model_path = kwargs["g2p_model_path"]
     dictionary_path = kwargs["dictionary_path"]

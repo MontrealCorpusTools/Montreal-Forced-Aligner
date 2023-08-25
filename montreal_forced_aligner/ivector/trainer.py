@@ -16,9 +16,9 @@ from _kalpy.matrix import FloatMatrix, MatrixResizeType
 from kalpy.utils import kalpy_logger, read_kaldi_object, write_kaldi_object
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import MetaDict, ModelExporterMixin, TopLevelMfaWorker
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.features import IvectorConfigMixin
 from montreal_forced_aligner.corpus.ivector_corpus import IvectorCorpusMixin
 from montreal_forced_aligner.data import WorkflowType
@@ -242,7 +242,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
         begin = time.time()
         logger.info("Selecting gaussians...")
         arguments = self.gmm_gselect_arguments()
-        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
             for _ in run_kaldi_function(GmmGselectFunction, arguments, pbar.update):
                 pass
 
@@ -260,7 +260,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
             feats = FloatMatrix()
             num_read = 0
             dim = 0
-            random.seed(GLOBAL_CONFIG.current_profile.seed)
+            random.seed(config.SEED)
             for _, current_feats in feature_archive:
                 for t in range(current_feats.NumRows()):
 
@@ -297,7 +297,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
             cur_num_gauss = num_gauss_init
             gauss_inc = int((self.num_gaussians - num_gauss_init) / (self.num_iterations_init / 2))
             for i in range(self.num_iterations_init):
-                gmm.train_one_iter(feats, options, i, GLOBAL_CONFIG.current_profile.num_jobs)
+                gmm.train_one_iter(feats, options, i, config.NUM_JOBS)
                 next_num_gauss = min(self.num_gaussians, cur_num_gauss, gauss_inc)
                 if next_num_gauss > gmm.NumGauss():
                     gmm.Split(next_num_gauss, 0.1)
@@ -329,7 +329,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
         gmm_accs = AccumDiagGmm()
         model: DiagGmm = read_kaldi_object(DiagGmm, self.model_path)
         gmm_accs.Resize(model, StringToGmmFlags("mvw"))
-        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
             for result in run_kaldi_function(AccGlobalStatsFunction, arguments, pbar.update):
                 if isinstance(result, AccumDiagGmm):
                     gmm_accs.Add(1.0, result)
@@ -508,7 +508,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         logger.info("Extracting posteriors...")
         arguments = self.gauss_to_post_arguments()
 
-        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
             for _ in run_kaldi_function(GaussToPostFunction, arguments, pbar.update):
                 pass
 
@@ -585,7 +585,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         model: ivector.IvectorExtractor = read_kaldi_object(ivector.IvectorExtractor, self.ie_path)
         options = ivector.IvectorExtractorStatsOptions()
         ivector_stats = ivector.IvectorExtractorStats(model, options)
-        with tqdm(total=self.worker.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.worker.num_utterances, disable=config.QUIET) as pbar:
             for result in run_kaldi_function(AccIvectorStatsFunction, arguments, pbar.update):
                 if isinstance(result, ivector.IvectorExtractorStats):
                     ivector_stats.Add(result)
@@ -597,7 +597,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         ivector_stats.update(
             model,
             gaussian_min_count=self.gaussian_min_count,
-            num_threads=GLOBAL_CONFIG.current_profile.num_jobs,
+            num_threads=config.NUM_JOBS,
         )
         ivector_stats.IvectorVarianceDiagnostic(model)
         write_kaldi_object(model, self.next_ie_path)
@@ -707,8 +707,8 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
                 workflows: typing.Dict[str, CorpusWorkflow] = {
                     x.name: x for x in session.query(CorpusWorkflow)
                 }
-                for i, (identifier, config) in enumerate(self.training_configs.items()):
-                    if isinstance(config, str):
+                for i, (identifier, c) in enumerate(self.training_configs.items()):
+                    if isinstance(c, str):
                         continue
                     if identifier not in workflows:
                         self.create_new_current_workflow(

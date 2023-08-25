@@ -1,8 +1,6 @@
-import os
-
 import rich_click as click
 
-from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
+from montreal_forced_aligner import config
 
 __all__ = ["configure_cli"]
 
@@ -24,7 +22,7 @@ __all__ = ["configure_cli"]
     "--temporary_directory",
     "-t",
     help=f"Set the default temporary directory."
-    f"Currently defaults to {GLOBAL_CONFIG.temporary_directory}",
+    f"Currently defaults to {config.TEMPORARY_DIRECTORY}",
     type=str,
     default=None,
 )
@@ -32,7 +30,7 @@ __all__ = ["configure_cli"]
     "--num_jobs",
     "-j",
     help=f"Set the number of processes to use by default. "
-    f"Currently defaults to {GLOBAL_CONFIG.num_jobs}",
+    f"Currently defaults to {config.NUM_JOBS}",
     type=int,
     default=None,
 )
@@ -40,35 +38,33 @@ __all__ = ["configure_cli"]
     "--always_clean/--never_clean",
     "clean",
     help="Turn on/off clean mode where MFA will clean temporary files before each run. "
-    f"Currently defaults to {GLOBAL_CONFIG.current_profile.clean}.",
+    f"Currently defaults to {config.CLEAN}.",
     default=None,
 )
 @click.option(
     "--always_verbose/--never_verbose",
     "verbose",
     help="Turn on/off verbose mode where MFA will print more output. "
-    f"Currently defaults to {GLOBAL_CONFIG.current_profile.verbose}.",
+    f"Currently defaults to {config.VERBOSE}.",
     default=None,
 )
 @click.option(
     "--always_quiet/--never_quiet",
     "quiet",
     help="Turn on/off quiet mode where MFA will not print any output. "
-    f"Currently defaults to {GLOBAL_CONFIG.current_profile.quiet}.",
+    f"Currently defaults to {config.QUIET}.",
     default=None,
 )
 @click.option(
     "--always_debug/--never_debug",
     "debug",
-    help="Turn on/off extra debugging functionality. "
-    f"Currently defaults to {GLOBAL_CONFIG.current_profile.debug}.",
+    help="Turn on/off extra debugging functionality. " f"Currently defaults to {config.DEBUG}.",
     default=None,
 )
 @click.option(
     "--always_overwrite/--never_overwrite",
     "overwrite",
-    help="Turn on/off overwriting export files. "
-    f"Currently defaults to {GLOBAL_CONFIG.current_profile.overwrite}.",
+    help="Turn on/off overwriting export files. " f"Currently defaults to {config.OVERWRITE}.",
     default=None,
 )
 @click.option(
@@ -76,7 +72,7 @@ __all__ = ["configure_cli"]
     "use_mp",
     help="Turn on/off multiprocessing. "
     "Multiprocessing is recommended will allow for faster executions. "
-    f"Currently defaults to {GLOBAL_CONFIG.current_profile.use_mp}.",
+    f"Currently defaults to {config.USE_MP}.",
     default=None,
 )
 @click.option(
@@ -84,7 +80,7 @@ __all__ = ["configure_cli"]
     "cleanup_textgrids",
     help="Turn on/off post-processing of TextGrids that cleans up "
     "silences and recombines compound words and clitics. "
-    f"Currently defaults to {GLOBAL_CONFIG.current_profile.cleanup_textgrids}.",
+    f"Currently defaults to {config.CLEANUP_TEXTGRIDS}.",
     default=None,
 )
 @click.option(
@@ -92,21 +88,21 @@ __all__ = ["configure_cli"]
     "auto_server",
     help="If auto_server is enabled, MFA will start a server at the beginning of a command and close it at the end. "
     "If turned off, use the `mfa server` commands to initialize, start, and stop a profile's server. "
-    f"Currently defaults to {getattr(GLOBAL_CONFIG['global'], 'auto_server', True)}.",
+    f"Currently defaults to {config.AUTO_SERVER}.",
     default=None,
 )
 @click.option(
     "--enable_use_postgres/--disable_use_postgres",
     "use_postgres",
     help="If use_postgres is enabled, MFA will use PostgreSQL as the database backend instead of sqlite. "
-    f"Currently defaults to {getattr(GLOBAL_CONFIG['global'], 'use_postgres', False)}.",
+    f"Currently defaults to {config.USE_POSTGRES}.",
     default=None,
 )
 @click.option(
     "--blas_num_threads",
     help="Number of threads to use for BLAS libraries, 1 is recommended "
     "due to how much MFA relies on multiprocessing. "
-    f"Currently defaults to {GLOBAL_CONFIG.blas_num_threads}.",
+    f"Currently defaults to {config.BLAS_NUM_THREADS}.",
     type=int,
     default=None,
 )
@@ -135,6 +131,6 @@ def configure_cli(**kwargs) -> None:
 
     """
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
-    GLOBAL_CONFIG.save()
+        config.GLOBAL_CONFIG.current_profile_name = kwargs.pop("profile")
+    config.GLOBAL_CONFIG.current_profile.update(kwargs)
+    config.GLOBAL_CONFIG.save()

@@ -1,19 +1,18 @@
 """Command line functions for aligning corpora"""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import rich_click as click
 import yaml
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.alignment import PretrainedAligner
 from montreal_forced_aligner.command_line.utils import (
     common_options,
     validate_acoustic_model,
     validate_dictionary,
 )
-from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.data import WorkflowType
 from montreal_forced_aligner.helper import mfa_open
 
@@ -91,8 +90,8 @@ def align_corpus_cli(context, **kwargs) -> None:
     Align a corpus with a pronunciation dictionary and a pretrained acoustic model.
     """
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
+        config.profile = kwargs.pop("profile")
+    config.update_configuration(kwargs)
     config_path = kwargs.get("config_path", None)
     reference_directory = kwargs.get("reference_directory", None)
     custom_mapping_path = kwargs.get("custom_mapping_path", None)

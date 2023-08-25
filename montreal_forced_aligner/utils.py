@@ -23,8 +23,8 @@ from typing import Any, Dict, List
 import sqlalchemy
 from sqlalchemy.orm import Session
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import KaldiFunction
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import CtmInterval, DatasetType
 from montreal_forced_aligner.db import Corpus, Dictionary
 from montreal_forced_aligner.exceptions import (
@@ -81,7 +81,7 @@ def inspect_database(name: str) -> DatasetType:
         Dataset type of the database
     """
 
-    string = f"postgresql+psycopg2://@/{name}?host={GLOBAL_CONFIG.database_socket}"
+    string = f"postgresql+psycopg2://@/{name}?host={config.database_socket()}"
     try:
         engine = sqlalchemy.create_engine(
             string,
@@ -531,9 +531,9 @@ class KaldiProcessWorker(threading.Thread):
         Run through the arguments in the queue apply the function to them
         """
 
-        os.environ["OMP_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
-        os.environ["OPENBLAS_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
-        os.environ["MKL_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
+        os.environ["OMP_NUM_THREADS"] = f"{config.BLAS_NUM_THREADS}"
+        os.environ["OPENBLAS_NUM_THREADS"] = f"{config.BLAS_NUM_THREADS}"
+        os.environ["MKL_NUM_THREADS"] = f"{config.BLAS_NUM_THREADS}"
         try:
             self.function.run()
         except Exception as e:
@@ -598,7 +598,7 @@ def run_kaldi_function(
         stopped = threading.Event()
     error_dict = {}
     return_queue = Queue(10000)
-    if GLOBAL_CONFIG.use_mp:
+    if config.USE_MP:
         procs = []
         for args in arguments:
             f = function(args)

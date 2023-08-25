@@ -9,7 +9,8 @@ import pytest
 import sqlalchemy.orm
 import yaml
 
-from montreal_forced_aligner.config import GLOBAL_CONFIG, get_temporary_directory
+from montreal_forced_aligner import config
+from montreal_forced_aligner.config import get_temporary_directory
 from montreal_forced_aligner.helper import mfa_open
 
 
@@ -75,28 +76,25 @@ def generated_dir(test_dir):
 
 @pytest.fixture(scope="session")
 def global_config():
-    GLOBAL_CONFIG.load()
-    GLOBAL_CONFIG.current_profile_name = "test"
-    GLOBAL_CONFIG.current_profile.clean = True
-    GLOBAL_CONFIG.current_profile.use_postgres = True
-    GLOBAL_CONFIG.current_profile.debug = True
-    GLOBAL_CONFIG.current_profile.verbose = True
-    GLOBAL_CONFIG.current_profile.num_jobs = 2
-    GLOBAL_CONFIG.current_profile.use_mp = False
-    GLOBAL_CONFIG.current_profile.database_limited_mode = True
-    GLOBAL_CONFIG.current_profile.auto_server = False
-    GLOBAL_CONFIG.current_profile.temporary_directory = get_temporary_directory()
-
-    yield GLOBAL_CONFIG
+    config.CURRENT_PROFILE_NAME = "test"
+    config.CLEAN = True
+    config.USE_POSTGRES = False
+    config.DEBUG = True
+    config.VERBOSE = True
+    config.NUM_JOBS = 2
+    config.USE_MP = False
+    config.DATABASE_LIMITED_MODE = True
+    config.AUTO_SERVER = False
+    config.TEMPORARY_DIRECTORY = get_temporary_directory()
 
 
 @pytest.fixture(scope="session")
 def temp_dir(global_config):
-    yield global_config.current_profile.temporary_directory
+    yield config.TEMPORARY_DIRECTORY
 
 
 @pytest.fixture(scope="function")
-def db_setup(temp_dir, global_config, request):
+def db_setup(temp_dir, request):
     sqlalchemy.orm.close_all_sessions()
     return True
 

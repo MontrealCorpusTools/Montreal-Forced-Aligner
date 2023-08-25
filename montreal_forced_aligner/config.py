@@ -135,6 +135,32 @@ def update_command_history(command_data: Dict[str, Any]) -> None:
         yaml.dump(history, f, Dumper=yaml.Dumper, allow_unicode=True)
 
 
+CLEAN = False
+VERBOSE = False
+DEBUG = False
+QUIET = False
+OVERWRITE = False
+CLEANUP_TEXTGRIDS = True
+USE_POSTGRES = False
+SEED = 1234
+NUM_JOBS = 3
+USE_MP = False
+SINGLE_SPEAKER = False
+DATABASE_LIMITED_MODE = False
+AUTO_SERVER = True
+TEMPORARY_DIRECTORY = get_temporary_directory()
+GITHUB_TOKEN = None
+BLAS_NUM_THREADS = 1
+BYTES_LIMIT = 100e6
+CURRENT_PROFILE_NAME = os.getenv(MFA_PROFILE_VARIABLE, "global")
+
+
+def database_socket() -> str:
+    p = get_temporary_directory().joinpath(f"pg_mfa_{CURRENT_PROFILE_NAME}_socket")
+    p.mkdir(parents=True, exist_ok=True)
+    return p.as_posix()
+
+
 @dataclass(slots=True)
 class MfaProfile:
     """
@@ -189,7 +215,7 @@ class MfaConfiguration:
     """
 
     def __init__(self):
-        self.current_profile_name = os.getenv(MFA_PROFILE_VARIABLE, "global")
+        self.current_profile_name = CURRENT_PROFILE_NAME
         self.config_path = generate_config_path()
         self.global_profile = MfaProfile()
         self.profiles: Dict[str, MfaProfile] = {}
@@ -210,21 +236,14 @@ class MfaConfiguration:
             return getattr(self.current_profile, item)
 
     @property
-    def root_temporary_directory(self):
-        return pathlib.Path(
-            os.environ.get(MFA_ROOT_ENVIRONMENT_VARIABLE, "~/Documents/MFA")
-        ).expanduser()
-
-    @property
     def database_socket(self) -> str:
-        p = self.root_temporary_directory.joinpath(f"pg_mfa_{self.current_profile_name}_socket")
+        p = get_temporary_directory().joinpath(f"pg_mfa_{self.current_profile_name}_socket")
         p.mkdir(parents=True, exist_ok=True)
         return p.as_posix()
 
     @property
     def current_profile(self) -> MfaProfile:
         """Name of the current :class:`~montreal_forced_aligner.config.MfaProfile`"""
-        self.current_profile_name = os.getenv(MFA_PROFILE_VARIABLE, "global")
         if self.current_profile_name not in self.profiles:
             self.profiles[self.current_profile_name] = MfaProfile()
             self.profiles[self.current_profile_name].update(dataclassy.asdict(self.global_profile))
@@ -256,9 +275,35 @@ class MfaConfiguration:
             self.profiles[self.current_profile_name].update(data)
 
 
+def load_configuration():
+    config_path = generate_config_path()
+    if not config_path.exists():
+        return
+    with mfa_open(config_path, "r") as f:
+        data = yaml.load(f, Loader=yaml.Loader)
+    profiles = data.pop("profiles", {})
+    if CURRENT_PROFILE_NAME == "global":
+        update_configuration(data)
+    else:
+        for name, p in profiles.items():
+            if name == CURRENT_PROFILE_NAME:
+                update_configuration(p)
+
+
+def update_configuration(data):
+    for k, v in data.items():
+        k = k.upper()
+        if k in globals():
+            if k == "TEMPORARY_DIRECTORY":
+                v = pathlib.Path(v)
+            if v is None:
+                continue
+            globals()[k] = v
+
+
 GLOBAL_CONFIG = MfaConfiguration()
 MEMORY = joblib.Memory(
     location=os.path.join(get_temporary_directory(), "joblib_cache"),
-    verbose=4 if GLOBAL_CONFIG.current_profile.verbose else 0,
-    bytes_limit=GLOBAL_CONFIG.current_profile.bytes_limit,
+    verbose=4 if VERBOSE else 0,
+    bytes_limit=BYTES_LIMIT,
 )

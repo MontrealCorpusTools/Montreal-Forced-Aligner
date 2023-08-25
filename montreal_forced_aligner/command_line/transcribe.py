@@ -1,18 +1,17 @@
 """Command line functions for transcribing corpora"""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import rich_click as click
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.utils import (
     common_options,
     validate_acoustic_model,
     validate_dictionary,
     validate_language_model,
 )
-from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.transcription import Transcriber
 
 __all__ = ["transcribe_corpus_cli"]
@@ -102,8 +101,8 @@ def transcribe_corpus_cli(context, **kwargs) -> None:
     Transcribe utterances using an acoustic model, language model, and pronunciation dictionary.
     """
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
+        config.profile = kwargs.pop("profile")
+    config.update_configuration(kwargs)
 
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"]

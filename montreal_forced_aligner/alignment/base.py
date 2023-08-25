@@ -27,6 +27,7 @@ from kalpy.gmm.utils import read_transition_model
 from sqlalchemy.orm import joinedload, subqueryload
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import FileExporterMixin
 from montreal_forced_aligner.alignment.mixins import AlignMixin
 from montreal_forced_aligner.alignment.multiprocessing import (
@@ -41,7 +42,6 @@ from montreal_forced_aligner.alignment.multiprocessing import (
     GeneratePronunciationsArguments,
     GeneratePronunciationsFunction,
 )
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
 from montreal_forced_aligner.data import (
     CtmInterval,
@@ -130,7 +130,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             "beam": self.beam,
             "max_active": self.max_active,
             "lattice_beam": self.lattice_beam,
-            "acoustic_scale": self.acoustic_scale
+            "acoustic_scale": self.acoustic_scale,
         }
 
     @property
@@ -157,7 +157,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
     def analyze_alignments(self):
 
-        if not GLOBAL_CONFIG.current_profile.use_postgres:
+        if not config.USE_POSTGRES:
             logger.warning("Alignment analysis not available without using postgresql")
             return
         logger.info("Analyzing alignment quality...")
@@ -178,7 +178,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
             arguments = self.analyze_alignments_arguments()
             update_mappings = []
-            with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
                 for utt_id, speech_log_likelihood, duration_deviation in run_kaldi_function(
                     AnalyzeAlignmentsFunction, arguments, pbar.update
                 ):
@@ -286,7 +286,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 getattr(self, "session", ""),
                 self.working_log_directory.joinpath(f"export_textgrids.{j.id}.log"),
                 self.export_frame_shift,
-                GLOBAL_CONFIG.cleanup_textgrids,
+                config.CLEANUP_TEXTGRIDS,
                 self.clitic_marker,
                 self.export_output_directory,
                 output_format,
@@ -418,7 +418,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         }
         logger.info("Generating pronunciations...")
         arguments = self.generate_pronunciations_arguments()
-        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
             for result in run_kaldi_function(
                 GeneratePronunciationsFunction, arguments, pbar.update
             ):
@@ -737,7 +737,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             Arguments for extraction
         """
         with self.session() as session:
-            if GLOBAL_CONFIG.current_profile.use_postgres:
+            if config.USE_POSTGRES:
                 session.execute(sqlalchemy.text("ALTER TABLE word_interval DISABLE TRIGGER all"))
                 session.execute(sqlalchemy.text("ALTER TABLE phone_interval DISABLE TRIGGER all"))
                 session.commit()
@@ -761,7 +761,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         word_index = self.get_next_primary_key(Word)
 
         logger.info(f"Collecting phone and word alignments from {workflow.name} lattices...")
-        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
 
             arguments = self.alignment_extraction_arguments()
             has_words = False
@@ -775,7 +775,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             for p_id, mapping_id in ds:
                 phone_to_phone_id[mapping_id] = p_id
             new_words = []
-            if GLOBAL_CONFIG.current_profile.use_postgres:
+            if config.USE_POSTGRES:
                 conn = self.db_engine.raw_connection()
                 cursor = conn.cursor()
                 word_buf = io.StringIO()
@@ -810,7 +810,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     "workflow_id",
                 ],
             )
-            if not GLOBAL_CONFIG.current_profile.use_postgres:
+            if not config.USE_POSTGRES:
                 word_writer.writeheader()
                 phone_writer.writeheader()
             for (
@@ -888,7 +888,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 word_writer.writerows(new_word_interval_mappings)
                 if new_word_interval_mappings:
                     has_words = True
-                if GLOBAL_CONFIG.current_profile.use_postgres and phone_interval_count > 1000000:
+                if config.USE_POSTGRES and phone_interval_count > 1000000:
                     if has_words:
                         word_buf.seek(0)
                         cursor.copy_from(word_buf, WordInterval.__tablename__, sep=",", null="")
@@ -899,7 +899,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     cursor.copy_from(phone_buf, PhoneInterval.__tablename__, sep=",", null="")
                     phone_buf.truncate(0)
                     phone_buf.seek(0)
-            if GLOBAL_CONFIG.current_profile.use_postgres:
+            if config.USE_POSTGRES:
                 if word_buf.tell() != 0:
                     word_buf.seek(0)
                     cursor.copy_from(word_buf, WordInterval.__tablename__, sep=",", null="")
@@ -941,7 +941,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 session.execute(sqlalchemy.insert(Word).values(new_words))
                 session.commit()
 
-            if not GLOBAL_CONFIG.current_profile.use_postgres:
+            if not config.USE_POSTGRES:
                 session.execute(
                     sqlalchemy.text("INSERT INTO word_interval SELECT * from word_interval_temp")
                 )
@@ -980,7 +980,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 {CorpusWorkflow.alignments_collected: True}
             )
             session.commit()
-            if GLOBAL_CONFIG.current_profile.use_postgres:
+            if config.USE_POSTGRES:
                 session.execute(sqlalchemy.text("ALTER TABLE word_interval ENABLE TRIGGER all"))
                 session.execute(sqlalchemy.text("ALTER TABLE phone_interval ENABLE TRIGGER all"))
                 session.commit()
@@ -992,7 +992,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         logger.info("Fine tuning alignments...")
         begin = time.time()
         with self.session() as session, tqdm(
-            total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
+            total=self.num_utterances, disable=config.QUIET
         ) as pbar:
             arguments = self.fine_tune_arguments()
             update_mappings = []
@@ -1090,7 +1090,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         begin = time.time()
         error_dict = {}
 
-        with tqdm(total=self.num_files, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_files, disable=config.QUIET) as pbar:
             with self.session() as session:
                 files = (
                     session.query(
@@ -1103,7 +1103,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     .join(File.sound_file)
                     .join(File.text_file)
                 )
-                if GLOBAL_CONFIG.use_mp and GLOBAL_CONFIG.num_jobs > 1:
+                if config.USE_MP and config.NUM_JOBS > 1:
                     stopped = threading.Event()
 
                     finished_adding = threading.Event()
@@ -1170,7 +1170,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                             session,
                             file_id,
                             workflow,
-                            GLOBAL_CONFIG.cleanup_textgrids,
+                            config.CLEANUP_TEXTGRIDS,
                             self.clitic_marker,
                             include_original_text,
                         )
@@ -1190,7 +1190,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 f"for more details"
             )
             output_textgrid_writing_errors(self.export_output_directory, error_dict)
-            if GLOBAL_CONFIG.current_profile.debug:
+            if config.DEBUG:
                 for k, v in error_dict.items():
                     print(k)
                     raise v
@@ -1255,7 +1255,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         comparison_source: :class:`~montreal_forced_aligner.data.WorkflowType`
             Workflow to use as the reference intervals, defaults to :attr:`~montreal_forced_aligner.data.WorkflowType.reference`
         """
-        from montreal_forced_aligner.config import GLOBAL_CONFIG
 
         begin = time.time()
         if output_directory:
@@ -1361,7 +1360,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     continue
                 indices.append(u)
                 to_comp.append((reference_phones, comparison_phones))
-            with ThreadPool(GLOBAL_CONFIG.num_jobs) as pool:
+            with ThreadPool(config.NUM_JOBS) as pool:
                 gen = pool.starmap(score_func, to_comp)
                 for i, (score, phone_error_rate, errors) in enumerate(gen):
                     if score is None:

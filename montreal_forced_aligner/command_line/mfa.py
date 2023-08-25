@@ -9,6 +9,7 @@ from datetime import datetime
 
 import rich_click as click
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.adapt import adapt_model_cli
 from montreal_forced_aligner.command_line.align import align_corpus_cli
 from montreal_forced_aligner.command_line.align_one import align_one_cli
@@ -28,12 +29,10 @@ from montreal_forced_aligner.command_line.train_ivector_extractor import train_i
 from montreal_forced_aligner.command_line.train_lm import train_lm_cli
 from montreal_forced_aligner.command_line.train_tokenizer import train_tokenizer_cli
 from montreal_forced_aligner.command_line.transcribe import transcribe_corpus_cli
-from montreal_forced_aligner.command_line.utils import cleanup_logger
 from montreal_forced_aligner.command_line.validate import (
     validate_corpus_cli,
     validate_dictionary_cli,
 )
-from montreal_forced_aligner.config import GLOBAL_CONFIG, update_command_history
 from montreal_forced_aligner.utils import check_third_party
 
 BEGIN = time.time()
@@ -92,7 +91,7 @@ class ExitHooks(object):
         else:
             history_data["exception"] = ""
             history_data["exit_code"] = 0
-        update_command_history(history_data)
+        config.update_command_history(history_data)
         if self.exception:
             raise self.exception
 
@@ -106,15 +105,16 @@ def mfa_cli(ctx: click.Context) -> None:
     """
     Main function for the MFA command line interface
     """
-    GLOBAL_CONFIG.load()
     from montreal_forced_aligner.command_line.utils import check_server, start_server, stop_server
-    from montreal_forced_aligner.helper import configure_logger
 
+    config.load_configuration()
     auto_server = False
     run_check = True
     if ctx.invoked_subcommand == "anchor":
-
-        GLOBAL_CONFIG.current_profile.clean = False
+        config.CLEAN = False
+        config.USE_POSTGRES = True
+        config.CLEAN = False
+        config.USE_POSTGRES = True
     if "--help" in sys.argv or ctx.invoked_subcommand in [
         "configure",
         "version",
@@ -126,8 +126,8 @@ def mfa_cli(ctx: click.Context) -> None:
         run_check = False
     elif ctx.invoked_subcommand in ["model", "models"]:
         if "add_words" in sys.argv or "inspect" in sys.argv:
-            auto_server = getattr(GLOBAL_CONFIG.current_profile, "auto_server", True)
-            run_check = True
+            config.CLEAN = True
+            config.USE_POSTGRES = False
         else:
             run_check = False
     elif ctx.invoked_subcommand == "g2p":
@@ -135,8 +135,8 @@ def mfa_cli(ctx: click.Context) -> None:
             run_check = False
             auto_server = False
     else:
-        auto_server = getattr(GLOBAL_CONFIG.current_profile, "auto_server", True)
-    if "--no_use_postgres" in sys.argv or not GLOBAL_CONFIG.current_profile.use_postgres:
+        auto_server = config.AUTO_SERVER
+    if "--no_use_postgres" in sys.argv or not config.USE_POSTGRES:
         run_check = False
         auto_server = False
     if auto_server:
@@ -144,13 +144,11 @@ def mfa_cli(ctx: click.Context) -> None:
     elif run_check:
         check_server()
     warnings.simplefilter("ignore")
-    configure_logger("mfa")
     check_third_party()
     if ctx.invoked_subcommand != "anchor":
         hooks = ExitHooks()
         hooks.hook()
         atexit.register(hooks.history_save_handler)
-        atexit.register(cleanup_logger)
         if auto_server:
             atexit.register(stop_server)
 

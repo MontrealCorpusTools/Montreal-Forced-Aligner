@@ -1,19 +1,18 @@
 """Command line functions for generating pronunciations using G2P models"""
 from __future__ import annotations
 
-import os
 import pathlib
 import sys
 from pathlib import Path
 
 import rich_click as click
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.utils import (
     common_options,
     validate_dictionary,
     validate_g2p_model,
 )
-from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.g2p.generator import (
     PyniniConsoleGenerator,
     PyniniCorpusGenerator,
@@ -74,8 +73,8 @@ def g2p_cli(context, **kwargs) -> None:
     Generate a pronunciation dictionary using a G2P model.
     """
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
+        config.profile = kwargs.pop("profile")
+    config.update_configuration(kwargs)
 
     config_path = kwargs.get("config_path", None)
     input_path = kwargs["input_path"]

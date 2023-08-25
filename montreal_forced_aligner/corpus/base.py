@@ -13,8 +13,8 @@ import sqlalchemy.engine
 from sqlalchemy.orm import Session, joinedload, selectinload, subqueryload
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import DatabaseMixin, MfaWorker
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.classes import FileData, UtteranceData
 from montreal_forced_aligner.corpus.multiprocessing import (
     ExportKaldiFilesArguments,
@@ -275,9 +275,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
     @property
     def split_directory(self) -> Path:
         """Directory used to store information split by job"""
-        return self.corpus_output_directory.joinpath(
-            f"split{GLOBAL_CONFIG.current_profile.num_jobs}"
-        )
+        return self.corpus_output_directory.joinpath(f"split{config.NUM_JOBS}")
 
     def _write_spk2utt(self) -> None:
         """Write spk2utt scp file for Kaldi"""
@@ -304,7 +302,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         """Create split directory and output information from Jobs"""
         os.makedirs(self.split_directory.joinpath("log"), exist_ok=True)
         with self.session() as session, tqdm(
-            total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
+            total=self.num_utterances, disable=config.QUIET
         ) as pbar:
             jobs = session.query(Job)
             arguments = [
@@ -477,40 +475,32 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 logger.info("Jobs already initialized.")
                 return
             logger.info("Initializing multiprocessing jobs...")
-            if (
-                self.num_speakers < GLOBAL_CONFIG.current_profile.num_jobs
-                and not GLOBAL_CONFIG.current_profile.single_speaker
-            ):
+            if self.num_speakers < config.NUM_JOBS and not config.SINGLE_SPEAKER:
                 logger.warning(
-                    f"Number of jobs was specified as {GLOBAL_CONFIG.current_profile.num_jobs}, "
+                    f"Number of jobs was specified as {config.NUM_JOBS}, "
                     f"but due to only having {self.num_speakers} speakers, MFA "
                     f"will only use {self.num_speakers} jobs. Use the --single_speaker flag if you would like to split "
                     f"utterances across jobs regardless of their speaker."
                 )
-                session.query(Job).filter(Job.id > GLOBAL_CONFIG.current_profile.num_jobs).delete()
-                session.query(Corpus).update(
-                    {Corpus.num_jobs: GLOBAL_CONFIG.current_profile.num_jobs}
-                )
+                config.NUM_JOBS = self.num_speakers
+                session.query(Job).filter(Job.id > config.NUM_JOBS).delete()
+                session.query(Corpus).update({Corpus.num_jobs: config.NUM_JOBS})
                 session.commit()
-            elif (
-                GLOBAL_CONFIG.current_profile.single_speaker
-                and self.num_utterances < GLOBAL_CONFIG.current_profile.num_jobs
-            ):
+            elif config.SINGLE_SPEAKER and self.num_utterances < config.NUM_JOBS:
                 logger.warning(
-                    f"Number of jobs was specified as {GLOBAL_CONFIG.current_profile.num_jobs}, "
+                    f"Number of jobs was specified as {config.NUM_JOBS}, "
                     f"but due to only having {self.num_utterances} utterances, MFA "
                     f"will only use {self.num_utterances} jobs."
                 )
-                session.query(Job).filter(Job.id > GLOBAL_CONFIG.current_profile.num_jobs).delete()
-                session.query(Corpus).update(
-                    {Corpus.num_jobs: GLOBAL_CONFIG.current_profile.num_jobs}
-                )
+                config.NUM_JOBS = self.num_utterances
+                session.query(Job).filter(Job.id > config.NUM_JOBS).delete()
+                session.query(Corpus).update({Corpus.num_jobs: config.NUM_JOBS})
                 session.commit()
 
             jobs = session.query(Job).all()
             update_mappings = []
-            if GLOBAL_CONFIG.current_profile.single_speaker:
-                utts_per_job = int(self.num_utterances / GLOBAL_CONFIG.current_profile.num_jobs)
+            if config.SINGLE_SPEAKER:
+                utts_per_job = int(self.num_utterances / config.NUM_JOBS)
                 if utts_per_job == 0:
                     utts_per_job = 1
                 for i, j in enumerate(jobs):
@@ -558,12 +548,9 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         """Finalize the import of database objects after parsing"""
         with session.begin_nested():
             c = session.query(Corpus).first()
-            job_objs = [
-                {"id": j, "corpus_id": c.id}
-                for j in range(1, GLOBAL_CONFIG.current_profile.num_jobs + 1)
-            ]
+            job_objs = [{"id": j, "corpus_id": c.id} for j in range(1, config.NUM_JOBS + 1)]
             session.execute(sqlalchemy.insert(Job.__table__), job_objs)
-            c.num_jobs = GLOBAL_CONFIG.current_profile.num_jobs
+            c.num_jobs = config.NUM_JOBS
             if import_data.speaker_objects:
                 session.execute(sqlalchemy.insert(Speaker.__table__), import_data.speaker_objects)
             if import_data.file_objects:
@@ -663,7 +650,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         word_key = self.get_next_primary_key(Word)
         pronunciation_key = self.get_next_primary_key(Pronunciation)
         with tqdm(
-            total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
+            total=self.num_utterances, disable=config.QUIET
         ) as pbar, self.session() as session:
             dictionaries: typing.Dict[int, Dictionary] = {
                 d.id: d for d in session.query(Dictionary)
@@ -1077,7 +1064,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             .filter(Speaker.dictionary_id == dict_id)
                             .filter(
                                 Utterance.text.op("~")(r" [^ ]+ ")
-                                if GLOBAL_CONFIG.current_profile.use_postgres
+                                if config.USE_POSTGRES
                                 else Utterance.text.regexp_match(r" [^ ]+ ")
                             )
                             .filter(Utterance.ignored == False)  # noqa
@@ -1149,7 +1136,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         session.query(Utterance.id)
                         .filter(
                             Utterance.text.op("~")(r"\s\S+\s")
-                            if GLOBAL_CONFIG.current_profile.use_postgres
+                            if config.USE_POSTGRES
                             else Utterance.text.regexp_match(r"\s\S+\s")
                         )
                         .filter(Utterance.ignored == False)  # noqa
@@ -1176,9 +1163,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             session.commit()
 
             logger.debug(f"Setting subset flags took {time.time()-begin} seconds")
-            with self.session() as session, tqdm(
-                total=subset, disable=GLOBAL_CONFIG.quiet
-            ) as pbar:
+            with self.session() as session, tqdm(total=subset, disable=config.QUIET) as pbar:
                 jobs = (
                     session.query(Job)
                     .options(
@@ -1278,12 +1263,11 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         Load the corpus
         """
         self.inspect_database()
-
         logger.info("Setting up corpus information...")
         if not self.imported:
             logger.debug("Could not load from temp")
             logger.info("Loading corpus from source files...")
-            if GLOBAL_CONFIG.use_mp:
+            if config.USE_MP:
                 self._load_corpus_from_source_mp()
             else:
                 self._load_corpus_from_source()

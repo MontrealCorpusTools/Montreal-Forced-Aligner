@@ -1,13 +1,12 @@
 """Command line functions for segmenting audio files"""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import rich_click as click
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.utils import common_options
-from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.vad.segmenter import Segmenter
 
 __all__ = ["create_segments_cli"]
@@ -59,8 +58,8 @@ def create_segments_cli(context, **kwargs) -> None:
     Create segments based on SpeechBrain's voice activity detection (VAD) model or a basic energy-based algorithm
     """
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
+        config.profile = kwargs.pop("profile")
+    config.update_configuration(kwargs)
 
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"]

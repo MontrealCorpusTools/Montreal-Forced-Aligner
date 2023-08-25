@@ -21,12 +21,7 @@ from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integ
 from sqlalchemy.ext.orderinglist import ordering_list
 from sqlalchemy.orm import Bundle, declarative_base, relationship
 
-from montreal_forced_aligner.config import (
-    GLOBAL_CONFIG,
-    IVECTOR_DIMENSION,
-    PLDA_DIMENSION,
-    XVECTOR_DIMENSION,
-)
+from montreal_forced_aligner import config
 from montreal_forced_aligner.data import (
     CtmInterval,
     PhoneSetType,
@@ -117,7 +112,7 @@ def bulk_update(
     column_names = [x for x in values[0].keys()]
     columns = [getattr(table, x)._copy() for x in column_names if x != id_field]
     sql_column_names = [f'"{x}"' for x in column_names if x != id_field]
-    if GLOBAL_CONFIG.current_profile.use_postgres:
+    if config.USE_POSTGRES:
         session.execute(sqlalchemy.text(f"ALTER TABLE {table.__tablename__} DISABLE TRIGGER all"))
         session.commit()
     with session.begin_nested():
@@ -150,7 +145,7 @@ def bulk_update(
 
         # drop temp table
         session.execute(sqlalchemy.text(f"DROP TABLE temp_{table.__tablename__}"))
-    if GLOBAL_CONFIG.current_profile.use_postgres:
+    if config.USE_POSTGRES:
         session.execute(sqlalchemy.text(f"ALTER TABLE {table.__tablename__} ENABLE TRIGGER all"))
         session.commit()
         session.execute(sqlalchemy.text("DISCARD TEMP"))
@@ -964,9 +959,9 @@ class Speaker(MfaSqlBase):
     fmllr = Column(String)
     min_f0 = Column(Float, nullable=True)
     max_f0 = Column(Float, nullable=True)
-    ivector = Column(Vector(IVECTOR_DIMENSION), nullable=True)
-    plda_vector = Column(Vector(PLDA_DIMENSION), nullable=True)
-    xvector = Column(Vector(XVECTOR_DIMENSION), nullable=True)
+    ivector = Column(Vector(config.IVECTOR_DIMENSION), nullable=True)
+    plda_vector = Column(Vector(config.PLDA_DIMENSION), nullable=True)
+    xvector = Column(Vector(config.XVECTOR_DIMENSION), nullable=True)
     dictionary_id = Column(Integer, ForeignKey("dictionary.id"), nullable=True, index=True)
     dictionary = relationship("Dictionary", back_populates="speakers")
     utterances = relationship("Utterance", back_populates="speaker")
@@ -1369,9 +1364,9 @@ class Utterance(MfaSqlBase):
     alignment_score = Column(Float)
     word_error_rate = Column(Float)
     character_error_rate = Column(Float)
-    ivector = Column(Vector(IVECTOR_DIMENSION), nullable=True)
-    plda_vector = Column(Vector(PLDA_DIMENSION), nullable=True)
-    xvector = Column(Vector(XVECTOR_DIMENSION), nullable=True)
+    ivector = Column(Vector(config.IVECTOR_DIMENSION), nullable=True)
+    plda_vector = Column(Vector(config.PLDA_DIMENSION), nullable=True)
+    xvector = Column(Vector(config.XVECTOR_DIMENSION), nullable=True)
     file_id = Column(Integer, ForeignKey("file.id"), index=True, nullable=False)
     speaker_id = Column(Integer, ForeignKey("speaker.id"), index=True, nullable=False)
     kaldi_id = Column(
@@ -1457,22 +1452,14 @@ class Utterance(MfaSqlBase):
         """
         Phone intervals from :attr:`montreal_forced_aligner.data.WorkflowType.alignment`
         """
-        return [
-            x.as_ctm()
-            for x in self.phone_intervals
-            if x.workflow.workflow_type is WorkflowType.alignment
-        ]
+        return [x.as_ctm() for x in self.phone_intervals]
 
     @property
     def aligned_word_intervals(self) -> typing.List[CtmInterval]:
         """
         Word intervals from :attr:`montreal_forced_aligner.data.WorkflowType.alignment`
         """
-        return [
-            x.as_ctm()
-            for x in self.word_intervals
-            if x.workflow.workflow_type is WorkflowType.alignment
-        ]
+        return [x.as_ctm() for x in self.word_intervals]
 
     @property
     def transcribed_phone_intervals(self) -> typing.List[CtmInterval]:

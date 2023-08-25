@@ -27,9 +27,9 @@ from sklearn import decomposition, metrics
 from sqlalchemy.orm import joinedload, selectinload
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import FileExporterMixin, TopLevelMfaWorker
 from montreal_forced_aligner.config import (
-    GLOBAL_CONFIG,
     IVECTOR_DIMENSION,
     MEMORY,
     PLDA_DIMENSION,
@@ -247,7 +247,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 _ = EncoderClassifier.from_hparams(
                     source="speechbrain/spkrec-ecapa-voxceleb",
                     savedir=os.path.join(
-                        GLOBAL_CONFIG.current_profile.temporary_directory,
+                        config.TEMPORARY_DIRECTORY,
                         "models",
                         "EncoderClassifier",
                     ),
@@ -255,7 +255,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 _ = SpeakerRecognition.from_hparams(
                     source="speechbrain/spkrec-ecapa-voxceleb",
                     savedir=os.path.join(
-                        GLOBAL_CONFIG.current_profile.temporary_directory,
+                        config.TEMPORARY_DIRECTORY,
                         "models",
                         "SpeakerRecognition",
                     ),
@@ -323,7 +323,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         logger.info("Classifying utterances...")
 
         with self.session() as session, tqdm(
-            total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
+            total=self.num_utterances, disable=config.QUIET
         ) as pbar, mfa_open(
             self.working_directory.joinpath("speaker_classification_results.csv"), "w"
         ) as f:
@@ -621,7 +621,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         )
         plot_path = self.working_directory.joinpath("cluster_plot.png")
         plt.savefig(plot_path, bbox_extra_artists=(lgd,), bbox_inches="tight", transparent=True)
-        if GLOBAL_CONFIG.current_profile.verbose:
+        if config.VERBOSE:
             plt.show(block=False)
             plt.pause(10)
             logger.debug(f"Closing cluster plot, it has been saved to {plot_path}.")
@@ -630,7 +630,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
     def export_xvectors(self):
         logger.info("Exporting SpeechBrain embeddings...")
         os.makedirs(self.split_directory, exist_ok=True)
-        with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
             arguments = [
                 ExportIvectorsArguments(
                     j.id,
@@ -698,7 +698,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
 
             logger.info("Generating initial speaker labels...")
             utt2spk = {k: v for k, v in session.query(Utterance.id, Utterance.speaker_id)}
-            with tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
                 for utt_id, classified_speaker, score in run_kaldi_function(
                     func, arguments, pbar.update
                 ):
@@ -749,7 +749,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         logger.info("Exporting current speaker ivectors...")
 
         with self.session() as session, tqdm(
-            total=self.num_speakers, disable=GLOBAL_CONFIG.quiet
+            total=self.num_speakers, disable=config.QUIET
         ) as pbar, mfa_open(self.num_utts_path, "w") as f:
             if self.use_xvector:
                 ivector_column = Speaker.xvector
@@ -802,7 +802,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             )[iteration]
         logger.debug(f"Score threshold: {score_threshold}")
         with self.session() as session, tqdm(
-            total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
+            total=self.num_utterances, disable=config.QUIET
         ) as pbar:
 
             unknown_speaker_id = (
@@ -869,7 +869,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             logger.info("Breaking up large speakers...")
             logger.debug(f"Unknown speaker is {unknown_speaker_id}")
             next_speaker_id = self.get_next_primary_key(Speaker)
-            with tqdm(total=len(above_threshold_speakers), disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=len(above_threshold_speakers), disable=config.QUIET) as pbar:
                 utterance_mapping = []
                 new_speakers = {}
                 for s_id in above_threshold_speakers:
@@ -1030,7 +1030,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             logger.info(f"Number of speakers: {self.num_speakers}")
             logger.info(f"Unclassified utterances: {uncategorized_count}")
         logger.debug(f"Found {self.num_speakers} clusters")
-        if GLOBAL_CONFIG.current_profile.debug and self.num_utterances < 100000:
+        if config.DEBUG and self.num_utterances < 100000:
             self.visualize_current_clusters()
 
     def visualize_current_clusters(self):
@@ -1080,12 +1080,12 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             return
         self.setup()
 
-        os.environ["OMP_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
-        os.environ["OPENBLAS_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
-        os.environ["MKL_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
+        os.environ["OMP_NUM_THREADS"] = f"{config.NUM_JOBS}"
+        os.environ["OPENBLAS_NUM_THREADS"] = f"{config.NUM_JOBS}"
+        os.environ["MKL_NUM_THREADS"] = f"{config.NUM_JOBS}"
         if self.metric is DistanceMetric.plda:
             self.plda = read_kaldi_object(Plda, self.plda_path)
-        if self.evaluation_mode and GLOBAL_CONFIG.current_profile.debug:
+        if self.evaluation_mode and config.DEBUG:
             self.calculate_eer()
         logger.info("Clustering utterances (this may take a while, please be patient)...")
         with self.session() as session:
@@ -1143,7 +1143,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             if self.stopped.is_set():
                 logger.debug("Stopping clustering early.")
                 return
-            if GLOBAL_CONFIG.current_profile.debug:
+            if config.DEBUG:
                 self.visualize_clusters(ivectors, labels)
 
             utterance_clusters = collections.defaultdict(list)
@@ -1192,9 +1192,9 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         if self.evaluation_mode:
             self.evaluate_clustering()
 
-        os.environ["OMP_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
-        os.environ["OPENBLAS_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
-        os.environ["MKL_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
+        os.environ["OMP_NUM_THREADS"] = f"{config.BLAS_NUM_THREADS}"
+        os.environ["OPENBLAS_NUM_THREADS"] = f"{config.BLAS_NUM_THREADS}"
+        os.environ["MKL_NUM_THREADS"] = f"{config.BLAS_NUM_THREADS}"
 
     def clean_up_unknown_speaker(self):
         with self.session() as session:
@@ -1251,7 +1251,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         limit_per_speaker = 5
         limit_within_speaker = 30
         begin = time.time()
-        with tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_speakers, disable=config.QUIET) as pbar:
             arguments = [
                 ComputeEerArguments(
                     j.id,
@@ -1298,7 +1298,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             return
         logger.info("Loading SpeechBrain embeddings...")
         with tqdm(
-            total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
+            total=self.num_utterances, disable=config.QUIET
         ) as pbar, self.session() as session:
             begin = time.time()
             update_mapping = {}
@@ -1350,7 +1350,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         logger.info("Refreshing PLDA vectors...")
         self.plda = read_kaldi_object(Plda, self.plda_path)
         with self.session() as session, tqdm(
-            total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
+            total=self.num_utterances, disable=config.QUIET
         ) as pbar:
             if self.use_xvector:
                 ivector_column = Utterance.xvector
@@ -1373,7 +1373,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         """Refresh speaker vectors following clustering or classification"""
         logger.info("Refreshing speaker vectors...")
         with self.session() as session, tqdm(
-            total=self.num_speakers, disable=GLOBAL_CONFIG.quiet
+            total=self.num_speakers, disable=config.QUIET
         ) as pbar:
             if self.use_xvector:
                 ivector_column = Utterance.xvector
@@ -1414,7 +1414,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             self.load_embeddings()
         logger.info("Computing SpeechBrain speaker embeddings...")
         with tqdm(
-            total=self.num_speakers, disable=GLOBAL_CONFIG.quiet
+            total=self.num_speakers, disable=config.QUIET
         ) as pbar, self.session() as session:
             update_mapping = []
             speakers = session.query(Speaker.id)
@@ -1428,7 +1428,6 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 for i, (xvector,) in enumerate(u_query):
                     embeddings[i, :] = xvector
                 speaker_xvector = np.mean(embeddings, axis=0)
-                print(speaker_xvector.shape)
                 update_mapping.append({"id": s_id, "xvector": speaker_xvector})
                 pbar.update(1)
             bulk_update(session, Speaker, update_mapping)
@@ -1483,7 +1482,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 joinedload(File.sound_file, innerjoin=True).load_only(SoundFile.duration),
                 joinedload(File.text_file, innerjoin=True).load_only(TextFile.file_type),
             )
-            with tqdm(total=self.num_files, disable=GLOBAL_CONFIG.quiet) as pbar:
+            with tqdm(total=self.num_files, disable=config.QUIET) as pbar:
                 for file in files:
                     utterance_count = len(file.utterances)
 

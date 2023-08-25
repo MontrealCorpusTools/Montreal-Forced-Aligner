@@ -1,13 +1,12 @@
 """Command line functions for classifying speakers"""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import rich_click as click
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.utils import common_options, validate_ivector_extractor
-from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.data import ClusterType
 from montreal_forced_aligner.diarization.speaker_diarizer import SpeakerDiarizer
 from montreal_forced_aligner.exceptions import DatabaseError
@@ -96,9 +95,9 @@ def diarize_speakers_cli(context, **kwargs) -> None:
     the ``--num_jobs`` parameter will be used as a the batch size for any parallel computation.
     """
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
-    if not GLOBAL_CONFIG.current_profile.use_postgres:
+        config.profile = kwargs.pop("profile")
+    config.update_configuration(kwargs)
+    if not config.USE_POSTGRES:
         raise DatabaseError(
             "Postgres is required for running diarization functionality via `--use_postgres true`."
         )

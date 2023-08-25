@@ -1,14 +1,13 @@
 """Command line functions for training new acoustic models"""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import rich_click as click
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.acoustic_modeling import TrainableAligner
 from montreal_forced_aligner.command_line.utils import common_options, validate_dictionary
-from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 
 __all__ = ["train_acoustic_model_cli"]
 
@@ -94,8 +93,8 @@ def train_acoustic_model_cli(context, **kwargs) -> None:
     Train a new acoustic model on a corpus and optionally export alignments
     """
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
+        config.profile = kwargs.pop("profile")
+    config.update_configuration(kwargs)
     config_path = kwargs.get("config_path", None)
     output_model_path = kwargs.get("output_model_path", None)
     output_directory = kwargs.get("output_directory", None)

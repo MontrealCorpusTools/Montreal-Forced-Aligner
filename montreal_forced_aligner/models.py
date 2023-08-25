@@ -1189,27 +1189,27 @@ class LanguageModel(Archive):
             super().__init__(source, root_directory)
 
     @property
-    def decode_arpa_path(self) -> str:
+    def decode_arpa_path(self) -> Path:
         """
         Uses the smallest language model for decoding
         """
         for path in [self.small_arpa_path, self.medium_arpa_path, self.large_arpa_path]:
-            if os.path.exists(path):
+            if path.exists():
                 return path
         raise LanguageModelNotFoundError(self.small_arpa_path)
 
     @property
-    def carpa_path(self) -> str:
+    def carpa_path(self) -> Path:
         """
         Uses the largest language model for rescoring
         """
         for path in [self.large_arpa_path, self.medium_arpa_path, self.small_arpa_path]:
-            if os.path.exists(path):
+            if path.exists():
                 return path
         raise LanguageModelNotFoundError(self.large_arpa_path)
 
     @property
-    def small_arpa_path(self) -> str:
+    def small_arpa_path(self) -> Path:
         """Small arpa path"""
         for path in self.dirname.iterdir():
             if path.name.endswith("_small" + self.arpa_extension):
@@ -1217,7 +1217,7 @@ class LanguageModel(Archive):
         return self.dirname.joinpath(f"{self.name}_small{self.arpa_extension}")
 
     @property
-    def medium_arpa_path(self) -> str:
+    def medium_arpa_path(self) -> Path:
         """Medium arpa path"""
         for path in self.dirname.iterdir():
             if path.name.endswith("_med" + self.arpa_extension):
@@ -1225,7 +1225,7 @@ class LanguageModel(Archive):
         return self.dirname.joinpath(f"{self.name}_med{self.arpa_extension}")
 
     @property
-    def large_arpa_path(self) -> str:
+    def large_arpa_path(self) -> Path:
         """Large arpa path"""
         for path in self.dirname.iterdir():
             if (

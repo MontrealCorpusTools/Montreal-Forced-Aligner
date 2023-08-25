@@ -29,7 +29,7 @@ def test_adapt_basic(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -68,7 +68,7 @@ def test_adapt_multilingual(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)

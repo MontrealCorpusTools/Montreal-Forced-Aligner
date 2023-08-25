@@ -5,7 +5,6 @@ import logging
 import os
 import shutil
 import time
-from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import TYPE_CHECKING, List
 
@@ -15,10 +14,10 @@ from kalpy.gmm.utils import read_gmm_model, write_gmm_model
 from kalpy.utils import kalpy_logger
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import AdapterMixin
 from montreal_forced_aligner.alignment.multiprocessing import AccStatsArguments, AccStatsFunction
 from montreal_forced_aligner.alignment.pretrained import PretrainedAligner
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import WorkflowType
 from montreal_forced_aligner.db import CorpusWorkflow
 from montreal_forced_aligner.exceptions import KaldiProcessingError
@@ -122,18 +121,14 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         gmm_accs = AccumAmDiagGmm()
         transition_model.InitStats(transition_accs)
         gmm_accs.init(acoustic_model)
-        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
             for result in run_kaldi_function(AccStatsFunction, arguments, pbar.update):
                 if isinstance(result, tuple):
                     job_transition_accs, job_gmm_accs = result
                     transition_accs.AddVec(1.0, job_transition_accs)
                     gmm_accs.Add(1.0, job_gmm_accs)
         log_path = self.working_log_directory.joinpath("map_model_est.log")
-        with (
-            kalpy_logger("kalpy.train", log_path) as train_logger,
-            redirect_stdout(train_logger),
-            redirect_stderr(train_logger),
-        ):
+        with kalpy_logger("kalpy.train", log_path):
             IsmoothStatsAmDiagGmmFromModel(acoustic_model, self.mapping_tau, gmm_accs)
             objf_impr, count = transition_model.mle_update(transition_accs)
             logger.debug(

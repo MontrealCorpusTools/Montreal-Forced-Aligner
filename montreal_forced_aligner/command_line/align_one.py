@@ -1,7 +1,6 @@
 """Command line functions for aligning single files"""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pywrapfst
@@ -11,13 +10,13 @@ from kalpy.fstext.lexicon import HierarchicalCtm, LexiconCompiler
 from kalpy.utterance import Segment
 from kalpy.utterance import Utterance as KalpyUtterance
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.alignment import PretrainedAligner
 from montreal_forced_aligner.command_line.utils import (
     common_options,
     validate_acoustic_model,
     validate_dictionary,
 )
-from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.corpus.classes import FileData
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.online.alignment import align_utterance_online
@@ -65,8 +64,8 @@ def align_one_cli(context, **kwargs) -> None:
     Align a single file with a pronunciation dictionary and a pretrained acoustic model.
     """
     if kwargs.get("profile", None) is not None:
-        os.environ[MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
-    GLOBAL_CONFIG.current_profile.update(kwargs)
+        config.profile = kwargs.pop("profile")
+    config.update_configuration(kwargs)
     config_path = kwargs.get("config_path", None)
     sound_file_path = kwargs["sound_file_path"]
     text_file_path = kwargs["text_file_path"]
@@ -74,12 +73,10 @@ def align_one_cli(context, **kwargs) -> None:
     acoustic_model_path = kwargs["acoustic_model_path"]
     output_path: Path = kwargs["output_path"]
     output_format = kwargs["output_format"]
-    config = PretrainedAligner.parse_parameters(config_path, context.params, context.args)
+    c = PretrainedAligner.parse_parameters(config_path, context.params, context.args)
 
     acoustic_model = AcousticModel(acoustic_model_path)
-    extracted_models_dir = GLOBAL_CONFIG.current_profile.temporary_directory.joinpath(
-        "extracted_models", "dictionary"
-    )
+    extracted_models_dir = config.TEMPORARY_DIRECTORY.joinpath("extracted_models", "dictionary")
     dictionary_directory = extracted_models_dir.joinpath(dictionary_path.stem)
     dictionary_directory.mkdir(parents=True, exist_ok=True)
     lexicon_compiler = LexiconCompiler(
@@ -92,7 +89,7 @@ def align_one_cli(context, **kwargs) -> None:
         oov_phone=acoustic_model.parameters["oov_phone"],
         position_dependent_phones=acoustic_model.parameters["position_dependent_phones"],
         phones=acoustic_model.parameters["non_silence_phones"],
-        ignore_case=config.get("ignore_case", True),
+        ignore_case=c.get("ignore_case", True),
     )
     l_fst_path = dictionary_directory.joinpath("L.fst")
     l_align_fst_path = dictionary_directory.joinpath("L_align.fst")
@@ -123,7 +120,7 @@ def align_one_cli(context, **kwargs) -> None:
     cmvn = cmvn_computer.compute_cmvn_from_features([utt.mfccs for utt in utterances])
     align_options = {
         k: v
-        for k, v in config
+        for k, v in c
         if k
         in [
             "beam",

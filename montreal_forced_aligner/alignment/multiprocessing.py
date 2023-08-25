@@ -15,7 +15,6 @@ import threading
 import time
 import traceback
 import typing
-from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from queue import Empty, Queue
 from typing import TYPE_CHECKING, List
@@ -1186,12 +1185,7 @@ class AlignmentExtractionFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, List[CtmInterval], List[CtmInterval]]]:
         """Run the function"""
-        with (
-            self.session() as session,
-            kalpy_logger("kalpy.align", self.log_path) as align_logger,
-            redirect_stdout(align_logger),
-            redirect_stderr(align_logger),
-        ):
+        with (self.session() as session, kalpy_logger("kalpy.align", self.log_path)):
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))

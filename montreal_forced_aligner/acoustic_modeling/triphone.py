@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 import os
 import typing
-from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List
 
@@ -19,9 +18,9 @@ from kalpy.utils import generate_write_specifier, kalpy_logger
 from sqlalchemy.orm import joinedload, subqueryload
 from tqdm.rich import tqdm
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
-from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import MfaArguments, PhoneType
 from montreal_forced_aligner.db import Job, Phone
 from montreal_forced_aligner.utils import run_kaldi_function, thread_logger
@@ -90,7 +89,7 @@ class ConvertAlignmentsFunction(KaldiFunction):
         """Run the function"""
         with (
             self.session() as session,
-            thread_logger("kalpy.train", self.log_path, job_name=self.job_name) as train_logger,
+            thread_logger("kalpy.train", self.log_path, job_name=self.job_name),
         ):
             job = (
                 session.query(Job)
@@ -102,24 +101,21 @@ class ConvertAlignmentsFunction(KaldiFunction):
                 dict_id = d.id
                 ali_path = self.ali_paths[dict_id]
                 new_ali_path = self.new_ali_paths[dict_id]
-                with redirect_stdout(train_logger), redirect_stderr(train_logger):
-                    tree = read_tree(self.tree_path)
-                    old_transition_model, _ = read_gmm_model(self.align_model_path)
-                    new_transition_model, _ = read_gmm_model(self.model_path)
-                    alignment_archive = AlignmentArchive(ali_path)
-                    new_alignment_writer = Int32VectorWriter(
-                        generate_write_specifier(new_ali_path)
+                tree = read_tree(self.tree_path)
+                old_transition_model, _ = read_gmm_model(self.align_model_path)
+                new_transition_model, _ = read_gmm_model(self.model_path)
+                alignment_archive = AlignmentArchive(ali_path)
+                new_alignment_writer = Int32VectorWriter(generate_write_specifier(new_ali_path))
+                for old_alignment in alignment_archive:
+                    new_alignment = convert_alignments(
+                        old_transition_model,
+                        new_transition_model,
+                        tree,
+                        old_alignment.alignment,
                     )
-                    for old_alignment in alignment_archive:
-                        new_alignment = convert_alignments(
-                            old_transition_model,
-                            new_transition_model,
-                            tree,
-                            old_alignment.alignment,
-                        )
-                        new_alignment_writer.Write(old_alignment.utterance_id, new_alignment)
-                        self.callback(old_alignment.utterance_id)
-                    new_alignment_writer.Close()
+                    new_alignment_writer.Write(old_alignment.utterance_id, new_alignment)
+                    self.callback(old_alignment.utterance_id)
+                new_alignment_writer.Close()
 
 
 class TreeStatsFunction(KaldiFunction):
@@ -292,7 +288,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         """
         logger.info("Converting alignments...")
         arguments = self.convert_alignments_arguments()
-        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
             for _ in run_kaldi_function(ConvertAlignmentsFunction, arguments, pbar.update):
                 pass
 
@@ -358,7 +354,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         logger.info("Accumulating tree stats...")
         arguments = self.tree_stats_arguments()
         tree_stats = {}
-        with tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
             for result in run_kaldi_function(TreeStatsFunction, arguments, pbar.update):
                 if isinstance(result, dict):
                     for k, v in result.items():
@@ -384,11 +380,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         roots_int_path = os.path.join(self.worker.phones_dir, "roots.int")
         topo_path = self.worker.topo_path
         topo = read_topology(topo_path)
-        with (
-            kalpy_logger("kalpy.train", log_path) as train_logger,
-            redirect_stdout(train_logger),
-            redirect_stderr(train_logger),
-        ):
+        with kalpy_logger("kalpy.train", log_path):
             questions = automatically_obtain_questions(tree_stats, phone_sets, [1], 1)
             for v in self.worker.extra_questions_mapping.values():
                 questions.append(sorted([self.phone_mapping[x] for x in v]))
