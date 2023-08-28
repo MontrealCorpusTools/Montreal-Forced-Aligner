@@ -44,6 +44,7 @@ __all__ = [
     "WORD_END_SYMBOL",
     "OOV_WORD",
     "BRACKETED_WORD",
+    "LAUGHTER_WORD",
     "CUTOFF_WORD",
     "SIL_WORD",
     "SIL_PHONE",
@@ -54,6 +55,7 @@ WORD_BEGIN_SYMBOL = "#1"
 WORD_END_SYMBOL = "#2"
 OOV_WORD = "<unk>"
 BRACKETED_WORD = "<bracketed>"
+LAUGHTER_WORD = "[laughter]"
 CUTOFF_WORD = "<cutoff>"
 SIL_WORD = "<eps>"
 SIL_PHONE = "sil"

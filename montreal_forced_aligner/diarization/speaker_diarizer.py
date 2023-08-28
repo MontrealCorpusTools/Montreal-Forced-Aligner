@@ -1293,9 +1293,6 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
 
     def load_embeddings(self) -> None:
         """Load embeddings from a speechbrain model"""
-        if self.has_xvectors():
-            logger.info("Embeddings already loaded.")
-            return
         logger.info("Loading SpeechBrain embeddings...")
         with tqdm(
             total=self.num_utterances, disable=config.QUIET
@@ -1308,6 +1305,9 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             ]
             embeddings = []
             utterance_ids = []
+            original_use_mp = config.USE_MP
+            if self.cuda:
+                config.USE_MP = False
             for u_id, emb in run_kaldi_function(
                 SpeechbrainEmbeddingFunction, arguments, pbar.update
             ):
@@ -1344,6 +1344,8 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             )
             session.query(Corpus).update({Corpus.xvectors_loaded: True})
             session.commit()
+            if self.cuda:
+                config.USE_MP = original_use_mp
             logger.debug(f"Loading embeddings took {time.time() - begin:.3f} seconds")
 
     def refresh_plda_vectors(self):

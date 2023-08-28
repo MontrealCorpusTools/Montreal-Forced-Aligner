@@ -5,7 +5,6 @@ Corpus loading worker
 from __future__ import annotations
 
 import os
-import re
 import threading
 import typing
 from pathlib import Path
@@ -20,7 +19,7 @@ from montreal_forced_aligner.corpus.helper import find_exts
 from montreal_forced_aligner.data import MfaArguments, WordType
 from montreal_forced_aligner.db import Dictionary, Grapheme, Job, Speaker, Utterance, Word
 from montreal_forced_aligner.exceptions import SoundFileError, TextGridParseError, TextParseError
-from montreal_forced_aligner.helper import make_re_character_set_safe, mfa_open
+from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import Counter
 
 if typing.TYPE_CHECKING:
@@ -270,240 +269,100 @@ class NormalizeTextFunction(KaldiFunction):
         self.oov_word = args.oov_word
         self.bracketed_word = args.bracketed_word
         self.cutoff_word = args.cutoff_word
-        self.clitic_marker = None
-        self.clitic_cleanup_regex = None
-        self.compound_regex = None
-        self.bracket_regex = None
-        self.cutoff_regex = None
-        self.bracket_sanitize_regex = None
-        self.laughter_regex = None
-        self.word_break_regex = None
-        self.clitic_quote_regex = None
-        self.punctuation_regex = None
-        self.non_speech_regexes = {}
-
-    def compile_regexes(self) -> None:
-        """Compile regular expressions necessary for corpus parsing"""
-        if len(self.clitic_markers) >= 1:
-            other_clitic_markers = self.clitic_markers[1:]
-            if other_clitic_markers:
-                extra = ""
-                if "-" in other_clitic_markers:
-                    extra = "-"
-                    other_clitic_markers = [x for x in other_clitic_markers if x != "-"]
-                self.clitic_cleanup_regex = re.compile(
-                    rf'[{extra}{"".join(other_clitic_markers)}]'
-                )
-            self.clitic_marker = self.clitic_markers[0]
-        if self.compound_markers:
-            extra = ""
-            compound_markers = self.compound_markers
-            if "-" in self.compound_markers:
-                extra = "-"
-                compound_markers = [x for x in compound_markers if x != "-"]
-            self.compound_regex = re.compile(rf"(?<=\w)[{extra}{''.join(compound_markers)}](?=\w)")
-        if self.brackets:
-            left_brackets = [x[0] for x in self.brackets]
-            right_brackets = [x[1] for x in self.brackets]
-            self.cutoff_regex = re.compile(
-                rf"[{re.escape(''.join(left_brackets))}](cutoff|hes).*?[{re.escape(''.join(right_brackets))}]+",
-                flags=re.IGNORECASE,
-            )
-            self.bracket_regex = re.compile(
-                rf"[{re.escape(''.join(left_brackets))}].*?[{re.escape(''.join(right_brackets))}]+"
-            )
-            self.laughter_regex = re.compile(
-                rf"[{re.escape(''.join(left_brackets))}](laugh(ing|ter)?|lachen|lg)[{re.escape(''.join(right_brackets))}]+",
-                flags=re.IGNORECASE,
-            )
-        all_punctuation = set()
-        non_word_character_set = set(self.punctuation)
-        non_word_character_set -= {b for x in self.brackets for b in x}
-
-        if self.clitic_markers:
-            all_punctuation.update(self.clitic_markers)
-        if self.compound_markers:
-            all_punctuation.update(self.compound_markers)
-        self.bracket_sanitize_regex = None
-        if self.brackets:
-            word_break_set = (
-                non_word_character_set | set(self.clitic_markers) | set(self.compound_markers)
-            )
-            if self.word_break_markers:
-                word_break_set |= set(self.word_break_markers)
-            word_break_set = make_re_character_set_safe(word_break_set, [r"\s"])
-            self.bracket_sanitize_regex = re.compile(f"(?<!^){word_break_set}(?!$)")
-
-        word_break_character_set = make_re_character_set_safe(non_word_character_set, [r"\s"])
-        self.word_break_regex = re.compile(rf"{word_break_character_set}+")
-        punctuation_set = make_re_character_set_safe(all_punctuation)
-        if all_punctuation:
-            self.punctuation_regex = re.compile(rf"^{punctuation_set}+$")
-        if len(self.clitic_markers) >= 1:
-            non_clitic_punctuation = all_punctuation - set(self.clitic_markers)
-            non_clitic_punctuation_set = make_re_character_set_safe(non_clitic_punctuation)
-            non_punctuation_set = "[^" + punctuation_set[1:]
-            self.clitic_quote_regex = re.compile(
-                rf"((?<=\W)|(?<=^)){non_clitic_punctuation_set}*{self.clitic_marker}{non_clitic_punctuation_set}*(?P<word>{non_punctuation_set}+){non_clitic_punctuation_set}*{self.clitic_marker}{non_clitic_punctuation_set}*((?=\W)|(?=$))"
-            )
-
-        if self.laughter_regex is not None:
-            self.non_speech_regexes[self.laughter_word] = self.laughter_regex
-        if self.cutoff_regex is not None:
-            self.non_speech_regexes[self.cutoff_word] = self.cutoff_regex
-        if self.bracket_regex is not None:
-            self.non_speech_regexes[self.bracketed_word] = self.bracket_regex
-
-    def _dictionary_sanitize(self, session):
-        from montreal_forced_aligner.dictionary.mixins import SanitizeFunction, SplitWordsFunction
-
-        dictionaries: typing.List[Dictionary] = session.query(Dictionary)
-        grapheme_mapping = {}
-        grapheme_query = session.query(Grapheme.grapheme, Grapheme.mapping_id)
-        for w, m_id in grapheme_query:
-            grapheme_mapping[w] = m_id
-        for d in dictionaries:
-            words_mapping = {}
-            words_query = session.query(Word.word, Word.mapping_id).filter(
-                Word.dictionary_id == d.id
-            )
-            for w, m_id in words_query:
-                words_mapping[w] = m_id
-            sanitize_function = SanitizeFunction(
-                self.clitic_marker,
-                self.clitic_cleanup_regex,
-                self.clitic_quote_regex,
-                self.punctuation_regex,
-                self.word_break_regex,
-                self.bracket_regex,
-                self.bracket_sanitize_regex,
-                self.ignore_case,
-            )
-            clitic_set = set(
-                x[0]
-                for x in session.query(Word.word)
-                .filter(Word.word_type == WordType.clitic)
-                .filter(Word.dictionary_id == d.id)
-            )
-            initial_clitic_regex = None
-            final_clitic_regex = None
-            if self.clitic_marker is not None:
-                initial_clitics = sorted(x for x in clitic_set if x.endswith(self.clitic_marker))
-                final_clitics = sorted(x for x in clitic_set if x.startswith(self.clitic_marker))
-                if initial_clitics:
-                    initial_clitic_regex = re.compile(rf"^({'|'.join(initial_clitics)})(?=\w)")
-                if final_clitics:
-                    final_clitic_regex = re.compile(rf"(?<=\w)({'|'.join(final_clitics)})$")
-
-            non_speech_regexes = {}
-            if self.laughter_regex is not None:
-                non_speech_regexes[d.laughter_word] = self.laughter_regex
-            if self.cutoff_regex is not None:
-                non_speech_regexes[d.cutoff_word] = self.cutoff_regex
-            if self.bracket_regex is not None:
-                non_speech_regexes[d.bracketed_word] = self.bracket_regex
-            split_function = SplitWordsFunction(
-                self.clitic_marker,
-                initial_clitic_regex,
-                final_clitic_regex,
-                self.compound_regex,
-                non_speech_regexes,
-                d.oov_word,
-                words_mapping,
-                grapheme_mapping,
-            )
-            utterances = (
-                session.query(Utterance.id, Utterance.text)
-                .join(Utterance.speaker)
-                .filter(Utterance.text != "")
-                .filter(Utterance.job_id == self.job_name)
-                .filter(Speaker.dictionary_id == d.id)
-            )
-            for u_id, u_text in utterances:
-                words = sanitize_function(u_text)
-                normalized_text = []
-                normalized_character_text = []
-                oovs = set()
-                text = ""
-                for w in words:
-                    for new_w in split_function(w):
-                        if new_w not in words_mapping:
-                            oovs.add(new_w)
-                        normalized_text.append(split_function.to_str(new_w))
-                        if normalized_character_text:
-                            if not self.clitic_marker or (
-                                not normalized_text[-1].endswith(self.clitic_marker)
-                                and not new_w.startswith(self.clitic_marker)
-                            ):
-                                normalized_character_text.append("<space>")
-                        for c in split_function.parse_graphemes(new_w):
-                            normalized_character_text.append(c)
-                    if text:
-                        text += " "
-                    text += w
-                self.callback(
-                    (
-                        {
-                            "id": u_id,
-                            "oovs": " ".join(sorted(oovs)),
-                            "normalized_text": " ".join(normalized_text),
-                            "normalized_character_text": " ".join(normalized_character_text),
-                        },
-                        d.id,
-                    )
-                )
-
-    def _no_dictionary_sanitize(self, session):
-        from montreal_forced_aligner.dictionary.mixins import SanitizeFunction
-
-        sanitize_function = SanitizeFunction(
-            self.clitic_marker,
-            self.clitic_cleanup_regex,
-            self.clitic_quote_regex,
-            self.punctuation_regex,
-            self.word_break_regex,
-            self.bracket_regex,
-            self.bracket_sanitize_regex,
-            self.ignore_case,
-        )
-        utterances = (
-            session.query(Utterance.id, Utterance.text)
-            .join(Utterance.speaker)
-            .filter(Utterance.text != "")
-            .filter(Utterance.job_id == self.job_name)
-        )
-        for u_id, u_text in utterances:
-            text = []
-            character_text = []
-            for w in sanitize_function(u_text):
-                text.append(w)
-                if character_text:
-                    character_text.append("<space>")
-                for g in w:
-                    character_text.append(g)
-            text = " ".join(text)
-            character_text = " ".join(character_text)
-            self.callback(
-                (
-                    {
-                        "id": u_id,
-                        "oovs": "",
-                        "normalized_text": text,
-                        "normalized_character_text": character_text,
-                    },
-                    None,
-                )
-            )
 
     def _run(self):
         """Run the function"""
-        self.compile_regexes()
+        from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
+
         with self.session() as session:
+
+            grapheme_set = set()
+            grapheme_query = session.query(Grapheme.grapheme)
+            for (g,) in grapheme_query:
+                grapheme_set.add(g)
             dict_count = session.query(Dictionary).join(Dictionary.words).limit(1).count()
             if self.use_g2p or dict_count > 0:
-                self._dictionary_sanitize(session)
+                dictionaries = session.query(Dictionary)
+                for d in dictionaries:
+
+                    word_set = set(
+                        x[0] for x in session.query(Word.word).filter(Word.dictionary_id == d.id)
+                    )
+                    clitic_set = set(
+                        x[0]
+                        for x in session.query(Word.word)
+                        .filter(Word.word_type == WordType.clitic)
+                        .filter(Word.dictionary_id == d.id)
+                    )
+                    tokenizer = SimpleTokenizer(
+                        word_break_markers=self.word_break_markers,
+                        punctuation=self.punctuation,
+                        clitic_markers=self.clitic_markers,
+                        compound_markers=self.compound_markers,
+                        brackets=self.brackets,
+                        laughter_word=self.laughter_word,
+                        oov_word=self.oov_word,
+                        bracketed_word=self.bracketed_word,
+                        cutoff_word=self.cutoff_word,
+                        ignore_case=self.ignore_case,
+                        use_g2p=self.use_g2p,
+                        clitic_set=clitic_set,
+                        word_set=word_set,
+                        grapheme_set=grapheme_set,
+                    )
+                    utterances = (
+                        session.query(Utterance.id, Utterance.text)
+                        .join(Utterance.speaker)
+                        .filter(Utterance.text != "")
+                        .filter(Utterance.job_id == self.job_name)
+                        .filter(Speaker.dictionary_id == d.id)
+                    )
+                    for u_id, u_text in utterances:
+                        normalized_text, normalized_character_text, oovs = tokenizer(u_text)
+                        self.callback(
+                            (
+                                {
+                                    "id": u_id,
+                                    "oovs": " ".join(sorted(oovs)),
+                                    "normalized_text": normalized_text,
+                                    "normalized_character_text": normalized_character_text,
+                                },
+                                d.id,
+                            )
+                        )
             else:
-                self._no_dictionary_sanitize(session)
+                tokenizer = SimpleTokenizer(
+                    word_break_markers=self.word_break_markers,
+                    punctuation=self.punctuation,
+                    clitic_markers=self.clitic_markers,
+                    compound_markers=self.compound_markers,
+                    brackets=self.brackets,
+                    laughter_word=self.laughter_word,
+                    oov_word=self.oov_word,
+                    bracketed_word=self.bracketed_word,
+                    cutoff_word=self.cutoff_word,
+                    ignore_case=self.ignore_case,
+                    use_g2p=self.use_g2p,
+                    grapheme_set=grapheme_set,
+                )
+                utterances = (
+                    session.query(Utterance.id, Utterance.text)
+                    .filter(Utterance.text != "")
+                    .filter(Utterance.job_id == self.job_name)
+                )
+                for u_id, u_text in utterances:
+                    normalized_text, normalized_character_text, oovs = tokenizer(u_text)
+                    self.callback(
+                        (
+                            {
+                                "id": u_id,
+                                "oovs": " ".join(sorted(oovs)),
+                                "normalized_text": normalized_text,
+                                "normalized_character_text": normalized_character_text,
+                            },
+                            None,
+                        )
+                    )
 
 
 class ExportKaldiFilesFunction(KaldiFunction):

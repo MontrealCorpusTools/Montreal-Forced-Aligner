@@ -399,6 +399,7 @@ class Dictionary(MfaSqlBase):
             if self.words_symbol_path.exists():
                 self._word_table = pywrapfst.SymbolTable.read_text(self.words_symbol_path)
                 return self._word_table
+            self.temp_directory.mkdir(parents=True, exist_ok=True)
             session = sqlalchemy.orm.Session.object_session(self)
             query = (
                 session.query(Word.word, Word.mapping_id)
@@ -419,6 +420,13 @@ class Dictionary(MfaSqlBase):
                 self._phone_table = pywrapfst.SymbolTable.read_text(self.phone_symbol_table_path)
             else:
                 return None
+            self.temp_directory.mkdir(parents=True, exist_ok=True)
+            session = sqlalchemy.orm.Session.object_session(self)
+            query = session.query(Phone.kaldi_label, Phone.mapping_id).order_by(Phone.mapping_id)
+            self._phone_table = pywrapfst.SymbolTable()
+            for p, mapping_id in query:
+                self._phone_table.add_symbol(p, mapping_id)
+            self._phone_table.write_text(self.phone_symbol_table_path)
         return self._phone_table
 
     @property

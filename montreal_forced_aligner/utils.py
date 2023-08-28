@@ -687,3 +687,7 @@ def run_kaldi_function(
 
             finally:
                 p.join()
+
+        if error_dict:
+            for v in error_dict.values():
+                raise v

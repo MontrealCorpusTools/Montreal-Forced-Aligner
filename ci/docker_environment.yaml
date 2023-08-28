@@ -38,5 +38,6 @@ dependencies:
   - pip
   - rich
   - rich-click
+  - kalpy
   - pip:
       - speechbrain
