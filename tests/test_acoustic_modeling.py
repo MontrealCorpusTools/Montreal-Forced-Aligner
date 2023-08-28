@@ -18,6 +18,7 @@ def test_trainer(basic_dict_path, temp_dir, basic_corpus_dir):
     assert a.training_configs[a.final_identifier].subset == 0
     assert a.training_configs[a.final_identifier].num_leaves == 7000
     assert a.training_configs[a.final_identifier].max_gaussians == 150000
+    a.cleanup()
 
 
 def test_basic_mono(

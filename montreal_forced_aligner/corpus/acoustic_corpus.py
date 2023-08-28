@@ -358,6 +358,56 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         self.normalize_text()
         self.generate_features()
 
+    def reset_features(self):
+        with self.session() as session:
+            session.execute(
+                sqlalchemy.update(Corpus).values(
+                    ivectors_calculated=False,
+                    plda_calculated=False,
+                    xvectors_loaded=False,
+                    features_generated=False,
+                )
+            )
+            session.execute(
+                sqlalchemy.update(Utterance).values(
+                    ivector=None, features=None, xvector=None, plda_vector=None
+                )
+            )
+            session.execute(
+                sqlalchemy.update(Speaker).values(
+                    cmvn=None, fmllr=None, ivector=None, xvector=None, plda_vector=None
+                )
+            )
+            session.commit()
+        paths = [
+            self.output_directory.joinpath("cmvn.ark"),
+            self.output_directory.joinpath("cmvn.scp"),
+            self.output_directory.joinpath("feats.scp"),
+            self.output_directory.joinpath("ivectors.scp"),
+        ]
+        for path in paths:
+            path.unlink(missing_ok=True)
+        for j in self.jobs:
+            paths = [
+                j.construct_path(self.split_directory, "cmvn", "scp"),
+                j.construct_path(self.split_directory, "ivectors", "scp"),
+                j.construct_path(self.split_directory, "ivectors", "ark"),
+            ]
+            for path in paths:
+                path.unlink(missing_ok=True)
+            for d_id in j.dictionary_ids:
+                paths = [
+                    j.construct_path(self.split_directory, "trans", "scp", d_id),
+                    j.construct_path(self.split_directory, "trans", "ark", d_id),
+                    j.construct_path(self.split_directory, "cmvn", "scp", d_id),
+                    j.construct_path(self.split_directory, "feats", "scp", d_id),
+                    j.construct_path(self.split_directory, "feats", "ark", d_id),
+                    j.construct_path(self.split_directory, "final_features", "scp", d_id),
+                    j.construct_path(self.split_directory, "final_features", "ark", d_id),
+                ]
+                for path in paths:
+                    path.unlink(missing_ok=True)
+
     def generate_final_features(self) -> None:
         """
         Generate features for the corpus
@@ -392,7 +442,6 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             bulk_update(session, Utterance, list(update_mapping.values()))
             session.commit()
 
-        with self.session() as session:
             non_ignored_check = (
                 session.query(Utterance).filter(Utterance.ignored == False).first()  # noqa
             )

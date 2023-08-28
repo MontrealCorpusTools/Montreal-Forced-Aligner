@@ -703,7 +703,7 @@ class SpeechbrainEmbeddingFunction(KaldiFunction):
         self.cuda = args.cuda
         self.cluster = args.cluster
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
+    def _run(self) -> None:
         """Run the function"""
         run_opts = None
         if self.cuda:
@@ -742,6 +742,7 @@ class SpeechbrainEmbeddingFunction(KaldiFunction):
             if stopped.is_set():
                 continue
             if isinstance(result, Exception):
+                exception = result
                 stopped.set()
                 continue
 
@@ -756,8 +757,6 @@ class SpeechbrainEmbeddingFunction(KaldiFunction):
             )
             self.callback((u_id, emb[0]))
             del emb
-            if self.cuda:
-                torch.cuda.empty_cache()
 
         loader.join()
         if exception:
@@ -772,8 +771,8 @@ class UtteranceFileLoader(threading.Thread):
     ----------
     job_name: int
         Job identifier
-    db_string: str
-        Connection string for database
+    session: sqlalchemy.orm.scoped_session
+        Session
     return_q: multiprocessing.Queue
         Queue to put waveforms
     stopped: :class:`~threading.Event`
@@ -813,6 +812,7 @@ class UtteranceFileLoader(threading.Thread):
                     .join(Utterance.file)
                     .join(File.sound_file)
                     .filter(Utterance.job_id == self.job_name)
+                    .filter(Utterance.xvector == None)  # noqa
                 )
                 for u_id, begin, duration, sound_file_path in utterances:
                     if self.stopped.is_set():

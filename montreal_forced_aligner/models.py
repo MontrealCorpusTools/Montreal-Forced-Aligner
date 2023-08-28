@@ -458,7 +458,7 @@ class AcousticModel(Archive):
 
     @property
     def pitch_computer(self) -> typing.Optional[PitchComputer]:
-        if self.meta["features"]["use_pitch"]:
+        if self.meta["features"].get("use_pitch", False):
             return PitchComputer(**self.pitch_options)
         return
 
