@@ -110,7 +110,6 @@ def align_one_cli(context, **kwargs) -> None:
         oov_phone=acoustic_model.parameters["oov_phone"],
         position_dependent_phones=acoustic_model.parameters["position_dependent_phones"],
         phones=acoustic_model.parameters["non_silence_phones"],
-        other_silence_phones=acoustic_model.other_silence_phones,
         ignore_case=c.get("ignore_case", True),
     )
     l_fst_path = dictionary_directory.joinpath("L.fst")
