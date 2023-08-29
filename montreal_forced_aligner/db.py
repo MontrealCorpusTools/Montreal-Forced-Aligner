@@ -970,6 +970,7 @@ class Speaker(MfaSqlBase):
     ivector = Column(Vector(config.IVECTOR_DIMENSION), nullable=True)
     plda_vector = Column(Vector(config.PLDA_DIMENSION), nullable=True)
     xvector = Column(Vector(config.XVECTOR_DIMENSION), nullable=True)
+    modified = Column(Boolean, nullable=False, default=False, index=True)
     dictionary_id = Column(Integer, ForeignKey("dictionary.id"), nullable=True, index=True)
     dictionary = relationship("Dictionary", back_populates="speakers")
     utterances = relationship("Utterance", back_populates="speaker")

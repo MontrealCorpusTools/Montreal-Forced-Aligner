@@ -282,6 +282,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
                 conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS vector"))
                 conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
                 conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"))
+                conn.execute(sqlalchemy.text(f"select setseed({config.SEED/32768})"))
                 conn.commit()
 
         MfaSqlBase.metadata.create_all(self.db_engine)

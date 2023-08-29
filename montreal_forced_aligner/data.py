@@ -39,6 +39,7 @@ __all__ = [
     "DistanceMetric",
     "WorkflowType",
     "DatasetType",
+    "Language",
     "ArpaNgramModel",
     "WORD_BEGIN_SYMBOL",
     "WORD_END_SYMBOL",
@@ -291,6 +292,37 @@ class ClusterType(enum.Enum):
     optics = "optics"
     kmeans = "kmeans"
     meanshift = "meanshift"
+
+
+class Language(enum.Enum):
+    """Enum for supported languages"""
+
+    unknown = "unknown"
+    catalan = "catalan"
+    chinese = "chinese"
+    croatian = "croatian"
+    danish = "danish"
+    dutch = "dutch"
+    english = "english"
+    finnish = "finnish"
+    french = "french"
+    german = "german"
+    greek = "greek"
+    italian = "italian"
+    japanese = "japanese"
+    korean = "korean"
+    lithuanian = "lithuanian"
+    macedonian = "macedonian"
+    multilingual = "multilingual"
+    norwegian = "norwegian"
+    polish = "polish"
+    portuguese = "portuguese"
+    romanian = "romanian"
+    russian = "russian"
+    slovenian = "slovenian"
+    spanish = "spanish"
+    swedish = "swedish"
+    ukrainian = "ukrainian"
 
 
 class ManifoldAlgorithm(enum.Enum):

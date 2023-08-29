@@ -28,6 +28,7 @@ def test_train_acoustic_with_g2p(
         "--clean",
         "--quiet",
         "--debug",
+        "--use_postgres",
         "--no_use_mp",
         "--config_path",
         train_g2p_acoustic_config_path,

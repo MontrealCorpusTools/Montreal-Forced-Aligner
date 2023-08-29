@@ -187,6 +187,24 @@ class DictionaryMixin:
         self._phone_groups = {}
 
     @property
+    def tokenizer(self):
+        from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
+
+        tokenizer = SimpleTokenizer(
+            word_break_markers=self.word_break_markers,
+            punctuation=self.punctuation,
+            clitic_markers=self.clitic_markers,
+            compound_markers=self.compound_markers,
+            brackets=self.brackets,
+            laughter_word=self.laughter_word,
+            oov_word=self.oov_word,
+            bracketed_word=self.bracketed_word,
+            cutoff_word=self.cutoff_word,
+            ignore_case=self.ignore_case,
+        )
+        return tokenizer
+
+    @property
     def base_phones(self) -> Dict[str, Set[str]]:
         """Grouped phones by base phone"""
         base_phones = {}

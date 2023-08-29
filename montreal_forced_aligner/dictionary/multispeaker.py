@@ -115,6 +115,48 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         self.rules_path = rules_path
         self.phone_groups_path = phone_groups_path
         self.lexicon_compilers: typing.Dict[int, typing.Union[LexiconCompiler, G2PCompiler]] = {}
+        self._tokenizers = {}
+
+    @property
+    def tokenizers(self):
+        from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
+
+        if not self._tokenizers:
+            with self.session() as session:
+
+                grapheme_set = set()
+                grapheme_query = session.query(Grapheme.grapheme)
+                for (g,) in grapheme_query:
+                    grapheme_set.add(g)
+                dictionaries = session.query(Dictionary)
+                for d in dictionaries:
+
+                    word_set = set(
+                        x[0] for x in session.query(Word.word).filter(Word.dictionary_id == d.id)
+                    )
+                    clitic_set = set(
+                        x[0]
+                        for x in session.query(Word.word)
+                        .filter(Word.word_type == WordType.clitic)
+                        .filter(Word.dictionary_id == d.id)
+                    )
+                    self._tokenizers[d.id] = SimpleTokenizer(
+                        word_break_markers=self.word_break_markers,
+                        punctuation=self.punctuation,
+                        clitic_markers=self.clitic_markers,
+                        compound_markers=self.compound_markers,
+                        brackets=self.brackets,
+                        laughter_word=self.laughter_word,
+                        oov_word=self.oov_word,
+                        bracketed_word=self.bracketed_word,
+                        cutoff_word=self.cutoff_word,
+                        ignore_case=self.ignore_case,
+                        use_g2p=self.use_g2p,
+                        clitic_set=clitic_set,
+                        word_set=word_set,
+                        grapheme_set=grapheme_set,
+                    )
+        return self._tokenizers
 
     def load_phone_groups(self) -> None:
         """
@@ -261,7 +303,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         """Set up the dictionary for processing"""
         self.initialize_database()
         if self.use_g2p:
-            return
+            return set(), collections.Counter()
         auto_set = {PhoneSetType.AUTO, PhoneSetType.UNKNOWN, "AUTO", "UNKNOWN"}
         if not isinstance(self.phone_set_type, PhoneSetType):
             self.phone_set_type = PhoneSetType[self.phone_set_type]

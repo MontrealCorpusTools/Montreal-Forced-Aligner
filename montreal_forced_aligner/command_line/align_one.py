@@ -18,8 +18,17 @@ from montreal_forced_aligner.command_line.utils import (
     validate_dictionary,
 )
 from montreal_forced_aligner.corpus.classes import FileData
+from montreal_forced_aligner.data import BRACKETED_WORD, CUTOFF_WORD, LAUGHTER_WORD, OOV_WORD
+from montreal_forced_aligner.dictionary.mixins import (
+    DEFAULT_BRACKETS,
+    DEFAULT_CLITIC_MARKERS,
+    DEFAULT_COMPOUND_MARKERS,
+    DEFAULT_PUNCTUATION,
+    DEFAULT_WORD_BREAK_MARKERS,
+)
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.online.alignment import align_utterance_online
+from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
 
 __all__ = ["align_one_cli"]
 
@@ -74,6 +83,18 @@ def align_one_cli(context, **kwargs) -> None:
     output_path: Path = kwargs["output_path"]
     output_format = kwargs["output_format"]
     c = PretrainedAligner.parse_parameters(config_path, context.params, context.args)
+    tokenizer = SimpleTokenizer(
+        word_break_markers=c.get("word_break_markers", DEFAULT_WORD_BREAK_MARKERS),
+        punctuation=c.get("punctuation", DEFAULT_PUNCTUATION),
+        clitic_markers=c.get("clitic_markers", DEFAULT_CLITIC_MARKERS),
+        compound_markers=c.get("compound_markers", DEFAULT_COMPOUND_MARKERS),
+        brackets=c.get("brackets", DEFAULT_BRACKETS),
+        laughter_word=c.get("laughter_word", LAUGHTER_WORD),
+        oov_word=c.get("oov_word", OOV_WORD),
+        bracketed_word=c.get("bracketed_word", BRACKETED_WORD),
+        cutoff_word=c.get("cutoff_word", CUTOFF_WORD),
+        ignore_case=c.get("ignore_case", True),
+    )
 
     acoustic_model = AcousticModel(acoustic_model_path)
     extracted_models_dir = config.TEMPORARY_DIRECTORY.joinpath("extracted_models", "dictionary")
@@ -89,13 +110,14 @@ def align_one_cli(context, **kwargs) -> None:
         oov_phone=acoustic_model.parameters["oov_phone"],
         position_dependent_phones=acoustic_model.parameters["position_dependent_phones"],
         phones=acoustic_model.parameters["non_silence_phones"],
+        other_silence_phones=acoustic_model.other_silence_phones,
         ignore_case=c.get("ignore_case", True),
     )
     l_fst_path = dictionary_directory.joinpath("L.fst")
     l_align_fst_path = dictionary_directory.joinpath("L_align.fst")
     words_path = dictionary_directory.joinpath("words.txt")
     phones_path = dictionary_directory.joinpath("phones.txt")
-    if l_fst_path.exists():
+    if l_fst_path.exists() and not config.CLEAN:
         lexicon_compiler.load_l_from_file(l_fst_path)
         lexicon_compiler.load_l_align_from_file(l_align_fst_path)
         lexicon_compiler.word_table = pywrapfst.SymbolTable.read_text(words_path)
@@ -114,7 +136,8 @@ def align_one_cli(context, **kwargs) -> None:
     cmvn_computer = CmvnComputer()
     for utterance in file.utterances:
         seg = Segment(sound_file_path, utterance.begin, utterance.end, utterance.channel)
-        utt = KalpyUtterance(seg, utterance.text)
+        text, _, _ = tokenizer(utterance.text)
+        utt = KalpyUtterance(seg, text)
         utt.generate_mfccs(acoustic_model.mfcc_computer)
         utterances.append(utt)
     cmvn = cmvn_computer.compute_cmvn_from_features([utt.mfccs for utt in utterances])

@@ -403,6 +403,11 @@ class AcousticModel(Archive):
             json.dump(trainer.meta, f, ensure_ascii=False)
 
     @property
+    def other_silence_phones(self):
+        if "other_noise_phone" in self.meta:
+            return [self.meta["other_noise_phone"]]
+
+    @property
     def parameters(self) -> MetaDict:
         """Parameters to pass to top-level workers"""
         params = {**self.meta["features"]}
