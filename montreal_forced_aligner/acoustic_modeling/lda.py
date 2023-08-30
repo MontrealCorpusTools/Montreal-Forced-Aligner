@@ -305,7 +305,6 @@ class LdaTrainer(TriphoneTrainer):
         return {
             "lda_dimension": self.lda_dimension,
             "random_prune": self.random_prune,
-            "silence_csl": self.silence_csl,
             "splice_left_context": self.splice_left_context,
             "splice_right_context": self.splice_right_context,
         }

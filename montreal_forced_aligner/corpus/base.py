@@ -22,7 +22,13 @@ from montreal_forced_aligner.corpus.multiprocessing import (
     NormalizeTextFunction,
     dictionary_ids_for_job,
 )
-from montreal_forced_aligner.data import DatabaseImportData, TextFileType, WordType, WorkflowType
+from montreal_forced_aligner.data import (
+    DatabaseImportData,
+    Language,
+    TextFileType,
+    WordType,
+    WorkflowType,
+)
 from montreal_forced_aligner.db import (
     Corpus,
     CorpusWorkflow,
@@ -94,6 +100,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         speaker_characters: typing.Union[int, str] = 0,
         ignore_speakers: bool = False,
         oov_count_threshold: int = 0,
+        language: Language = Language.unknown,
         **kwargs,
     ):
         if not os.path.exists(corpus_directory):
@@ -124,6 +131,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         self._word_set = []
         self._jobs = []
         self.ignore_empty_utterances = False
+        self.language = language
 
     @property
     def jobs(self) -> typing.List[Job]:
@@ -602,32 +610,22 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
 
     def normalize_text_arguments(self):
         from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
+        from montreal_forced_aligner.tokenization.spacy import generate_language_tokenizer
 
-        if not isinstance(self, DictionaryMixin):
-            return None
+        if self.language is Language.unknown:
+            tokenizers = getattr(self, "tokenizers", None)
+        else:
+            tokenizers = generate_language_tokenizer(self.language)
+        if tokenizers is None:
+            if isinstance(self, DictionaryMixin):
+                tokenizers = self.tokenizer
+            else:
+                return None
         from montreal_forced_aligner.corpus.multiprocessing import NormalizeTextArguments
 
         with self.session() as session:
             jobs = session.query(Job).filter(Job.utterances.any())
-            return [
-                NormalizeTextArguments(
-                    j.id,
-                    self.session,
-                    None,
-                    self.word_break_markers,
-                    self.punctuation,
-                    self.clitic_markers,
-                    self.compound_markers,
-                    self.brackets,
-                    self.laughter_word,
-                    self.oov_word,
-                    self.bracketed_word,
-                    self.cutoff_word,
-                    self.ignore_case,
-                    getattr(self, "use_g2p", False),
-                )
-                for j in jobs
-            ]
+            return [NormalizeTextArguments(j.id, self.session, None, tokenizers) for j in jobs]
 
     def normalize_text(self) -> None:
         """Normalize the text of the corpus using a dictionary's sanitization functions and word mappings"""

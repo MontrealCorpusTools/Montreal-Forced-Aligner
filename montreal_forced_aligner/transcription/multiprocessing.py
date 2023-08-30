@@ -6,11 +6,9 @@ Transcription functions
 from __future__ import annotations
 
 import os
-import re
-import subprocess
 import typing
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict
 
 from _kalpy.fstext import ConstFst, VectorFst
 from _kalpy.lat import CompactLatticeWriter
@@ -30,8 +28,7 @@ from sqlalchemy.orm import joinedload, subqueryload
 from montreal_forced_aligner.abc import KaldiFunction, MetaDict
 from montreal_forced_aligner.data import MfaArguments, PhoneType
 from montreal_forced_aligner.db import Job, Phone, Utterance
-from montreal_forced_aligner.helper import mfa_open
-from montreal_forced_aligner.utils import thirdparty_binary, thread_logger
+from montreal_forced_aligner.utils import thread_logger
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
@@ -161,13 +158,10 @@ class DecodePhoneArguments(MfaArguments):
         HCLG.fst paths
     """
 
-    dictionaries: List[int]
-    feature_strings: Dict[int, str]
-    decode_options: MetaDict
+    working_directory: Path
     model_path: Path
-    lat_paths: Dict[int, Path]
-    phone_symbol_path: Path
     hclg_path: Path
+    decode_options: MetaDict
 
 
 @dataclass
@@ -414,7 +408,7 @@ class DecodeFunction(KaldiFunction):
         self.decode_options = args.decode_options
         self.model_path = args.model_path
 
-    def _run(self) -> typing.Generator[typing.Tuple[str, float, int]]:
+    def _run(self) -> None:
         """Run the function"""
         with (
             self.session() as session,
@@ -438,33 +432,7 @@ class DecodeFunction(KaldiFunction):
                 decode_logger.debug(f"Decoding with model: {self.model_path}")
                 dict_id = d.id
 
-                fmllr_path = job.construct_path(
-                    job.corpus.current_subset_directory, "trans", "scp", dict_id
-                )
-                if not fmllr_path.exists():
-                    fmllr_path = None
-                lda_mat_path = self.working_directory.joinpath("lda.mat")
-                if not lda_mat_path.exists():
-                    lda_mat_path = None
-                feat_path = job.construct_path(
-                    job.corpus.current_subset_directory, "feats", "scp", dictionary_id=dict_id
-                )
-                utt2spk_path = job.construct_path(
-                    job.corpus.current_subset_directory, "utt2spk", "scp", dict_id
-                )
-                utt2spk = KaldiMapping()
-                utt2spk.load(utt2spk_path)
-                decode_logger.debug(f"Feature path: {feat_path}")
-                decode_logger.debug(f"LDA transform path: {lda_mat_path}")
-                decode_logger.debug(f"Speaker transform path: {fmllr_path}")
-                decode_logger.debug(f"utt2spk path: {utt2spk_path}")
-                feature_archive = FeatureArchive(
-                    feat_path,
-                    utt2spk=utt2spk,
-                    lda_mat_file_name=lda_mat_path,
-                    transform_file_name=fmllr_path,
-                    deltas=True,
-                )
+                feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
 
                 lat_path = job.construct_path(self.working_directory, "lat", "ark", dict_id)
                 alignment_file_name = job.construct_path(
@@ -513,7 +481,7 @@ class LmRescoreFunction(KaldiFunction):
         self.new_g_paths = args.new_g_paths
         self.lm_rescore_options = args.lm_rescore_options
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
+    def _run(self) -> None:
         """Run the function"""
         with (
             self.session() as session,
@@ -573,7 +541,7 @@ class CarpaLmRescoreFunction(KaldiFunction):
         self.old_g_paths = args.old_g_paths
         self.new_g_paths = args.new_g_paths
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
+    def _run(self) -> None:
         """Run the function"""
         with (
             self.session() as session,
@@ -635,7 +603,7 @@ class InitialFmllrFunction(KaldiFunction):
         self.model_path = args.model_path
         self.fmllr_options = args.fmllr_options
 
-    def _run(self) -> typing.Generator[int]:
+    def _run(self) -> None:
         """Run the function"""
         with (
             self.session() as session,
@@ -748,7 +716,7 @@ class FinalFmllrFunction(KaldiFunction):
         self.model_path = args.model_path
         self.fmllr_options = args.fmllr_options
 
-    def _run(self) -> typing.Generator[int]:
+    def _run(self) -> None:
         """Run the function"""
         with (
             self.session() as session,
@@ -868,7 +836,7 @@ class FmllrRescoreFunction(KaldiFunction):
         self.model_path = args.model_path
         self.rescore_options = args.rescore_options
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
+    def _run(self) -> None:
         """Run the function"""
         with (
             self.session() as session,
@@ -1098,73 +1066,55 @@ class DecodePhoneFunction(KaldiFunction):
         Arguments for the function
     """
 
-    progress_pattern = re.compile(
-        r"^LOG.*Log-like per frame for utterance (?P<utterance>.*) is (?P<loglike>[-\d.]+) over (?P<num_frames>\d+) frames."
-    )
-
     def __init__(self, args: DecodePhoneArguments):
         super().__init__(args)
-        self.dictionaries = args.dictionaries
-        self.feature_strings = args.feature_strings
-        self.lat_paths = args.lat_paths
-        self.phone_symbol_path = args.phone_symbol_path
+        self.working_directory = args.working_directory
         self.hclg_path = args.hclg_path
         self.decode_options = args.decode_options
         self.model_path = args.model_path
 
-    def _run(self) -> typing.Generator[typing.Tuple[str, float, int]]:
+    def _run(self) -> None:
         """Run the function"""
-        with self.session() as session, mfa_open(self.log_path, "w") as log_file:
+        with (
+            self.session() as session,
+            thread_logger("kalpy.decode", self.log_path, job_name=self.job_name) as decode_logger,
+        ):
+            job: Job = (
+                session.query(Job)
+                .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
+                .filter(Job.id == self.job_name)
+                .first()
+            )
+            silence_phones = [
+                x
+                for x, in session.query(Phone.mapping_id).filter(
+                    Phone.phone_type.in_([PhoneType.silence, PhoneType.oov])
+                )
+            ]
             phones = session.query(Phone.mapping_id, Phone.phone)
             reversed_phone_mapping = {}
             for p_id, phone in phones:
                 reversed_phone_mapping[p_id] = phone
-            for dict_id in self.dictionaries:
-                feature_string = self.feature_strings[dict_id]
-                lat_path = self.lat_paths[dict_id]
-                if os.path.exists(lat_path):
-                    continue
-                if (
-                    self.decode_options["uses_speaker_adaptation"]
-                    and self.decode_options["first_beam"] is not None
-                ):
-                    beam = self.decode_options["first_beam"]
-                else:
-                    beam = self.decode_options["beam"]
-                if (
-                    self.decode_options["uses_speaker_adaptation"]
-                    and self.decode_options["first_max_active"] is not None
-                ):
-                    max_active = self.decode_options["first_max_active"]
-                else:
-                    max_active = self.decode_options["max_active"]
-                decode_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("gmm-latgen-faster"),
-                        f"--max-active={max_active}",
-                        f"--beam={beam}",
-                        f"--lattice-beam={self.decode_options['lattice_beam']}",
-                        "--allow-partial=true",
-                        f"--word-symbol-table={self.phone_symbol_path}",
-                        f"--acoustic-scale={self.decode_options['acoustic_scale']}",
-                        self.model_path,
-                        self.hclg_path,
-                        feature_string,
-                        f"ark:{lat_path}",
-                    ],
-                    stderr=subprocess.PIPE,
-                    env=os.environ,
-                    encoding="utf8",
+            hclg_fst = ConstFst.Read(str(self.hclg_path))
+            for d in job.dictionaries:
+                decode_logger.debug(f"Decoding for dictionary {d.id}")
+                decode_logger.debug(f"Decoding with model: {self.model_path}")
+                dict_id = d.id
+                feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
+                lat_path = job.construct_path(self.working_directory, "lat", "ark", dict_id)
+                alignment_file_name = job.construct_path(
+                    self.working_directory, "ali", "ark", dict_id
                 )
-                for line in decode_proc.stderr:
-                    log_file.write(line)
-                    m = self.progress_pattern.match(line.strip())
-                    if m:
-                        self.callback(
-                            (
-                                m.group("utterance"),
-                                float(m.group("loglike")),
-                                int(m.group("num_frames")),
-                            )
-                        )
-            self.check_call(decode_proc)
+                words_path = job.construct_path(self.working_directory, "words", "ark", dict_id)
+
+                boost_silence = self.decode_options.pop("boost_silence", 1.0)
+                decoder = GmmDecoder(self.model_path, hclg_fst, **self.decode_options)
+                if boost_silence != 1.0:
+                    decoder.boost_silence(boost_silence, silence_phones)
+                decoder.export_lattices(
+                    lat_path,
+                    feature_archive,
+                    word_file_name=words_path,
+                    alignment_file_name=alignment_file_name,
+                    callback=self.callback,
+                )

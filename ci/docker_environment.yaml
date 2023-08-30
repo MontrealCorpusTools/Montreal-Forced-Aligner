@@ -39,5 +39,6 @@ dependencies:
   - rich
   - rich-click
   - kalpy
+  - spacy[ja]
   - pip:
       - speechbrain

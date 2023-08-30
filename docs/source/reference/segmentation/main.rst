@@ -7,4 +7,5 @@ Segmenter
 .. autosummary::
    :toctree: generated/
 
-   Segmenter
+   VadSegmenter
+   TranscriptionSegmenter

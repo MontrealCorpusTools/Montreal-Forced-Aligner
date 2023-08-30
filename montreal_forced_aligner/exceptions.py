@@ -30,6 +30,7 @@ __all__ = [
     "PyniniAlignmentError",
     "PyniniGenerationError",
     "NoAlignmentsError",
+    "SegmenterError",
     "ConfigError",
     "LMError",
     "LanguageModelNotFoundError",
@@ -952,3 +953,14 @@ class KaldiProcessingError(MFAError):
                     self.log_file = handler.baseFilename
                     break
         self.refresh_message()
+
+
+# Segmenter Errors
+
+
+class SegmenterError(MFAError):
+    """
+    Class for errors during alignment
+    """
+
+    pass

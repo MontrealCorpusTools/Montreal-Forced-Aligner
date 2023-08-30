@@ -11,3 +11,13 @@ Corpus tokenizer
 
    CorpusTokenizer
    TokenizerValidator
+
+Simple tokenizer
+================
+
+.. currentmodule:: montreal_forced_aligner.tokenization.simple
+
+.. autosummary::
+   :toctree: generated/
+
+   SimpleTokenizer

@@ -187,6 +187,24 @@ class DictionaryMixin:
         self._phone_groups = {}
 
     @property
+    def tokenizer(self):
+        from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
+
+        tokenizer = SimpleTokenizer(
+            word_break_markers=self.word_break_markers,
+            punctuation=self.punctuation,
+            clitic_markers=self.clitic_markers,
+            compound_markers=self.compound_markers,
+            brackets=self.brackets,
+            laughter_word=self.laughter_word,
+            oov_word=self.oov_word,
+            bracketed_word=self.bracketed_word,
+            cutoff_word=self.cutoff_word,
+            ignore_case=self.ignore_case,
+        )
+        return tokenizer
+
+    @property
     def base_phones(self) -> Dict[str, Set[str]]:
         """Grouped phones by base phone"""
         base_phones = {}
@@ -320,11 +338,6 @@ class DictionaryMixin:
             self.optional_silence_phone,
             self.oov_phone,
         }
-
-    @property
-    def context_independent_csl(self) -> str:
-        """Context independent colon-separated list"""
-        return ":".join(str(self.phone_mapping[x]) for x in self.kaldi_silence_phones)
 
     @property
     def specials_set(self) -> Set[str]:
@@ -495,28 +508,11 @@ class DictionaryMixin:
         return sorted(self.silence_phones)
 
     @property
-    def optional_silence_csl(self) -> str:
-        """
-        Phone ID of the optional silence phone
-        """
-        try:
-            return str(self.phone_mapping[self.optional_silence_phone])
-        except Exception:
-            return ""
-
-    @property
-    def silence_csl(self) -> str:
+    def silence_symbols(self) -> typing.List[int]:
         """
         A colon-separated string of silence phone ids
         """
-        return ":".join(map(str, (self.phone_mapping[x] for x in self.kaldi_silence_phones)))
-
-    @property
-    def non_silence_csl(self) -> str:
-        """
-        A colon-separated string of non-silence phone ids
-        """
-        return ":".join(map(str, (self.phone_mapping[x] for x in self.kaldi_non_silence_phones)))
+        return [self.phone_mapping[x] for x in self.kaldi_silence_phones]
 
     @property
     def phones(self) -> set:

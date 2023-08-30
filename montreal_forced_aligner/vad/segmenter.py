@@ -30,13 +30,16 @@ from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
 from montreal_forced_aligner.vad.multiprocessing import (
     FOUND_SPEECHBRAIN,
     VAD,
+    SegmentTranscriptArguments,
+    SegmentTranscriptFunction,
     SegmentVadArguments,
     SegmentVadFunction,
+    segment_utterance_transcript,
 )
 
 SegmentationType = List[Dict[str, float]]
 
-__all__ = ["Segmenter", "SpeechbrainSegmenterMixin", "TranscriptionSegmenter"]
+__all__ = ["VadSegmenter", "SpeechbrainSegmenterMixin", "TranscriptionSegmenter"]
 
 logger = logging.getLogger("mfa")
 
@@ -50,13 +53,13 @@ class SpeechbrainSegmenterMixin:
         overlap_small_chunk: bool = False,
         apply_energy_vad: bool = False,
         double_check: bool = True,
-        close_th: float = 0.250,
-        len_th: float = 0.250,
+        close_th: float = 0.333,
+        len_th: float = 0.333,
         activation_th: float = 0.5,
         deactivation_th: float = 0.25,
         en_activation_th: float = 0.5,
-        en_deactivation_th: float = 0.0,
-        speech_th: float = 0.50,
+        en_deactivation_th: float = 0.4,
+        speech_th: float = 0.5,
         cuda: bool = False,
         speechbrain: bool = False,
         **kwargs,
@@ -82,6 +85,7 @@ class SpeechbrainSegmenterMixin:
         self.cuda = cuda
         self.speechbrain = speechbrain
         self.segment_padding = segment_padding
+        self.vad_model = None
         if self.speechbrain:
             model_dir = os.path.join(config.TEMPORARY_DIRECTORY, "models", "VAD")
             os.makedirs(model_dir, exist_ok=True)
@@ -112,7 +116,7 @@ class SpeechbrainSegmenterMixin:
         }
 
 
-class Segmenter(
+class VadSegmenter(
     VadConfigMixin,
     AcousticCorpusMixin,
     FileExporterMixin,
@@ -430,10 +434,14 @@ class Segmenter(
                 f.save(output_directory, output_format=output_format)
 
 
-class TranscriptionSegmenter(TranscriberMixin, SpeechbrainSegmenterMixin, TopLevelMfaWorker):
+class TranscriptionSegmenter(
+    VadConfigMixin, TranscriberMixin, SpeechbrainSegmenterMixin, TopLevelMfaWorker
+):
     def __init__(self, acoustic_model_path: Path = None, **kwargs):
         self.acoustic_model = AcousticModel(acoustic_model_path)
         kw = self.acoustic_model.parameters
+        kw["apply_energy_vad"] = True
+        kw["apply_energy_vad"] = True
         kw.update(kwargs)
         super().__init__(**kw)
 
@@ -451,10 +459,151 @@ class TranscriptionSegmenter(TranscriberMixin, SpeechbrainSegmenterMixin, TopLev
 
         self.normalize_text()
 
-        self.write_lexicon_information(write_disambiguation=True)
+        self.write_lexicon_information(write_disambiguation=False)
 
     def setup_acoustic_model(self):
         self.acoustic_model.validate(self)
         self.acoustic_model.export_model(self.model_directory)
         self.acoustic_model.export_model(self.working_directory)
         self.acoustic_model.log_details()
+
+    def segment(self):
+        """
+        Performs VAD and segmentation into utterances
+
+        Raises
+        ------
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
+            If there were any errors in running Kaldi binaries
+        """
+        self.setup()
+        self.create_new_current_workflow(WorkflowType.segmentation)
+        wf = self.current_workflow
+        if wf.done:
+            logger.info("Segmentation already done, skipping.")
+            return
+        try:
+            self.segment_transcripts()
+            with self.session() as session:
+                session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update(
+                    {"done": True}
+                )
+                session.commit()
+        except Exception as e:
+            with self.session() as session:
+                session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update(
+                    {"dirty": True}
+                )
+                session.commit()
+            if isinstance(e, KaldiProcessingError):
+                log_kaldi_errors(e.error_logs)
+                e.update_log_file()
+            raise
+
+    def segment_transcript_arguments(self) -> List[SegmentTranscriptArguments]:
+        """
+        Generate Job arguments for :class:`~montreal_forced_aligner.segmenter.SegmentTranscriptFunction`
+
+        Returns
+        -------
+        list[SegmentTranscriptArguments]
+            Arguments for processing
+        """
+        decode_options = self.decode_options
+        boost_silence = decode_options.pop("boost_silence", 1.0)
+        if boost_silence != 1.0:
+            self.acoustic_model.acoustic_model.boost_silence(
+                self.acoustic_model.transition_model, self.silence_symbols, boost_silence
+            )
+        return [
+            SegmentTranscriptArguments(
+                j.id,
+                getattr(self, "session", ""),
+                self.working_log_directory.joinpath(f"segment_vad.{j.id}.log"),
+                self.acoustic_model,
+                self.vad_model,
+                self.lexicon_compilers,
+                self.mfcc_options,
+                self.vad_options,
+                self.segmentation_options,
+                self.decode_options,
+            )
+            for j in self.jobs
+        ]
+
+    def segment_transcripts(self) -> None:
+
+        arguments = self.segment_transcript_arguments()
+        old_utts = set()
+        new_utterance_mapping = []
+
+        with tqdm(
+            total=self.num_utterances, disable=config.QUIET
+        ) as pbar, self.session() as session:
+            utterances = session.query(Utterance.id, Utterance.speaker_id, Utterance.file_id)
+            utterance_cache = {}
+            for u_id, speaker_id, file_id in utterances:
+                utterance_cache[u_id] = (speaker_id, file_id)
+            for utt, new_utts in run_kaldi_function(
+                SegmentTranscriptFunction, arguments, pbar.update
+            ):
+                old_utts.add(utt)
+                speaker_id, file_id = utterance_cache[utt]
+                for new_utt in new_utts:
+                    new_utterance_mapping.append(
+                        {
+                            "begin": new_utt.segment.begin,
+                            "end": new_utt.segment.end,
+                            "speaker_id": speaker_id,
+                            "file_id": file_id,
+                            "oovs": "",
+                            "text": new_utt.transcript,
+                            "normalized_text": new_utt.transcript,
+                            "features": "",
+                            "in_subset": False,
+                            "ignored": False,
+                            "channel": new_utt.segment.channel,
+                        }
+                    )
+            session.query(Utterance).filter(Utterance.id.in_(old_utts)).delete()
+            session.bulk_insert_mappings(
+                Utterance, new_utterance_mapping, return_defaults=False, render_nulls=True
+            )
+            session.commit()
+
+    def segment_transcript(self, utterance_id: int):
+        with self.session() as session:
+            utterance = session.get(Utterance, utterance_id)
+            new_utterances = segment_utterance_transcript(
+                self.acoustic_model,
+                utterance.to_kalpy(),
+                self.lexicon_compilers[utterance.speaker.dictionary_id],
+                self.vad_model if self.speechbrain else None,
+                self.segmentation_options,
+                mfcc_options=self.mfcc_options if not self.speechbrain else None,
+                vad_options=self.vad_options if not self.speechbrain else None,
+                **self.decode_options,
+            )
+        return new_utterances
+
+    def export_files(self, output_directory: str, output_format: Optional[str] = None) -> None:
+        """
+        Export the results of segmentation as TextGrids
+
+        Parameters
+        ----------
+        output_directory: str
+            Directory to save segmentation TextGrids
+        output_format: str, optional
+            Format to force output files into
+        """
+        if output_format is None:
+            output_format = TextFileType.TEXTGRID.value
+        os.makedirs(output_directory, exist_ok=True)
+        with self.session() as session:
+            for f in session.query(File).options(
+                selectinload(File.utterances).joinedload(Utterance.speaker, innerjoin=True),
+                joinedload(File.sound_file, innerjoin=True),
+                joinedload(File.text_file),
+            ):
+                f.save(output_directory, output_format=output_format)

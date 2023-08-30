@@ -8,6 +8,7 @@ import rich_click as click
 from montreal_forced_aligner import config
 from montreal_forced_aligner.acoustic_modeling import TrainableAligner
 from montreal_forced_aligner.command_line.utils import common_options, validate_dictionary
+from montreal_forced_aligner.data import Language
 
 __all__ = ["train_acoustic_model_cli"]
 
@@ -84,6 +85,13 @@ __all__ = ["train_acoustic_model_cli"]
     is_flag=True,
     help="Flag to include original utterance text in the output.",
     default=False,
+)
+@click.option(
+    "--language",
+    "language",
+    help="Language to use for spacy tokenizers and other preprocessing of language data",
+    default=Language.unknown.name,
+    type=click.Choice([x.name for x in Language]),
 )
 @common_options
 @click.help_option("-h", "--help")

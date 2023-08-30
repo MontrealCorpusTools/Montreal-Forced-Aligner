@@ -107,11 +107,6 @@ class AlignMixin(DictionaryMixin):
         """Corpus data directory"""
         ...
 
-    @abstractmethod
-    def construct_feature_proc_strings(self) -> typing.List[typing.Dict[str, str]]:
-        """Generate feature strings"""
-        ...
-
     def compile_train_graphs_arguments(self) -> typing.List[CompileTrainGraphsArguments]:
         """
         Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.CompileTrainGraphsFunction`

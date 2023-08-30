@@ -16,14 +16,21 @@ from sqlalchemy.orm import joinedload, subqueryload
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.corpus.classes import FileData
 from montreal_forced_aligner.corpus.helper import find_exts
-from montreal_forced_aligner.data import MfaArguments, WordType
-from montreal_forced_aligner.db import Dictionary, Grapheme, Job, Speaker, Utterance, Word
+from montreal_forced_aligner.data import MfaArguments
+from montreal_forced_aligner.db import Dictionary, Job, Speaker, Utterance
 from montreal_forced_aligner.exceptions import SoundFileError, TextGridParseError, TextParseError
 from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import Counter
 
 if typing.TYPE_CHECKING:
     from dataclasses import dataclass
+
+    from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
+
+    try:
+        from spacy.language import Language as SpacyLanguage
+    except ImportError:
+        SpacyLanguage = None
 else:
     from dataclassy import dataclass
 
@@ -221,17 +228,7 @@ class NormalizeTextArguments(MfaArguments):
 
     """
 
-    word_break_markers: typing.List[str]
-    punctuation: typing.List[str]
-    clitic_markers: typing.List[str]
-    compound_markers: typing.List[str]
-    brackets: typing.List[typing.Tuple[str, str]]
-    laughter_word: str
-    oov_word: str
-    bracketed_word: str
-    cutoff_word: str
-    ignore_case: bool
-    use_g2p: bool
+    tokenizers: typing.Union[typing.Dict[int, SimpleTokenizer], SpacyLanguage]
 
 
 @dataclass
@@ -258,58 +255,20 @@ class NormalizeTextFunction(KaldiFunction):
 
     def __init__(self, args: NormalizeTextArguments):
         super().__init__(args)
-        self.word_break_markers = args.word_break_markers
-        self.brackets = args.brackets
-        self.punctuation = args.punctuation
-        self.compound_markers = args.compound_markers
-        self.clitic_markers = args.clitic_markers
-        self.ignore_case = args.ignore_case
-        self.use_g2p = args.use_g2p
-        self.laughter_word = args.laughter_word
-        self.oov_word = args.oov_word
-        self.bracketed_word = args.bracketed_word
-        self.cutoff_word = args.cutoff_word
+        self.tokenizers = args.tokenizers
 
     def _run(self):
         """Run the function"""
-        from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
 
         with self.session() as session:
-
-            grapheme_set = set()
-            grapheme_query = session.query(Grapheme.grapheme)
-            for (g,) in grapheme_query:
-                grapheme_set.add(g)
             dict_count = session.query(Dictionary).join(Dictionary.words).limit(1).count()
-            if self.use_g2p or dict_count > 0:
+            if dict_count > 0 or isinstance(self.tokenizers, dict):
                 dictionaries = session.query(Dictionary)
                 for d in dictionaries:
-
-                    word_set = set(
-                        x[0] for x in session.query(Word.word).filter(Word.dictionary_id == d.id)
-                    )
-                    clitic_set = set(
-                        x[0]
-                        for x in session.query(Word.word)
-                        .filter(Word.word_type == WordType.clitic)
-                        .filter(Word.dictionary_id == d.id)
-                    )
-                    tokenizer = SimpleTokenizer(
-                        word_break_markers=self.word_break_markers,
-                        punctuation=self.punctuation,
-                        clitic_markers=self.clitic_markers,
-                        compound_markers=self.compound_markers,
-                        brackets=self.brackets,
-                        laughter_word=self.laughter_word,
-                        oov_word=self.oov_word,
-                        bracketed_word=self.bracketed_word,
-                        cutoff_word=self.cutoff_word,
-                        ignore_case=self.ignore_case,
-                        use_g2p=self.use_g2p,
-                        clitic_set=clitic_set,
-                        word_set=word_set,
-                        grapheme_set=grapheme_set,
-                    )
+                    if isinstance(self.tokenizers, dict):
+                        tokenizer = self.tokenizers[d.id]
+                    else:
+                        tokenizer = self.tokenizers
                     utterances = (
                         session.query(Utterance.id, Utterance.text)
                         .join(Utterance.speaker)
@@ -331,20 +290,7 @@ class NormalizeTextFunction(KaldiFunction):
                             )
                         )
             else:
-                tokenizer = SimpleTokenizer(
-                    word_break_markers=self.word_break_markers,
-                    punctuation=self.punctuation,
-                    clitic_markers=self.clitic_markers,
-                    compound_markers=self.compound_markers,
-                    brackets=self.brackets,
-                    laughter_word=self.laughter_word,
-                    oov_word=self.oov_word,
-                    bracketed_word=self.bracketed_word,
-                    cutoff_word=self.cutoff_word,
-                    ignore_case=self.ignore_case,
-                    use_g2p=self.use_g2p,
-                    grapheme_set=grapheme_set,
-                )
+                tokenizer = self.tokenizers
                 utterances = (
                     session.query(Utterance.id, Utterance.text)
                     .filter(Utterance.text != "")

@@ -78,16 +78,6 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
             model_path = self.model_path
         arguments = []
         for j in self.jobs:
-            feat_strings = {}
-            for d_id in j.dictionary_ids:
-                feat_strings[d_id] = j.construct_feature_proc_string(
-                    self.working_directory,
-                    d_id,
-                    self.feature_options["uses_splices"],
-                    self.feature_options["splice_left_context"],
-                    self.feature_options["splice_right_context"],
-                    self.feature_options["uses_speaker_adaptation"],
-                )
             arguments.append(
                 AccStatsArguments(
                     j.id,

@@ -91,7 +91,7 @@ except (ImportError, OSError):
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
 
-__all__ = ["SpeakerDiarizer"]
+__all__ = ["SpeakerDiarizer", "FOUND_SPEECHBRAIN"]
 
 logger = logging.getLogger("mfa")
 
@@ -950,9 +950,14 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         with self.session() as session:
             session.execute(sqlalchemy.delete(SpeakerOrdering))
             session.flush()
+
             unknown_speaker_id = (
-                session.query(Speaker.id).filter(Speaker.name == "MFA_UNKNOWN").first()[0]
+                session.query(Speaker.id).filter(Speaker.name == "MFA_UNKNOWN").first()
             )
+            if unknown_speaker_id is None:
+                unknown_speaker_id = -1
+            else:
+                unknown_speaker_id = unknown_speaker_id[0]
             non_empty_speakers = [unknown_speaker_id]
             sq = (
                 session.query(Speaker.id, sqlalchemy.func.count().label("utterance_count"))
@@ -1414,24 +1419,28 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         """Generate per-speaker embeddings as the mean over their utterances"""
         if not self.has_xvectors():
             self.load_embeddings()
+        self.cleanup_empty_speakers()
         logger.info("Computing SpeechBrain speaker embeddings...")
-        with tqdm(
-            total=self.num_speakers, disable=config.QUIET
-        ) as pbar, self.session() as session:
+        with self.session() as session:
             update_mapping = []
-            speakers = session.query(Speaker.id)
-            for (s_id,) in speakers:
-                u_query = session.query(Utterance.xvector).filter(
-                    Utterance.speaker_id == s_id, Utterance.xvector != None  # noqa
-                )
-                embeddings = np.empty((u_query.count(), XVECTOR_DIMENSION))
-                if embeddings.shape[0] == 0:
-                    continue
-                for i, (xvector,) in enumerate(u_query):
-                    embeddings[i, :] = xvector
-                speaker_xvector = np.mean(embeddings, axis=0)
-                update_mapping.append({"id": s_id, "xvector": speaker_xvector})
-                pbar.update(1)
+            speakers = session.query(Speaker.id).filter(
+                sqlalchemy.or_(Speaker.xvector == None, Speaker.modified == True)  # noqa
+            )
+            with tqdm(total=speakers.count(), disable=config.QUIET) as pbar:
+                for (s_id,) in speakers:
+                    u_query = session.query(Utterance.xvector).filter(
+                        Utterance.speaker_id == s_id, Utterance.xvector != None  # noqa
+                    )
+                    embeddings = np.empty((u_query.count(), XVECTOR_DIMENSION))
+                    if embeddings.shape[0] == 0:
+                        continue
+                    for i, (xvector,) in enumerate(u_query):
+                        embeddings[i, :] = xvector
+                    speaker_xvector = np.mean(embeddings, axis=0)
+                    update_mapping.append(
+                        {"id": s_id, "xvector": speaker_xvector, "modified": False}
+                    )
+                    pbar.update(1)
             bulk_update(session, Speaker, update_mapping)
             session.commit()
 

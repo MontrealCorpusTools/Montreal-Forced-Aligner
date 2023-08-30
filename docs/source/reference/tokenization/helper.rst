@@ -12,3 +12,15 @@ Helper
    TokenizerRewriter
    TokenizerArguments
    TokenizerFunction
+
+
+Helper
+------
+
+.. currentmodule:: montreal_forced_aligner.tokenization.simple
+
+.. autosummary::
+   :toctree: generated/
+
+   SanitizeFunction
+   SplitWordsFunction

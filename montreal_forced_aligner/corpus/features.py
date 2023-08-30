@@ -399,7 +399,7 @@ class ComputeVadFunction(KaldiFunction):
         super().__init__(args)
         self.vad_options = args.vad_options
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
+    def _run(self) -> None:
         """Run the function"""
 
         with (
@@ -916,9 +916,6 @@ class IvectorConfigMixin(VadConfigMixin):
             "silence_weight": self.silence_weight,
             "max_count": self.max_count,
             "ivector_dimension": self.ivector_dimension,
-            "silence_csl": getattr(
-                self, "silence_csl", ""
-            ),  # If we have silence phones from a dictionary, use them,
         }
 
 

@@ -48,6 +48,7 @@ dependencies:
   - rich
   - rich-click
   - kalpy
+  - spacy
   - pip:
       - build
       - twine
