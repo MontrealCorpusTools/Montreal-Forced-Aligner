@@ -91,7 +91,7 @@ except (ImportError, OSError):
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
 
-__all__ = ["SpeakerDiarizer"]
+__all__ = ["SpeakerDiarizer", "FOUND_SPEECHBRAIN"]
 
 logger = logging.getLogger("mfa")
 

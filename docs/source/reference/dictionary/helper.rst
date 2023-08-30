@@ -30,17 +30,6 @@ Mixins
 
    MultispeakerDictionaryMixin
 
-Helper
-------
-
-.. currentmodule:: montreal_forced_aligner.dictionary.mixins
-
-.. autosummary::
-   :toctree: generated/
-
-   SanitizeFunction
-   SplitWordsFunction
-
 
 Pronunciation probability functionality
 =======================================

@@ -340,11 +340,6 @@ class DictionaryMixin:
         }
 
     @property
-    def context_independent_csl(self) -> str:
-        """Context independent colon-separated list"""
-        return ":".join(str(self.phone_mapping[x]) for x in self.kaldi_silence_phones)
-
-    @property
     def specials_set(self) -> Set[str]:
         """Special words, like the ``oov_word`` ``silence_word``, ``<s>``, and ``</s>``"""
         return {
@@ -513,28 +508,11 @@ class DictionaryMixin:
         return sorted(self.silence_phones)
 
     @property
-    def optional_silence_csl(self) -> str:
-        """
-        Phone ID of the optional silence phone
-        """
-        try:
-            return str(self.phone_mapping[self.optional_silence_phone])
-        except Exception:
-            return ""
-
-    @property
-    def silence_csl(self) -> str:
+    def silence_symbols(self) -> typing.List[int]:
         """
         A colon-separated string of silence phone ids
         """
-        return ":".join(map(str, (self.phone_mapping[x] for x in self.kaldi_silence_phones)))
-
-    @property
-    def non_silence_csl(self) -> str:
-        """
-        A colon-separated string of non-silence phone ids
-        """
-        return ":".join(map(str, (self.phone_mapping[x] for x in self.kaldi_non_silence_phones)))
+        return [self.phone_mapping[x] for x in self.kaldi_silence_phones]
 
     @property
     def phones(self) -> set:

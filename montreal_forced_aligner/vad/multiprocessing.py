@@ -6,18 +6,28 @@ import typing
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Union
 
-import librosa
 import numpy
 import numpy as np
-import pynini
-import pywrapfst
+from _kalpy.decoder import LatticeFasterDecoder, LatticeFasterDecoderConfig
+from _kalpy.fstext import GetLinearSymbolSequence
+from _kalpy.gmm import DecodableAmDiagGmmScaled
+from _kalpy.matrix import DoubleMatrix, FloatMatrix
 from _kalpy.util import SequentialBaseFloatVectorReader
-from Bio import pairwise2
-from kalpy.utils import generate_read_specifier
+from kalpy.data import Segment
+from kalpy.decoder.training_graphs import TrainingGraphCompiler
+from kalpy.feat.cmvn import CmvnComputer
+from kalpy.feat.mfcc import MfccComputer
+from kalpy.feat.vad import VadComputer
+from kalpy.fstext.lexicon import LexiconCompiler
+from kalpy.utils import generate_read_specifier, read_kaldi_object
+from kalpy.utterance import Utterance as KalpyUtterance
+from sqlalchemy.orm import joinedload, subqueryload
 
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.data import CtmInterval, MfaArguments
-from montreal_forced_aligner.db import SoundFile, Utterance
+from montreal_forced_aligner.db import File, Job, Speaker, Utterance
+from montreal_forced_aligner.exceptions import SegmenterError
+from montreal_forced_aligner.models import AcousticModel
 
 try:
     import warnings
@@ -44,6 +54,18 @@ if TYPE_CHECKING:
 else:
     from dataclassy import dataclass
 
+__all__ = [
+    "SegmentTranscriptArguments",
+    "SegmentVadArguments",
+    "SegmentTranscriptFunction",
+    "SegmentVadFunction",
+    "get_initial_segmentation",
+    "merge_segments",
+    "segment_utterance_transcript",
+    "segment_utterance_vad",
+    "segment_utterance_vad_speech_brain",
+]
+
 
 @dataclass
 class SegmentVadArguments(MfaArguments):
@@ -51,6 +73,160 @@ class SegmentVadArguments(MfaArguments):
 
     vad_path: Path
     segmentation_options: MetaDict
+
+
+@dataclass
+class SegmentTranscriptArguments(MfaArguments):
+    """Arguments for :class:`~montreal_forced_aligner.segmenter.SegmentTranscriptFunction`"""
+
+    acoustic_model: AcousticModel
+    vad_model: typing.Optional[VAD]
+    lexicon_compilers: typing.Dict[int, LexiconCompiler]
+    mfcc_options: MetaDict
+    vad_options: MetaDict
+    segmentation_options: MetaDict
+    decode_options: MetaDict
+
+
+def segment_utterance_transcript(
+    acoustic_model: AcousticModel,
+    utterance: KalpyUtterance,
+    lexicon_compiler: LexiconCompiler,
+    vad_model: VAD,
+    segmentation_options: MetaDict,
+    cmvn: DoubleMatrix = None,
+    fmllr_trans: FloatMatrix = None,
+    mfcc_options: MetaDict = None,
+    vad_options: MetaDict = None,
+    acoustic_scale: float = 0.1,
+    beam: float = 16.0,
+    lattice_beam: float = 10.0,
+    max_active: int = 7000,
+    min_active: int = 200,
+    prune_interval: int = 25,
+    beam_delta: float = 0.5,
+    hash_ratio: float = 2.0,
+    prune_scale: float = 0.1,
+    boost_silence: float = 1.0,
+):
+    """
+    Split an utterance and its transcript into multiple transcribed utterances
+
+    Parameters
+    ----------
+    acoustic_model: :class:`~montreal_forced_aligner.models.AcousticModel`
+        Acoustic model to use in splitting transcriptions
+    utterance: :class:`~kalpy.utterance.Utterance`
+        Utterance to split
+    lexicon_compiler :class:`~kalpy.fstext.lexicon.LexiconCompiler`
+        Lexicon compiler
+    vad_model :class:`~speechbrain.pretrained.VAD` or None
+        VAD model from SpeechBrain, if None, then Kaldi's energy-based VAD is used
+    segmentation_options: dict[str, Any]
+        Segmentation options
+    cmvn: :class:`~_kalpy.matrix.DoubleMatrix`
+        CMVN stats to apply
+    fmllr_trans: :class:`~_kalpy.matrix.FloatMatrix`
+        fMLLR transformation matrix for speaker adaptation
+    mfcc_options: dict[str, Any], optional
+        MFCC options for energy based VAD
+    vad_options: dict[str, Any], optional
+        Options for energy based VAD
+    acoustic_scale: float, optional
+        Defaults to 0.1
+    beam: float, optional
+        Defaults to 16
+    lattice_beam: float, optional
+        Defaults to 10
+    max_active: int, optional
+        Defaults to 7000
+    min_active: int, optional
+        Defaults to 250
+    prune_interval: int, optional
+        Defaults to 25
+    beam_delta: float, optional
+        Defaults to 0.5
+    hash_ratio: float, optional
+        Defaults to 2.0
+    prune_scale: float, optional
+        Defaults to 0.1
+    boost_silence: float, optional
+        Defaults to 1.0
+
+    Returns
+    -------
+    list[:class:`~kalpy.utterance.Utterance`]
+        Split utterances
+
+    """
+    graph_compiler = TrainingGraphCompiler(
+        acoustic_model.alignment_model_path,
+        acoustic_model.tree_path,
+        lexicon_compiler,
+        lexicon_compiler.word_table,
+    )
+    if utterance.cmvn_string:
+        cmvn = read_kaldi_object(DoubleMatrix, utterance.cmvn_string)
+    if utterance.fmllr_string:
+        fmllr_trans = read_kaldi_object(FloatMatrix, utterance.fmllr_string)
+    if cmvn is None and acoustic_model.uses_cmvn:
+        utterance.generate_mfccs(acoustic_model.mfcc_computer)
+        cmvn_computer = CmvnComputer()
+        cmvn = cmvn_computer.compute_cmvn_from_features([utterance.mfccs])
+    current_transcript = utterance.transcript
+    if vad_model is None:
+        segments = segment_utterance_vad(
+            utterance, mfcc_options, vad_options, segmentation_options
+        )
+    else:
+        segments = segment_utterance_vad_speech_brain(utterance, vad_model, segmentation_options)
+
+    config = LatticeFasterDecoderConfig()
+    config.beam = beam
+    config.lattice_beam = lattice_beam
+    config.max_active = max_active
+    config.min_active = min_active
+    config.prune_interval = prune_interval
+    config.beam_delta = beam_delta
+    config.hash_ratio = hash_ratio
+    config.prune_scale = prune_scale
+    new_utts = []
+    am, transition_model = acoustic_model.acoustic_model, acoustic_model.transition_model
+    if boost_silence != 1.0:
+        am.boost_silence(transition_model, lexicon_compiler.silence_symbols, boost_silence)
+    for seg in segments:
+        new_utt = KalpyUtterance(seg, current_transcript)
+        new_utt.generate_mfccs(acoustic_model.mfcc_computer)
+        if acoustic_model.uses_cmvn:
+            new_utt.apply_cmvn(cmvn)
+        feats = new_utt.generate_features(
+            acoustic_model.mfcc_computer,
+            acoustic_model.pitch_computer,
+            lda_mat=acoustic_model.lda_mat,
+            fmllr_trans=fmllr_trans,
+        )
+        fst = graph_compiler.compile_fst(new_utt.transcript)
+        decodable = DecodableAmDiagGmmScaled(am, transition_model, feats, acoustic_scale)
+
+        d = LatticeFasterDecoder(fst, config)
+        ans = d.Decode(decodable)
+        if not ans:
+            raise SegmenterError(f"Did not successfully decode: {current_transcript}")
+        ans, decoded = d.GetBestPath()
+        if decoded.NumStates() == 0:
+            raise SegmenterError("Error getting best path from decoder for utterance")
+        alignment, words, weight = GetLinearSymbolSequence(decoded)
+
+        words = words[:-1]
+        transcript = " ".join([lexicon_compiler.word_table.find(x) for x in words])
+
+        new_utt.transcript = transcript
+        current_transcript = " ".join(current_transcript.split()[len(words) :])
+        new_utt.mfccs = None
+        new_utt.cmvn_string = utterance.cmvn_string
+        new_utt.fmllr_string = utterance.fmllr_string
+        new_utts.append(new_utt)
+    return new_utts
 
 
 def get_initial_segmentation(frames: numpy.ndarray, frame_shift: float) -> List[CtmInterval]:
@@ -140,193 +316,39 @@ def merge_segments(
     return [x for x in merged_segments if x.end - x.begin > min_segment_length]
 
 
-def construct_utterance_segmentation_fst(
-    text: str,
-    word_symbol_table: pywrapfst.SymbolTable,
-    interjection_words: typing.List[str] = None,
-):
-    if interjection_words is None:
-        interjection_words = []
-    words = text.split()
-    fst = pynini.Fst()
-    start_state = fst.add_state()
-    fst.set_start(start_state)
-    fst.add_states(len(words))
-
-    for i, w in enumerate(words):
-        next_state = i + 1
-        label = word_symbol_table.find(w)
-        if i != 0:
-            fst.add_arc(
-                start_state,
-                pywrapfst.Arc(label, label, pywrapfst.Weight.one(fst.weight_type()), next_state),
-            )
-        fst.add_arc(
-            i, pywrapfst.Arc(label, label, pywrapfst.Weight.one(fst.weight_type()), next_state)
-        )
-
-        fst.set_final(next_state, pywrapfst.Weight(fst.weight_type(), 1))
-        for interjection in interjection_words:
-            start_interjection_state = fst.add_state()
-            fst.add_arc(
-                next_state,
-                pywrapfst.Arc(
-                    word_symbol_table.find("<eps>"),
-                    word_symbol_table.find("<eps>"),
-                    pywrapfst.Weight(fst.weight_type(), 10),
-                    start_interjection_state,
-                ),
-            )
-            if " " in interjection:
-                i_words = interjection.split()
-                for j, iw in enumerate(i_words):
-                    next_interjection_state = fst.add_state()
-                    if j == 0:
-                        prev_state = start_interjection_state
-                    else:
-                        prev_state = next_interjection_state - 1
-                    label = word_symbol_table.find(iw)
-                    weight = pywrapfst.Weight.one(fst.weight_type())
-                    fst.add_arc(
-                        prev_state, pywrapfst.Arc(label, label, weight, next_interjection_state)
-                    )
-                final_interjection_state = next_interjection_state
-            else:
-                final_interjection_state = fst.add_state()
-                label = word_symbol_table.find(interjection)
-                weight = pywrapfst.Weight.one(fst.weight_type())
-                fst.add_arc(
-                    start_interjection_state,
-                    pywrapfst.Arc(label, label, weight, final_interjection_state),
-                )
-            # Path to next word in text
-            weight = pywrapfst.Weight.one(fst.weight_type())
-            fst.add_arc(
-                final_interjection_state,
-                pywrapfst.Arc(
-                    word_symbol_table.find("<eps>"),
-                    word_symbol_table.find("<eps>"),
-                    weight,
-                    next_state,
-                ),
-            )
-    for interjection in interjection_words:
-        start_interjection_state = fst.add_state()
-        fst.add_arc(
-            start_state,
-            pywrapfst.Arc(
-                word_symbol_table.find("<eps>"),
-                word_symbol_table.find("<eps>"),
-                pywrapfst.Weight(fst.weight_type(), 10),
-                start_interjection_state,
-            ),
-        )
-        if " " in interjection:
-            i_words = interjection.split()
-            for j, iw in enumerate(i_words):
-                next_interjection_state = fst.add_state()
-                if j == 0:
-                    prev_state = start_interjection_state
-                else:
-                    prev_state = next_interjection_state - 1
-                label = word_symbol_table.find(iw)
-                weight = pywrapfst.Weight.one(fst.weight_type())
-                fst.add_arc(
-                    prev_state, pywrapfst.Arc(label, label, weight, next_interjection_state)
-                )
-            final_interjection_state = next_interjection_state
-        else:
-            final_interjection_state = fst.add_state()
-            label = word_symbol_table.find(interjection)
-            weight = pywrapfst.Weight.one(fst.weight_type())
-            fst.add_arc(
-                start_interjection_state,
-                pywrapfst.Arc(label, label, weight, final_interjection_state),
-            )
-        # Path to next word in text
-        weight = pywrapfst.Weight.one(fst.weight_type())
-        fst.add_arc(
-            final_interjection_state,
-            pywrapfst.Arc(
-                word_symbol_table.find("<eps>"),
-                word_symbol_table.find("<eps>"),
-                weight,
-                start_state,
-            ),
-        )
-    fst.set_final(next_state, pywrapfst.Weight.one(fst.weight_type()))
-    fst = pynini.determinize(fst)
-    fst = pynini.rmepsilon(fst)
-    fst = pynini.disambiguate(fst)
-    fst = pynini.determinize(fst)
-    return fst
-
-
-def align_text(split_utterance_texts, text, oovs, oov_word, interjection_words):
-    text = text.split()
-    split_utterance_text = []
-    lengths = []
-    indices = list(split_utterance_texts.keys())
-    for t in split_utterance_texts.values():
-        t = t.split()
-        lengths.append(len(t))
-        split_utterance_text.extend(t)
-
-    def score_func(first_element, second_element):
-        if first_element == second_element:
-            return 0
-        if first_element == oov_word and second_element in oovs:
-            return 0
-        if first_element == oov_word and second_element not in oovs:
-            return -10
-        if first_element in interjection_words:
-            return -10
-        return -2
-
-    alignments = pairwise2.align.globalcs(
-        split_utterance_text, text, score_func, -0.5, -0.1, gap_char=["-"], one_alignment_only=True
+def segment_utterance_vad(
+    utterance: KalpyUtterance,
+    mfcc_options: MetaDict,
+    vad_options: MetaDict,
+    segmentation_options: MetaDict,
+) -> typing.List[Segment]:
+    mfcc_computer = MfccComputer(**mfcc_options)
+    vad_computer = VadComputer(**vad_options)
+    feats = mfcc_computer.compute_mfccs_for_export(utterance.segment, compress=False)
+    vad = vad_computer.compute_vad(feats).numpy()
+    segments = get_initial_segmentation(vad, mfcc_computer.frame_shift)
+    segments = merge_segments(
+        segments,
+        segmentation_options["close_th"],
+        segmentation_options["large_chunk_size"],
+        segmentation_options["len_th"],
     )
-    results = [[]]
-    split_ind = 0
-    current_size = 0
-    for a in alignments:
-        for i, sa in enumerate(a.seqA):
-            sb = a.seqB[i]
-            if sa == "<unk>":
-                sa = sb
-            if sa != "-":
-                if (
-                    split_ind < len(lengths) - 1
-                    and sa not in split_utterance_texts[indices[split_ind]].split()
-                    and split_utterance_texts[indices[split_ind + 1]].split()[0] == sa
-                ):
-                    results.append([])
-                    split_ind += 1
-                    current_size = 0
-                results[-1].append(sa)
-                current_size += 1
-                if split_ind < len(lengths) - 1 and current_size >= lengths[split_ind]:
-                    results.append([])
-                    split_ind += 1
-                    current_size = 0
-            elif sb != "-":
-                results[-1].append(sb)
-    results = {k: " ".join(r) for k, r in zip(split_utterance_texts.keys(), results)}
-    return results
+    new_segments = []
+    for s in segments:
+        seg = Segment(
+            utterance.segment.file_path,
+            s.begin + utterance.segment.begin,
+            s.end + utterance.segment.begin,
+            utterance.segment.channel,
+        )
+        new_segments.append(seg)
+    return new_segments
 
 
 def segment_utterance_vad_speech_brain(
-    utterance: Utterance, sound_file: SoundFile, vad_model: VAD, segmentation_options: MetaDict
-) -> np.ndarray:
-    y, _ = librosa.load(
-        sound_file.sound_file_path,
-        sr=16000,
-        mono=False,
-        offset=utterance.begin,
-        duration=utterance.duration,
-    )
-    if len(y.shape) > 1:
-        y = y[:, utterance.channel]
+    utterance: KalpyUtterance, vad_model: VAD, segmentation_options: MetaDict
+) -> typing.List[Segment]:
+    y = utterance.segment.wave
     prob_chunks = vad_model.get_speech_prob_chunk(
         torch.tensor(y[np.newaxis, :], device=vad_model.device)
     ).cpu()
@@ -337,11 +359,12 @@ def segment_utterance_vad_speech_brain(
     ).float()
     # Compute the boundaries of the speech segments
     boundaries = vad_model.get_boundaries(prob_th, output_value="seconds")
-    boundaries += utterance.begin
+    boundaries += utterance.segment.begin
+
     # Apply energy-based VAD on the detected speech segments
-    if True or segmentation_options["apply_energy_VAD"]:
+    if segmentation_options["apply_energy_VAD"]:
         boundaries = vad_model.energy_VAD(
-            sound_file.sound_file_path,
+            utterance.segment.file_path,
             boundaries,
             activation_th=segmentation_options["en_activation_th"],
             deactivation_th=segmentation_options["en_deactivation_th"],
@@ -358,11 +381,19 @@ def segment_utterance_vad_speech_brain(
     # Double check speech segments
     if segmentation_options["double_check"]:
         boundaries = vad_model.double_check_speech_segments(
-            boundaries, sound_file.sound_file_path, speech_th=segmentation_options["speech_th"]
+            boundaries, utterance.segment.file_path, speech_th=segmentation_options["speech_th"]
         )
-    boundaries[:, 0] -= round(segmentation_options["close_th"] / 3, 3)
-    boundaries[:, 1] += round(segmentation_options["close_th"] / 3, 3)
-    return boundaries.numpy()
+    boundaries[:, 0] -= round(segmentation_options["close_th"] / 2, 3)
+    boundaries[:, 1] += round(segmentation_options["close_th"] / 2, 3)
+    boundaries = boundaries.numpy()
+    segments = []
+    for i in range(boundaries.shape[0]):
+        begin, end = boundaries[i]
+        begin = max(begin, 0)
+        end = min(end, utterance.segment.end)
+        seg = Segment(utterance.segment.file_path, begin, end, utterance.segment.channel)
+        segments.append(seg)
+    return segments
 
 
 class SegmentVadFunction(KaldiFunction):
@@ -373,7 +404,7 @@ class SegmentVadFunction(KaldiFunction):
     --------
     :meth:`montreal_forced_aligner.segmenter.Segmenter.segment_vad`
         Main function that calls this function in parallel
-    :meth:`montreal_forced_aligner.segmenter.Segmenter.segment_vad_arguments`
+    :meth:`montreal_forced_aligner.segmenter.VadSegmenter.segment_vad_arguments`
         Job method for generating arguments for this function
     :kaldi_utils:`segmentation.pl`
         Kaldi utility
@@ -409,3 +440,72 @@ class SegmentVadFunction(KaldiFunction):
             self.callback((int(utt_id.split("-")[-1]), merged))
             reader.Next()
         reader.Close()
+
+
+class SegmentTranscriptFunction(KaldiFunction):
+    """
+    Multiprocessing function to segment utterances with transcripts from VAD output.
+
+    See Also
+    --------
+    :meth:`montreal_forced_aligner.segmenter.Segmenter.segment_vad`
+        Main function that calls this function in parallel
+    :meth:`montreal_forced_aligner.segmenter.TranscriptionSegmenter.segment_transcript_arguments`
+        Job method for generating arguments for this function
+    :kaldi_utils:`segmentation.pl`
+        Kaldi utility
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.segmenter.SegmentTranscriptArguments`
+        Arguments for the function
+    """
+
+    def __init__(self, args: SegmentTranscriptArguments):
+        super().__init__(args)
+        self.acoustic_model = args.acoustic_model
+        self.vad_model = args.vad_model
+        self.lexicon_compilers = args.lexicon_compilers
+        self.segmentation_options = args.segmentation_options
+        self.mfcc_options = args.mfcc_options
+        self.vad_options = args.vad_options
+        self.decode_options = args.decode_options
+        self.speechbrain = self.vad_model is not None
+
+    def _run(self):
+        """Run the function"""
+        with (self.session() as session):
+            job: Job = (
+                session.query(Job)
+                .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
+                .filter(Job.id == self.job_name)
+                .first()
+            )
+
+            for d in job.dictionaries:
+                utterances = (
+                    session.query(Utterance)
+                    .join(Utterance.speaker)
+                    .options(
+                        joinedload(Utterance.file).joinedload(File.sound_file),
+                        joinedload(Utterance.speaker),
+                    )
+                    .filter(
+                        Utterance.job_id == self.job_name,
+                        Utterance.duration >= 0.1,
+                        Speaker.dictionary_id == d.id,
+                    )
+                    .order_by(Utterance.kaldi_id)
+                )
+                for u in utterances:
+                    new_utterances = segment_utterance_transcript(
+                        self.acoustic_model,
+                        u.to_kalpy(),
+                        self.lexicon_compilers[d.id],
+                        self.vad_model if self.speechbrain else None,
+                        self.segmentation_options,
+                        mfcc_options=self.mfcc_options if not self.speechbrain else None,
+                        vad_options=self.vad_options if not self.speechbrain else None,
+                        **self.decode_options,
+                    )
+                    self.callback((u.id, new_utterances))

@@ -142,7 +142,7 @@ def align_one_cli(context, **kwargs) -> None:
     cmvn = cmvn_computer.compute_cmvn_from_features([utt.mfccs for utt in utterances])
     align_options = {
         k: v
-        for k, v in c
+        for k, v in c.items()
         if k
         in [
             "beam",

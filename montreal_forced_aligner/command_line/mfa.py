@@ -15,7 +15,10 @@ from montreal_forced_aligner.command_line.align import align_corpus_cli
 from montreal_forced_aligner.command_line.align_one import align_one_cli
 from montreal_forced_aligner.command_line.anchor import anchor_cli
 from montreal_forced_aligner.command_line.configure import configure_cli
-from montreal_forced_aligner.command_line.create_segments import create_segments_cli
+from montreal_forced_aligner.command_line.create_segments import (
+    create_segments_cli,
+    create_segments_vad_cli,
+)
 from montreal_forced_aligner.command_line.diarize_speakers import diarize_speakers_cli
 from montreal_forced_aligner.command_line.g2p import g2p_cli
 from montreal_forced_aligner.command_line.history import history_cli
@@ -171,6 +174,7 @@ mfa_cli.add_command(align_one_cli)
 mfa_cli.add_command(anchor_cli)
 mfa_cli.add_command(diarize_speakers_cli)
 mfa_cli.add_command(create_segments_cli)
+mfa_cli.add_command(create_segments_vad_cli)
 mfa_cli.add_command(configure_cli)
 mfa_cli.add_command(history_cli)
 mfa_cli.add_command(g2p_cli)

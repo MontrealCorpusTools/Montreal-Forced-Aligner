@@ -783,17 +783,11 @@ class TranscriberMixin(CorpusAligner):
             Arguments for processing
         """
         arguments = []
+        decode_options = self.decode_options
+        if not self.uses_speaker_adaptation:
+            decode_options["max_active"] = self.first_max_active
+            decode_options["beam"] = self.first_beam
         for j in self.jobs:
-            feat_strings = {}
-            for d_id in j.dictionary_ids:
-                feat_strings[d_id] = j.construct_feature_proc_string(
-                    self.working_directory,
-                    d_id,
-                    self.feature_options["uses_splices"],
-                    self.feature_options["splice_left_context"],
-                    self.feature_options["splice_right_context"],
-                    self.feature_options["uses_speaker_adaptation"],
-                )
             if workflow is WorkflowType.per_speaker_transcription:
                 arguments.append(
                     PerSpeakerDecodeArguments(
@@ -803,7 +797,7 @@ class TranscriberMixin(CorpusAligner):
                         self.working_directory,
                         self.model_path,
                         self.tree_path,
-                        self.decode_options,
+                        decode_options,
                         self.order,
                         self.method,
                     )
@@ -814,20 +808,13 @@ class TranscriberMixin(CorpusAligner):
                         j.id,
                         getattr(self, "session", ""),
                         self.working_log_directory.joinpath(f"decode.{j.id}.log"),
-                        j.dictionary_ids,
-                        feat_strings,
-                        self.decode_options,
+                        self.working_directory,
                         self.alignment_model_path,
-                        j.construct_path_dictionary(self.working_directory, "lat", "ark"),
-                        self.phone_symbol_table_path,
                         self.working_directory.joinpath("HCLG_phone.fst"),
+                        decode_options,
                     )
                 )
             else:
-                decode_options = self.decode_options
-                if not self.uses_speaker_adaptation:
-                    decode_options["max_active"] = self.first_max_active
-                    decode_options["beam"] = self.first_beam
                 arguments.append(
                     DecodeArguments(
                         j.id,
@@ -898,16 +885,6 @@ class TranscriberMixin(CorpusAligner):
         """
         arguments = []
         for j in self.jobs:
-            feat_strings = {}
-            for d_id in j.dictionary_ids:
-                feat_strings[d_id] = j.construct_feature_proc_string(
-                    self.working_directory,
-                    d_id,
-                    self.feature_options["uses_splices"],
-                    self.feature_options["splice_left_context"],
-                    self.feature_options["splice_right_context"],
-                    self.feature_options["uses_speaker_adaptation"],
-                )
             arguments.append(
                 InitialFmllrArguments(
                     j.id,
@@ -931,16 +908,6 @@ class TranscriberMixin(CorpusAligner):
         """
         arguments = []
         for j in self.jobs:
-            feat_strings = {}
-            for d_id in j.dictionary_ids:
-                feat_strings[d_id] = j.construct_feature_proc_string(
-                    self.working_directory,
-                    d_id,
-                    self.feature_options["uses_splices"],
-                    self.feature_options["splice_left_context"],
-                    self.feature_options["splice_right_context"],
-                    self.feature_options["uses_speaker_adaptation"],
-                )
             arguments.append(
                 FinalFmllrArguments(
                     j.id,

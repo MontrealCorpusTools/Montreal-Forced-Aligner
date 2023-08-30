@@ -16,9 +16,12 @@ from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Tuple, Union
 
 import requests
 import yaml
+from _kalpy.gmm import AmDiagGmm
+from _kalpy.hmm import TransitionModel
 from _kalpy.matrix import FloatMatrix
 from kalpy.feat.mfcc import MfccComputer
 from kalpy.feat.pitch import PitchComputer
+from kalpy.gmm.utils import read_gmm_model
 from rich.pretty import pprint
 
 from montreal_forced_aligner.abc import MfaModel, ModelExporterMixin
@@ -381,6 +384,8 @@ class AcousticModel(Archive):
             source = AcousticModel.get_pretrained_path(source)
 
         super().__init__(source, root_directory)
+        self._am = None
+        self._tm = None
 
     @property
     def version(self):
@@ -451,6 +456,18 @@ class AcousticModel(Archive):
         if os.path.exists(path):
             return path
         return self.model_path
+
+    @property
+    def acoustic_model(self) -> AmDiagGmm:
+        if self._am is None:
+            self._tm, self._am = read_gmm_model(self.alignment_model_path)
+        return self._am
+
+    @property
+    def transition_model(self) -> TransitionModel:
+        if self._tm is None:
+            self._tm, self._am = read_gmm_model(self.alignment_model_path)
+        return self._tm
 
     @property
     def mfcc_computer(self) -> MfccComputer:

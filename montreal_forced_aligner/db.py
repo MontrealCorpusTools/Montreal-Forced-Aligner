@@ -12,8 +12,9 @@ import numpy as np
 import pywrapfst
 import sqlalchemy
 import sqlalchemy.types as types
-from kalpy.data import KaldiMapping
+from kalpy.data import KaldiMapping, Segment
 from kalpy.feat.data import FeatureArchive
+from kalpy.utterance import Utterance as KalpyUtterance
 from pgvector.sqlalchemy import Vector
 from praatio import textgrid
 from praatio.utilities.constants import Interval
@@ -1559,6 +1560,18 @@ class Utterance(MfaSqlBase):
             set(self.oovs.split()),
         )
 
+    def to_kalpy(self) -> KalpyUtterance:
+        """
+        Construct an UtteranceData object that can be used in multiprocessing
+
+        Returns
+        -------
+        :class:`~montreal_forced_aligner.corpus.classes.UtteranceData`
+            Data for the utterance
+        """
+        seg = Segment(self.file.sound_file.sound_file_path, self.begin, self.end, self.channel)
+        return KalpyUtterance(seg, self.normalized_text, self.speaker.cmvn, self.speaker.fmllr)
+
     @classmethod
     def from_data(cls, data: UtteranceData, file: File, speaker: int, frame_shift: int = None):
         """
@@ -2097,65 +2110,6 @@ class Job(MfaSqlBase):
         for dict_id in self.dictionary_ids:
             output[dict_id] = directory.joinpath(f"{identifier}.{dict_id}.{extension}")
         return output
-
-    def construct_online_feature_proc_string(self):
-        feat_path = self.construct_path(self.corpus.current_subset_directory, "feats", "scp")
-        return f'ark,s,cs:add-deltas scp,s,cs:"{feat_path}" ark:- |'
-
-    def construct_feature_proc_string(
-        self,
-        working_directory,
-        dictionary_id,
-        uses_splices: bool,
-        splice_left_context: int,
-        splice_right_context: int,
-        uses_speaker_adaptation: bool = False,
-    ) -> str:
-        """
-        Constructs a feature processing string to supply to Kaldi binaries, taking into account corpus features and the
-        current working directory of the aligner (whether fMLLR or LDA transforms should be used, etc).
-
-        Parameters
-        ----------
-        uses_speaker_adaptation: bool
-            Flag for whether features should be speaker-independent regardless of the presence of fMLLR transforms
-
-        Returns
-        -------
-        dict[int, dict[str, str]]
-            Feature strings per job
-        """
-        lda_mat_path = None
-        fmllr_trans_path = None
-        feat_path = self.construct_path(
-            self.corpus.current_subset_directory, "feats", "scp", dictionary_id=dictionary_id
-        )
-        if working_directory is not None:
-            lda_mat_path = os.path.join(working_directory, "lda.mat")
-            if not os.path.exists(lda_mat_path):
-                lda_mat_path = None
-            fmllr_trans_path = self.construct_path(
-                self.corpus.split_directory, "trans", "scp", dictionary_id
-            )
-
-            if not os.path.exists(fmllr_trans_path):
-                fmllr_trans_path = None
-        utt2spk_path = self.construct_path(
-            self.corpus.current_subset_directory, "utt2spk", "scp", dictionary_id
-        )
-        feats = "ark,s,cs:"
-
-        if lda_mat_path is not None:
-            feats += f'splice-feats --left-context={splice_left_context} --right-context={splice_right_context} scp,s,cs:"{feat_path}" ark:- |'
-            feats += f' transform-feats "{lda_mat_path}" ark:- ark:- |'
-        elif uses_splices:
-            feats += f'splice-feats --left-context={splice_left_context} --right-context={splice_right_context} scp,s,cs:"{feat_path}" ark:- |'
-        else:
-            feats += f'add-deltas scp,s,cs:"{feat_path}" ark:- |'
-        if fmllr_trans_path is not None and uses_speaker_adaptation:
-            feats += f' transform-feats --utt2spk=ark:"{utt2spk_path}" scp:"{fmllr_trans_path}" ark:- ark:- |'
-
-        return feats
 
 
 class M2MSymbol(MfaSqlBase):
