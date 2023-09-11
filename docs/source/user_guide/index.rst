@@ -90,6 +90,7 @@ Contributors
 
   - :fa:`envelope` michael.e.mcauliffe@gmail.com
   - :fa:`blog` :xref:`memcauliffe.com`
+  - :fa:`square` :xref:`@mmcauliffe.bsky.social`
   - :fa:`twitter` :xref:`@wavable`
 
 * :xref:`socolof`

@@ -272,6 +272,22 @@ class WordType(enum.Enum):
     disambiguation = 10  #: Disambiguation symbols internal to Kaldi
     interjection = 11  #: Set of words that can be added on the fly to transcripts
 
+    @classmethod
+    def speech_types(cls):
+        return {cls.speech, cls.clitic, cls.interjection}
+
+    @classmethod
+    def non_speech_types(cls):
+        return {
+            cls.silence,
+            cls.oov,
+            cls.bracketed,
+            cls.cutoff,
+            cls.laughter,
+            cls.noise,
+            cls.music,
+        }
+
 
 class DistanceMetric(enum.Enum):
 

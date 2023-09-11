@@ -15,5 +15,6 @@ This section will attempt to provide a blend of technical and non-technical over
    :hidden:
 
    features
+   speaker_adaptation
    fst
    hmm

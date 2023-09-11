@@ -64,6 +64,7 @@ __all__ = [
     "Grapheme",
     "MfaSqlBase",
     "bulk_update",
+    "get_next_primary_key",
 ]
 
 MfaSqlBase = declarative_base()
@@ -83,6 +84,13 @@ class PathType(types.TypeDecorator):
         if value is None:
             return value
         return Path(value)
+
+
+def get_next_primary_key(session: sqlalchemy.orm.Session, database_table: MfaSqlBase):
+    pk = session.query(sqlalchemy.func.max(database_table.id)).scalar()
+    if not pk:
+        pk = 0
+    return pk + 1
 
 
 def bulk_update(
@@ -245,17 +253,13 @@ class Corpus(MfaSqlBase):
 
     @property
     def speaker_ivector_column(self):
-        if self.plda_calculated:
-            return Speaker.plda_vector
-        elif self.xvectors_loaded:
+        if self.xvectors_loaded:
             return Speaker.xvector
         return Speaker.ivector
 
     @property
     def utterance_ivector_column(self):
-        if self.plda_calculated:
-            return Utterance.plda_vector
-        elif self.xvectors_loaded:
+        if self.xvectors_loaded:
             return Utterance.xvector
         return Utterance.ivector
 
@@ -420,14 +424,15 @@ class Dictionary(MfaSqlBase):
             if self.phone_symbol_table_path.exists():
                 self._phone_table = pywrapfst.SymbolTable.read_text(self.phone_symbol_table_path)
             else:
-                return None
-            self.temp_directory.mkdir(parents=True, exist_ok=True)
-            session = sqlalchemy.orm.Session.object_session(self)
-            query = session.query(Phone.kaldi_label, Phone.mapping_id).order_by(Phone.mapping_id)
-            self._phone_table = pywrapfst.SymbolTable()
-            for p, mapping_id in query:
-                self._phone_table.add_symbol(p, mapping_id)
-            self._phone_table.write_text(self.phone_symbol_table_path)
+                self.phones_directory.mkdir(parents=True, exist_ok=True)
+                session = sqlalchemy.orm.Session.object_session(self)
+                query = session.query(Phone.kaldi_label, Phone.mapping_id).order_by(
+                    Phone.mapping_id
+                )
+                self._phone_table = pywrapfst.SymbolTable()
+                for p, mapping_id in query:
+                    self._phone_table.add_symbol(p, mapping_id)
+                self._phone_table.write_text(str(self.phone_symbol_table_path))
         return self._phone_table
 
     @property
@@ -971,6 +976,7 @@ class Speaker(MfaSqlBase):
     ivector = Column(Vector(config.IVECTOR_DIMENSION), nullable=True)
     plda_vector = Column(Vector(config.PLDA_DIMENSION), nullable=True)
     xvector = Column(Vector(config.XVECTOR_DIMENSION), nullable=True)
+    num_utterances = Column(Integer, nullable=True, index=True)
     modified = Column(Boolean, nullable=False, default=False, index=True)
     dictionary_id = Column(Integer, ForeignKey("dictionary.id"), nullable=True, index=True)
     dictionary = relationship("Dictionary", back_populates="speakers")

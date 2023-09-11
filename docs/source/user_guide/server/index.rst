@@ -26,7 +26,7 @@ MFA overrides some default configuration values for its PostgreSQL servers when 
    unix_socket_directories = '/path/to/current/profile/socket_directory'
    listen_addresses = ''
 
-   maintenance_work_mem = 500MB
+   maintenance_work_mem = 1GB
    work_mem = 128MB
    shared_buffers = 256MB
    max_connections = 1000

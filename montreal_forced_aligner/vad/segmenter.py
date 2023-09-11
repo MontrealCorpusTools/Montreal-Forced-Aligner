@@ -441,7 +441,6 @@ class TranscriptionSegmenter(
         self.acoustic_model = AcousticModel(acoustic_model_path)
         kw = self.acoustic_model.parameters
         kw["apply_energy_vad"] = True
-        kw["apply_energy_vad"] = True
         kw.update(kwargs)
         super().__init__(**kw)
 

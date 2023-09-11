@@ -641,6 +641,8 @@ def test_swedish_cv(
         "--debug",
         "-p",
         "test",
+        "--beam",
+        "1000",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False).invoke(
@@ -690,6 +692,8 @@ def test_swedish_mfa(
         "--debug",
         "-p",
         "test",
+        "--beam",
+        "1000",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False).invoke(

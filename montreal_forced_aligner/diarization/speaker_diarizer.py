@@ -7,6 +7,7 @@ from __future__ import annotations
 import collections
 import csv
 import logging
+import math
 import os
 import random
 import shutil
@@ -23,7 +24,7 @@ import yaml
 from _kalpy.ivector import Plda, ivector_normalize_length
 from _kalpy.matrix import FloatVector
 from kalpy.utils import read_kaldi_object
-from sklearn import decomposition, metrics
+from sklearn import metrics
 from sqlalchemy.orm import joinedload, selectinload
 from tqdm.rich import tqdm
 
@@ -947,6 +948,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             logger.debug(f"Broke speakers into {len(new_speakers)} new speakers.")
 
     def cleanup_empty_speakers(self, threshold=None):
+        begin = time.time()
         with self.session() as session:
             session.execute(sqlalchemy.delete(SpeakerOrdering))
             session.flush()
@@ -960,14 +962,19 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 unknown_speaker_id = unknown_speaker_id[0]
             non_empty_speakers = [unknown_speaker_id]
             sq = (
-                session.query(Speaker.id, sqlalchemy.func.count().label("utterance_count"))
-                .join(Speaker.utterances)
+                session.query(
+                    Speaker.id, sqlalchemy.func.count(Utterance.id).label("utterance_count")
+                )
+                .outerjoin(Speaker.utterances)
                 .filter(Speaker.id != unknown_speaker_id)
                 .group_by(Speaker.id)
             )
             below_threshold_speakers = []
             for s_id, utterance_count in sq:
                 if threshold and utterance_count < threshold:
+                    below_threshold_speakers.append(s_id)
+                    continue
+                elif utterance_count == 0:
                     below_threshold_speakers.append(s_id)
                     continue
                 non_empty_speakers.append(s_id)
@@ -983,10 +990,15 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         try:
             conn.execution_options(isolation_level="AUTOCOMMIT")
             conn.execute(
-                sqlalchemy.text(f"ANALYZE {Speaker.__tablename__}, {Utterance.__tablename__}")
+                sqlalchemy.text(
+                    f"VACUUM ANALYZE {Speaker.__tablename__}, {Utterance.__tablename__}"
+                )
             )
         finally:
             conn.close()
+        logger.debug(
+            f"Cleaning up {len(below_threshold_speakers)} empty speakers took {time.time() - begin:.3f} seconds."
+        )
 
     def cluster_utterances_mfa(self) -> None:
         """
@@ -1304,49 +1316,35 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         ) as pbar, self.session() as session:
             begin = time.time()
             update_mapping = {}
-            arguments = [
-                SpeechbrainArguments(j.id, self.session, None, self.cuda, self.cluster)
-                for j in self.jobs
-            ]
+            arguments = [SpeechbrainArguments(1, self.session, None, self.cuda, self.cluster)]
             embeddings = []
             utterance_ids = []
             original_use_mp = config.USE_MP
             if self.cuda:
                 config.USE_MP = False
+            batch_size = 100000
             for u_id, emb in run_kaldi_function(
                 SpeechbrainEmbeddingFunction, arguments, pbar.update
             ):
                 utterance_ids.append(u_id)
                 embeddings.append(emb)
                 update_mapping[u_id] = {"id": u_id, "xvector": emb}
-            embeddings = np.array(embeddings)
-            if PLDA_DIMENSION != XVECTOR_DIMENSION:
-                if embeddings.shape[0] < PLDA_DIMENSION:
-                    logger.debug("Can't run PLDA due to too few features.")
-                else:
-                    pca = decomposition.PCA(PLDA_DIMENSION)
-                    pca.fit(embeddings)
-                    logger.debug(
-                        f"PCA explained variance: {np.sum(pca.explained_variance_ratio_)*100:.2f}%"
-                    )
-                    transformed = pca.transform(embeddings)
-                    for i, u_id in enumerate(utterance_ids):
-                        update_mapping[u_id]["plda_vector"] = transformed[i, :]
-            else:
-                for v in update_mapping.values():
-                    v["plda_vector"] = v["xvector"]
-            bulk_update(session, Utterance, list(update_mapping.values()))
-            session.flush()
+                if len(update_mapping) >= batch_size:
+                    bulk_update(session, Utterance, list(update_mapping.values()))
+                    session.commit()
+                    update_mapping = {}
+            if len(update_mapping):
+                bulk_update(session, Utterance, list(update_mapping.values()))
+                session.commit()
+
+            n_lists = int(math.sqrt(self.num_utterances))
+            n_probe = int(math.sqrt(n_lists))
             session.execute(
                 sqlalchemy.text(
-                    "CREATE INDEX IF NOT EXISTS utterance_xvector_index ON utterance USING ivfflat (xvector vector_cosine_ops);"
+                    f"CREATE INDEX IF NOT EXISTS utterance_xvector_index ON utterance USING ivfflat (xvector vector_cosine_ops) WITH (lists = {n_lists});"
                 )
             )
-            session.execute(
-                sqlalchemy.text(
-                    "CREATE INDEX IF NOT EXISTS utterance_plda_vector_index ON utterance USING ivfflat (plda_vector vector_cosine_ops);"
-                )
-            )
+            session.execute(sqlalchemy.text(f"SET ivfflat.probes = {n_probe};"))
             session.query(Corpus).update({Corpus.xvectors_loaded: True})
             session.commit()
             if self.cuda:
@@ -1354,30 +1352,97 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             logger.debug(f"Loading embeddings took {time.time() - begin:.3f} seconds")
 
     def refresh_plda_vectors(self):
-        logger.info("Refreshing PLDA vectors...")
+        begin = time.time()
+        self.create_new_current_workflow(WorkflowType.speaker_diarization)
         self.plda = read_kaldi_object(Plda, self.plda_path)
-        with self.session() as session, tqdm(
-            total=self.num_utterances, disable=config.QUIET
-        ) as pbar:
-            if self.use_xvector:
-                ivector_column = Utterance.xvector
-            else:
-                ivector_column = Utterance.ivector
+        with self.session() as session:
+            logger.info("Refreshing utterance PLDA vectors...")
+            session.execute(sqlalchemy.text("DROP INDEX IF EXISTS utterance_plda_vector_index;"))
+            session.commit()
+            c = session.query(Corpus).first()
+            c.plda_calculated = False
             update_mapping = []
-            utterances = session.query(Utterance.id, ivector_column).filter(
-                ivector_column != None  # noqa
+            utterances = session.query(Utterance.id, c.utterance_ivector_column).filter(
+                c.utterance_ivector_column != None  # noqa
             )
-            for utt_id, ivector in utterances:
-                pbar.update(1)
-                update_mapping.append(
-                    {"id": utt_id, "plda_vector": self.plda.transform_ivector(ivector, 1).numpy()}
-                )
+            with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
+                for utt_id, ivector in utterances:
+                    kaldi_ivector = FloatVector()
+                    kaldi_ivector.from_numpy(ivector)
+                    pbar.update(1)
+                    update_mapping.append(
+                        {
+                            "id": utt_id,
+                            "plda_vector": self.plda.transform_ivector(kaldi_ivector, 1).numpy(),
+                        }
+                    )
 
             bulk_update(session, Utterance, update_mapping)
+            c.plda_calculated = True
+            n_lists = int(math.sqrt(self.num_utterances))
+            n_probe = int(math.sqrt(n_lists))
+            session.execute(
+                sqlalchemy.text(
+                    f"CREATE INDEX IF NOT EXISTS utterance_plda_vector_index ON utterance USING ivfflat (plda_vector vector_cosine_ops) WITH (lists = {n_lists});"
+                )
+            )
+            session.execute(sqlalchemy.text(f"SET ivfflat.probes = {n_probe};"))
             session.commit()
+        autocommit_engine = self.db_engine.execution_options(isolation_level="AUTOCOMMIT")
+        with sqlalchemy.orm.Session(autocommit_engine) as session:
+            session.execute(sqlalchemy.text("VACUUM ANALYZE Utterance"))
+        logger.debug(f"Refreshing utterance PLDA vectors took {time.time() - begin:.3f} seconds.")
+
+    def refresh_speaker_plda_vectors(self):
+
+        logger.info("Refreshing speaker PLDA vectors...")
+        begin = time.time()
+        self.create_new_current_workflow(WorkflowType.speaker_diarization)
+        self.plda = read_kaldi_object(Plda, self.plda_path)
+        with self.session() as session:
+            session.execute(sqlalchemy.text("DROP INDEX IF EXISTS speaker_plda_vector_index;"))
+            session.commit()
+            c = session.query(Corpus).first()
+            c.plda_calculated = False
+            update_mapping = []
+            speakers = (
+                session.query(Speaker.id, c.speaker_ivector_column, sqlalchemy.func.count())
+                .join(Utterance.speaker)
+                .filter(c.speaker_ivector_column != None)  # noqa
+                .group_by(Speaker.id)
+            )
+            with tqdm(total=self.num_speakers, disable=config.QUIET) as pbar:
+                for s_id, ivector, utt_count in speakers:
+                    kaldi_ivector = FloatVector()
+                    kaldi_ivector.from_numpy(ivector)
+                    pbar.update(1)
+                    update_mapping.append(
+                        {
+                            "id": s_id,
+                            "plda_vector": self.plda.transform_ivector(
+                                kaldi_ivector, utt_count
+                            ).numpy(),
+                        }
+                    )
+
+            bulk_update(session, Speaker, update_mapping)
+            c.plda_calculated = True
+            session.flush()
+            n_lists = int(math.sqrt(self.num_speakers))
+            session.execute(
+                sqlalchemy.text(
+                    f"CREATE INDEX IF NOT EXISTS speaker_plda_vector_index ON speaker USING ivfflat (plda_vector vector_cosine_ops) WITH (lists = {n_lists});"
+                )
+            )
+            session.commit()
+        autocommit_engine = self.db_engine.execution_options(isolation_level="AUTOCOMMIT")
+        with sqlalchemy.orm.Session(autocommit_engine) as session:
+            session.execute(sqlalchemy.text("VACUUM ANALYZE Speaker"))
+        logger.debug(f"Refreshing speaker PLDA vectors took {time.time() - begin:.3f} seconds.")
 
     def refresh_speaker_vectors(self) -> None:
         """Refresh speaker vectors following clustering or classification"""
+        begin = time.time()
         logger.info("Refreshing speaker vectors...")
         with self.session() as session, tqdm(
             total=self.num_speakers, disable=config.QUIET
@@ -1414,12 +1479,19 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 pbar.update(1)
             bulk_update(session, Speaker, list(update_mapping.values()))
             session.commit()
+        autocommit_engine = self.db_engine.execution_options(isolation_level="AUTOCOMMIT")
+        with sqlalchemy.orm.Session(autocommit_engine) as session:
+            session.execute(sqlalchemy.text("VACUUM ANALYZE Speaker"))
+        if self.use_xvector:
+            logger.debug(f"Refreshing speaker xvectors took {time.time() - begin:.3f} seconds.")
+        else:
+            logger.debug(f"Refreshing speaker ivectors took {time.time() - begin:.3f} seconds.")
 
     def compute_speaker_embeddings(self) -> None:
         """Generate per-speaker embeddings as the mean over their utterances"""
         if not self.has_xvectors():
             self.load_embeddings()
-        self.cleanup_empty_speakers()
+        begin = time.time()
         logger.info("Computing SpeechBrain speaker embeddings...")
         with self.session() as session:
             update_mapping = []
@@ -1431,18 +1503,41 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                     u_query = session.query(Utterance.xvector).filter(
                         Utterance.speaker_id == s_id, Utterance.xvector != None  # noqa
                     )
-                    embeddings = np.empty((u_query.count(), XVECTOR_DIMENSION))
-                    if embeddings.shape[0] == 0:
+                    if not u_query.count():
                         continue
+                    embeddings = np.empty((u_query.count(), XVECTOR_DIMENSION))
                     for i, (xvector,) in enumerate(u_query):
                         embeddings[i, :] = xvector
                     speaker_xvector = np.mean(embeddings, axis=0)
+                    speaker_mean = FloatVector()
+                    speaker_mean.from_numpy(speaker_xvector)
+                    ivector_normalize_length(speaker_mean)
                     update_mapping.append(
-                        {"id": s_id, "xvector": speaker_xvector, "modified": False}
+                        {"id": s_id, "xvector": speaker_mean.numpy(), "modified": False}
                     )
+                    if self.plda is not None:
+                        update_mapping[-1]["plda_vector"] = self.plda.transform_ivector(
+                            speaker_mean, embeddings.shape[0]
+                        ).numpy()
                     pbar.update(1)
+            logger.debug(f"Updating {len(update_mapping)} speakers...")
             bulk_update(session, Speaker, update_mapping)
             session.commit()
+            n_lists = int(math.sqrt(self.num_speakers))
+            session.execute(
+                sqlalchemy.text(
+                    f"CREATE INDEX IF NOT EXISTS speaker_xvector_index ON speaker USING ivfflat (xvector vector_cosine_ops) WITH (lists = {n_lists});"
+                )
+            )
+            if self.plda is not None:
+                session.execute(
+                    sqlalchemy.text(
+                        f"CREATE INDEX IF NOT EXISTS speaker_plda_vector_index ON speaker USING ivfflat (plda_vector vector_cosine_ops) WITH (lists = {n_lists});"
+                    )
+                )
+            session.commit()
+        logger.debug(f"Computing speaker xvectors took {time.time() - begin:.3f} seconds.")
+        self.cleanup_empty_speakers()
 
     def export_files(self, output_directory: str) -> None:
         """

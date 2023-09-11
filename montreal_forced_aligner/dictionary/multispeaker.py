@@ -49,6 +49,9 @@ from montreal_forced_aligner.helper import comma_join, mfa_open, split_phone_pos
 from montreal_forced_aligner.models import DictionaryModel, PhoneSetType
 from montreal_forced_aligner.utils import parse_dictionary_file, thirdparty_binary
 
+if typing.TYPE_CHECKING:
+    from montreal_forced_aligner.models import AcousticModel
+
 __all__ = [
     "MultispeakerDictionaryMixin",
     "MultispeakerDictionary",
@@ -739,7 +742,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     words = (
                         session.query(Word)
                         .filter(Word.dictionary_id == d.id)
-                        .filter(Word.word_type.in_([WordType.clitic, WordType.speech]))
+                        .filter(Word.word_type.in_(WordType.speech_types()))
                         .options(selectinload(Word.pronunciations))
                     )
                     rules = (
@@ -1237,19 +1240,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             if arc_sort_proc.returncode != 0:
                 raise KaldiProcessingError([log_path])
 
-    def actual_words(
-        self, session: sqlalchemy.orm.session.Session, dictionary_id=None
-    ) -> typing.Dict[str, Word]:
-        """Words in the dictionary stripping out Kaldi's internal words"""
-        words = (
-            session.query(Word)
-            .options(selectinload(Word.pronunciations))
-            .filter(Word.word_type == WordType.speech)
-        )
-        if dictionary_id is not None:
-            words = words.filter(Word.dictionary_id == dictionary_id)
-        return {x.word: x for x in words}
-
     @property
     def phone_mapping(self) -> Dict[str, int]:
         """Mapping of phone symbols to integer IDs for Kaldi processing"""
@@ -1525,6 +1515,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         with self.session() as session:
             dictionaries: typing.List[Dictionary] = session.query(Dictionary)
             for d in dictionaries:
+                d.temp_directory.mkdir(parents=True, exist_ok=True)
                 if self.use_g2p:
                     fst = pynini.Fst.read(d.lexicon_fst_path)
                     align_fst = pynini.Fst.read(d.align_lexicon_path)
@@ -1538,60 +1529,79 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     )
 
                 else:
-                    self.lexicon_compilers[d.id] = LexiconCompiler(
-                        disambiguation=write_disambiguation,
-                        silence_probability=self.silence_probability,
-                        initial_silence_probability=self.initial_silence_probability,
-                        final_silence_correction=self.final_silence_correction,
-                        final_non_silence_correction=self.final_non_silence_correction,
-                        silence_word=self.silence_word,
-                        oov_word=self.oov_word,
-                        silence_phone=self.optional_silence_phone,
-                        oov_phone=self.oov_phone,
-                        position_dependent_phones=self.position_dependent_phones,
-                        ignore_case=self.ignore_case,
-                        phones=self.non_silence_phones,
+                    self.lexicon_compilers[d.id] = self.build_lexicon_compiler(
+                        d.id, disambiguation=write_disambiguation
                     )
-                    os.makedirs(d.temp_directory, exist_ok=True)
-                    d.word_table.write_text(d.words_symbol_path)
-                    self.lexicon_compilers[d.id].word_table = d.word_table
-                    self.lexicon_compilers[d.id].phone_table = self.phone_table
-                    self.lexicon_compilers[
-                        d.id
-                    ].max_disambiguation_symbol = self.max_disambiguation_symbol
-                    query = (
-                        session.query(Word, Pronunciation)
-                        .join(Pronunciation.word)
-                        .filter(Word.dictionary_id == d.id)
-                        .filter(Word.included == True)  # noqa
-                        .filter(Word.word_type != WordType.silence)
-                    )
-                    self.lexicon_compilers[d.id].pronunciations = [
-                        KalpyPronunciation(
-                            w.word,
-                            p.pronunciation,
-                            p.probability,
-                            p.silence_after_probability,
-                            p.silence_before_correction,
-                            p.non_silence_before_correction,
-                            p.disambiguation,
-                        )
-                        for w, p in query
-                    ]
-                    if write_disambiguation:
-                        self.lexicon_compilers[d.id].align_fst.write(d.align_lexicon_disambig_path)
-                        self.lexicon_compilers[d.id].fst.write(d.lexicon_disambig_fst_path)
-                        self.lexicon_compilers[d.id]._kaldi_fst = VectorFst.Read(
-                            str(d.lexicon_fst_path)
-                        )
-                    else:
-                        self.lexicon_compilers[d.id].align_fst.write(d.align_lexicon_path)
-                        self.lexicon_compilers[d.id].fst.write(d.lexicon_fst_path)
-                        self.lexicon_compilers[d.id]._kaldi_fst = VectorFst.Read(
-                            str(d.lexicon_fst_path)
-                        )
+                    self.lexicon_compilers[d.id].word_table.write_text(d.words_symbol_path)
 
-                    self.lexicon_compilers[d.id].clear()
+    def build_lexicon_compiler(
+        self,
+        dictionary_id: int,
+        acoustic_model: AcousticModel = None,
+        disambiguation: bool = False,
+    ):
+        with self.session() as session:
+            d = session.get(Dictionary, dictionary_id)
+            if acoustic_model is None:
+                lexicon_compiler = LexiconCompiler(
+                    disambiguation=disambiguation,
+                    silence_probability=self.silence_probability,
+                    initial_silence_probability=self.initial_silence_probability,
+                    final_silence_correction=self.final_silence_correction,
+                    final_non_silence_correction=self.final_non_silence_correction,
+                    silence_word=self.silence_word,
+                    oov_word=self.oov_word,
+                    silence_phone=self.optional_silence_phone,
+                    oov_phone=self.oov_phone,
+                    position_dependent_phones=self.position_dependent_phones,
+                    ignore_case=self.ignore_case,
+                    phones=self.non_silence_phones,
+                )
+            else:
+                lexicon_compiler = acoustic_model.lexicon_compiler
+            lexicon_compiler.disambiguation = disambiguation
+            query = (
+                session.query(Word, Pronunciation)
+                .join(Pronunciation.word)
+                .filter(Word.dictionary_id == d.id)
+                .filter(Word.included == True)  # noqa
+                .filter(Word.word_type != WordType.silence)
+                .order_by(Word.word)
+            )
+            lexicon_compiler.word_table = d.word_table
+            lexicon_compiler.phone_table = self.phone_table
+            for w, p in query:
+                phones = p.pronunciation.split()
+                if self.position_dependent_phones:
+                    if any(not lexicon_compiler.phone_table.member(x + "_S") for x in phones):
+                        continue
+                else:
+                    if any(not lexicon_compiler.phone_table.member(x) for x in phones):
+                        continue
+                lexicon_compiler.word_table.add_symbol(w.word, w.mapping_id)
+                lexicon_compiler.pronunciations.append(
+                    KalpyPronunciation(
+                        w.word,
+                        p.pronunciation,
+                        p.probability,
+                        p.silence_after_probability,
+                        p.silence_before_correction,
+                        p.non_silence_before_correction,
+                        p.disambiguation,
+                    )
+                )
+        if not lexicon_compiler.pronunciations:
+            raise DictionaryError("Lexicon compiler did not have any pronunciations.")
+        if disambiguation:
+            lexicon_compiler.align_fst.write(d.align_lexicon_disambig_path)
+            lexicon_compiler.fst.write(d.lexicon_disambig_fst_path)
+            lexicon_compiler._kaldi_fst = VectorFst.Read(str(d.lexicon_fst_path))
+        else:
+            lexicon_compiler.align_fst.write(d.align_lexicon_path)
+            lexicon_compiler.fst.write(d.lexicon_fst_path)
+            lexicon_compiler._kaldi_fst = VectorFst.Read(str(d.lexicon_fst_path))
+        lexicon_compiler.clear()
+        return lexicon_compiler
 
     def write_training_information(self) -> None:
         """Write phone information needed for training"""

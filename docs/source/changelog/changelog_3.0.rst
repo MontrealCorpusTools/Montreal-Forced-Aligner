@@ -22,7 +22,7 @@
 - Revamped how configuration is done following change to using threading instead of multiprocessing
 
 3.0.0a1
-======
+=======
 
 - Add dependency on :xref:`kalpy` for interacting for Kaldi
 - Add command for :ref:`align_one`

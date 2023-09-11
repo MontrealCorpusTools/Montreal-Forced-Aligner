@@ -257,7 +257,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
         with self.session() as session:
             word_count = (
                 session.query(sqlalchemy.func.sum(Word.count))
-                .filter(Word.word_type == WordType.speech)
+                .filter(Word.word_type.in_(WordType.speech_types()))
                 .scalar()
             )
             oov_count = (
@@ -293,7 +293,9 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
         small_mod_path = self.mod_path.with_stem(self.mod_path.stem + "_small")
         med_mod_path = self.mod_path.with_stem(self.mod_path.stem + "_med")
         with self.session() as session, mfa_open(log_path, "w") as log_file:
-            word_query = session.query(Word.word).filter(Word.word_type == WordType.speech)
+            word_query = session.query(Word.word).filter(
+                Word.word_type.in_(WordType.speech_types())
+            )
             included_words = set(x[0] for x in word_query)
             utterance_query = session.query(Utterance.normalized_text, Utterance.text)
 
@@ -471,8 +473,8 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
                     "ngramprint",
                     "--ARPA",
                     f"--symbols={self.sym_path}",
-                    self.mod_path,
-                    self.large_arpa_path,
+                    str(self.mod_path),
+                    str(self.large_arpa_path),
                 ],
                 stderr=log_file,
                 stdout=log_file,

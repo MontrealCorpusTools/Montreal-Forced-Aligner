@@ -1,5 +1,5 @@
 
-(phonological_rules=)
+(phonological_rules)=
 # Phonological rules
 
 MFA 2.1 has the ability to specify phonological rules as a separate input from the dictionary itself.  The idea here is that we can over-generate a really large lexicon without having to manually specify variants of commonly applying rules.  This lexicon is then paired down to just the attested forms.

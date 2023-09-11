@@ -407,7 +407,9 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
             SqlAlchemy session
         """
         if self._session is None:
-            self._session = scoped_session(sessionmaker(bind=self.db_engine, **kwargs))
+            self._session = scoped_session(
+                sessionmaker(bind=self.db_engine, expire_on_commit=False, **kwargs)
+            )
         return self._session
 
 
