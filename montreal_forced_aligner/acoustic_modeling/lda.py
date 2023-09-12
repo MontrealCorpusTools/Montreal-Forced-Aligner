@@ -23,6 +23,7 @@ from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
 from montreal_forced_aligner.data import MfaArguments, PhoneType
 from montreal_forced_aligner.db import Job, Phone
+from montreal_forced_aligner.exceptions import TrainerError
 from montreal_forced_aligner.utils import parse_logs, run_kaldi_function, thread_logger
 
 if TYPE_CHECKING:
@@ -401,14 +402,34 @@ class LdaTrainer(TriphoneTrainer):
                         mllt_accs = result
                     else:
                         mllt_accs.Add(result)
-
+        if mllt_accs is None:
+            raise TrainerError("No MLLT stats were found")
         log_path = os.path.join(
             self.working_log_directory, f"transform_means.{self.iteration}.log"
         )
 
-        with kalpy_logger("kalpy.lda", log_path):
+        with kalpy_logger("kalpy.lda", log_path) as lda_logger:
             mat, objf_impr, count = mllt_accs.update()
             transition_model, acoustic_model = read_gmm_model(self.model_path)
+            lda_logger.debug(
+                f"LDA matrix has {mat.NumRows()} rows and {mat.NumCols()} columns "
+                f"(acoustic model dimension: {acoustic_model.Dim()})"
+            )
+            lda_logger.debug(
+                f"Overall objective function improvement for MLLT is {objf_impr/count} "
+                f"over {count} frames, logdet is {mat.LogDet()}"
+            )
+            if mat.NumRows() != acoustic_model.Dim():
+                raise TrainerError(
+                    f"Transform matrix has {mat.NumRows()} rows but "
+                    f"model has dimension  {acoustic_model.Dim()}"
+                )
+            if mat.NumCols() != acoustic_model.Dim() and mat.NumCols() != acoustic_model.Dim() + 1:
+                raise TrainerError(
+                    f"Transform matrix has {mat.NumCols()} columns but "
+                    f"model has dimension {acoustic_model.Dim()} (neither a linear nor an "
+                    "affine transform)"
+                )
             acoustic_model.transform_means(mat)
             write_gmm_model(self.model_path, transition_model, acoustic_model)
             previous_mat_path = self.working_directory.joinpath("lda.mat")

@@ -23,6 +23,12 @@ Command reference
 Configuration reference
 -----------------------
 
+By default, the acoustic model controls parameters related to silence probability or speaker adaptation.  These can be overridden in the command line so `--initial_silence_probability 0.0` will ensure that no utterances start with silence, and `--uses_speaker_adaptation false` will skip the feature space adaptation and second pass alignment.
+
+.. seealso::
+
+   See :ref:`concept_speaker_adaptation` for more details on how speaker adaptation works in Kaldi/MFA.
+
 - :ref:`configuration_global`
 
 API reference

@@ -360,6 +360,15 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
     def reset_features(self):
         with self.session() as session:
+            logger.debug("Dropping indexes...")
+            session.execute(sqlalchemy.text("DROP INDEX IF EXISTS utterance_xvector_index;"))
+            session.execute(sqlalchemy.text("DROP INDEX IF EXISTS speaker_xvector_index;"))
+            session.execute(sqlalchemy.text("DROP INDEX IF EXISTS utterance_ivector_index;"))
+            session.execute(sqlalchemy.text("DROP INDEX IF EXISTS speaker_ivector_index;"))
+            session.execute(sqlalchemy.text("DROP INDEX IF EXISTS utterance_plda_vector_index;"))
+            session.execute(sqlalchemy.text("DROP INDEX IF EXISTS speaker_plda_vector_index;"))
+            session.commit()
+            logger.debug("Resetting utterance features...")
             session.execute(
                 sqlalchemy.update(Corpus).values(
                     ivectors_calculated=False,
@@ -379,6 +388,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 )
             )
             session.commit()
+        logger.debug("Deleting local files...")
         paths = [
             self.output_directory.joinpath("cmvn.ark"),
             self.output_directory.joinpath("cmvn.scp"),

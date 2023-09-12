@@ -116,6 +116,10 @@ xref_links = {
     ),
     "memcauliffe.com": ("Michael McAuliffe's blog", "https://memcauliffe.com"),
     "@wavable": ("@wavable", "https://twitter.com/wavable"),
+    "@mmcauliffe.bsky.social": (
+        "@mmcauliffe.bsky.social",
+        "https://bsky.app/profile/mmcauliffe.bsky.social",
+    ),
     "sonderegger": ("Morgan Sonderegger", "http://people.linguistics.mcgill.ca/~morgan/"),
     "wagner": ("Michael Wagner", "https://prosodylab.org/"),
     "coles": ("Arlie Coles", "https://a-coles.github.io/"),

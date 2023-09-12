@@ -20,11 +20,12 @@ try:
     HDBSCAN_ENABLED = True
 except ImportError:
     HDBSCAN_ENABLED = False
-import librosa
+
 import numpy as np
 import sqlalchemy
 from _kalpy.ivector import Plda, ivector_normalize_length, ivector_subtract_mean
 from _kalpy.matrix import FloatVector
+from kalpy.data import Segment
 from kalpy.ivector.data import IvectorArchive
 from scipy.spatial import distance
 from sklearn import cluster, manifold, metrics, neighbors, preprocessing
@@ -124,15 +125,7 @@ def visualize_clusters(
         tsne_iterations = 500
         mds_iterations = 150
     if metric_type is DistanceMetric.plda:
-        logger.info("Generating precomputed distance matrix...")
-        to_fit = metrics.pairwise_distances(
-            ivectors,
-            ivectors,
-            metric=lambda x, y: plda.LogLikelihoodRatio(x, 1, y),
-            n_jobs=config.NUM_JOBS,
-        )
-        np.fill_diagonal(to_fit, 0)
-        metric = "precomputed"
+        metric = plda.log_likelihood_distance
     if manifold_algorithm is ManifoldAlgorithm.mds:
         if metric_type is DistanceMetric.cosine:
             to_fit = preprocessing.normalize(ivectors, norm="l2")
@@ -146,6 +139,8 @@ def visualize_clusters(
             normalized_stress=True,
         ).fit_transform(to_fit)
     elif manifold_algorithm is ManifoldAlgorithm.tsne:
+        if n_neighbors > ivectors.shape[0]:
+            n_neighbors = ivectors.shape[0] - 1
         points = manifold.TSNE(
             metric=metric,
             random_state=0,
@@ -292,12 +287,7 @@ def cluster_matrix(
     to_fit = ivectors
     score_metric_params = None
     if score_metric == "plda" and cluster_type is not ClusterType.affinity:
-        logger.debug("Generating precomputed distance matrix...")
-        begin = time.time()
-
-        to_fit = plda.generate_affinity_matrix(to_fit).numpy()
-        logger.debug(f"Precomputed distance matrix took {time.time() - begin:.3f} seconds")
-        score_metric = "precomputed"
+        score_metric = plda.log_likelihood_distance
     if cluster_type is ClusterType.affinity:
         affinity = metric
         if metric is DistanceMetric.cosine:
@@ -338,6 +328,7 @@ def cluster_matrix(
                     score_metric_params=score_metric_params,
                     no_visuals=no_visuals,
                 )
+            kwargs["n_clusters"] = None
             kwargs["distance_threshold"] = eps
         c_labels = cluster.AgglomerativeClustering(metric=score_metric, **kwargs).fit_predict(
             to_fit
@@ -643,7 +634,7 @@ class SpeechbrainClassificationFunction(KaldiFunction):
         self.cuda = args.cuda
         self.cluster = args.cluster
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
+    def _run(self) -> None:
         """Run the function"""
         run_opts = None
         if self.cuda:
@@ -731,36 +722,41 @@ class SpeechbrainEmbeddingFunction(KaldiFunction):
         )
         loader.start()
         exception = None
-        device = torch.device("cuda" if self.cuda else "cpu")
+        current_index = 0
         while True:
             try:
-                result = return_q.get(timeout=1)
+                batch = return_q.get(timeout=1)
             except queue.Empty:
                 if finished_adding.is_set():
                     break
                 continue
             if stopped.is_set():
                 continue
-            if isinstance(result, Exception):
-                exception = result
+            if isinstance(batch, Exception):
+                exception = batch
                 stopped.set()
                 continue
 
-            u_id, y = result
-            emb = (
-                model.encode_batch(
-                    torch.tensor(y[np.newaxis, :], device=device), normalize=self.cluster
-                )
+            audio, lens = batch.signal
+            embeddings = (
+                model.encode_batch(audio, wav_lens=lens, normalize=self.cluster)
                 .cpu()
                 .numpy()
                 .squeeze(axis=1)
             )
-            self.callback((u_id, emb[0]))
-            del emb
+            for i, u_id in enumerate(batch.utterance_id):
+                self.callback((int(u_id), embeddings[i]))
+            del embeddings
+            del audio
+            del lens
+            current_index += 1
+            if current_index > 10:
+                torch.cuda.empty_cache()
+                current_index = 0
 
         loader.join()
         if exception:
-            raise Exception
+            raise exception
 
 
 class UtteranceFileLoader(threading.Thread):
@@ -800,31 +796,48 @@ class UtteranceFileLoader(threading.Thread):
         """
         Run the waveform loading job
         """
+        import speechbrain
+        from speechbrain.dataio.batch import PaddedBatch
+        from torch.utils.data import DataLoader
+
+        @speechbrain.utils.data_pipeline.takes("segment")
+        @speechbrain.utils.data_pipeline.provides("signal")
+        def audio_pipeline(segment):
+            return segment.load_audio()
+
         with self.session() as session:
             try:
                 utterances = (
                     session.query(
                         Utterance.id,
-                        Utterance.begin,
-                        Utterance.duration,
                         SoundFile.sound_file_path,
+                        Utterance.begin,
+                        Utterance.end,
+                        Utterance.channel,
                     )
                     .join(Utterance.file)
                     .join(File.sound_file)
-                    .filter(Utterance.job_id == self.job_name)
                     .filter(Utterance.xvector == None)  # noqa
+                    .order_by(Utterance.duration.desc())
                 )
-                for u_id, begin, duration, sound_file_path in utterances:
+                if not utterances.count():
+                    self.finished_adding.set()
+                    return
+                dataset = speechbrain.dataio.dataset.DynamicItemDataset(
+                    {
+                        u[0]: {"utterance_id": u[0], "segment": Segment(u[1], u[2], u[3], u[4])}
+                        for u in utterances
+                    }
+                )
+                dataset.add_dynamic_item(audio_pipeline)
+                dataset.set_output_keys(["signal", "utterance_id"])
+                dataloader = DataLoader(
+                    dataset, collate_fn=PaddedBatch, batch_size=config.NUM_JOBS
+                )
+                for batch in dataloader:
                     if self.stopped.is_set():
                         break
-                    y, _ = librosa.load(
-                        sound_file_path,
-                        sr=16000,
-                        mono=False,
-                        offset=begin,
-                        duration=duration,
-                    )
-                    self.return_q.put((u_id, y))
+                    self.return_q.put(batch)
             except Exception as e:
                 self.return_q.put(e)
             finally:

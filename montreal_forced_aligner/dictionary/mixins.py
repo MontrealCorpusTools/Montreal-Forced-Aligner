@@ -569,9 +569,7 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
         if self._num_speech_words is None:
             with self.session() as session:
                 self._num_speech_words = (
-                    session.query(Word)
-                    .filter(Word.word_type.in_([WordType.speech, WordType.clitic]))
-                    .count()
+                    session.query(Word).filter(Word.word_type.in_(WordType.speech_types())).count()
                 )
         return self._num_speech_words
 

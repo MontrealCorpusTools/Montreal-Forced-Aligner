@@ -14,6 +14,7 @@ from pathlib import Path
 from shutil import copy, copyfile, make_archive, move, rmtree, unpack_archive
 from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Tuple, Union
 
+import pywrapfst
 import requests
 import yaml
 from _kalpy.gmm import AmDiagGmm
@@ -21,6 +22,7 @@ from _kalpy.hmm import TransitionModel
 from _kalpy.matrix import FloatMatrix
 from kalpy.feat.mfcc import MfccComputer
 from kalpy.feat.pitch import PitchComputer
+from kalpy.fstext.lexicon import LexiconCompiler
 from kalpy.gmm.utils import read_gmm_model
 from rich.pretty import pprint
 
@@ -450,6 +452,11 @@ class AcousticModel(Archive):
         return self.dirname.joinpath("final.mdl")
 
     @property
+    def phone_symbol_path(self) -> Path:
+        """Path to phone symbol table"""
+        return self.dirname.joinpath("phones.txt")
+
+    @property
     def alignment_model_path(self) -> Path:
         """Alignment model path"""
         path = self.model_path.with_suffix(".alimdl")
@@ -468,6 +475,22 @@ class AcousticModel(Archive):
         if self._tm is None:
             self._tm, self._am = read_gmm_model(self.alignment_model_path)
         return self._tm
+
+    @property
+    def lexicon_compiler(self):
+        lc = LexiconCompiler(
+            silence_probability=self.meta.get("silence_probability", 0.5),
+            initial_silence_probability=self.meta.get("initial_silence_probability", 0.5),
+            final_silence_correction=self.meta.get("final_silence_correction", None),
+            final_non_silence_correction=self.meta.get("final_non_silence_correction", None),
+            silence_phone=self.meta.get("optional_silence_phone", "sil"),
+            oov_phone=self.meta.get("oov_phone", "sil"),
+            position_dependent_phones=self.meta.get("position_dependent_phones", False),
+            phones={x for x in self.meta["phones"]},
+        )
+        if self.phone_symbol_path.exists():
+            lc.phone_table = pywrapfst.SymbolTable.read_text(self.phone_symbol_path)
+        return lc
 
     @property
     def mfcc_computer(self) -> MfccComputer:

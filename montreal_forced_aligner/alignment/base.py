@@ -337,7 +337,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         acoustic_model = getattr(self, "acoustic_model", None)
         if acoustic_model is not None:
             acoustic_model.export_model(self.working_directory)
-        perform_speaker_adaptation = self.uses_speaker_adaptation
+        perform_speaker_adaptation = self.uses_speaker_adaptation and not config.SINGLE_SPEAKER
         final_alignment = self.final_alignment
         if perform_speaker_adaptation:
             self.final_alignment = False

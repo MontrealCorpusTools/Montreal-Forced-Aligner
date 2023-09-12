@@ -428,10 +428,7 @@ class CompileTrainGraphsFunction(KaldiFunction):
                     word_table = self.lexicon_compilers[d.id].word_table
                 else:
                     word_table = d.words_symbol_path
-                if not self.use_g2p:
-                    lexicon = d.lexicon_fst_path
-                else:
-                    lexicon = self.lexicon_compilers[d.id]
+                lexicon = self.lexicon_compilers[d.id]
                 compiler = TrainingGraphCompiler(
                     self.model_path, self.tree_path, lexicon, word_table, use_g2p=self.use_g2p
                 )

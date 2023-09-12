@@ -117,7 +117,8 @@ def common_options(f: typing.Callable) -> typing.Callable:
             "--single_speaker",
             "single_speaker",
             is_flag=True,
-            help="Single speaker mode creates multiprocessing splits based on utterances rather than speakers.",
+            help="Single speaker mode creates multiprocessing splits based on utterances rather than speakers. "
+            "This mode also disables speaker adaptation equivalent to `--uses_speaker_adaptation false`.",
             default=False,
         ),
         click.option(
@@ -251,7 +252,7 @@ def configure_pg(directory):
     if not config.DATABASE_LIMITED_MODE:
         configuration_updates.update(
             {
-                "#maintenance_work_mem = 64MB": "maintenance_work_mem = 500MB",
+                "#maintenance_work_mem = 64MB": "maintenance_work_mem = 1GB",
                 "#work_mem = 4MB": "work_mem = 128MB",
                 "shared_buffers = 128MB": "shared_buffers = 256MB",
             }

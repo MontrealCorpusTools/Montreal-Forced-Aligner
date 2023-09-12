@@ -1,5 +1,6 @@
 """Classes for corpora that use ivectors as features"""
 import logging
+import math
 import os
 import time
 import typing
@@ -18,7 +19,7 @@ from _kalpy.ivector import (
     ivector_normalize_length,
     ivector_subtract_mean,
 )
-from _kalpy.matrix import DoubleMatrix, FloatVector
+from _kalpy.matrix import DoubleMatrix, DoubleVector, FloatVector
 from _kalpy.util import BaseFloatVectorWriter, SequentialBaseFloatVectorReader
 from kalpy.data import KaldiMapping
 from kalpy.ivector.data import IvectorArchive
@@ -38,6 +39,7 @@ from montreal_forced_aligner.corpus.features import (
     ExtractIvectorsFunction,
     IvectorConfigMixin,
 )
+from montreal_forced_aligner.data import WorkflowType
 from montreal_forced_aligner.db import Corpus, Speaker, Utterance, bulk_update
 from montreal_forced_aligner.exceptions import IvectorTrainingError
 from montreal_forced_aligner.helper import mfa_open
@@ -191,24 +193,28 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
 
         self.collect_speaker_ivectors()
 
-    def compute_plda(self) -> None:
+    def compute_plda(self, minimum_utterance_count: int = 1) -> None:
         """Train a PLDA model"""
-        if not os.path.exists(self.utterance_ivector_path):
-            if not self.has_any_ivectors():
-                raise Exception(
-                    "Must have either ivectors or xvectors calculated to compute PLDA."
-                )
+        if not self.has_any_ivectors():
+            raise Exception("Must have either ivectors or xvectors calculated to compute PLDA.")
+        begin = time.time()
+        self.create_new_current_workflow(WorkflowType.speaker_diarization)
 
         plda_path = self.working_directory.joinpath("plda")
         log_path = self.working_log_directory.joinpath("plda.log")
         logger.info("Computing PLDA...")
-        self.stopped.reset()
+        self.stopped.clear()
         if self.stopped.is_set():
             logger.debug("PLDA computation stopped early.")
             return
-
+        use_xvectors = self.has_xvectors()
+        if use_xvectors:
+            dim = config.XVECTOR_DIMENSION
+        else:
+            dim = config.IVECTOR_DIMENSION
         with (
             tqdm(total=self.num_utterances, disable=config.QUIET) as pbar,
+            self.session() as session,
             kalpy_logger("kalpy.ivector", log_path) as ivector_logger,
         ):
             plda_config = PldaEstimationConfig()
@@ -217,45 +223,63 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
             num_spk_done = 0
             num_spk_err = 0
             num_utt_err = 0
-            for j in self.jobs:
-                ivector_scp_path = j.construct_path(self.split_directory, "ivectors", "scp")
-                spk2utt_path = j.construct_path(self.split_directory, "spk2utt", "scp")
-                spk2utt = KaldiMapping(list_mapping=True)
-                spk2utt.load(spk2utt_path)
-                ivector_archive = IvectorArchive(ivector_scp_path)
-                for utt_list in spk2utt.values():
-                    ivector_mat = DoubleMatrix(len(utt_list), config.IVECTOR_DIMENSION)
-                    for i, utt_id in enumerate(utt_list):
-                        ivector = ivector_archive[utt_id]
-
-                        # ivector-normalize-length
-                        ivector_normalize_length(ivector)
-                        ivector_mat.Row(i).CopyFromVec(ivector)
-                        num_utt_done += 1
-                    pbar.update(1)
-                    plda_stats.AddSamples(1.0, ivector_mat)
-                    num_spk_done += 1
-                if num_spk_done == 0:
-                    raise IvectorTrainingError("No stats accumulated, unable to estimate PLDA.")
-                if num_utt_done <= plda_stats.Dim():
-                    raise IvectorTrainingError(
-                        "Number of training iVectors is not greater than their "
-                        "dimension, unable to estimate PLDA."
-                    )
-                if num_spk_done == num_utt_done:
-                    raise IvectorTrainingError(
-                        "No speakers with multiple utterances, " "unable to estimate PLDA."
-                    )
-                ivector_logger.info(
-                    f"Accumulated stats from {num_spk_done} speakers "
-                    f"({num_spk_err}  with no utterances), consisting of {num_utt_done} utterances "
-                    f"({num_utt_err} absent from input)."
+            c = session.query(Corpus).first()
+            c.plda_calculated = False
+            update_mapping = []
+            speaker_query = (
+                session.query(Speaker.id)
+                .join(Utterance.speaker)
+                .filter(c.utterance_ivector_column != None)  # noqa
+                .group_by(Speaker.id)
+                .having(sqlalchemy.func.count() >= minimum_utterance_count)
+            )
+            for (speaker_id,) in speaker_query:
+                utterance_query = session.query(c.utterance_ivector_column).filter(
+                    Utterance.speaker_id == speaker_id,
                 )
+                num_utterances = utterance_query.count()
+                if num_utterances < minimum_utterance_count:
+                    num_spk_err += 1
+                    continue
+                ivector_mat = DoubleMatrix(num_utterances, dim)
+                for i, (ivector,) in enumerate(utterance_query):
+                    if ivector is None:
+                        num_utt_err += 1
+                        continue
+                    pbar.update(1)
+                    vector = DoubleVector()
+                    vector.from_numpy(ivector)
+                    ivector_mat.Row(i).CopyFromVec(vector)
+                    num_utt_done += 1
+                update_mapping.append({"id": speaker_id, "num_utterances": num_utterances})
+                plda_stats.AddSamples(1.0, ivector_mat)
+                num_spk_done += 1
 
-                plda_stats.Sort()
-                plda_estimator = PldaEstimator(plda_stats)
-                plda = plda_estimator.estimate(plda_config)
-                write_kaldi_object(plda, plda_path)
+            if num_spk_done == 0:
+                raise IvectorTrainingError("No stats accumulated, unable to estimate PLDA.")
+            if num_utt_done <= plda_stats.Dim():
+                raise IvectorTrainingError(
+                    "Number of training iVectors is not greater than their "
+                    "dimension, unable to estimate PLDA."
+                )
+            if num_spk_done == num_utt_done:
+                raise IvectorTrainingError(
+                    "No speakers with multiple utterances, unable to estimate PLDA."
+                )
+            ivector_logger.info(
+                f"Accumulated stats from {num_spk_done} speakers "
+                f"({num_spk_err}  with no utterances), consisting of {num_utt_done} utterances "
+                f"({num_utt_err} absent from input)."
+            )
+            if update_mapping:
+                bulk_update(session, Speaker, update_mapping)
+            plda_stats.Sort()
+            plda_estimator = PldaEstimator(plda_stats)
+            plda = Plda()
+            plda_estimator.Estimate(plda_config, plda)
+            write_kaldi_object(plda, plda_path)
+            self.plda = plda
+        logger.debug(f"Computing PLDA took {time.time() - begin:.3f} seconds.")
 
     def extract_ivectors(self) -> None:
         """
@@ -360,11 +384,14 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                 pbar.update(1)
             bulk_update(session, Utterance, list(update_mapping.values()))
             session.flush()
+            n_lists = int(math.sqrt(self.num_utterances))
+            n_probe = int(math.sqrt(n_lists))
             session.execute(
                 sqlalchemy.text(
-                    "CREATE INDEX IF NOT EXISTS utterance_ivector_index ON utterance USING ivfflat (ivector vector_cosine_ops);"
+                    f"CREATE INDEX IF NOT EXISTS utterance_ivector_index ON utterance USING ivfflat (ivector vector_cosine_ops)  WITH (lists = {n_lists});"
                 )
             )
+            session.execute(sqlalchemy.text(f"SET ivfflat.probes = {n_probe};"))
             session.query(Corpus).update({Corpus.ivectors_calculated: True})
             session.commit()
         self._write_ivectors()

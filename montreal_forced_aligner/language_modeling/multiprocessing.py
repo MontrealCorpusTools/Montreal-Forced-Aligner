@@ -119,7 +119,9 @@ class TrainLmFunction(KaldiFunction):
     def _run(self) -> typing.Generator[bool]:
         """Run the function"""
         with self.session() as session, mfa_open(self.log_path, "w") as log_file:
-            word_query = session.query(Word.word).filter(Word.word_type == WordType.speech)
+            word_query = session.query(Word.word).filter(
+                Word.word_type.in_(WordType.speech_types())
+            )
             included_words = set(x[0] for x in word_query)
             utterance_query = session.query(Utterance.normalized_text, Utterance.text).filter(
                 Utterance.job_id == self.job_name

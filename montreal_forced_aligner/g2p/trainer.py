@@ -712,7 +712,7 @@ class PyniniTrainer(
             pronunciations = (
                 session.query(Word.word, Pronunciation.pronunciation)
                 .join(Pronunciation.word)
-                .filter(Word.word_type.in_([WordType.speech, WordType.clitic]))
+                .filter(Word.word_type.in_(WordType.speech_types()))
             )
             for w, p in pronunciations:
                 if w not in self.g2p_training_dictionary:

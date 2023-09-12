@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import atexit
+import re
 import sys
 import time
 import warnings
@@ -110,6 +111,17 @@ def mfa_cli(ctx: click.Context) -> None:
     """
     from montreal_forced_aligner.command_line.utils import check_server, start_server, stop_server
 
+    try:
+        from montreal_forced_aligner._version import version
+
+        if re.search(r"\d+\.\d+\.\d+a", version) is not None:
+            print(
+                "Please be aware that you are running an alpha version of MFA. If you would like to install a more "
+                "stable version, please visit https://montreal-forced-aligner.readthedocs.io/en/latest/installation.html#installing-older-versions-of-mfa",
+                file=sys.stderr,
+            )
+    except ImportError:
+        pass
     config.load_configuration()
     auto_server = False
     run_check = True
