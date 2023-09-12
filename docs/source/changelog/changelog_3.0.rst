@@ -5,11 +5,18 @@
 3.0 Changelog
 *************
 
+3.0.0a5
+=======
+
+- Update for :xref:`kalpy` version 0.5.5
+- Update :code:`--single_speaker` mode to not perform speaker adaptation
+- Add documentation for :ref:`concept_speaker_adaptation`
+
 3.0.0a4
 =======
 
 - Separate out segmentation functionality into :ref:`create_segments` and :ref:`create_segments_vad`
-- Fix a bug in :ref:`align_one` when specifying a ``config_path``
+- Fix a bug in :ref:`align_one` when specifying a :code:`config_path`
 
 3.0.0a3
 =======
