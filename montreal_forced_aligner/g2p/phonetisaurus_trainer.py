@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import collections
 import logging
+import multiprocessing as mp
 import os
 import queue
 import subprocess
@@ -16,7 +17,6 @@ import pynini
 import pywrapfst
 import sqlalchemy
 from pynini.lib import rewrite
-from sqlalchemy.orm import scoped_session
 from tqdm.rich import tqdm
 
 from montreal_forced_aligner import config
@@ -48,7 +48,7 @@ logger = logging.getLogger("mfa")
 class MaximizationArguments:
     """Arguments for the MaximizationWorker"""
 
-    session: scoped_session
+    db_string: str
     far_path: Path
     penalize_em: bool
     batch_size: int
@@ -58,7 +58,7 @@ class MaximizationArguments:
 class ExpectationArguments:
     """Arguments for the ExpectationWorker"""
 
-    session: scoped_session
+    db_string: str
     far_path: Path
     batch_size: int
 
@@ -67,7 +67,6 @@ class ExpectationArguments:
 class AlignmentExportArguments:
     """Arguments for the AlignmentExportWorker"""
 
-    session: scoped_session
     log_path: Path
     far_path: Path
     penalize: bool
@@ -87,7 +86,7 @@ class NgramCountArguments:
 class AlignmentInitArguments:
     """Arguments for the alignment initialization worker"""
 
-    session: scoped_session
+    db_string: str
     log_path: Path
     far_path: Path
     deletions: bool
@@ -102,7 +101,7 @@ class AlignmentInitArguments:
     batch_size: int
 
 
-class AlignmentInitWorker(threading.Thread):
+class AlignmentInitWorker(mp.Process):
     """
     Multiprocessing worker that initializes alignment FSTs for a subset of the data
 
@@ -112,9 +111,9 @@ class AlignmentInitWorker(threading.Thread):
         Integer ID for the job
     return_queue: :class:`multiprocessing.Queue`
         Queue to return data
-    stopped: :class:`~threading.Event`
+    stopped: :class:`~mp.Event`
         Stop check
-    finished_adding: :class:`~threading.Event`
+    finished_adding: :class:`~mp.Event`
         Check for whether the job queue is done
     args: :class:`~montreal_forced_aligner.g2p.phonetisaurus_trainer.AlignmentInitArguments`
         Arguments for initialization
@@ -123,16 +122,16 @@ class AlignmentInitWorker(threading.Thread):
     def __init__(
         self,
         job_name: int,
-        return_queue: Queue,
-        stopped: threading.Event,
-        finished_adding: threading.Event,
+        return_queue: mp.Queue,
+        stopped: mp.Event,
+        finished_adding: mp.Event,
         args: AlignmentInitArguments,
     ):
         super().__init__()
         self.job_name = job_name
         self.return_queue = return_queue
         self.stopped = stopped
-        self.finished = threading.Event()
+        self.finished = mp.Event()
         self.finished_adding = finished_adding
         self.deletions = args.deletions
         self.insertions = args.insertions
@@ -146,7 +145,7 @@ class AlignmentInitWorker(threading.Thread):
         self.far_path = args.far_path
         self.sym_path = self.far_path.with_suffix(".syms")
         self.log_path = args.log_path
-        self.session = args.session
+        self.db_string = args.db_string
         self.batch_size = args.batch_size
 
     def data_generator(self, session):
@@ -164,6 +163,14 @@ class AlignmentInitWorker(threading.Thread):
 
     def run(self) -> None:
         """Run the function"""
+
+        engine = sqlalchemy.create_engine(
+            self.db_string,
+            poolclass=sqlalchemy.NullPool,
+            pool_reset_on_return=None,
+            isolation_level="AUTOCOMMIT",
+            logging_name=f"{type(self).__name__}_engine",
+        ).execution_options(logging_token=f"{type(self).__name__}_engine")
         try:
             symbol_table = pywrapfst.SymbolTable()
             symbol_table.add_symbol(self.eps)
@@ -180,7 +187,9 @@ class AlignmentInitWorker(threading.Thread):
                     valid_input_ngrams.add(line)
             count = 0
             data = {}
-            with mfa_open(self.log_path, "w") as log_file, self.session() as session:
+            with mfa_open(self.log_path, "w") as log_file, sqlalchemy.orm.Session(
+                engine
+            ) as session:
                 far_writer = pywrapfst.FarWriter.create(self.far_path, arc_type="log")
                 for current_index, (input, output) in enumerate(self.data_generator(session)):
                     if self.stopped.is_set():
@@ -324,7 +333,7 @@ class AlignmentInitWorker(threading.Thread):
             del far_writer
 
 
-class ExpectationWorker(threading.Thread):
+class ExpectationWorker(mp.Process):
     """
     Multiprocessing worker that runs the expectation step of training for a subset of the data
 
@@ -334,7 +343,7 @@ class ExpectationWorker(threading.Thread):
         Integer ID for the job
     return_queue: :class:`multiprocessing.Queue`
         Queue to return data
-    stopped: :class:`~threading.Event`
+    stopped: :class:`~mp.Event`
         Stop check
     args: :class:`~montreal_forced_aligner.g2p.phonetisaurus_trainer.ExpectationArguments`
         Arguments for the function
@@ -343,27 +352,34 @@ class ExpectationWorker(threading.Thread):
     def __init__(
         self,
         job_name: int,
-        return_queue: Queue,
-        stopped: threading.Event,
+        return_queue: mp.Queue,
+        stopped: mp.Event,
         args: ExpectationArguments,
     ):
         super().__init__()
         self.job_name = job_name
-        self.session = args.session
+        self.db_string = args.db_string
         self.far_path = args.far_path
         self.batch_size = args.batch_size
         self.return_queue = return_queue
         self.stopped = stopped
-        self.finished = threading.Event()
+        self.finished = mp.Event()
 
     def run(self) -> None:
         """Run the function"""
+        engine = sqlalchemy.create_engine(
+            self.db_string,
+            poolclass=sqlalchemy.NullPool,
+            pool_reset_on_return=None,
+            isolation_level="AUTOCOMMIT",
+            logging_name=f"{type(self).__name__}_engine",
+        ).execution_options(logging_token=f"{type(self).__name__}_engine")
         far_reader = pywrapfst.FarReader.open(self.far_path)
         symbol_table = pywrapfst.SymbolTable.read_text(self.far_path.with_suffix(".syms"))
         symbol_mapper = {}
         data = {}
         count = 0
-        with self.session() as session:
+        with sqlalchemy.orm.Session(engine) as session:
             query = (
                 session.query(M2MSymbol.symbol, M2MSymbol.id)
                 .join(M2MSymbol.jobs)
@@ -415,7 +431,7 @@ class ExpectationWorker(threading.Thread):
         return
 
 
-class MaximizationWorker(threading.Thread):
+class MaximizationWorker(mp.Process):
     """
     Multiprocessing worker that runs the maximization step of training for a subset of the data
 
@@ -425,7 +441,7 @@ class MaximizationWorker(threading.Thread):
         Integer ID for the job
     return_queue: :class:`multiprocessing.Queue`
         Queue to return data
-    stopped: :class:`~threading.Event`
+    stopped: :class:`~multiprocessing.Event`
         Stop check
     args: :class:`~montreal_forced_aligner.g2p.phonetisaurus_trainer.MaximizationArguments`
         Arguments for maximization
@@ -434,16 +450,16 @@ class MaximizationWorker(threading.Thread):
     def __init__(
         self,
         job_name: int,
-        return_queue: Queue,
-        stopped: threading.Event,
+        return_queue: mp.Queue,
+        stopped: mp.Event,
         args: MaximizationArguments,
     ):
         super().__init__()
         self.job_name = job_name
         self.return_queue = return_queue
         self.stopped = stopped
-        self.finished = threading.Event()
-        self.session = args.session
+        self.finished = mp.Event()
+        self.db_string = args.db_string
         self.penalize_em = args.penalize_em
         self.far_path = args.far_path
         self.batch_size = args.batch_size
@@ -452,9 +468,16 @@ class MaximizationWorker(threading.Thread):
         """Run the function"""
         symbol_table = pywrapfst.SymbolTable.read_text(self.far_path.with_suffix(".syms"))
         count = 0
+        engine = sqlalchemy.create_engine(
+            self.db_string,
+            poolclass=sqlalchemy.NullPool,
+            pool_reset_on_return=None,
+            isolation_level="AUTOCOMMIT",
+            logging_name=f"{type(self).__name__}_engine",
+        ).execution_options(logging_token=f"{type(self).__name__}_engine")
         try:
             alignment_model = {}
-            with self.session() as session:
+            with sqlalchemy.orm.Session(engine) as session:
                 query = (
                     session.query(M2MSymbol)
                     .join(M2MSymbol.jobs)
@@ -507,7 +530,7 @@ class MaximizationWorker(threading.Thread):
             self.finished.set()
 
 
-class AlignmentExporter(threading.Thread):
+class AlignmentExporter(mp.Process):
     """
     Multiprocessing worker to generate Ngram counts for aligned FST archives
 
@@ -515,23 +538,20 @@ class AlignmentExporter(threading.Thread):
     ----------
     return_queue: :class:`multiprocessing.Queue`
         Queue to return data
-    stopped: :class:`~threading.Event`
+    stopped: :class:`~multiprocessing.Event`
         Stop check
     args: :class:`~montreal_forced_aligner.g2p.phonetisaurus_trainer.AlignmentExportArguments`
         Arguments for maximization
     """
 
-    def __init__(
-        self, return_queue: Queue, stopped: threading.Event, args: AlignmentExportArguments
-    ):
+    def __init__(self, return_queue: mp.Queue, stopped: mp.Event, args: AlignmentExportArguments):
         super().__init__()
         self.return_queue = return_queue
         self.stopped = stopped
-        self.finished = threading.Event()
+        self.finished = mp.Event()
         self.penalize = args.penalize
         self.far_path = args.far_path
         self.log_path = args.log_path
-        self.session = args.session
 
     def run(self) -> None:
         """Run the function"""
@@ -744,10 +764,10 @@ class PhonetisaurusTrainerMixin:
         self.em_threshold = em_threshold
         self.g2p_num_training_pronunciations = 0
 
-        self.symbol_table = pynini.SymbolTable()
+        self.symbol_table = pywrapfst.SymbolTable()
         self.symbol_table.add_symbol(self.eps)
-        self.total = pynini.Weight.zero("log")
-        self.prev_total = pynini.Weight.zero("log")
+        self.total = pywrapfst.Weight.zero("log")
+        self.prev_total = pywrapfst.Weight.zero("log")
 
     @property
     def architecture(self) -> str:
@@ -762,13 +782,13 @@ class PhonetisaurusTrainerMixin:
 
         logger.info("Creating alignment FSTs...")
 
-        return_queue = Queue()
-        stopped = threading.Event()
-        finished_adding = threading.Event()
+        return_queue = mp.Queue()
+        stopped = mp.Event()
+        finished_adding = mp.Event()
         procs = []
         for i in range(1, config.NUM_JOBS + 1):
             args = AlignmentInitArguments(
-                self.session,
+                self.db_string,
                 self.working_log_directory.joinpath(f"alignment_init.{i}.log"),
                 self.working_directory.joinpath(f"{i}.far"),
                 self.deletions,
@@ -842,8 +862,10 @@ class PhonetisaurusTrainerMixin:
                         }
                         symbol_id += 1
                     else:
-                        symbols[symbol]["weight"] = pynini.plus(symbols[symbol]["weight"], weight)
-                    self.total = pynini.plus(self.total, weight)
+                        symbols[symbol]["weight"] = pywrapfst.plus(
+                            symbols[symbol]["weight"], weight
+                        )
+                    self.total = pywrapfst.plus(self.total, weight)
                     if job_name not in job_symbols:
                         job_symbols[job_name] = set()
                     job_symbols[job_name].add(symbols[symbol]["id"])
@@ -892,12 +914,12 @@ class PhonetisaurusTrainerMixin:
                 {"weight": M2MSymbol.weight - float(self.total)}, synchronize_session=False
             )
             session.commit()
-        return_queue = Queue()
-        stopped = threading.Event()
+        return_queue = mp.Queue()
+        stopped = mp.Event()
         procs = []
         for i in range(1, config.NUM_JOBS + 1):
             args = MaximizationArguments(
-                self.session,
+                self.db_string,
                 self.working_directory.joinpath(f"{i}.far"),
                 self.penalize_em,
                 self.batch_size,
@@ -931,7 +953,7 @@ class PhonetisaurusTrainerMixin:
             for v in error_list:
                 raise v
         if not last_iteration and change >= self.em_threshold:  # we're still converging
-            self.total = pynini.Weight.zero("log")
+            self.total = pywrapfst.Weight.zero("log")
             with self.session() as session:
                 session.query(M2MSymbol).update({"weight": 0.0})
                 session.commit()
@@ -943,20 +965,20 @@ class PhonetisaurusTrainerMixin:
         Run the expectation step for training
         """
         logger.info("Performing expectation step...")
-        return_queue = Queue()
-        stopped = threading.Event()
+        return_queue = mp.Queue()
+        stopped = mp.Event()
         error_list = []
         procs = []
         for i in range(1, config.NUM_JOBS + 1):
             args = ExpectationArguments(
-                self.session,
+                self.db_string,
                 self.working_directory.joinpath(f"{i}.far"),
                 self.batch_size,
             )
             procs.append(ExpectationWorker(i, return_queue, stopped, args))
             procs[-1].start()
         mappings = {}
-        zero = pynini.Weight.zero("log")
+        zero = pywrapfst.Weight.zero("log")
         with tqdm(total=self.g2p_num_training_pronunciations, disable=config.QUIET) as pbar:
             while True:
                 try:
@@ -975,11 +997,11 @@ class PhonetisaurusTrainerMixin:
                     continue
                 result, count = result
                 for sym_id, gamma in result.items():
-                    gamma = pynini.Weight("log", gamma)
+                    gamma = pywrapfst.Weight("log", gamma)
                     if sym_id not in mappings:
                         mappings[sym_id] = zero
-                    mappings[sym_id] = pynini.plus(mappings[sym_id], gamma)
-                    self.total = pynini.plus(self.total, gamma)
+                    mappings[sym_id] = pywrapfst.plus(mappings[sym_id], gamma)
+                    self.total = pywrapfst.plus(self.total, gamma)
                 pbar.update(count)
         for p in procs:
             p.join()
@@ -1027,6 +1049,7 @@ class PhonetisaurusTrainerMixin:
                         continue
                     if stopped.is_set():
                         continue
+                    return_queue.task_done()
                 except queue.Empty:
                     for p in procs:
                         if not p.finished.is_set():
@@ -1085,20 +1108,20 @@ class PhonetisaurusTrainerMixin:
             ngramshrink_proc.communicate()
 
             ngram_fst = pynini.Fst.read(self.ngram_path)
-            grapheme_symbols = pynini.SymbolTable()
+            grapheme_symbols = pywrapfst.SymbolTable()
             grapheme_symbols.add_symbol(self.eps)
             grapheme_symbols.add_symbol(self.sequence_separator)
             grapheme_symbols.add_symbol(self.skip)
-            phone_symbols = pynini.SymbolTable()
+            phone_symbols = pywrapfst.SymbolTable()
             phone_symbols.add_symbol(self.eps)
             phone_symbols.add_symbol(self.sequence_separator)
             phone_symbols.add_symbol(self.skip)
-            single_phone_symbols = pynini.SymbolTable()
+            single_phone_symbols = pywrapfst.SymbolTable()
             single_phone_symbols.add_symbol(self.eps)
             single_phone_fst = pynini.Fst()
             start_state = single_phone_fst.add_state()
             single_phone_fst.set_start(start_state)
-            one = pynini.Weight.one(single_phone_fst.weight_type())
+            one = pywrapfst.Weight.one(single_phone_fst.weight_type())
             single_phone_fst.set_final(start_state, one)
             current_ind = 1
             for state in ngram_fst.states():
@@ -1112,19 +1135,19 @@ class PhonetisaurusTrainerMixin:
                             g_symbol = grapheme_symbols.find(self.eps)
                         else:
                             g_symbol = grapheme_symbols.find(grapheme)
-                            if g_symbol == pynini.NO_SYMBOL:
+                            if g_symbol == pywrapfst.NO_SYMBOL:
                                 g_symbol = grapheme_symbols.add_symbol(grapheme)
                         if phone == self.skip:
                             p_symbol = phone_symbols.find(self.eps)
                         else:
                             p_symbol = phone_symbols.find(phone)
-                            if p_symbol == pynini.NO_SYMBOL:
+                            if p_symbol == pywrapfst.NO_SYMBOL:
                                 p_symbol = phone_symbols.add_symbol(phone)
                                 singles = phone.split(self.sequence_separator)
                                 for i, s in enumerate(singles):
                                     s_symbol = single_phone_symbols.find(s)
 
-                                    if s_symbol == pynini.NO_SYMBOL:
+                                    if s_symbol == pywrapfst.NO_SYMBOL:
                                         s_symbol = single_phone_symbols.add_symbol(s)
                                     if i == 0:
                                         single_start = start_state
@@ -1159,7 +1182,7 @@ class PhonetisaurusTrainerMixin:
                 parts = sym.split(self.sequence_separator)
                 if len(parts) > 1:
                     for s in parts:
-                        if grapheme_symbols.find(s) == pynini.NO_SYMBOL:
+                        if grapheme_symbols.find(s) == pywrapfst.NO_SYMBOL:
                             k = grapheme_symbols.add_symbol(s)
                             ngram_fst.add_arc(1, pywrapfst.Arc(k, 2, 99, 1))
 
@@ -1170,7 +1193,7 @@ class PhonetisaurusTrainerMixin:
                 parts = sym.split(self.sequence_separator)
                 if len(parts) > 1:
                     for s in parts:
-                        if phone_symbols.find(s) == pynini.NO_SYMBOL:
+                        if phone_symbols.find(s) == pywrapfst.NO_SYMBOL:
                             k = phone_symbols.add_symbol(s)
                             ngram_fst.add_arc(1, pywrapfst.Arc(2, k, 99, 1))
             single_phone_fst.set_input_symbols(phone_symbols)
@@ -1190,7 +1213,7 @@ class PhonetisaurusTrainerMixin:
         """
         if os.path.exists(self.alignment_model_path):
             logger.info("Using existing alignments.")
-            self.symbol_table = pynini.SymbolTable.read_text(self.alignment_symbols_path)
+            self.symbol_table = pywrapfst.SymbolTable.read_text(self.alignment_symbols_path)
             return
         self.initialize_alignments()
 
@@ -1280,14 +1303,13 @@ class PhonetisaurusTrainerMixin:
         """
         logger.info("Exporting final alignments...")
 
-        return_queue = Queue()
-        stopped = threading.Event()
+        return_queue = mp.Queue()
+        stopped = mp.Event()
         error_list = []
         procs = []
         count_paths = []
         for i in range(1, config.NUM_JOBS + 1):
             args = AlignmentExportArguments(
-                self.session,
                 self.working_log_directory.joinpath(f"ngram_count.{i}.log"),
                 self.working_directory.joinpath(f"{i}.far"),
                 self.penalize,

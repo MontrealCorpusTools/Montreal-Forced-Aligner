@@ -321,13 +321,16 @@ class SimpleTokenizer:
         self.cutoff_word = cutoff_word
         self.ignore_case = ignore_case
         self.use_g2p = use_g2p
-        self.clitic_set = set()
-        if clitic_set is not None:
-            self.clitic_set.update(clitic_set)
-
         self.word_set = set()
         if word_set is not None:
             self.word_set.update(word_set)
+        self.clitic_set = set()
+        if clitic_set is not None:
+            self.clitic_set.update(clitic_set)
+        elif clitic_markers:
+            for w in self.word_set:
+                if w.startswith(clitic_markers[0]) or w.endswith(clitic_markers[0]):
+                    self.clitic_set.add(w)
 
         self.grapheme_set = set()
         if grapheme_set is not None:

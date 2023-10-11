@@ -121,7 +121,6 @@ def visualize_clusters(
     tsne_iterations = 1000
     mds_iterations = 300
     if quick:
-        tsne_angle = 0.8
         tsne_iterations = 500
         mds_iterations = 150
     if metric_type is DistanceMetric.plda:
@@ -143,7 +142,7 @@ def visualize_clusters(
             n_neighbors = ivectors.shape[0] - 1
         points = manifold.TSNE(
             metric=metric,
-            random_state=0,
+            random_state=config.SEED,
             perplexity=n_neighbors,
             init="pca" if metric != "precomputed" else "random",
             n_jobs=config.NUM_JOBS,
@@ -739,7 +738,7 @@ class SpeechbrainEmbeddingFunction(KaldiFunction):
 
             audio, lens = batch.signal
             embeddings = (
-                model.encode_batch(audio, wav_lens=lens, normalize=self.cluster)
+                model.encode_batch(audio, wav_lens=lens, normalize=False)
                 .cpu()
                 .numpy()
                 .squeeze(axis=1)

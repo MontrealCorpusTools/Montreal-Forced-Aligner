@@ -7,7 +7,6 @@ from __future__ import annotations
 import collections
 import json
 import logging
-import math
 import os
 import statistics
 import sys
@@ -43,8 +42,6 @@ from sqlalchemy.orm import joinedload, selectinload, subqueryload
 
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.data import (
-    OOV_PHONE,
-    OOV_WORD,
     WORD_BEGIN_SYMBOL,
     WORD_END_SYMBOL,
     CtmInterval,
@@ -426,9 +423,10 @@ class CompileTrainGraphsFunction(KaldiFunction):
                 begin = time.time()
                 if self.lexicon_compilers and d.id in self.lexicon_compilers:
                     word_table = self.lexicon_compilers[d.id].word_table
+                    lexicon = self.lexicon_compilers[d.id]
                 else:
                     word_table = d.words_symbol_path
-                lexicon = self.lexicon_compilers[d.id]
+                    lexicon = d.lexicon_fst_path
                 compiler = TrainingGraphCompiler(
                     self.model_path, self.tree_path, lexicon, word_table, use_g2p=self.use_g2p
                 )
@@ -447,10 +445,69 @@ class CompileTrainGraphsFunction(KaldiFunction):
                 graph_logger.info(f"Thread {self.job_name}: Compiling graphs for {d}")
                 fst_ark_path = job.construct_path(workflow.working_directory, "fsts", "ark", d.id)
                 total_time = 0
-                compiler.export_graphs(fst_ark_path, query, callback=self.callback)
+                compiler.export_graphs(
+                    fst_ark_path,
+                    query,
+                    # callback=self.callback
+                )
                 graph_logger.debug(
                     f"Thread {self.job_name}: Total compilation time: {total_time} seconds"
                 )
+                del compiler
+        del self.lexicon_compilers
+        del self.session
+
+
+def acc_stats_function(args: AccStatsArguments, lock: threading.Lock, transition_accs, gmm_accs):
+    with (
+        args.session() as session,
+        thread_logger("kalpy.train", args.log_path, job_name=args.job_name) as train_logger,
+    ):
+        job: Job = (
+            session.query(Job)
+            .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
+            .filter(Job.id == args.job_name)
+            .first()
+        )
+        for d in job.dictionaries:
+            train_logger.debug(f"Accumulating stats for dictionary {d.id}")
+            train_logger.debug(f"Accumulating stats for model: {args.model_path}")
+            dict_id = d.id
+            accumulator = GmmStatsAccumulator(args.model_path)
+
+            fmllr_path = job.construct_path(
+                job.corpus.current_subset_directory, "trans", "scp", dict_id
+            )
+            if not fmllr_path.exists():
+                fmllr_path = None
+            lda_mat_path = args.working_directory.joinpath("lda.mat")
+            if not lda_mat_path.exists():
+                lda_mat_path = None
+            feat_path = job.construct_path(
+                job.corpus.current_subset_directory, "feats", "scp", dictionary_id=dict_id
+            )
+            utt2spk_path = job.construct_path(
+                job.corpus.current_subset_directory, "utt2spk", "scp", dict_id
+            )
+            utt2spk = KaldiMapping()
+            utt2spk.load(utt2spk_path)
+            train_logger.debug(f"Feature path: {feat_path}")
+            train_logger.debug(f"LDA transform path: {lda_mat_path}")
+            train_logger.debug(f"Speaker transform path: {fmllr_path}")
+            train_logger.debug(f"utt2spk path: {utt2spk_path}")
+            feature_archive = FeatureArchive(
+                feat_path,
+                utt2spk=utt2spk,
+                lda_mat_file_name=lda_mat_path,
+                transform_file_name=fmllr_path,
+                deltas=True,
+            )
+            ali_path = job.construct_path(args.working_directory, "ali", "ark", dict_id)
+            alignment_archive = AlignmentArchive(ali_path)
+            accumulator.accumulate_stats(feature_archive, alignment_archive)
+            with lock:
+                transition_accs.AddVec(1.0, accumulator.transition_accs)
+                gmm_accs.Add(1.0, accumulator.gmm_accs)
 
 
 class AccStatsFunction(KaldiFunction):
@@ -582,16 +639,24 @@ class AlignFunction(KaldiFunction):
 
                 training_graph_archive = FstArchive(fst_path)
                 ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
-                if self.final:
+
+                words_path = job.construct_path(self.working_directory, "words", "ark", dict_id)
+                likes_path = job.construct_path(
+                    self.working_directory, "likelihoods", "ark", dict_id
+                )
+                ali_path.unlink(missing_ok=True)
+                words_path.unlink(missing_ok=True)
+                likes_path.unlink(missing_ok=True)
+                if self.aligner.acoustic_model_path.endswith(".alimdl"):
+                    ali_path = job.construct_path(
+                        self.working_directory, "ali_first_pass", "ark", dict_id
+                    )
                     words_path = job.construct_path(
-                        self.working_directory, "words", "ark", dict_id
+                        self.working_directory, "words_first_pass", "ark", dict_id
                     )
                     likes_path = job.construct_path(
-                        self.working_directory, "likelihoods", "ark", dict_id
+                        self.working_directory, "likelihoods_first_pass", "ark", dict_id
                     )
-                else:
-                    words_path = None
-                    likes_path = None
                 self.aligner.export_alignments(
                     ali_path,
                     training_graph_archive,
@@ -600,6 +665,16 @@ class AlignFunction(KaldiFunction):
                     likelihood_file_name=likes_path,
                     callback=self.callback,
                 )
+                if self.aligner.acoustic_model_path.endswith(".alimdl"):
+                    job.construct_path(self.working_directory, "ali", "ark", dict_id).symlink_to(
+                        ali_path
+                    )
+                    job.construct_path(self.working_directory, "words", "ark", dict_id).symlink_to(
+                        words_path
+                    )
+                    job.construct_path(
+                        self.working_directory, "likelihoods", "ark", dict_id
+                    ).symlink_to(likes_path)
 
 
 class AnalyzeAlignmentsFunction(KaldiFunction):
@@ -866,17 +941,6 @@ class FineTuneFunction(KaldiFunction):
                             feats = kalpy_transform.apply_transform(feats, current_transform)
                         start_samp = int(round(begin_offset * 1000))
                         end_samp = int(round(end_offset * 1000))
-                        if self.mfcc_computer.snip_edges:
-                            snip_length = int(
-                                math.ceil(
-                                    (
-                                        self.mfcc_computer.frame_length
-                                        - self.mfcc_computer._frame_shift
-                                    )
-                                    / self.mfcc_computer._frame_shift
-                                )
-                            )
-                            end_samp -= snip_length
                         sub_matrix = FloatSubMatrix(
                             feats, start_samp, end_samp - start_samp, 0, feats.NumCols()
                         )
@@ -1118,10 +1182,10 @@ class GeneratePronunciationsFunction(KaldiFunction):
                         utterance_texts[utterance], alignment.words, intervals
                     )
                     word_pronunciations = [(x.label, x.pronunciation) for x in ctm.word_intervals]
-                    word_pronunciations = [
-                        x if x[1] != OOV_PHONE else (OOV_WORD, OOV_PHONE)
-                        for x in word_pronunciations
-                    ]
+                    # word_pronunciations = [
+                    #    x if x[1] != OOV_PHONE else (OOV_WORD, OOV_PHONE)
+                    #    for x in word_pronunciations
+                    # ]
                     if self.for_g2p:
                         phones = []
                         for i, x in enumerate(word_pronunciations):
@@ -1248,11 +1312,13 @@ class AlignmentExtractionFunction(KaldiFunction):
                     alignment_archive = AlignmentArchive(
                         ali_path, words_file_name=words_path, likelihood_file_name=likes_path
                     )
+                    found_utterances = set()
                     for alignment in alignment_archive:
                         intervals = alignment.generate_ctm(
                             self.transition_model, lexicon_compiler.phone_table, self.frame_shift
                         )
                         utterance = int(alignment.utterance_id.split("-")[-1])
+                        found_utterances.add(utterance)
                         ctm = lexicon_compiler.phones_to_pronunciations(
                             utterance_texts[utterance],
                             alignment.words,
@@ -1263,6 +1329,52 @@ class AlignmentExtractionFunction(KaldiFunction):
                             utterance_begins[utterance], utterance_ends[utterance]
                         )
                         self.callback((utterance, d.id, ctm))
+                    alignment_archive.close()
+
+                    ali_path = job.construct_path(
+                        self.working_directory, "ali_first_pass", "ark", d.id
+                    )
+                    if ali_path.exists():
+                        words_path = job.construct_path(
+                            self.working_directory, "words_first_pass", "ark", d.id
+                        )
+                        likes_path = job.construct_path(
+                            self.working_directory, "likelihoods_first_pass", "ark", d.id
+                        )
+                        alignment_archive = AlignmentArchive(
+                            ali_path, words_file_name=words_path, likelihood_file_name=likes_path
+                        )
+                        missing_utterances = (
+                            session.query(Utterance.kaldi_id)
+                            .join(Utterance.speaker)
+                            .filter(
+                                Utterance.job_id == self.job_name, Speaker.dictionary_id == d.id
+                            )
+                            .filter(Utterance.ignored == False)  # noqa
+                            .filter(~Utterance.id.in_(found_utterances))
+                        )
+                        for (utt_id,) in missing_utterances:
+                            try:
+                                alignment = alignment_archive[utt_id]
+                                intervals = alignment.generate_ctm(
+                                    self.transition_model,
+                                    lexicon_compiler.phone_table,
+                                    self.frame_shift,
+                                )
+                                utterance = int(alignment.utterance_id.split("-")[-1])
+                                found_utterances.add(utterance)
+                                ctm = lexicon_compiler.phones_to_pronunciations(
+                                    utterance_texts[utterance],
+                                    alignment.words,
+                                    intervals,
+                                    transcription=False,
+                                )
+                                ctm.update_utterance_boundaries(
+                                    utterance_begins[utterance], utterance_ends[utterance]
+                                )
+                                self.callback((utterance, d.id, ctm))
+                            except (KeyError, RuntimeError):
+                                pass
 
 
 class ExportTextGridProcessWorker(threading.Thread):
@@ -1368,6 +1480,7 @@ class ExportTextGridProcessWorker(threading.Thread):
                         data, output_path, duration, self.export_frame_shift, self.output_format
                     )
                     self.return_queue.put(1)
+                    self.for_write_queue.task_done()
                 except Exception:
                     exc_type, exc_value, exc_traceback = sys.exc_info()
                     self.return_queue.put(

@@ -392,12 +392,17 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
                 if initial_mix_up:
                     mix_up = self.initial_gaussians
                     mix_down = self.initial_gaussians
+                old_transition_model, old_acoustic_model = read_gmm_model(
+                    os.path.join(self.previous_aligner.working_directory, "final.mdl")
+                )
+                old_tree = read_tree(os.path.join(self.previous_aligner.working_directory, "tree"))
                 gmm_init_model_from_previous(
                     topo,
                     tree,
                     tree_stats,
-                    os.path.join(self.previous_aligner.working_directory, "final.mdl"),
-                    os.path.join(self.previous_aligner.working_directory, "tree"),
+                    old_acoustic_model,
+                    old_transition_model,
+                    old_tree,
                     str(self.model_path),
                     mixup=mix_up,
                     mixdown=mix_down,

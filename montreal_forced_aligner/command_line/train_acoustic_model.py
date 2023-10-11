@@ -7,7 +7,11 @@ import rich_click as click
 
 from montreal_forced_aligner import config
 from montreal_forced_aligner.acoustic_modeling import TrainableAligner
-from montreal_forced_aligner.command_line.utils import common_options, validate_dictionary
+from montreal_forced_aligner.command_line.utils import (
+    common_options,
+    validate_dictionary,
+    validate_g2p_model,
+)
 from montreal_forced_aligner.data import Language
 
 __all__ = ["train_acoustic_model_cli"]
@@ -93,6 +97,12 @@ __all__ = ["train_acoustic_model_cli"]
     default=Language.unknown.name,
     type=click.Choice([x.name for x in Language]),
 )
+@click.option(
+    "--g2p_model_path",
+    "g2p_model_path",
+    help="Path to G2P model to use for OOV items.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+)
 @common_options
 @click.help_option("-h", "--help")
 @click.pass_context
@@ -108,9 +118,15 @@ def train_acoustic_model_cli(context, **kwargs) -> None:
     output_directory = kwargs.get("output_directory", None)
     corpus_directory = kwargs["corpus_directory"]
     dictionary_path = kwargs["dictionary_path"]
+    g2p_model_path = kwargs.get("g2p_model_path", None)
+    phone_groups_path = kwargs.get("phone_groups_path", None)
+    if g2p_model_path:
+        g2p_model_path = validate_g2p_model(context, kwargs, g2p_model_path)
     trainer = TrainableAligner(
         corpus_directory=corpus_directory,
         dictionary_path=dictionary_path,
+        g2p_model_path=g2p_model_path,
+        phone_groups_path=phone_groups_path,
         **TrainableAligner.parse_parameters(config_path, context.params, context.args),
     )
     try:

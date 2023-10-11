@@ -5,6 +5,7 @@ Segmenter
 """
 from __future__ import annotations
 
+import collections
 import logging
 import os
 import sys
@@ -13,6 +14,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import sqlalchemy
+from kalpy.fstext.lexicon import Pronunciation as KalpyPronunciation
 from sqlalchemy.orm import joinedload, selectinload
 from tqdm.rich import tqdm
 
@@ -20,11 +22,19 @@ from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import FileExporterMixin, MetaDict, TopLevelMfaWorker
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
 from montreal_forced_aligner.corpus.features import VadConfigMixin
-from montreal_forced_aligner.data import TextFileType, WorkflowType
-from montreal_forced_aligner.db import CorpusWorkflow, File, Utterance
+from montreal_forced_aligner.data import Language, TextFileType, WorkflowType
+from montreal_forced_aligner.db import (
+    CorpusWorkflow,
+    File,
+    Pronunciation,
+    Utterance,
+    Word,
+    full_load_utterance,
+)
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.helper import load_configuration
 from montreal_forced_aligner.models import AcousticModel
+from montreal_forced_aligner.tokenization.spacy import generate_language_tokenizer
 from montreal_forced_aligner.transcription.transcriber import TranscriberMixin
 from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
 from montreal_forced_aligner.vad.multiprocessing import (
@@ -572,13 +582,87 @@ class TranscriptionSegmenter(
 
     def segment_transcript(self, utterance_id: int):
         with self.session() as session:
-            utterance = session.get(Utterance, utterance_id)
+            # interjection_words = [x for x, in session.query(Word.word).filter(Word.word_type == WordType.interjection)]
+            interjection_words = []
+            utterance = full_load_utterance(session, utterance_id)
+            if self.acoustic_model.language is not Language.unknown:
+                tokenizer = generate_language_tokenizer(self.acoustic_model.language)
+                utterance.normalized_text, utterance.normalized_character_text = tokenizer(
+                    utterance.text
+                )
+                session.flush()
+            if self.g2p_model is None:
+                lexicon_compiler = self.lexicon_compilers[utterance.speaker.dictionary_id]
+            else:
+                lexicon_compiler = self.acoustic_model.lexicon_compiler
+                lexicon_compiler.disambiguation = bool(interjection_words)
+                words = set(utterance.normalized_text.split())
+                query = (
+                    session.query(Word, Pronunciation)
+                    .join(Pronunciation.word)
+                    .filter(Word.dictionary_id == utterance.speaker.dictionary_id)
+                    .filter(Word.word.in_(words))
+                    .order_by(Word.word)
+                )
+                for w, p in query:
+                    lexicon_compiler.word_table.add_symbol(w.word)
+                    lexicon_compiler.pronunciations.append(
+                        KalpyPronunciation(
+                            w.word,
+                            p.pronunciation,
+                            p.probability,
+                            p.silence_after_probability,
+                            p.silence_before_correction,
+                            p.non_silence_before_correction,
+                            None,
+                        )
+                    )
+                to_g2p = set()
+                word_to_g2p_mapping = collections.defaultdict(set)
+                for w, pron in zip(
+                    utterance.normalized_text.split(), utterance.normalized_character_text.split()
+                ):
+                    if not lexicon_compiler.word_table.member(w):
+                        word_to_g2p_mapping[w].add(pron)
+                        to_g2p.add(pron)
+                if to_g2p:
+                    from montreal_forced_aligner.g2p.generator import PyniniGenerator
+
+                    gen = PyniniGenerator(
+                        g2p_model_path=self.g2p_model.source,
+                        word_list=to_g2p,
+                        num_pronunciations=1,
+                        strict_graphemes=True,
+                    )
+                    g2pped = gen.generate_pronunciations()
+                    for w, ps in word_to_g2p_mapping.items():
+                        pronunciations = [g2pped[x][0] for x in ps if x in g2pped and g2pped[x]]
+                        if not pronunciations:
+                            pronunciations = [self.oov_phone]
+                        lexicon_compiler.word_table.add_symbol(w)
+                        print(w, ps, pronunciations)
+                        for p in pronunciations:
+                            lexicon_compiler.pronunciations.append(
+                                KalpyPronunciation(
+                                    w,
+                                    p,
+                                    None,
+                                    None,
+                                    None,
+                                    None,
+                                    None,
+                                )
+                            )
+                lexicon_compiler.compute_disambiguation_symbols()
+                lexicon_compiler.create_fsts()
+
             new_utterances = segment_utterance_transcript(
                 self.acoustic_model,
                 utterance.to_kalpy(),
-                self.lexicon_compilers[utterance.speaker.dictionary_id],
+                lexicon_compiler,
                 self.vad_model if self.speechbrain else None,
                 self.segmentation_options,
+                interjection_words=interjection_words,
                 mfcc_options=self.mfcc_options if not self.speechbrain else None,
                 vad_options=self.vad_options if not self.speechbrain else None,
                 **self.decode_options,

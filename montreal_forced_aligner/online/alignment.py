@@ -8,11 +8,12 @@ from _kalpy.matrix import DoubleMatrix, FloatMatrix
 from kalpy.decoder.training_graphs import TrainingGraphCompiler
 from kalpy.feat.cmvn import CmvnComputer
 from kalpy.fstext.lexicon import LexiconCompiler
+from kalpy.fstext.lexicon import Pronunciation as KalpyPronunciation
 from kalpy.gmm.align import GmmAligner
 from kalpy.gmm.data import HierarchicalCtm
 from kalpy.utterance import Utterance as KalpyUtterance
 
-from montreal_forced_aligner.data import WordType
+from montreal_forced_aligner.data import Language, WordType
 from montreal_forced_aligner.db import (
     Phone,
     PhoneInterval,
@@ -23,13 +24,15 @@ from montreal_forced_aligner.db import (
     get_next_primary_key,
 )
 from montreal_forced_aligner.exceptions import AlignerError
-from montreal_forced_aligner.models import AcousticModel
+from montreal_forced_aligner.models import AcousticModel, G2PModel
 
 
 def align_utterance_online(
     acoustic_model: AcousticModel,
     utterance: KalpyUtterance,
     lexicon_compiler: LexiconCompiler,
+    tokenizer=None,
+    g2p_model: G2PModel = None,
     cmvn: DoubleMatrix = None,
     fmllr_trans: FloatMatrix = None,
     beam: int = 10,
@@ -39,6 +42,37 @@ def align_utterance_online(
     self_loop_scale: float = 0.1,
     boost_silence: float = 1.0,
 ) -> HierarchicalCtm:
+    text = utterance.transcript
+    rewriter = None
+    if g2p_model is not None:
+        rewriter = g2p_model.rewriter
+    if tokenizer is not None:
+        if acoustic_model.language is Language.unknown:
+            text, _, oovs = tokenizer(text)
+            if rewriter is not None:
+                for w in oovs:
+                    if not lexicon_compiler.word_table.member(w):
+                        pron = rewriter(w)
+                        if pron:
+                            lexicon_compiler.add_pronunciation(KalpyPronunciation(w, pron[0]))
+
+        else:
+            text, pronunciation_form = tokenizer(text)
+            if not pronunciation_form:
+                pronunciation_form = text
+            g2p_cache = {}
+            if rewriter is not None:
+                for norm_w, w in zip(text.split(), pronunciation_form.split()):
+                    if w not in g2p_cache:
+                        pron = rewriter(w)
+                        if not pron:
+                            continue
+                        g2p_cache[w] = pron[0]
+                    if w in g2p_cache and not lexicon_compiler.word_table.member(norm_w):
+                        lexicon_compiler.add_pronunciation(
+                            KalpyPronunciation(norm_w, g2p_cache[w])
+                        )
+
     graph_compiler = TrainingGraphCompiler(
         acoustic_model.alignment_model_path,
         acoustic_model.tree_path,
@@ -58,7 +92,8 @@ def align_utterance_online(
         lda_mat=acoustic_model.lda_mat,
         fmllr_trans=fmllr_trans,
     )
-    fst = graph_compiler.compile_fst(utterance.transcript)
+
+    fst = graph_compiler.compile_fst(text)
     aligner = GmmAligner(
         acoustic_model.alignment_model_path if fmllr_trans is None else acoustic_model.model_path,
         beam=beam,

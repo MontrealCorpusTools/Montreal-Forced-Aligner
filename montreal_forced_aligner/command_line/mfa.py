@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import atexit
+import logging
 import re
 import sys
 import time
@@ -69,6 +70,12 @@ class ExitHooks(object):
     def exc_handler(self, exc_type, exc, *args) -> None:
         """Handle and save exceptions"""
         self.exception = exc
+        logger = logging.getLogger("mfa")
+        import traceback
+
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        error_text = "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+        logger.debug(error_text)
         self.exit_code = 1
 
     def history_save_handler(self) -> None:
@@ -126,8 +133,6 @@ def mfa_cli(ctx: click.Context) -> None:
     auto_server = False
     run_check = True
     if ctx.invoked_subcommand == "anchor":
-        config.CLEAN = False
-        config.USE_POSTGRES = True
         config.CLEAN = False
         config.USE_POSTGRES = True
     if "--help" in sys.argv or ctx.invoked_subcommand in [

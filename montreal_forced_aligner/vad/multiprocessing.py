@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, List, Union
 
 import numpy
 import numpy as np
+import pynini
+import pywrapfst
 from _kalpy.decoder import LatticeFasterDecoder, LatticeFasterDecoderConfig
 from _kalpy.fstext import GetLinearSymbolSequence
 from _kalpy.gmm import DecodableAmDiagGmmScaled
@@ -27,7 +29,7 @@ from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.data import CtmInterval, MfaArguments
 from montreal_forced_aligner.db import File, Job, Speaker, Utterance
 from montreal_forced_aligner.exceptions import SegmenterError
-from montreal_forced_aligner.models import AcousticModel
+from montreal_forced_aligner.models import AcousticModel, G2PModel
 
 try:
     import warnings
@@ -98,6 +100,8 @@ def segment_utterance_transcript(
     fmllr_trans: FloatMatrix = None,
     mfcc_options: MetaDict = None,
     vad_options: MetaDict = None,
+    g2p_model: G2PModel = None,
+    interjection_words: typing.List[str] = None,
     acoustic_scale: float = 0.1,
     beam: float = 16.0,
     lattice_beam: float = 10.0,
@@ -205,7 +209,12 @@ def segment_utterance_transcript(
             lda_mat=acoustic_model.lda_mat,
             fmllr_trans=fmllr_trans,
         )
-        fst = graph_compiler.compile_fst(new_utt.transcript)
+        unknown_words = []
+        unknown_word_index = 0
+        for w in new_utt.transcript.split():
+            if not lexicon_compiler.word_table.member(w):
+                unknown_words.append(w)
+        fst = graph_compiler.compile_fst(new_utt.transcript, interjection_words)
         decodable = DecodableAmDiagGmmScaled(am, transition_model, feats, acoustic_scale)
 
         d = LatticeFasterDecoder(fst, config)
@@ -218,15 +227,84 @@ def segment_utterance_transcript(
         alignment, words, weight = GetLinearSymbolSequence(decoded)
 
         words = words[:-1]
-        transcript = " ".join([lexicon_compiler.word_table.find(x) for x in words])
-
+        new_transcript = []
+        for w in words:
+            w = lexicon_compiler.word_table.find(w)
+            if w == lexicon_compiler.oov_word:
+                w = unknown_words[unknown_word_index]
+                unknown_word_index += 1
+            new_transcript.append(w)
+        transcript = " ".join(new_transcript)
+        if interjection_words:
+            current_transcript = align_interjection_words(
+                transcript, current_transcript, interjection_words, lexicon_compiler
+            )
+        else:
+            current_transcript = " ".join(current_transcript.split()[len(words) :])
         new_utt.transcript = transcript
-        current_transcript = " ".join(current_transcript.split()[len(words) :])
         new_utt.mfccs = None
         new_utt.cmvn_string = utterance.cmvn_string
         new_utt.fmllr_string = utterance.fmllr_string
         new_utts.append(new_utt)
+    if current_transcript:
+        new_utts[-1].transcript += " " + current_transcript
     return new_utts
+
+
+def align_interjection_words(
+    transcript,
+    original_transcript,
+    interjection_words: typing.List[str],
+    lexicon_compiler: LexiconCompiler,
+):
+    g = pynini.Fst()
+    start_state = g.add_state()
+    g.set_start(start_state)
+    for w in original_transcript.split():
+        word_symbol = lexicon_compiler.to_int(w)
+        word_initial_state = g.add_state()
+        for iw in interjection_words:
+            if not lexicon_compiler.word_table.member(iw):
+                continue
+            iw_symbol = lexicon_compiler.to_int(iw)
+            g.add_arc(
+                word_initial_state - 1,
+                pywrapfst.Arc(
+                    iw_symbol,
+                    lexicon_compiler.word_table.find("<eps>"),
+                    pywrapfst.Weight(g.weight_type(), 4.0),
+                    word_initial_state,
+                ),
+            )
+        word_final_state = g.add_state()
+        g.add_arc(
+            word_initial_state,
+            pywrapfst.Arc(
+                word_symbol, word_symbol, pywrapfst.Weight.one(g.weight_type()), word_final_state
+            ),
+        )
+        g.add_arc(
+            word_initial_state - 1,
+            pywrapfst.Arc(
+                word_symbol, word_symbol, pywrapfst.Weight.one(g.weight_type()), word_final_state
+            ),
+        )
+        g.set_final(word_initial_state, pywrapfst.Weight.one(g.weight_type()))
+        g.set_final(word_final_state, pywrapfst.Weight.one(g.weight_type()))
+
+    a = pynini.accep(
+        " ".join(
+            [
+                x if lexicon_compiler.word_table.member(x) else lexicon_compiler.oov_word
+                for x in transcript.split()
+            ]
+        ),
+        token_type=lexicon_compiler.word_table,
+    )
+    interjections_removed = (
+        pynini.compose(a, g).project("output").string(lexicon_compiler.word_table)
+    )
+    return " ".join(original_transcript.split()[len(interjections_removed.split()) :])
 
 
 def get_initial_segmentation(frames: numpy.ndarray, frame_shift: float) -> List[CtmInterval]:
@@ -391,7 +469,9 @@ def segment_utterance_vad_speech_brain(
         begin, end = boundaries[i]
         begin = max(begin, 0)
         end = min(end, utterance.segment.end)
-        seg = Segment(utterance.segment.file_path, begin, end, utterance.segment.channel)
+        seg = Segment(
+            utterance.segment.file_path, float(begin), float(end), utterance.segment.channel
+        )
         segments.append(seg)
     return segments
 

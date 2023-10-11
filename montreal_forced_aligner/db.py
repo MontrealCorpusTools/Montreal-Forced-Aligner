@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import typing
 from pathlib import Path
 
@@ -20,7 +19,7 @@ from praatio import textgrid
 from praatio.utilities.constants import Interval
 from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.ext.orderinglist import ordering_list
-from sqlalchemy.orm import Bundle, declarative_base, relationship
+from sqlalchemy.orm import Bundle, declarative_base, joinedload, relationship
 
 from montreal_forced_aligner import config
 from montreal_forced_aligner.data import (
@@ -41,8 +40,6 @@ logger = logging.getLogger("mfa")
 __all__ = [
     "Corpus",
     "CorpusWorkflow",
-    "PhonologicalRule",
-    "RuleApplication",
     "DictBundle",
     "Dictionary",
     "Word",
@@ -65,6 +62,7 @@ __all__ = [
     "MfaSqlBase",
     "bulk_update",
     "get_next_primary_key",
+    "full_load_utterance",
 ]
 
 MfaSqlBase = declarative_base()
@@ -91,6 +89,19 @@ def get_next_primary_key(session: sqlalchemy.orm.Session, database_table: MfaSql
     if not pk:
         pk = 0
     return pk + 1
+
+
+def full_load_utterance(session: sqlalchemy.orm.Session, utterance_id: int):
+    utterance = (
+        session.query(Utterance)
+        .filter(Utterance.id == utterance_id)
+        .options(
+            joinedload(Utterance.speaker, innerjoin=True),
+            joinedload(Utterance.file, innerjoin=True).joinedload(File.sound_file, innerjoin=True),
+        )
+        .first()
+    )
+    return utterance
 
 
 def bulk_update(
@@ -282,7 +293,6 @@ class Dialect(MfaSqlBase):
     name = Column(String(50), nullable=False)
 
     dictionaries = relationship("Dictionary", back_populates="dialect")
-    rules = relationship("PhonologicalRule", back_populates="dialect")
 
 
 class Dictionary(MfaSqlBase):
@@ -732,12 +742,6 @@ class Pronunciation(MfaSqlBase):
     )
     word = relationship("Word", back_populates="pronunciations")
 
-    rules = relationship(
-        "RuleApplication",
-        back_populates="pronunciation",
-        cascade="all, delete",
-    )
-
     word_intervals = relationship(
         "WordInterval",
         back_populates="pronunciation",
@@ -745,202 +749,6 @@ class Pronunciation(MfaSqlBase):
         collection_class=ordering_list("begin"),
         cascade="all, delete",
     )
-
-
-class PhonologicalRule(MfaSqlBase):
-    """
-    Database class for storing information about a phonological rule
-
-    Parameters
-    ----------
-    id: int
-        Primary key
-    segment: str
-        Segment to replace
-    preceding_context: str
-        Context before segment to match
-    following_context: str
-        Context after segment to match
-    replacement: str
-        Replacement of segment
-    probability: float
-        Probability of the rule application
-    silence_after_probability: float
-        Probability of silence following forms with rule application
-    silence_before_correction: float
-        Correction factor for silence before forms with rule application
-    non_silence_before_correction: float
-        Correction factor for non-silence before forms with rule application
-    pronunciations: list[:class:`~montreal_forced_aligner.db.RuleApplication`]
-        List of rule applications
-    """
-
-    __tablename__ = "phonological_rule"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    segment = Column(String, nullable=False, index=True)
-    preceding_context = Column(String, nullable=False, index=True)
-    following_context = Column(String, nullable=False, index=True)
-    replacement = Column(String, nullable=False)
-
-    probability = Column(Float, nullable=True)
-    silence_after_probability = Column(Float, nullable=True)
-    silence_before_correction = Column(Float, nullable=True)
-    non_silence_before_correction = Column(Float, nullable=True)
-
-    dialect_id = Column(Integer, ForeignKey("dialect.id"), index=True, nullable=False)
-    dialect = relationship("Dialect", back_populates="rules")
-
-    pronunciations = relationship(
-        "RuleApplication",
-        back_populates="rule",
-        cascade="all, delete",
-    )
-
-    def __hash__(self):
-        return hash(
-            (self.segment, self.preceding_context, self.following_context, self.replacement)
-        )
-
-    def to_json(self) -> typing.Dict[str, typing.Any]:
-        """
-        Serializes the rule for export
-
-        Returns
-        -------
-        dict[str, Any]
-            Serialized rule
-        """
-        return {
-            "segment": self.segment,
-            "dialect": self.dialect,
-            "preceding_context": self.preceding_context,
-            "following_context": self.following_context,
-            "replacement": self.replacement,
-            "probability": self.probability,
-            "silence_after_probability": self.silence_after_probability,
-            "silence_before_correction": self.silence_before_correction,
-            "non_silence_before_correction": self.non_silence_before_correction,
-        }
-
-    @property
-    def match_regex(self):
-        """Regular expression of the rule"""
-        components = []
-        initial = False
-        final = False
-        preceding = self.preceding_context
-        following = self.following_context
-        if preceding.startswith("^"):
-            initial = True
-            preceding = preceding.replace("^", "").strip()
-        if following.endswith("$"):
-            final = True
-            following = following.replace("$", "").strip()
-        if preceding:
-
-            components.append(rf"(?P<preceding>{preceding})")
-        if self.segment:
-            components.append(rf"(?P<segment>{self.segment})")
-        if following:
-            components.append(rf"(?P<following>{following})")
-        pattern = " ".join(components)
-        if initial:
-            pattern = "^" + pattern
-        else:
-            pattern = r"(?:^|(?<=\s))" + pattern
-        if final:
-            pattern += "$"
-        else:
-            pattern += r"(?:$|(?=\s))"
-        return re.compile(pattern, flags=re.UNICODE)
-
-    def __str__(self):
-        from_components = []
-        to_components = []
-        initial = False
-        final = False
-        preceding = self.preceding_context
-        following = self.following_context
-        if preceding.startswith("^"):
-            initial = True
-            preceding = preceding.replace("^", "").strip()
-        if following.endswith("$"):
-            final = True
-            following = following.replace("$", "").strip()
-        if preceding:
-            from_components.append(preceding)
-            to_components.append(preceding)
-        if self.segment:
-            from_components.append(self.segment)
-        if self.replacement:
-            to_components.append(self.replacement)
-        if following:
-            from_components.append(following)
-            to_components.append(following)
-
-        from_string = " ".join(from_components)
-        to_string = " ".join(to_components)
-        if initial:
-            from_string = "^" + from_string
-        if final:
-            from_string += "$"
-        return f"<PhonologicalRule {self.id} for Dialect {self.dialect_id}: {from_string} -> {to_string}>"
-
-    def apply_rule(self, pronunciation: str) -> str:
-        """
-        Apply the rule on a pronunciation by replacing any matching segments with the replacement
-
-        Parameters
-        ----------
-        pronunciation: str
-            Pronunciation to apply rule
-
-        Returns
-        -------
-        str
-            Pronunciation with rule applied
-        """
-        preceding = self.preceding_context
-        following = self.following_context
-        if preceding.startswith("^"):
-            preceding = preceding.replace("^", "").strip()
-        if following.startswith("$"):
-            following = following.replace("$", "").strip()
-        components = []
-        if preceding:
-            components.append(r"\g<preceding>")
-        if self.replacement:
-            components.append(self.replacement)
-        if following:
-            components.append(r"\g<following>")
-        return self.match_regex.sub(" ".join(components), pronunciation).strip()
-
-
-class RuleApplication(MfaSqlBase):
-    """
-    Database class for mapping rules to generated pronunciations
-
-    Parameters
-    ----------
-    pronunciation_id: int
-        Foreign key to :class:`~montreal_forced_aligner.db.Pronunciation`
-    rule_id: int
-        Foreign key to :class:`~montreal_forced_aligner.db.PhonologicalRule`
-    pronunciation: :class:`~montreal_forced_aligner.db.Pronunciation`
-        Pronunciation
-    rule: :class:`~montreal_forced_aligner.db.PhonologicalRule`
-        Rule applied
-    """
-
-    __tablename__ = "rule_applications"
-    pronunciation_id = Column(ForeignKey("pronunciation.id", ondelete="CASCADE"), primary_key=True)
-    rule_id = Column(ForeignKey("phonological_rule.id", ondelete="CASCADE"), primary_key=True)
-
-    pronunciation = relationship("Pronunciation", back_populates="rules")
-
-    rule = relationship("PhonologicalRule", back_populates="pronunciations")
 
 
 class Speaker(MfaSqlBase):

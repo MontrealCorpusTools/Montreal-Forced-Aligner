@@ -580,6 +580,7 @@ class PyniniTrainerMixin:
                         pbar.update(result)
                     else:
                         fst_likelihoods[result[0]] = result[1]
+                    return_queue.task_done()
                 for p in procs:
                     p.join()
             if error_dict:

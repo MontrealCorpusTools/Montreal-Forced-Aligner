@@ -407,6 +407,48 @@ def test_align_multilingual_tg_speaker_dict(
     assert not result.return_value
 
 
+def test_align_fine_tune(
+    basic_corpus_dir,
+    english_dictionary,
+    generated_dir,
+    temp_dir,
+    basic_align_config_path,
+    english_acoustic_model,
+    basic_reference_dir,
+    eval_mapping_path,
+    db_setup,
+):
+
+    command = [
+        "align",
+        basic_corpus_dir,
+        english_dictionary,
+        english_acoustic_model,
+        generated_dir.joinpath("align_eval_output"),
+        "--config_path",
+        basic_align_config_path,
+        "-q",
+        "--clean",
+        "--debug",
+        "--no_use_mp",
+        "--fine_tune",
+        "--beam",
+        "100",
+        "-p",
+        "test",
+    ]
+    command = [str(x) for x in command]
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+
+
 def test_align_evaluation(
     basic_corpus_dir,
     english_us_mfa_dictionary,

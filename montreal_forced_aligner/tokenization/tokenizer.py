@@ -416,6 +416,7 @@ class TokenizerValidator(CorpusTokenizer):
                         utterance, result = return_queue.get(timeout=1)
                         if stopped.is_set():
                             continue
+                        return_queue.task_done()
                     except queue.Empty:
                         for proc in procs:
                             if not proc.finished.is_set():

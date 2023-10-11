@@ -63,6 +63,14 @@ class TokenizerAlignmentInitWorker(AlignmentInitWorker):
 
     def run(self) -> None:
         """Run the function"""
+
+        engine = sqlalchemy.create_engine(
+            self.db_string,
+            poolclass=sqlalchemy.NullPool,
+            pool_reset_on_return=None,
+            isolation_level="AUTOCOMMIT",
+            logging_name=f"{type(self).__name__}_engine",
+        ).execution_options(logging_token=f"{type(self).__name__}_engine")
         try:
             symbol_table = pywrapfst.SymbolTable()
             symbol_table.add_symbol(self.eps)
@@ -79,7 +87,10 @@ class TokenizerAlignmentInitWorker(AlignmentInitWorker):
                     valid_input_ngrams.add(line)
             count = 0
             data = {}
-            with (mfa_open(self.log_path, "w") as log_file, self.session() as session):
+            with (
+                mfa_open(self.log_path, "w") as log_file,
+                sqlalchemy.orm.Session(engine) as session,
+            ):
                 far_writer = pywrapfst.FarWriter.create(self.far_path, arc_type="log")
                 for current_index, (input, output) in enumerate(self.data_generator(session)):
                     if self.stopped.is_set():

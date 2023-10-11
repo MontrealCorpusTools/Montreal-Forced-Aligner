@@ -488,6 +488,9 @@ class AcousticModelTrainingMixin(
             utterance_count, duration, average_log_likelihood = summary.first()
         data = {
             "phones": sorted(self._generate_non_positional_list(self.non_silence_phones)),
+            "phone_mapping": {
+                k: v for k, v in self.phone_mapping.items() if not k.startswith("#")
+            },
             "phone_groups": self.worker.phone_groups,
             "version": get_mfa_version(),
             "architecture": self.architecture,
@@ -510,6 +513,7 @@ class AcousticModelTrainingMixin(
                 "clitic_marker": self.worker.clitic_marker,
                 "position_dependent_phones": self.worker.position_dependent_phones,
             },
+            "language": str(self.worker.language),
             "features": self.feature_options,
             "oov_phone": self.worker.oov_phone,
             "optional_silence_phone": self.worker.optional_silence_phone,

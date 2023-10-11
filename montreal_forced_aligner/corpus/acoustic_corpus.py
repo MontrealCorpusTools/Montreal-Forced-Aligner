@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 import threading
 import time
 import typing
@@ -457,7 +456,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             )
             if non_ignored_check is None:
                 raise FeatureGenerationError(
-                    "No utterances had features, please check the logs for errors."
+                    f"No utterances had features, please check the logs in {log_directory} for errors."
                 )
             ignored_utterances = (
                 session.query(
@@ -880,6 +879,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                         last_poll = time.time()
                     pbar.update(1)
                     import_data.add_objects(self.generate_import_objects(file))
+                    return_queue.task_done()
 
                 logger.debug(f"Processing queue: {time.process_time() - begin_time}")
 
@@ -916,6 +916,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     _ = job_queue.get(timeout=1)
                     if self.stopped.is_set():
                         continue
+                    job_queue.task_done()
                 except Empty:
                     for proc in procs:
                         if not proc.finished_processing.is_set():
@@ -927,6 +928,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     _ = job_queue.get(timeout=1)
                     if self.stopped.is_set():
                         continue
+                    return_queue.task_done()
+                    job_queue.task_done()
                 except Empty:
                     for proc in procs:
                         if not proc.finished_processing.is_set():
@@ -940,8 +943,6 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 p.join()
             if self.stopped.is_set():
                 logger.info(f"Stopped parsing early ({time.process_time() - begin_time} seconds)")
-                if self.stopped.source():
-                    sys.exit(0)
             else:
                 logger.debug(
                     f"Parsed corpus directory with {config.NUM_JOBS} jobs in {time.process_time() - begin_time} seconds"
@@ -1072,7 +1073,13 @@ class AcousticCorpusPronunciationMixin(
         self.initialize_jobs()
         logger.debug(f"Initialized jobs in {time.time() - begin:.3f} seconds")
 
+        initialized_check = self.text_normalized
+
         self.normalize_text()
+
+        if self.dictionary_model is not None and not initialized_check:
+            self.calculate_disambiguation()
+            self.calculate_phone_mapping()
 
         begin = time.time()
         self.write_lexicon_information()

@@ -14,6 +14,7 @@ from pathlib import Path
 from shutil import copy, copyfile, make_archive, move, rmtree, unpack_archive
 from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Tuple, Union
 
+import pynini
 import pywrapfst
 import requests
 import yaml
@@ -27,7 +28,7 @@ from kalpy.gmm.utils import read_gmm_model
 from rich.pretty import pprint
 
 from montreal_forced_aligner.abc import MfaModel, ModelExporterMixin
-from montreal_forced_aligner.data import PhoneSetType
+from montreal_forced_aligner.data import Language, PhoneSetType, PhonologicalRule
 from montreal_forced_aligner.exceptions import (
     LanguageModelNotFoundError,
     ModelLoadError,
@@ -370,6 +371,7 @@ class AcousticModel(Archive):
         "tokenizer.fst",
         "phone_lm.fst",
         "tree",
+        "rules.yaml",
         "phones.txt",
         "graphemes.txt",
     ]
@@ -397,6 +399,10 @@ class AcousticModel(Archive):
     def uses_cmvn(self):
         return self.meta["features"]["uses_cmvn"]
 
+    @property
+    def language(self) -> Language:
+        return Language[self.meta.get("language", "unknown")]
+
     def add_meta_file(self, trainer: ModelExporterMixin) -> None:
         """
         Add metadata file from a model trainer
@@ -415,6 +421,7 @@ class AcousticModel(Archive):
         params = {**self.meta["features"]}
         params["non_silence_phones"] = {x for x in self.meta["phones"]}
         params["oov_phone"] = self.meta["oov_phone"]
+        params["language"] = self.meta["language"]
         params["optional_silence_phone"] = self.meta["optional_silence_phone"]
         params["phone_set_type"] = self.meta["phone_set_type"]
         params["silence_probability"] = self.meta.get("silence_probability", 0.5)
@@ -457,6 +464,11 @@ class AcousticModel(Archive):
         return self.dirname.joinpath("phones.txt")
 
     @property
+    def rules_path(self) -> Path:
+        """Path to phone symbol table"""
+        return self.dirname.joinpath("rules.yaml")
+
+    @property
     def alignment_model_path(self) -> Path:
         """Alignment model path"""
         path = self.model_path.with_suffix(".alimdl")
@@ -477,6 +489,46 @@ class AcousticModel(Archive):
         return self._tm
 
     @property
+    def phonological_rules(self) -> typing.List[PhonologicalRule]:
+        if not self.rules_path or not self.rules_path.exists():
+            return []
+        with mfa_open(self.rules_path) as f:
+            rule_data = yaml.load(f, Loader=yaml.Loader)
+        sets = rule_data.get("sets", {})
+        rules = [(None, x) for x in rule_data.get("rules", [])]
+        dialects = rule_data.get("dialects", {})
+        phonological_rules = []
+        for d, dialect_data in dialects.items():
+            rules.extend((d, x) for x in dialect_data)
+        for d, r in rules:
+            if "$" in r["preceding_context"] + r["following_context"]:
+                continue
+            if "^" in r["preceding_context"] + r["following_context"]:
+                continue
+            for k in ["preceding_context", "following_context", "segment"]:
+                p_seq = [x for x in r[k].split() if x]
+                for i, p in enumerate(p_seq):
+                    for s_name, phone_set in sets.items():
+                        if p == f"{{{s_name}}}":
+                            p_seq[i] = phone_set
+                            break
+                    else:
+                        p_seq[i] = [p]
+                r[k] = p_seq
+            r["replacement"] = [x for x in r["replacement"].split() if x]
+            probability = r.get("probability", None)
+            phonological_rules.append(
+                PhonologicalRule(
+                    r["preceding_context"],
+                    r["segment"],
+                    r["following_context"],
+                    r["replacement"],
+                    dialect=d,
+                    probability=probability,
+                )
+            )
+
+    @property
     def lexicon_compiler(self):
         lc = LexiconCompiler(
             silence_probability=self.meta.get("silence_probability", 0.5),
@@ -488,7 +540,11 @@ class AcousticModel(Archive):
             position_dependent_phones=self.meta.get("position_dependent_phones", False),
             phones={x for x in self.meta["phones"]},
         )
-        if self.phone_symbol_path.exists():
+        if self.meta.get("phone_mapping", None):
+            lc.phone_table = pywrapfst.SymbolTable()
+            for k, v in self.meta["phone_mapping"].items():
+                lc.phone_table.add_symbol(k, v)
+        elif self.phone_symbol_path.exists():
             lc.phone_table = pywrapfst.SymbolTable.read_text(self.phone_symbol_path)
         return lc
 
@@ -628,6 +684,8 @@ class AcousticModel(Archive):
                 self._meta["other_noise_phone"] = "sp"
             if "phone_set_type" not in self._meta:
                 self._meta["phone_set_type"] = "UNKNOWN"
+            if "language" not in self._meta:
+                self._meta["language"] = "unknown"
             self._meta["phones"] = set(self._meta.get("phones", []))
             if (
                 "uses_speaker_adaptation" not in self._meta["features"]
@@ -923,6 +981,43 @@ class G2PModel(Archive):
             source = G2PModel.get_pretrained_path(source)
 
         super().__init__(source, root_directory)
+
+    @property
+    def fst(self):
+        return pynini.Fst.read(self.fst_path)
+
+    @property
+    def phone_table(self):
+        return pywrapfst.SymbolTable.read_text(self.sym_path)
+
+    @property
+    def grapheme_table(self):
+        return pywrapfst.SymbolTable.read_text(self.grapheme_sym_path)
+
+    @property
+    def rewriter(self):
+        if not self.grapheme_sym_path.exists():
+            return None
+        if self.meta["architecture"] == "phonetisaurus":
+            from montreal_forced_aligner.g2p.generator import PhonetisaurusRewriter
+
+            rewriter = PhonetisaurusRewriter(
+                self.fst,
+                self.grapheme_table,
+                self.phone_table,
+                num_pronunciations=1,
+                grapheme_order=self.meta["grapheme_order"],
+                graphemes=self.meta["graphemes"],
+                sequence_separator=self.meta["sequence_separator"],
+                strict=True,
+            )
+        else:
+            from montreal_forced_aligner.g2p.generator import Rewriter
+
+            rewriter = Rewriter(
+                self.fst, self.grapheme_table, self.phone_table, num_pronunciations=1, strict=True
+            )
+        return rewriter
 
     def add_meta_file(self, g2p_trainer: G2PTrainer) -> None:
         """

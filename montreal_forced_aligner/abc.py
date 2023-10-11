@@ -392,7 +392,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         return e
 
     @property
-    def session(self, **kwargs) -> sqlalchemy.orm.scoped_session:
+    def session(self) -> sqlalchemy.orm.scoped_session:
         """
         Construct database session
 
@@ -408,7 +408,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         """
         if self._session is None:
             self._session = scoped_session(
-                sessionmaker(bind=self.db_engine, expire_on_commit=False, **kwargs)
+                sessionmaker(bind=self.db_engine, expire_on_commit=False)
             )
         return self._session
 

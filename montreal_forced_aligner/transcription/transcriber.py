@@ -291,6 +291,7 @@ class TranscriberMixin(CorpusAligner):
                         continue
                     if stopped.is_set():
                         continue
+                    return_queue.task_done()
                 except Empty:
                     for proc in procs:
                         if not proc.finished.is_set():

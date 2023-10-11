@@ -6,7 +6,6 @@ import sqlalchemy.orm
 
 from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 from montreal_forced_aligner.alignment import PretrainedAligner
-from montreal_forced_aligner.db import PhonologicalRule
 
 
 def test_trainer(basic_dict_path, temp_dir, basic_corpus_dir):
@@ -76,11 +75,9 @@ def test_pronunciation_training(
     a.train()
     assert "coronal_fricatives" in a.phone_groups
     assert set(a.phone_groups["coronal_fricatives"]) == {"s", "z", "sh"}
-    with a.session() as session:
-        assert session.query(PhonologicalRule).count() > 0
-        rule_query = session.query(PhonologicalRule).first()
-        assert rule_query.probability > 0
-        assert rule_query.probability < 1
+    assert len(a.phonological_rules) > 0
+    assert a.phonological_rules[0].probability > 0
+    assert a.phonological_rules[0].probability < 1
 
     a.cleanup()
     a.clean_working_directory()
