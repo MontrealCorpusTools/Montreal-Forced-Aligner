@@ -118,7 +118,9 @@ class AlignMixin(DictionaryMixin):
         """
 
         args = []
-
+        lexicon_compilers = {}
+        if getattr(self, "use_g2p", False):
+            lexicon_compilers = getattr(self, "lexicon_compilers", {})
         for j in self.jobs:
             args.append(
                 CompileTrainGraphsArguments(
@@ -126,7 +128,7 @@ class AlignMixin(DictionaryMixin):
                     getattr(self, "session", ""),
                     self.working_log_directory.joinpath(f"compile_train_graphs.{j.id}.log"),
                     self.working_directory,
-                    getattr(self, "lexicon_compilers", {}),
+                    lexicon_compilers,
                     self.working_directory.joinpath("tree"),
                     self.alignment_model_path,
                     getattr(self, "use_g2p", False),
@@ -250,9 +252,8 @@ class AlignMixin(DictionaryMixin):
         os.makedirs(log_directory, exist_ok=True)
         logger.info("Compiling training graphs...")
         arguments = self.compile_train_graphs_arguments()
-        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
-            for _ in run_kaldi_function(CompileTrainGraphsFunction, arguments, pbar.update):
-                pass
+        for _ in run_kaldi_function(CompileTrainGraphsFunction, arguments):
+            pass
         logger.debug(f"Compiling training graphs took {time.time() - begin:.3f} seconds")
 
     def get_phone_confidences(self):

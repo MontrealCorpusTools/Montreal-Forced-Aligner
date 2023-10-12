@@ -5,23 +5,31 @@
 3.0 Changelog
 *************
 
+3.0.0a6
+=======
+
+- Added support for generating pronunciations during training and alignment via :code:`--g2p_model_path`
+- Added support for Japanese tokenization through sudachipy
+- Fixed a crash in fine tuning
+- Added functionality for allowing a directory to be passed as the output path for :ref:`align_one`
+
 3.0.0a5
 =======
 
-- Update for :xref:`kalpy` version 0.5.5
-- Update :code:`--single_speaker` mode to not perform speaker adaptation
-- Add documentation for :ref:`concept_speaker_adaptation`
+- Updated for :xref:`kalpy` version 0.5.5
+- Updated :code:`--single_speaker` mode to not perform speaker adaptation
+- Added documentation for :ref:`concept_speaker_adaptation`
 
 3.0.0a4
 =======
 
-- Separate out segmentation functionality into :ref:`create_segments` and :ref:`create_segments_vad`
-- Fix a bug in :ref:`align_one` when specifying a :code:`config_path`
+- Separated out segmentation functionality into :ref:`create_segments` and :ref:`create_segments_vad`
+- Fixed a bug in :ref:`align_one` when specifying a :code:`config_path`
 
 3.0.0a3
 =======
 
-- Refactor tokenization for future spacy use
+- Refactored tokenization for future spacy use
 
 3.0.0a2
 =======

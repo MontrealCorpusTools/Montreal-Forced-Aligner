@@ -275,8 +275,8 @@ def check_third_party():
     if bin_path is None:
         raise ThirdpartyError("sox")
     bin_path = shutil.which("initdb")
-    if bin_path is None:
-        raise ThirdpartyError("initdb")
+    if bin_path is None and config.USE_POSTGRES:
+        raise ThirdpartyError("initdb (for postgresql)")
     bin_path = shutil.which("fstcompile")
     if bin_path is None:
         raise ThirdpartyError("fstcompile", open_fst=True)
@@ -608,7 +608,7 @@ def run_kaldi_function(
         try:
             while True:
                 try:
-                    result = return_queue.get(timeout=1)
+                    result = return_queue.get(timeout=2)
                     if isinstance(result, Exception):
                         error_dict[getattr(result, "job_name", 0)] = result
                         stopped.set()
@@ -621,6 +621,7 @@ def run_kaldi_function(
                             progress_callback(result)
                         else:
                             progress_callback(1)
+                    return_queue.task_done()
                 except Empty:
                     for proc in procs:
                         if not proc.finished.is_set():
@@ -642,6 +643,11 @@ def run_kaldi_function(
         finally:
             for p in procs:
                 p.join()
+                del p.function
+            del procs
+            del return_queue
+            del stopped
+            del arguments
 
         if error_dict:
             for v in error_dict.values():
@@ -669,6 +675,7 @@ def run_kaldi_function(
                                 progress_callback(result)
                             else:
                                 progress_callback(1)
+                        return_queue.task_done()
                     except Empty:
                         if not p.finished.is_set():
                             continue

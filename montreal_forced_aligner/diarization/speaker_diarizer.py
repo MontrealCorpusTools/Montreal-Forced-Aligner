@@ -1336,6 +1336,16 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             if len(update_mapping):
                 bulk_update(session, Utterance, list(update_mapping.values()))
                 session.commit()
+                speaker_ids = (
+                    session.query(Speaker.id)
+                    .join(Utterance.speaker)
+                    .filter(Utterance.id.in_(utterance_ids))
+                    .distinct()
+                )
+                session.query(Speaker).filter(Speaker.id.in_(speaker_ids)).update(
+                    {Speaker.modified: True}
+                )
+                session.commit()
 
             n_lists = int(math.sqrt(self.num_utterances))
             n_probe = int(math.sqrt(n_lists))
@@ -1345,6 +1355,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 )
             )
             session.execute(sqlalchemy.text(f"SET ivfflat.probes = {n_probe};"))
+            session.commit()
             session.query(Corpus).update({Corpus.xvectors_loaded: True})
             session.commit()
             if self.cuda:
@@ -1515,10 +1526,6 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                     update_mapping.append(
                         {"id": s_id, "xvector": speaker_mean.numpy(), "modified": False}
                     )
-                    if self.plda is not None:
-                        update_mapping[-1]["plda_vector"] = self.plda.transform_ivector(
-                            speaker_mean, embeddings.shape[0]
-                        ).numpy()
                     pbar.update(1)
             logger.debug(f"Updating {len(update_mapping)} speakers...")
             bulk_update(session, Speaker, update_mapping)
@@ -1529,13 +1536,11 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                     f"CREATE INDEX IF NOT EXISTS speaker_xvector_index ON speaker USING ivfflat (xvector vector_cosine_ops) WITH (lists = {n_lists});"
                 )
             )
-            if self.plda is not None:
-                session.execute(
-                    sqlalchemy.text(
-                        f"CREATE INDEX IF NOT EXISTS speaker_plda_vector_index ON speaker USING ivfflat (plda_vector vector_cosine_ops) WITH (lists = {n_lists});"
-                    )
-                )
             session.commit()
+        if update_mapping:
+            autocommit_engine = self.db_engine.execution_options(isolation_level="AUTOCOMMIT")
+            with sqlalchemy.orm.Session(autocommit_engine) as session:
+                session.execute(sqlalchemy.text("VACUUM ANALYZE Speaker"))
         logger.debug(f"Computing speaker xvectors took {time.time() - begin:.3f} seconds.")
         self.cleanup_empty_speakers()
 

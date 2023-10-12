@@ -5,15 +5,14 @@ import csv
 import functools
 import itertools
 import logging
+import multiprocessing as mp
 import os
 import queue
 import statistics
-import threading
 import time
 import typing
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from queue import Queue
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 import pynini
@@ -47,6 +46,7 @@ else:
 
 __all__ = [
     "Rewriter",
+    "PhonetisaurusRewriter",
     "RewriterWorker",
     "PyniniGenerator",
     "PyniniCorpusGenerator",
@@ -136,20 +136,23 @@ class Rewriter:
         self,
         fst: Fst,
         input_token_type: TokenType,
-        output_token_type: SymbolTable,
+        phone_symbol_table: SymbolTable,
         num_pronunciations: int = 0,
         threshold: float = 1,
         graphemes: Set[str] = None,
+        strict: bool = False,
     ):
         self.graphemes = graphemes
         self.input_token_type = input_token_type
+        self.phone_symbol_table = phone_symbol_table
+        self.strict = strict
         if num_pronunciations > 0:
             self.rewrite = functools.partial(
                 rewrite.top_rewrites,
                 nshortest=num_pronunciations,
                 rule=fst,
                 input_token_type=None,
-                output_token_type=output_token_type,
+                output_token_type=self.phone_symbol_table,
             )
         else:
             self.rewrite = functools.partial(
@@ -157,11 +160,13 @@ class Rewriter:
                 threshold=threshold,
                 rule=fst,
                 input_token_type=None,
-                output_token_type=output_token_type,
+                output_token_type=self.phone_symbol_table,
             )
 
     def create_word_fst(self, word: str) -> pynini.Fst:
         if self.graphemes is not None:
+            if self.strict and any(x not in self.graphemes for x in word):
+                return None
             word = "".join([x for x in word if x in self.graphemes])
         fst = pynini.accep(word, token_type=self.input_token_type)
         return fst
@@ -193,43 +198,46 @@ class PhonetisaurusRewriter:
     ----------
     fst: pynini.Fst
         G2P FST model
-    input_token_type: pynini.SymbolTable
+    grapheme_symbol_table: pynini.SymbolTable
         Grapheme symbol table
-    output_token_type: pynini.SymbolTable
+    phone_symbol_table: pynini.SymbolTable
+        Phone symbol table
     num_pronunciations: int
         Number of pronunciations, default to 0.  If this is 0, thresholding is used
     threshold: float
         Threshold to use for pruning rewrite lattice, defaults to 1.5, only used if num_pronunciations is 0
     grapheme_order: int
         Maximum number of graphemes to consider single segment
-    seq_sep: str
+    sequence_separator: str
         Separator to use between grapheme symbols
     """
 
     def __init__(
         self,
         fst: Fst,
-        input_token_type: SymbolTable,
-        output_token_type: SymbolTable,
+        grapheme_symbol_table: SymbolTable,
+        phone_symbol_table: SymbolTable,
         num_pronunciations: int = 0,
         threshold: float = 1.5,
         grapheme_order: int = 2,
-        seq_sep: str = "|",
+        sequence_separator: str = "|",
         graphemes: Set[str] = None,
+        strict: bool = False,
     ):
         self.fst = fst
-        self.seq_sep = seq_sep
-        self.input_token_type = input_token_type
-        self.output_token_type = output_token_type
+        self.sequence_separator = sequence_separator
+        self.grapheme_symbol_table = grapheme_symbol_table
+        self.phone_symbol_table = phone_symbol_table
         self.grapheme_order = grapheme_order
         self.graphemes = graphemes
+        self.strict = strict
         if num_pronunciations > 0:
             self.rewrite = functools.partial(
                 rewrite.top_rewrites,
                 nshortest=num_pronunciations,
                 rule=fst,
                 input_token_type=None,
-                output_token_type=output_token_type,
+                output_token_type=self.phone_symbol_table,
             )
         else:
             self.rewrite = functools.partial(
@@ -237,11 +245,13 @@ class PhonetisaurusRewriter:
                 threshold=threshold,
                 rule=fst,
                 input_token_type=None,
-                output_token_type=output_token_type,
+                output_token_type=self.phone_symbol_table,
             )
 
     def create_word_fst(self, word: str) -> typing.Optional[pynini.Fst]:
         if self.graphemes is not None:
+            if self.strict and any(not self.grapheme_symbol_table.member(x) for x in word):
+                return None
             word = [x for x in word if x in self.graphemes]
         if not word:
             return None
@@ -252,8 +262,8 @@ class PhonetisaurusRewriter:
             start_state = fst.add_state()
             for j in range(1, self.grapheme_order + 1):
                 if i + j <= len(word):
-                    substring = self.seq_sep.join(word[i : i + j])
-                    ilabel = self.input_token_type.find(substring)
+                    substring = self.sequence_separator.join(word[i : i + j])
+                    ilabel = self.grapheme_symbol_table.find(substring)
                     if ilabel != pywrapfst.NO_LABEL:
                         fst.add_arc(start_state, pywrapfst.Arc(ilabel, ilabel, one, i + j))
                     if i + j >= max_state:
@@ -262,8 +272,8 @@ class PhonetisaurusRewriter:
             fst.add_state()
         fst.set_start(0)
         fst.set_final(len(word), one)
-        fst.set_input_symbols(self.input_token_type)
-        fst.set_output_symbols(self.input_token_type)
+        fst.set_input_symbols(self.grapheme_symbol_table)
+        fst.set_output_symbols(self.grapheme_symbol_table)
         return fst
 
     def __call__(self, graphemes: str) -> List[str]:  # pragma: no cover
@@ -282,11 +292,11 @@ class PhonetisaurusRewriter:
             if not fst:
                 return []
             hypotheses = self.rewrite(fst)
-        hypotheses = [x.replace(self.seq_sep, " ") for x in hypotheses if x]
+        hypotheses = [x.replace(self.sequence_separator, " ") for x in hypotheses if x]
         return hypotheses
 
 
-class RewriterWorker(threading.Thread):
+class RewriterWorker(mp.Process):
     """
     Rewriter process
 
@@ -304,17 +314,17 @@ class RewriterWorker(threading.Thread):
 
     def __init__(
         self,
-        job_queue: Queue,
-        return_queue: Queue,
+        job_queue: mp.Queue,
+        return_queue: mp.Queue,
         rewriter: Rewriter,
-        stopped: threading.Event,
+        stopped: mp.Event,
     ):
         super().__init__()
         self.job_queue = job_queue
         self.return_queue = return_queue
         self.rewriter = rewriter
         self.stopped = stopped
-        self.finished = threading.Event()
+        self.finished = mp.Event()
 
     def run(self) -> None:
         """Run the rewriting function"""
@@ -335,7 +345,6 @@ class RewriterWorker(threading.Thread):
                 self.return_queue.put(e)
                 raise
         self.finished.set()
-        return
 
 
 @dataclass
@@ -459,7 +468,13 @@ class PyniniGenerator(G2PTopLevelMixin):
         G2P model
     """
 
-    def __init__(self, g2p_model_path: Path = None, strict_graphemes: bool = False, **kwargs):
+    def __init__(
+        self,
+        word_list: List[str] = None,
+        g2p_model_path: Path = None,
+        strict_graphemes: bool = False,
+        **kwargs,
+    ):
         self.strict_graphemes = strict_graphemes
         super().__init__(**kwargs)
         self.g2p_model = G2PModel(
@@ -468,6 +483,29 @@ class PyniniGenerator(G2PTopLevelMixin):
         self.output_token_type = "utf8"
         self.input_token_type = "utf8"
         self.rewriter = None
+        if word_list is None:
+            word_list = []
+        self.word_list = word_list
+
+    @property
+    def words_to_g2p(self) -> List[str]:
+        """Words to produce pronunciations"""
+        return self.word_list
+
+    @property
+    def data_source_identifier(self) -> str:
+        """Dummy "validation" data source"""
+        return "validation"
+
+    @property
+    def working_directory(self) -> Path:
+        """Data directory"""
+        return None
+
+    @property
+    def data_directory(self) -> Path:
+        """Data directory"""
+        return self.working_directory
 
     def setup(self):
         self.fst = pynini.Fst.read(self.g2p_model.fst_path)
@@ -538,8 +576,8 @@ class PyniniGenerator(G2PTopLevelMixin):
                     f"{comma_join(sorted(missing_graphemes))}"
                 )
         else:
-            stopped = threading.Event()
-            job_queue = Queue()
+            stopped = mp.Event()
+            job_queue = mp.Queue()
             for word in self.words_to_g2p:
                 w, m = clean_up_word(word, self.g2p_model.meta["graphemes"])
                 missing_graphemes = missing_graphemes | m
@@ -555,7 +593,7 @@ class PyniniGenerator(G2PTopLevelMixin):
                 f"{comma_join(sorted(missing_graphemes))}"
             )
             error_dict = {}
-            return_queue = Queue()
+            return_queue = mp.Queue()
             procs = []
             for _ in range(config.NUM_JOBS):
                 p = RewriterWorker(
@@ -622,31 +660,18 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
         For parameters to generate pronunciations
     """
 
-    def __init__(self, word_list: List[str] = None, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        if word_list is None:
-            word_list = []
-        self.word_list = word_list
-
-    @property
-    def words_to_g2p(self) -> List[str]:
-        """Words to produce pronunciations"""
-        return self.word_list
-
-    @property
-    def data_source_identifier(self) -> str:
-        """Dummy "validation" data source"""
-        return "validation"
-
-    @property
-    def data_directory(self) -> Path:
-        """Data directory"""
-        return self.working_directory
 
     @property
     def evaluation_csv_path(self) -> Path:
         """Path to working directory's CSV file"""
         return self.working_directory.joinpath("pronunciation_evaluation.csv")
+
+    @property
+    def working_directory(self) -> Path:
+        """Data directory"""
+        return self.output_directory.joinpath(self._current_workflow)
 
     def setup(self) -> None:
         """Set up the G2P validator"""
@@ -873,6 +898,10 @@ class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker)
         self.create_new_current_workflow(WorkflowType.g2p)
         self.g2p_model.validate(self.words_to_g2p)
         self.initialized = True
+
+    @property
+    def working_directory(self) -> Path:
+        return self.output_directory.joinpath("g2p")
 
     def g2p_arguments(self) -> List[G2PArguments]:
         return [

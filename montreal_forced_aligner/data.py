@@ -111,6 +111,165 @@ class DatabaseImportData:
 
 # noinspection PyUnresolvedReferences
 @dataclassy.dataclass(slots=True)
+class PhonologicalRule:
+    preceding_context: typing.List[typing.Set]
+    segment: typing.List[typing.Set]
+    following_context: typing.List[typing.Set]
+    replacement: typing.Optional[typing.List[str]]
+    dialect: typing.Optional[str] = None
+    probability: typing.Optional[float] = None
+    initial: bool = False
+    final: bool = False
+
+    def apply_rule(self, pronunciation: str) -> str:
+        """
+        Apply the rule on a pronunciation by replacing any matching segments with the replacement
+
+        Parameters
+        ----------
+        pronunciation: str
+            Pronunciation to apply rule
+
+        Returns
+        -------
+        str
+            Pronunciation with rule applied
+        """
+        preceding = self.preceding_regex
+        following = self.following_regex
+        if preceding.startswith("^"):
+            preceding = preceding.replace("^", "").strip()
+        if following.startswith("$"):
+            following = following.replace("$", "").strip()
+        components = []
+        if preceding:
+            components.append(r"\g<preceding>")
+        if self.replacement_regex:
+            components.append(self.replacement_regex)
+        if following:
+            components.append(r"\g<following>")
+        return self.match_regex.sub(" ".join(components), pronunciation).strip()
+
+    @property
+    def total_input_length(self):
+        return len(self.preceding_context) + len(self.segment) + len(self.following_context)
+
+    @property
+    def preceding_regex(self):
+        components = []
+        for phones in self.preceding_context:
+            components.append(f'({"|".join(phones)})')
+        pattern = " ".join(components)
+        if self.initial:
+            pattern = "^" + pattern
+        return pattern
+
+    @property
+    def following_regex(self):
+        components = []
+        for phones in self.following_context:
+            components.append(f'({"|".join(phones)})')
+        pattern = " ".join(components)
+        if self.final:
+            pattern += "$"
+        return pattern
+
+    @property
+    def segment_regex(self):
+        components = []
+        for phones in self.segment:
+            components.append(f'({"|".join(phones)})')
+        return " ".join(components)
+
+    @property
+    def replacement_regex(self):
+        return " ".join(self.replacement)
+
+    @property
+    def unapplied_pattern(self):
+        if not hasattr(self, "_unapplied_pattern"):
+            components = []
+            preceding = self.preceding_regex
+            following = self.following_regex
+            if preceding.startswith("^"):
+                preceding = preceding.replace("^", "").strip()
+            if following.endswith("$"):
+                following = following.replace("$", "").strip()
+            if preceding:
+                components.append(rf"(?P<preceding>{preceding})")
+            if self.segment:
+                components.append(rf"(?P<segment>{self.segment_regex})")
+            if following:
+                components.append(rf"(?P<following>{following})")
+            pattern = " ".join(components)
+            if not self.initial:
+                pattern = r"(?:^|(?<=\s))" + pattern
+            if not self.final:
+                pattern += r"(?:$|(?=\s))"
+            return re.compile(pattern, flags=re.UNICODE)
+        return self._unapplied_pattern
+
+    def to_json(self) -> typing.Dict[str, typing.Any]:
+        """
+        Serializes the rule for export
+
+        Returns
+        -------
+        dict[str, Any]
+            Serialized rule
+        """
+        return {
+            "segment": self.segment_regex,
+            "dialect": self.dialect,
+            "preceding_context": self.preceding_regex,
+            "following_context": self.following_regex,
+            "replacement": self.replacement_regex,
+            "probability": self.probability,
+        }
+
+    @property
+    def applied_pattern(self):
+        if not hasattr(self, "_applied_pattern"):
+            components = []
+            preceding = self.preceding_regex
+            following = self.following_regex
+            if preceding.startswith("^"):
+                preceding = preceding.replace("^", "").strip()
+            if following.endswith("$"):
+                following = following.replace("$", "").strip()
+            if preceding:
+
+                components.append(rf"(?P<preceding>{preceding})")
+            if self.replacement_regex:
+                components.append(rf"(?P<replacement>{self.replacement_regex})")
+            if following:
+                components.append(rf"(?P<following>{following})")
+            pattern = " ".join(components)
+            if self.initial:
+                pattern = "^" + pattern
+            else:
+                pattern = r"(?:^|(?<=\s))" + pattern
+            if self.final:
+                pattern += "$"
+            else:
+                pattern += r"(?:$|(?=\s))"
+            return re.compile(pattern, flags=re.UNICODE)
+        return self._applied_pattern
+
+    @property
+    def replacement_pairs(self):
+        input = [x for x in self.segment]
+        output = [x for x in self.replacement]
+        while len(input) != len(output):
+            if len(input) < len(output):
+                input.append(["<eps>"])
+            if len(output) < len(input):
+                output.append("<eps>")
+        return list(zip(input, output))
+
+
+# noinspection PyUnresolvedReferences
+@dataclassy.dataclass(slots=True)
 class MfaArguments:
     """
     Base class for argument classes for MFA functions
@@ -339,6 +498,10 @@ class Language(enum.Enum):
     spanish = "spanish"
     swedish = "swedish"
     ukrainian = "ukrainian"
+
+    def __str__(self) -> str:
+        """Name of phone set"""
+        return self.name
 
 
 class ManifoldAlgorithm(enum.Enum):

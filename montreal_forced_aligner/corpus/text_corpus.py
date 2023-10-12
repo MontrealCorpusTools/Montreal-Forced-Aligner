@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 import threading
 import time
 from pathlib import Path
@@ -116,6 +115,7 @@ class TextCorpusMixin(CorpusMixin):
                         continue
                     pbar.update(1)
                     import_data.add_objects(self.generate_import_objects(file))
+                    return_queue.task_done()
 
                 logger.debug("Waiting for workers to finish...")
                 for p in procs:
@@ -147,12 +147,12 @@ class TextCorpusMixin(CorpusMixin):
             logger.info("Detected ctrl-c, please wait a moment while we clean everything up...")
             self.stopped.set()
             finished_adding.set()
-            self.stopped.set_sigint_source()
             while True:
                 try:
                     _ = return_queue.get(timeout=1)
                     if self.stopped.is_set():
                         continue
+                    return_queue.task_done()
                 except Empty:
                     for proc in procs:
                         if not proc.finished_processing.is_set():
@@ -166,8 +166,6 @@ class TextCorpusMixin(CorpusMixin):
                 p.join()
             if self.stopped.is_set():
                 logger.info(f"Stopped parsing early ({time.time() - begin_time:.3f} seconds)")
-                if self.stopped.source():
-                    sys.exit(0)
             else:
                 logger.debug(
                     f"Parsed corpus directory with {config.NUM_JOBS} jobs in {time.time() - begin_time:.3f} seconds"

@@ -53,13 +53,12 @@ from montreal_forced_aligner.data import (
 from montreal_forced_aligner.db import (
     Corpus,
     CorpusWorkflow,
+    Dialect,
     Dictionary,
     File,
     Phone,
     PhoneInterval,
-    PhonologicalRule,
     Pronunciation,
-    RuleApplication,
     SoundFile,
     Speaker,
     TextFile,
@@ -106,7 +105,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         For file exporting parameters
     """
 
-    def __init__(self, max_active: int = 2500, lattice_beam: int = 6, **kwargs):
+    def __init__(
+        self, g2p_model_path: Path = None, max_active: int = 2500, lattice_beam: int = 6, **kwargs
+    ):
         super().__init__(**kwargs)
         self.export_output_directory = None
         self.max_active = max_active
@@ -114,6 +115,11 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         self.phone_lm_order = 2
         self.phone_lm_method = "unsmoothed"
         self.alignment_mode = True
+        self.g2p_model = None
+        if g2p_model_path:
+            from montreal_forced_aligner.models import G2PModel
+
+            self.g2p_model = G2PModel(g2p_model_path)
 
     @property
     def hclg_options(self) -> MetaDict:
@@ -439,9 +445,11 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         ) as log_file, self.session() as session:
             session.query(Pronunciation).update({"count": 0})
             session.commit()
-            dictionaries = session.query(Dictionary.id)
+            dictionaries = session.query(Dictionary.id, Dialect.name).join(Dictionary.dialect)
             dictionary_mappings = []
-            for (d_id,) in dictionaries:
+            applied_counts = {i: 1 for i in range(len(self.phonological_rules))}
+            unapplied_counts = {i: 1 for i in range(len(self.phonological_rules))}
+            for (d_id, dialect) in dictionaries:
                 counter = dictionary_counters[d_id]
                 log_file.write(f"For {d_id}:\n")
                 words = (
@@ -455,7 +463,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         Word.word,
                         Pronunciation.pronunciation,
                         Pronunciation.id,
-                        Pronunciation.generated_by_rule,
                     )
                     .join(Pronunciation.word)
                     .filter(Word.dictionary_id == d_id)
@@ -463,11 +470,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     .filter(Word.count > 0)
                 )
                 pron_mapping = {}
-                pronunciations = [
-                    (w, p, p_id)
-                    for w, p, p_id, generated in pronunciations
-                    if not generated or p in counter.word_pronunciation_counts[w]
-                ]
                 for w, p, p_id in pronunciations:
                     pron_mapping[(w, p)] = {"id": p_id}
                     if w in {initial_key[0], final_key[0], self.silence_word}:
@@ -483,8 +485,16 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     for p, c in pron_counts.items():
                         if self.position_dependent_phones:
                             p = re.sub(r"_[BSEI]\b", "", p)
-                        pron_mapping[(w, p)]["count"] = c
-                        pron_mapping[(w, p)]["probability"] = format_probability(c / max_value)
+                        for i, r in enumerate(self.phonological_rules):
+                            if r.dialect != dialect and r.dialect is not None:
+                                continue
+                            if r.unapplied_pattern.search(p):
+                                unapplied_counts[i] += c
+                            if r.applied_pattern.search(p):
+                                applied_counts[i] += c
+                        if (w, p) in pron_mapping:
+                            pron_mapping[(w, p)]["count"] = c
+                            pron_mapping[(w, p)]["probability"] = format_probability(c / max_value)
 
                 silence_count = sum(counter.silence_before_counts.values())
                 non_silence_count = sum(counter.non_silence_before_counts.values())
@@ -501,10 +511,11 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         counter.silence_following_counts[(w, p)]
                         + counter.non_silence_following_counts[(w, p)]
                     )
-                    pron_mapping[(w, p)]["silence_following_count"] = count
-                    pron_mapping[(w, p)][
-                        "non_silence_following_count"
-                    ] = counter.non_silence_following_counts[(w, p)]
+                    if (w, p) in pron_mapping:
+                        pron_mapping[(w, p)]["silence_following_count"] = count
+                        pron_mapping[(w, p)][
+                            "non_silence_following_count"
+                        ] = counter.non_silence_following_counts[(w, p)]
                     w_p_silence_count = count + (silence_probability * lambda_2)
                     prob = format_probability(w_p_silence_count / (total_count + lambda_2))
                     silence_probabilities[(w, p)] = prob
@@ -526,16 +537,18 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         continue
                     silence_count = counter.silence_before_counts[(w, p)]
                     non_silence_count = counter.non_silence_before_counts[(w, p)]
-                    pron_mapping[(w, p)]["silence_before_correction"] = format_correction(
-                        (silence_count + lambda_3) / (bar_count_silence_wp[(w, p)] + lambda_3)
-                    )
+                    if (w, p) in pron_mapping:
+                        pron_mapping[(w, p)]["silence_before_correction"] = format_correction(
+                            (silence_count + lambda_3) / (bar_count_silence_wp[(w, p)] + lambda_3)
+                        )
 
-                    pron_mapping[(w, p)]["non_silence_before_correction"] = format_correction(
-                        (non_silence_count + lambda_3)
-                        / (bar_count_non_silence_wp[(w, p)] + lambda_3)
-                    )
-                session.bulk_update_mappings(Pronunciation, pron_mapping.values())
-                session.flush()
+                        pron_mapping[(w, p)]["non_silence_before_correction"] = format_correction(
+                            (non_silence_count + lambda_3)
+                            / (bar_count_non_silence_wp[(w, p)] + lambda_3)
+                        )
+                if pron_mapping:
+                    session.bulk_update_mappings(Pronunciation, pron_mapping.values())
+                    session.flush()
                 initial_silence_count = counter.silence_before_counts[initial_key] + (
                     silence_probability * lambda_2
                 )
@@ -580,147 +593,11 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             )
             bulk_update(session, Dictionary, dictionary_mappings)
             session.commit()
-            rules: List[PhonologicalRule] = (
-                session.query(PhonologicalRule)
-                .options(
-                    subqueryload(PhonologicalRule.pronunciations).joinedload(
-                        RuleApplication.pronunciation, innerjoin=True
-                    )
+
+            for i, r in enumerate(self.phonological_rules):
+                r.probability = format_probability(
+                    applied_counts[i] / (applied_counts[i] + unapplied_counts[i])
                 )
-                .all()
-            )
-            if rules:
-                rules_for_deletion = []
-                for r in rules:
-                    base_count = 0
-                    base_sil_after_count = 0
-                    base_nonsil_after_count = 0
-
-                    rule_count = 0
-                    rule_sil_before_correction = 0
-                    base_sil_before_correction = 0
-                    rule_nonsil_before_correction = 0
-                    base_nonsil_before_correction = 0
-                    rule_sil_after_count = 0
-                    rule_nonsil_after_count = 0
-                    rule_correction_count = 0
-                    base_correction_count = 0
-                    non_application_query = session.query(Pronunciation).filter(
-                        Pronunciation.pronunciation.regexp_match(
-                            r.match_regex.pattern.replace("?P<segment>", "")
-                            .replace("?P<preceding>", "")
-                            .replace("?P<following>", "")
-                        ),
-                        Pronunciation.count > 1,
-                    )
-                    for p in non_application_query:
-                        base_count += p.count
-
-                        if p.silence_before_correction:
-                            base_sil_before_correction += p.silence_before_correction
-                            base_nonsil_before_correction += p.non_silence_before_correction
-                            base_correction_count += 1
-
-                        base_sil_after_count += (
-                            p.silence_following_count if p.silence_following_count else 0
-                        )
-                        base_nonsil_after_count += (
-                            p.non_silence_following_count if p.non_silence_following_count else 0
-                        )
-
-                    for p in r.pronunciations:
-                        p = p.pronunciation
-                        rule_count += p.count
-
-                        if p.silence_before_correction:
-                            rule_sil_before_correction += p.silence_before_correction
-                            rule_nonsil_before_correction += p.non_silence_before_correction
-                            rule_correction_count += 1
-
-                        rule_sil_after_count += (
-                            p.silence_following_count if p.silence_following_count else 0
-                        )
-                        rule_nonsil_after_count += (
-                            p.non_silence_following_count if p.non_silence_following_count else 0
-                        )
-                    if not rule_count:
-                        rules_for_deletion.append(r)
-                        continue
-                    r.probability = format_probability(rule_count / (rule_count + base_count))
-                    if rule_correction_count:
-                        rule_sil_before_correction = (
-                            rule_sil_before_correction / rule_correction_count
-                        )
-                        rule_nonsil_before_correction = (
-                            rule_nonsil_before_correction / rule_correction_count
-                        )
-                        if base_correction_count:
-                            base_sil_before_correction = (
-                                base_sil_before_correction / base_correction_count
-                            )
-                            base_nonsil_before_correction = (
-                                base_nonsil_before_correction / base_correction_count
-                            )
-                        else:
-                            base_sil_before_correction = 1.0
-                            base_nonsil_before_correction = 1.0
-                        r.silence_before_correction = format_correction(
-                            rule_sil_before_correction - base_sil_before_correction,
-                            positive_only=False,
-                        )
-                        r.non_silence_before_correction = format_correction(
-                            rule_nonsil_before_correction - base_nonsil_before_correction,
-                            positive_only=False,
-                        )
-
-                    silence_after_probability = format_probability(
-                        (rule_sil_after_count + lambda_2)
-                        / (rule_sil_after_count + rule_nonsil_after_count + lambda_2)
-                    )
-                    base_sil_after_probability = format_probability(
-                        (base_sil_after_count + lambda_2)
-                        / (base_sil_after_count + base_nonsil_after_count + lambda_2)
-                    )
-                    r.silence_after_probability = format_correction(
-                        silence_after_probability / base_sil_after_probability
-                    )
-                previous_pronunciation_counts = {
-                    k: v
-                    for k, v in session.query(
-                        Dictionary.name, sqlalchemy.func.count(Pronunciation.id)
-                    )
-                    .join(Pronunciation.word)
-                    .join(Word.dictionary)
-                    .group_by(Dictionary.name)
-                }
-                for r in rules_for_deletion:
-                    logger.debug(f"Removing {r} for zero counts.")
-                session.query(RuleApplication).filter(
-                    RuleApplication.rule_id.in_([r.id for r in rules_for_deletion])
-                ).delete()
-                session.flush()
-                session.query(PhonologicalRule).filter(
-                    PhonologicalRule.id.in_([r.id for r in rules_for_deletion])
-                ).delete()
-                session.flush()
-                session.query(Pronunciation).filter(
-                    Pronunciation.count == 0, Pronunciation.generated_by_rule == True  # noqa
-                ).delete()
-                session.commit()
-                pronunciation_counts = {
-                    k: v
-                    for k, v in session.query(
-                        Dictionary.name, sqlalchemy.func.count(Pronunciation.id)
-                    )
-                    .join(Pronunciation.word)
-                    .join(Word.dictionary)
-                    .group_by(Dictionary.name)
-                }
-                for d_name, c in pronunciation_counts.items():
-                    prev_c = previous_pronunciation_counts[d_name]
-                    logger.debug(
-                        f"{d_name}: Reduced number of pronunciations from {prev_c} to {c}"
-                    )
         logger.debug(
             f"Calculating pronunciation probabilities took {time.time() - begin:.3f} seconds"
         )
@@ -1148,6 +1025,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                                 continue
                             if isinstance(result, int):
                                 pbar.update(1)
+                            return_queue.task_done()
                     except Exception:
                         stopped.set()
                         raise

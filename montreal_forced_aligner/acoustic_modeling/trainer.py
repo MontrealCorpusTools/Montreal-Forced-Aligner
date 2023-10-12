@@ -441,9 +441,9 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             export_directory = os.path.dirname(output_model_path)
             if export_directory:
                 os.makedirs(export_directory, exist_ok=True)
-            # self.export_trained_rules(
-            #    self.training_configs[self.final_identifier].working_directory
-            # )
+            self.export_trained_rules(
+                self.training_configs[self.final_identifier].working_directory
+            )
             with self.session() as session:
                 for d in session.query(Dictionary):
                     base_name = self.dictionary_base_names[d.id]

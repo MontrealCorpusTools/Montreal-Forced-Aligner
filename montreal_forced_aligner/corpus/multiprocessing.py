@@ -16,7 +16,7 @@ from sqlalchemy.orm import joinedload, subqueryload
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.corpus.classes import FileData
 from montreal_forced_aligner.corpus.helper import find_exts
-from montreal_forced_aligner.data import MfaArguments
+from montreal_forced_aligner.data import Language, MfaArguments
 from montreal_forced_aligner.db import Dictionary, Job, Speaker, Utterance
 from montreal_forced_aligner.exceptions import SoundFileError, TextGridParseError, TextParseError
 from montreal_forced_aligner.helper import mfa_open
@@ -25,6 +25,7 @@ from montreal_forced_aligner.utils import Counter
 if typing.TYPE_CHECKING:
     from dataclasses import dataclass
 
+    from montreal_forced_aligner.models import G2PModel
     from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
 
     try:
@@ -228,7 +229,8 @@ class NormalizeTextArguments(MfaArguments):
 
     """
 
-    tokenizers: typing.Union[typing.Dict[int, SimpleTokenizer], SpacyLanguage]
+    tokenizers: typing.Union[typing.Dict[int, SimpleTokenizer], Language]
+    g2p_model: typing.Optional[G2PModel]
 
 
 @dataclass
@@ -256,9 +258,12 @@ class NormalizeTextFunction(KaldiFunction):
     def __init__(self, args: NormalizeTextArguments):
         super().__init__(args)
         self.tokenizers = args.tokenizers
+        self.g2p_model = args.g2p_model
 
     def _run(self):
         """Run the function"""
+
+        from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
 
         with self.session() as session:
             dict_count = session.query(Dictionary).join(Dictionary.words).limit(1).count()
@@ -269,6 +274,14 @@ class NormalizeTextFunction(KaldiFunction):
                         tokenizer = self.tokenizers[d.id]
                     else:
                         tokenizer = self.tokenizers
+                    simple_tokenization = isinstance(tokenizer, SimpleTokenizer)
+                    if isinstance(tokenizer, Language):
+                        from montreal_forced_aligner.tokenization.spacy import (
+                            generate_language_tokenizer,
+                        )
+
+                        tokenizer = generate_language_tokenizer(tokenizer)
+
                     utterances = (
                         session.query(Utterance.id, Utterance.text)
                         .join(Utterance.speaker)
@@ -277,18 +290,33 @@ class NormalizeTextFunction(KaldiFunction):
                         .filter(Speaker.dictionary_id == d.id)
                     )
                     for u_id, u_text in utterances:
-                        normalized_text, normalized_character_text, oovs = tokenizer(u_text)
-                        self.callback(
-                            (
-                                {
-                                    "id": u_id,
-                                    "oovs": " ".join(sorted(oovs)),
-                                    "normalized_text": normalized_text,
-                                    "normalized_character_text": normalized_character_text,
-                                },
-                                d.id,
+                        if simple_tokenization:
+                            normalized_text, normalized_character_text, oovs = tokenizer(u_text)
+                            self.callback(
+                                (
+                                    {
+                                        "id": u_id,
+                                        "oovs": " ".join(sorted(oovs)),
+                                        "normalized_text": normalized_text,
+                                        "normalized_character_text": normalized_character_text,
+                                    },
+                                    d.id,
+                                )
                             )
-                        )
+                        else:
+                            normalized_text, pronunciation_form = tokenizer(u_text)
+                            oovs = set()
+                            self.callback(
+                                (
+                                    {
+                                        "id": u_id,
+                                        "oovs": " ".join(sorted(oovs)),
+                                        "normalized_text": normalized_text,
+                                        "normalized_character_text": pronunciation_form,
+                                    },
+                                    d.id,
+                                )
+                            )
             else:
                 tokenizer = self.tokenizers
                 utterances = (
@@ -357,7 +385,6 @@ class ExportKaldiFilesFunction(KaldiFunction):
                     Utterance.features,
                     Utterance.vad_ark,
                     Utterance.ivector_ark,
-                    Utterance.normalized_text,
                     Speaker.cmvn,
                 )
                 .join(Utterance.speaker)
@@ -371,7 +398,6 @@ class ExportKaldiFilesFunction(KaldiFunction):
             feats_path = job.construct_path(self.split_directory, "feats", "scp")
             cmvns_path = job.construct_path(self.split_directory, "cmvn", "scp")
             spk2utt_path = job.construct_path(self.split_directory, "spk2utt", "scp")
-            text_ints_path = job.construct_path(self.split_directory, "text", "int.scp")
             vad_path = job.construct_path(self.split_directory, "vad", "scp")
             ivectors_path = job.construct_path(self.split_directory, "ivectors", "scp")
 
@@ -381,7 +407,6 @@ class ExportKaldiFilesFunction(KaldiFunction):
             feats = {}
             cmvns = {}
             utt2spk = {}
-            text_ints = {}
 
             for (
                 u_id,
@@ -389,7 +414,6 @@ class ExportKaldiFilesFunction(KaldiFunction):
                 features,
                 vad_ark,
                 ivector_ark,
-                normalized_text,
                 cmvn,
             ) in utterances:
                 utterance = str(u_id)
@@ -405,7 +429,6 @@ class ExportKaldiFilesFunction(KaldiFunction):
                 if ivector_ark:
                     ivectors[utterance] = ivector_ark
                 cmvns[speaker] = cmvn
-                text_ints[utterance] = normalized_text
                 self.callback(1)
 
             with mfa_open(spk2utt_path, "w") as f:
@@ -424,10 +447,6 @@ class ExportKaldiFilesFunction(KaldiFunction):
             with mfa_open(feats_path, "w") as f:
                 for utt, feat in sorted(feats.items()):
                     f.write(f"{utt} {feat}\n")
-
-            with mfa_open(text_ints_path, "w") as f:
-                for utt, text in sorted(text_ints.items()):
-                    f.write(f"{utt} {text}\n")
             if vad:
                 with mfa_open(vad_path, "w") as f:
                     for utt, ark in sorted(vad.items()):
@@ -443,7 +462,6 @@ class ExportKaldiFilesFunction(KaldiFunction):
                     Utterance.id,
                     Utterance.speaker_id,
                     Utterance.features,
-                    Utterance.normalized_text,
                     Speaker.cmvn,
                 )
                 .join(Utterance.speaker)
@@ -459,21 +477,16 @@ class ExportKaldiFilesFunction(KaldiFunction):
             feats_paths = job.per_dictionary_feats_scp_paths
             cmvns_paths = job.per_dictionary_cmvn_scp_paths
             spk2utt_paths = job.per_dictionary_spk2utt_scp_paths
-            text_ints_paths = job.per_dictionary_text_int_scp_paths
             for d in job.dictionaries:
-
-                words_mapping = d.word_mapping
                 spk2utt = {}
                 feats = {}
                 cmvns = {}
                 utt2spk = {}
-                text_ints = {}
                 utterances = base_utterance_query.filter(Speaker.dictionary_id == d.id)
                 for (
                     u_id,
                     s_id,
                     features,
-                    normalized_text,
                     cmvn,
                 ) in utterances:
                     utterance = str(u_id)
@@ -485,15 +498,6 @@ class ExportKaldiFilesFunction(KaldiFunction):
                     utt2spk[utterance] = speaker
                     feats[utterance] = features
                     cmvns[speaker] = cmvn
-                    words = normalized_text.split()
-                    text_ints[utterance] = " ".join(
-                        [
-                            str(words_mapping[x])
-                            if x in words_mapping
-                            else str(words_mapping[d.oov_word])
-                            for x in words
-                        ]
-                    )
                     self.callback(1)
 
                 with mfa_open(spk2utt_paths[d.id], "w") as f:
@@ -512,10 +516,6 @@ class ExportKaldiFilesFunction(KaldiFunction):
                 with mfa_open(feats_paths[d.id], "w") as f:
                     for utt, feat in sorted(feats.items()):
                         f.write(f"{utt} {feat}\n")
-
-                with mfa_open(text_ints_paths[d.id], "w") as f:
-                    for utt, text in sorted(text_ints.items()):
-                        f.write(f"{utt} {text}\n")
 
     def _run(self):
         """Run the function"""
