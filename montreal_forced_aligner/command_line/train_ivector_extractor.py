@@ -59,7 +59,7 @@ def train_ivector_cli(context, **kwargs) -> None:
         config.profile = kwargs.pop("profile")
     config.update_configuration(kwargs)
     config_path = kwargs.get("config_path", None)
-    corpus_directory = kwargs["corpus_directory"]
+    corpus_directory = kwargs["corpus_directory"].absolute()
     output_model_path = kwargs["output_model_path"]
 
     trainer = TrainableIvectorExtractor(

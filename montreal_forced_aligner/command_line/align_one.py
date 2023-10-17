@@ -140,6 +140,7 @@ def align_one_cli(context, **kwargs) -> None:
 
     if acoustic_model.language is Language.unknown:
         tokenizer = SimpleTokenizer(
+            word_table=lexicon_compiler.word_table,
             word_break_markers=c.get("word_break_markers", DEFAULT_WORD_BREAK_MARKERS),
             punctuation=c.get("punctuation", DEFAULT_PUNCTUATION),
             clitic_markers=c.get("clitic_markers", DEFAULT_CLITIC_MARKERS),
@@ -150,10 +151,6 @@ def align_one_cli(context, **kwargs) -> None:
             bracketed_word=c.get("bracketed_word", BRACKETED_WORD),
             cutoff_word=c.get("cutoff_word", CUTOFF_WORD),
             ignore_case=c.get("ignore_case", True),
-            word_set={
-                lexicon_compiler.word_table.find(x)
-                for x in range(lexicon_compiler.word_table.num_symbols())
-            },
         )
     else:
         tokenizer = generate_language_tokenizer(acoustic_model.meta["language"])

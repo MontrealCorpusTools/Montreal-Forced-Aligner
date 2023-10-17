@@ -72,7 +72,7 @@ def train_dictionary_cli(context, **kwargs) -> None:
     config.update_configuration(kwargs)
     config_path = kwargs.get("config_path", None)
     acoustic_model_path = kwargs["acoustic_model_path"]
-    corpus_directory = kwargs["corpus_directory"]
+    corpus_directory = kwargs["corpus_directory"].absolute()
     dictionary_path = kwargs["dictionary_path"]
     output_directory = kwargs["output_directory"]
     trainer = DictionaryTrainer(

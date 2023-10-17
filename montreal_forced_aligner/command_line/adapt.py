@@ -85,7 +85,7 @@ def adapt_model_cli(context, **kwargs) -> None:
     config_path = kwargs.get("config_path", None)
     output_directory = kwargs.get("output_directory", None)
     output_model_path = kwargs.get("output_model_path", None)
-    corpus_directory = kwargs["corpus_directory"]
+    corpus_directory = kwargs["corpus_directory"].absolute()
     dictionary_path = kwargs["dictionary_path"]
     acoustic_model_path = kwargs["acoustic_model_path"]
     output_format = kwargs["output_format"]

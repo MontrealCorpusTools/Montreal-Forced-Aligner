@@ -37,7 +37,7 @@ from kalpy.gmm.align import GmmAligner
 from kalpy.gmm.data import AlignmentArchive, TranscriptionArchive
 from kalpy.gmm.train import GmmStatsAccumulator
 from kalpy.gmm.utils import read_gmm_model
-from kalpy.utils import generate_read_specifier, kalpy_logger
+from kalpy.utils import generate_read_specifier, kalpy_logger, read_kaldi_object
 from sqlalchemy.orm import joinedload, selectinload, subqueryload
 
 from montreal_forced_aligner.abc import KaldiFunction
@@ -851,7 +851,7 @@ class FineTuneFunction(KaldiFunction):
                 if workflow.lda_mat_path.exists():
                     use_splices = True
                     use_deltas = False
-                    lda_mat = FloatMatrix.read_from_file(str(workflow.lda_mat_path))
+                    lda_mat = read_kaldi_object(FloatMatrix, workflow.lda_mat_path)
 
                 cmvn_reader = None
                 cmvn_path = cmvn_paths[d_id]
