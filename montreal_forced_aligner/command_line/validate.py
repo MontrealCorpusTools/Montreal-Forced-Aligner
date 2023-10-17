@@ -92,7 +92,7 @@ def validate_corpus_cli(context, **kwargs) -> None:
     config.update_configuration(kwargs)
 
     config_path = kwargs.get("config_path", None)
-    corpus_directory = kwargs["corpus_directory"]
+    corpus_directory = kwargs["corpus_directory"].absolute()
     dictionary_path = kwargs["dictionary_path"]
     acoustic_model_path = kwargs.get("acoustic_model_path", None)
     if acoustic_model_path:

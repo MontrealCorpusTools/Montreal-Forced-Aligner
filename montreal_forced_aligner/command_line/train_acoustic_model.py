@@ -116,7 +116,7 @@ def train_acoustic_model_cli(context, **kwargs) -> None:
     config_path = kwargs.get("config_path", None)
     output_model_path = kwargs.get("output_model_path", None)
     output_directory = kwargs.get("output_directory", None)
-    corpus_directory = kwargs["corpus_directory"]
+    corpus_directory = kwargs["corpus_directory"].absolute()
     dictionary_path = kwargs["dictionary_path"]
     g2p_model_path = kwargs.get("g2p_model_path", None)
     phone_groups_path = kwargs.get("phone_groups_path", None)

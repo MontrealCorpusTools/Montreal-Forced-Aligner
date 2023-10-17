@@ -25,6 +25,7 @@ from kalpy.feat.mfcc import MfccComputer
 from kalpy.feat.pitch import PitchComputer
 from kalpy.fstext.lexicon import LexiconCompiler
 from kalpy.gmm.utils import read_gmm_model
+from kalpy.utils import read_kaldi_object
 from rich.pretty import pprint
 
 from montreal_forced_aligner.abc import MfaModel, ModelExporterMixin
@@ -563,7 +564,7 @@ class AcousticModel(Archive):
         lda_mat_path = self.dirname.joinpath("lda.mat")
         lda_mat = None
         if lda_mat_path.exists():
-            lda_mat = FloatMatrix.read_from_file(str(lda_mat_path))
+            lda_mat = read_kaldi_object(FloatMatrix, lda_mat_path)
         return lda_mat
 
     @property

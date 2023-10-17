@@ -14,7 +14,7 @@ from kalpy.feat.data import FeatureArchive
 from kalpy.feat.lda import LdaStatsAccumulator, MlltStatsAccumulator
 from kalpy.gmm.data import AlignmentArchive
 from kalpy.gmm.utils import read_gmm_model, write_gmm_model
-from kalpy.utils import kalpy_logger, write_kaldi_object
+from kalpy.utils import kalpy_logger, read_kaldi_object, write_kaldi_object
 from sqlalchemy.orm import joinedload
 from tqdm.rich import tqdm
 
@@ -434,7 +434,7 @@ class LdaTrainer(TriphoneTrainer):
             write_gmm_model(self.model_path, transition_model, acoustic_model)
             previous_mat_path = self.working_directory.joinpath("lda.mat")
 
-            prev_mat = FloatMatrix.read_from_file(str(previous_mat_path))
+            prev_mat = read_kaldi_object(FloatMatrix, previous_mat_path)
             new_mat = compose_transforms(mat, prev_mat, False)
             write_kaldi_object(new_mat, str(previous_mat_path))
 

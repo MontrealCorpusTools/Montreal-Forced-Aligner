@@ -102,7 +102,7 @@ def diarize_speakers_cli(context, **kwargs) -> None:
             "Postgres is required for running diarization functionality via `--use_postgres true`."
         )
     config_path = kwargs.get("config_path", None)
-    corpus_directory = kwargs["corpus_directory"]
+    corpus_directory = kwargs["corpus_directory"].absolute()
     ivector_extractor_path = kwargs["ivector_extractor_path"]
     output_directory = kwargs["output_directory"]
     classify = kwargs.get("classify", False)

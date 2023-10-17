@@ -105,7 +105,7 @@ def transcribe_corpus_cli(context, **kwargs) -> None:
     config.update_configuration(kwargs)
 
     config_path = kwargs.get("config_path", None)
-    corpus_directory = kwargs["corpus_directory"]
+    corpus_directory = kwargs["corpus_directory"].absolute()
     acoustic_model_path = kwargs["acoustic_model_path"]
     language_model_path = kwargs["language_model_path"]
     dictionary_path = kwargs["dictionary_path"]

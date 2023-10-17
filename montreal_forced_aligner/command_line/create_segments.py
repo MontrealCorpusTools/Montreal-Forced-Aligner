@@ -71,7 +71,7 @@ def create_segments_vad_cli(context, **kwargs) -> None:
     config.update_configuration(kwargs)
 
     config_path = kwargs.get("config_path", None)
-    corpus_directory = kwargs["corpus_directory"]
+    corpus_directory = kwargs["corpus_directory"].absolute()
     output_directory = kwargs["output_directory"]
     output_format = kwargs["output_format"]
 
@@ -141,7 +141,7 @@ def create_segments_cli(context, **kwargs) -> None:
     config.update_configuration(kwargs)
 
     config_path = kwargs.get("config_path", None)
-    corpus_directory = kwargs["corpus_directory"]
+    corpus_directory = kwargs["corpus_directory"].absolute()
     dictionary_path = kwargs["dictionary_path"]
     acoustic_model_path = kwargs["acoustic_model_path"]
     output_directory = kwargs["output_directory"]

@@ -102,7 +102,7 @@ def align_corpus_cli(context, **kwargs) -> None:
     config_path = kwargs.get("config_path", None)
     reference_directory = kwargs.get("reference_directory", None)
     custom_mapping_path = kwargs.get("custom_mapping_path", None)
-    corpus_directory = kwargs["corpus_directory"]
+    corpus_directory = kwargs["corpus_directory"].absolute()
     dictionary_path = kwargs["dictionary_path"]
     acoustic_model_path = kwargs["acoustic_model_path"]
     output_directory = kwargs["output_directory"]

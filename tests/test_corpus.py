@@ -432,7 +432,7 @@ def test_weird_words(weird_words_dir, generated_dir, basic_dict_path, db_setup):
         "sdasd",
         "me",
         "<unk>",
-        "[bracketed]",
+        "<unk>",
     ]
     print(oovs)
     assert "'m" not in oovs

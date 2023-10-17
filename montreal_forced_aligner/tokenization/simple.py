@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 import typing
 
+import pywrapfst
+
 from montreal_forced_aligner.data import BRACKETED_WORD, CUTOFF_WORD, LAUGHTER_WORD, OOV_WORD
 from montreal_forced_aligner.helper import make_re_character_set_safe
 
@@ -35,6 +37,7 @@ class SanitizeFunction:
 
     def __init__(
         self,
+        word_table: pywrapfst.SymbolTable,
         clitic_marker: str,
         clitic_cleanup_regex: typing.Optional[re.Pattern],
         clitic_quote_regex: typing.Optional[re.Pattern],
@@ -44,6 +47,7 @@ class SanitizeFunction:
         bracket_sanitize_regex: typing.Optional[re.Pattern],
         ignore_case: bool = True,
     ):
+        self.word_table = word_table
         self.clitic_marker = clitic_marker
         self.clitic_cleanup_regex = clitic_cleanup_regex
         self.clitic_quote_regex = clitic_quote_regex
@@ -73,8 +77,9 @@ class SanitizeFunction:
         if self.bracket_regex:
             for word_object in self.bracket_regex.finditer(text):
                 word = word_object.group(0)
+                if self.word_table and self.word_table.member(word):
+                    continue
                 new_word = self.bracket_sanitize_regex.sub("_", word)
-
                 text = text.replace(word, new_word)
 
         if self.clitic_cleanup_regex:
@@ -100,40 +105,38 @@ class SplitWordsFunction:
 
     Parameters
     ----------
-    clitic_markers: list[str]
-        Characters that mark clitics
-    compound_markers: list[str]
-        Characters that mark compound words
-    clitic_set: set[str]
-        Set of clitic words
-    brackets: list[tuple[str, str], optional
-        Character tuples to treat as full brackets around words
-    words_mapping: dict[str, int]
-        Mapping of words to integer IDs
-    specials_set: set[str]
-        Set of special words
+    word_table: :class:`pywrapfst.SymbolTable`
+        Symbol table to look words up
+    clitic_marker: str
+        Character that marks clitics
+    initial_clitic_regex: :class:`re.Pattern`
+        Regex for splitting off initial clitics
+    final_clitic_regex: :class:`re.Pattern`
+        Regex for splitting off final clitics
+    compound_regex: :class:`re.Pattern`
+        Regex for splitting compound words
+    non_speech_regexes: dict[str, :class:`re.Pattern`]
+        Regex for detecting and sanitizing non-speech words
     oov_word : str
         What to label words not in the dictionary, defaults to None
     """
 
     def __init__(
         self,
+        word_table: pywrapfst.SymbolTable,
         clitic_marker: str,
         initial_clitic_regex: typing.Optional[re.Pattern],
         final_clitic_regex: typing.Optional[re.Pattern],
         compound_regex: typing.Optional[re.Pattern],
         non_speech_regexes: typing.Dict[str, re.Pattern],
         oov_word: typing.Optional[str] = None,
-        word_set: typing.Optional[typing.Collection[str]] = None,
         grapheme_set: typing.Optional[typing.Collection[str]] = None,
     ):
+        self.word_table = word_table
         self.clitic_marker = clitic_marker
         self.compound_regex = compound_regex
         self.oov_word = oov_word
         self.specials_set = {self.oov_word, "<s>", "</s>"}
-        if not word_set:
-            word_set = None
-        self.word_set = word_set
         if not grapheme_set:
             grapheme_set = None
         self.grapheme_set = grapheme_set
@@ -165,6 +168,8 @@ class SplitWordsFunction:
         """
         if normalized_text in self.specials_set:
             return self.oov_word
+        if self.word_table and self.word_table.member(normalized_text):
+            return normalized_text
         for word, regex in self.non_speech_regexes.items():
             if regex.match(normalized_text):
                 return word
@@ -192,7 +197,7 @@ class SplitWordsFunction:
             s = self.compound_regex.split(item)
         else:
             s = [item]
-        if self.word_set is None:
+        if self.word_table is None:
             return [item]
         clean_initial_quote_regex = re.compile("^'")
         clean_final_quote_regex = re.compile("'$")
@@ -202,16 +207,16 @@ class SplitWordsFunction:
                 continue
             if not self.clitic_marker or self.clitic_marker not in seg:
                 split.append(seg)
-                if not benefit and seg in self.word_set:
+                if not benefit and self.word_table.member(seg):
                     benefit = True
                 continue
             elif seg.startswith(self.clitic_marker):
-                if seg[1:] in self.word_set:
+                if self.word_table.member(seg[1:]):
                     split.append(seg[1:])
                     benefit = True
                     continue
             elif seg.endswith(self.clitic_marker):
-                if seg[:-1] in self.word_set:
+                if self.word_table.member(seg[:-1]):
                     split.append(seg[:-1])
                     benefit = True
                     continue
@@ -226,7 +231,7 @@ class SplitWordsFunction:
                     benefit = True
                     initial_clitics.append(clitic.group(0))
                     seg = seg[clitic.end(0) :]
-                    if seg in self.word_set:
+                    if self.word_table.member(seg):
                         break
             if self.has_final:
                 while True:
@@ -236,7 +241,7 @@ class SplitWordsFunction:
                     benefit = True
                     final_clitics.append(clitic.group(0))
                     seg = seg[: clitic.start(0)]
-                    if seg in self.word_set:
+                    if self.word_table.member(seg):
                         break
                 final_clitics.reverse()
             split.extend([clean_initial_quote_regex.sub("", x) for x in initial_clitics])
@@ -244,7 +249,7 @@ class SplitWordsFunction:
             if seg:
                 split.append(seg)
             split.extend([clean_final_quote_regex.sub("", x) for x in final_clitics])
-            if not benefit and seg in self.word_set:
+            if not benefit and self.word_table.member(seg):
                 benefit = True
         if not benefit:
             return [item]
@@ -284,7 +289,7 @@ class SplitWordsFunction:
         list[str]
             List of subwords that are in the dictionary
         """
-        if self.word_set is not None and item in self.word_set:
+        if self.word_table and self.word_table.member(item):
             return [item]
         for regex in self.non_speech_regexes.values():
             if regex.match(item):
@@ -307,10 +312,11 @@ class SimpleTokenizer:
         ignore_case: bool = True,
         use_g2p: bool = False,
         clitic_set: typing.Iterable = None,
-        word_set: typing.Iterable = None,
         grapheme_set: typing.Iterable = None,
+        word_table: pywrapfst.SymbolTable = None,
     ):
         self.word_break_markers = word_break_markers
+        self.word_table = word_table
         self.punctuation = punctuation
         self.clitic_markers = clitic_markers
         self.compound_markers = compound_markers
@@ -321,14 +327,12 @@ class SimpleTokenizer:
         self.cutoff_word = cutoff_word
         self.ignore_case = ignore_case
         self.use_g2p = use_g2p
-        self.word_set = set()
-        if word_set is not None:
-            self.word_set.update(word_set)
         self.clitic_set = set()
         if clitic_set is not None:
             self.clitic_set.update(clitic_set)
-        elif clitic_markers:
-            for w in self.word_set:
+        elif clitic_markers and self.word_table is not None:
+            for i in range(self.word_table.num_symbols()):
+                w = self.word_table.find(i)
                 if w.startswith(clitic_markers[0]) or w.endswith(clitic_markers[0]):
                     self.clitic_set.add(w)
 
@@ -351,6 +355,7 @@ class SimpleTokenizer:
         self.non_speech_regexes = {}
         self._compile_regexes()
         self.sanitize_function = SanitizeFunction(
+            self.word_table,
             self.clitic_marker,
             self.clitic_cleanup_regex,
             self.clitic_quote_regex,
@@ -361,13 +366,13 @@ class SimpleTokenizer:
             self.ignore_case,
         )
         self.split_function = SplitWordsFunction(
+            self.word_table,
             self.clitic_marker,
             self.initial_clitic_regex,
             self.final_clitic_regex,
             self.compound_regex,
             self.non_speech_regexes,
             self.oov_word,
-            self.word_set,
             self.grapheme_set,
         )
 
@@ -436,6 +441,7 @@ class SimpleTokenizer:
                 rf"((?<=\W)|(?<=^)){non_clitic_punctuation_set}*{self.clitic_marker}{non_clitic_punctuation_set}*(?P<word>{non_punctuation_set}+){non_clitic_punctuation_set}*{self.clitic_marker}{non_clitic_punctuation_set}*((?=\W)|(?=$))"
             )
 
+        self.non_speech_regexes["<eps>"] = re.compile("<eps>")
         if self.laughter_regex is not None:
             self.non_speech_regexes[self.laughter_word] = self.laughter_regex
         if self.cutoff_regex is not None:
@@ -459,7 +465,7 @@ class SimpleTokenizer:
         oovs = set()
         for w in words:
             for new_w in self.split_function(w):
-                if new_w not in self.word_set:
+                if not self.word_table.member(new_w):
                     oovs.add(new_w)
                 normalized_text.append(self.split_function.to_str(new_w))
                 if normalized_character_text:
@@ -489,7 +495,7 @@ class SimpleTokenizer:
 
     def __call__(self, text):
         """Run the function"""
-        if self.word_set or self.grapheme_set:
+        if self.word_table or self.grapheme_set:
             return self._dictionary_sanitize(text)
         else:
             return self._no_dictionary_sanitize(text)

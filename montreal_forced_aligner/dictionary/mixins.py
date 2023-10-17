@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from montreal_forced_aligner.abc import DatabaseMixin
 from montreal_forced_aligner.data import PhoneSetType, PhoneType, WordType
-from montreal_forced_aligner.db import Phone, Word
+from montreal_forced_aligner.db import Dictionary, Phone, Word
 from montreal_forced_aligner.helper import mfa_open
 
 if TYPE_CHECKING:
@@ -190,7 +190,13 @@ class DictionaryMixin:
     def tokenizer(self):
         from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
 
+        word_table = None
+        if hasattr(self, "session") and hasattr(self, "_default_dictionary_id"):
+            with self.session() as session:
+                d = session.get(Dictionary, self._default_dictionary_id)
+                word_table = d.word_table
         tokenizer = SimpleTokenizer(
+            word_table=word_table,
             word_break_markers=self.word_break_markers,
             punctuation=self.punctuation,
             clitic_markers=self.clitic_markers,

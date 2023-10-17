@@ -137,10 +137,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     grapheme_set.add(g)
                 dictionaries = session.query(Dictionary)
                 for d in dictionaries:
-
-                    word_set = set(
-                        x[0] for x in session.query(Word.word).filter(Word.dictionary_id == d.id)
-                    )
                     clitic_set = set(
                         x[0]
                         for x in session.query(Word.word)
@@ -148,6 +144,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         .filter(Word.dictionary_id == d.id)
                     )
                     self._tokenizers[d.id] = SimpleTokenizer(
+                        word_table=d.word_table,
                         word_break_markers=self.word_break_markers,
                         punctuation=self.punctuation,
                         clitic_markers=self.clitic_markers,
@@ -160,7 +157,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         ignore_case=self.ignore_case,
                         use_g2p=self.use_g2p,
                         clitic_set=clitic_set,
-                        word_set=word_set,
                         grapheme_set=grapheme_set,
                     )
         return self._tokenizers
