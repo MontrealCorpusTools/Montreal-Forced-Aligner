@@ -87,9 +87,8 @@ class ConvertAlignmentsFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.train", self.log_path, job_name=self.job_name),
+        with self.session() as session, thread_logger(
+            "kalpy.train", self.log_path, job_name=self.job_name
         ):
             job = (
                 session.query(Job)
@@ -144,9 +143,8 @@ class TreeStatsFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.train", self.log_path, job_name=self.job_name),
+        with self.session() as session, thread_logger(
+            "kalpy.train", self.log_path, job_name=self.job_name
         ):
             job = (
                 session.query(Job)

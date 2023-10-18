@@ -400,10 +400,9 @@ class CompileTrainGraphsFunction(KaldiFunction):
     def _run(self):
         """Run the function"""
 
-        with (
-            self.session() as session,
-            thread_logger("kalpy.graphs", self.log_path, job_name=self.job_name) as graph_logger,
-        ):
+        with self.session() as session, thread_logger(
+            "kalpy.graphs", self.log_path, job_name=self.job_name
+        ) as graph_logger:
             job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -459,10 +458,9 @@ class CompileTrainGraphsFunction(KaldiFunction):
 
 
 def acc_stats_function(args: AccStatsArguments, lock: threading.Lock, transition_accs, gmm_accs):
-    with (
-        args.session() as session,
-        thread_logger("kalpy.train", args.log_path, job_name=args.job_name) as train_logger,
-    ):
+    with args.session() as session, thread_logger(
+        "kalpy.train", args.log_path, job_name=args.job_name
+    ) as train_logger:
         job: Job = (
             session.query(Job)
             .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -536,10 +534,9 @@ class AccStatsFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.train", self.log_path, job_name=self.job_name) as train_logger,
-        ):
+        with self.session() as session, thread_logger(
+            "kalpy.train", self.log_path, job_name=self.job_name
+        ) as train_logger:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -617,10 +614,9 @@ class AlignFunction(KaldiFunction):
 
     def _run(self) -> None:
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.align", self.log_path, job_name=self.job_name) as align_logger,
-        ):
+        with self.session() as session, thread_logger(
+            "kalpy.align", self.log_path, job_name=self.job_name
+        ) as align_logger:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -786,9 +782,8 @@ class FineTuneFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, float]]:
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.align", self.log_path, job_name=self.job_name),
+        with self.session() as session, thread_logger(
+            "kalpy.align", self.log_path, job_name=self.job_name
         ):
             job = (
                 session.query(Job)
@@ -1019,7 +1014,6 @@ class PhoneConfidenceFunction(KaldiFunction):
                 phone_pdf_mapping[phone][int(pdf)] = count / phone_total
         _, acoustic_model = read_gmm_model(self.model_path)
         with self.session() as session:
-
             job: typing.Optional[Job] = session.get(
                 Job, self.job_name, options=[joinedload(Job.dictionaries), joinedload(Job.corpus)]
             )
@@ -1246,7 +1240,7 @@ class AlignmentExtractionFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, List[CtmInterval], List[CtmInterval]]]:
         """Run the function"""
-        with (self.session() as session, kalpy_logger("kalpy.align", self.log_path)):
+        with self.session() as session, kalpy_logger("kalpy.align", self.log_path):
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -1280,7 +1274,6 @@ class AlignmentExtractionFunction(KaldiFunction):
                     utterance_texts[u_id] = text
                 lexicon_compiler = self.lexicon_compilers[d.id]
                 if self.transcription:
-
                     lat_path = job.construct_path(workflow.working_directory, "lat", "ark", d.id)
 
                     transcription_archive = TranscriptionArchive(

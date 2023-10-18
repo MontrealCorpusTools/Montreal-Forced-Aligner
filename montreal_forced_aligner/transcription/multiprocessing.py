@@ -410,10 +410,9 @@ class DecodeFunction(KaldiFunction):
 
     def _run(self) -> None:
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.decode", self.log_path, job_name=self.job_name) as decode_logger,
-        ):
+        with self.session() as session, thread_logger(
+            "kalpy.decode", self.log_path, job_name=self.job_name
+        ) as decode_logger:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -483,9 +482,8 @@ class LmRescoreFunction(KaldiFunction):
 
     def _run(self) -> None:
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.lm", self.log_path, job_name=self.job_name),
+        with self.session() as session, thread_logger(
+            "kalpy.lm", self.log_path, job_name=self.job_name
         ):
             job: Job = (
                 session.query(Job)
@@ -543,9 +541,8 @@ class CarpaLmRescoreFunction(KaldiFunction):
 
     def _run(self) -> None:
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.lm", self.log_path, job_name=self.job_name),
+        with self.session() as session, thread_logger(
+            "kalpy.lm", self.log_path, job_name=self.job_name
         ):
             job: Job = (
                 session.query(Job)
@@ -605,10 +602,9 @@ class InitialFmllrFunction(KaldiFunction):
 
     def _run(self) -> None:
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.fmllr", self.log_path, job_name=self.job_name) as fmllr_logger,
-        ):
+        with self.session() as session, thread_logger(
+            "kalpy.fmllr", self.log_path, job_name=self.job_name
+        ) as fmllr_logger:
             fmllr_logger.debug(f"Using acoustic model: {self.model_path}\n")
             job: typing.Optional[Job] = session.get(
                 Job, self.job_name, options=[joinedload(Job.dictionaries), joinedload(Job.corpus)]
@@ -718,10 +714,9 @@ class FinalFmllrFunction(KaldiFunction):
 
     def _run(self) -> None:
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.fmllr", self.log_path, job_name=self.job_name) as fmllr_logger,
-        ):
+        with self.session() as session, thread_logger(
+            "kalpy.fmllr", self.log_path, job_name=self.job_name
+        ) as fmllr_logger:
             fmllr_logger.debug(f"Using acoustic model: {self.model_path}\n")
             job: typing.Optional[Job] = session.get(
                 Job, self.job_name, options=[joinedload(Job.dictionaries), joinedload(Job.corpus)]
@@ -838,10 +833,9 @@ class FmllrRescoreFunction(KaldiFunction):
 
     def _run(self) -> None:
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.decode", self.log_path, job_name=self.job_name) as decode_logger,
-        ):
+        with self.session() as session, thread_logger(
+            "kalpy.decode", self.log_path, job_name=self.job_name
+        ) as decode_logger:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -947,10 +941,9 @@ class PerSpeakerDecodeFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, str]]:
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.decode", self.log_path, job_name=self.job_name) as decode_logger,
-        ):
+        with self.session() as session, thread_logger(
+            "kalpy.decode", self.log_path, job_name=self.job_name
+        ) as decode_logger:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -1075,10 +1068,9 @@ class DecodePhoneFunction(KaldiFunction):
 
     def _run(self) -> None:
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.decode", self.log_path, job_name=self.job_name) as decode_logger,
-        ):
+        with self.session() as session, thread_logger(
+            "kalpy.decode", self.log_path, job_name=self.job_name
+        ) as decode_logger:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))

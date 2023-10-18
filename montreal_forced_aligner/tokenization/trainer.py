@@ -87,10 +87,9 @@ class TokenizerAlignmentInitWorker(AlignmentInitWorker):
                     valid_input_ngrams.add(line)
             count = 0
             data = {}
-            with (
-                mfa_open(self.log_path, "w") as log_file,
-                sqlalchemy.orm.Session(engine) as session,
-            ):
+            with mfa_open(self.log_path, "w") as log_file, sqlalchemy.orm.Session(
+                engine
+            ) as session:
                 far_writer = pywrapfst.FarWriter.create(self.far_path, arc_type="log")
                 for current_index, (input, output) in enumerate(self.data_generator(session)):
                     if self.stopped.is_set():
@@ -250,7 +249,7 @@ class TokenizerMixin(AcousticCorpusMixin, G2PTrainer, DictionaryMixin, TopLevelM
         )
         output = gen.tokenize_utterances()
         with mfa_open(temp_dir.joinpath("validation_output.txt"), "w") as f:
-            for (orthography, pronunciations) in output.items():
+            for orthography, pronunciations in output.items():
                 if not pronunciations:
                     continue
                 for p in pronunciations:
@@ -263,7 +262,6 @@ class TokenizerMixin(AcousticCorpusMixin, G2PTrainer, DictionaryMixin, TopLevelM
 
 
 class PhonetisaurusTokenizerTrainer(PhonetisaurusTrainerMixin, TokenizerMixin):
-
     alignment_init_function = TokenizerAlignmentInitWorker
 
     def __init__(

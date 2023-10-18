@@ -195,10 +195,9 @@ class MfccFunction(KaldiFunction):
 
     def _run(self):
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.mfcc", self.log_path, job_name=self.job_name) as mfcc_logger,
-        ):
+        with self.session() as session, thread_logger(
+            "kalpy.mfcc", self.log_path, job_name=self.job_name
+        ) as mfcc_logger:
             job: typing.Optional[Job] = session.get(Job, self.job_name)
             raw_ark_path = job.construct_path(self.data_directory, "feats", "ark")
             raw_pitch_ark_path = job.construct_path(self.data_directory, "pitch", "ark")
@@ -282,10 +281,9 @@ class FinalFeatureFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[int]:
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.mfcc", self.log_path, job_name=self.job_name) as mfcc_logger,
-        ):
+        with self.session() as session, thread_logger(
+            "kalpy.mfcc", self.log_path, job_name=self.job_name
+        ) as mfcc_logger:
             job: typing.Optional[Job] = session.get(Job, self.job_name)
             utterances = (
                 session.query(Utterance.kaldi_id, Utterance.speaker_id)
@@ -355,7 +353,7 @@ class FinalFeatureFunction(KaldiFunction):
                     self.callback(1)
                 pitch_archive.close()
             else:
-                for (utt_id, mfccs) in mfcc_archive:
+                for utt_id, mfccs in mfcc_archive:
                     mfcc_logger.info(
                         f"Thread {self.job_name}: Processing {utt_id}: len = {mfccs.NumCols()}"
                     )
@@ -402,9 +400,8 @@ class ComputeVadFunction(KaldiFunction):
     def _run(self) -> None:
         """Run the function"""
 
-        with (
-            self.session() as session,
-            thread_logger("kalpy.vad", self.log_path, job_name=self.job_name),
+        with self.session() as session, thread_logger(
+            "kalpy.vad", self.log_path, job_name=self.job_name
         ):
             job = (
                 session.query(Job)
@@ -466,10 +463,9 @@ class CalcFmllrFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[str]:
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.fmllr", self.log_path, job_name=self.job_name) as fmllr_logger,
-        ):
+        with self.session() as session, thread_logger(
+            "kalpy.fmllr", self.log_path, job_name=self.job_name
+        ) as fmllr_logger:
             fmllr_logger.debug(f"Using acoustic model: {self.ali_model_path}\n")
             job: typing.Optional[Job] = session.get(
                 Job, self.job_name, options=[joinedload(Job.dictionaries), joinedload(Job.corpus)]
@@ -957,9 +953,8 @@ class ExtractIvectorsFunction(KaldiFunction):
         """Run the function"""
         if os.path.exists(self.ivectors_scp_path):
             return
-        with (
-            self.session() as session,
-            thread_logger("kalpy.ivector", self.log_path, job_name=self.job_name),
+        with self.session() as session, thread_logger(
+            "kalpy.ivector", self.log_path, job_name=self.job_name
         ):
             job: Job = (
                 session.query(Job)
@@ -1008,7 +1003,6 @@ class ExportIvectorsFunction(KaldiFunction):
     def _run(self):
         """Run the function"""
         with self.session() as session:
-
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
@@ -1032,7 +1026,6 @@ class ExportIvectorsFunction(KaldiFunction):
                 generate_write_specifier(ivector_ark_path, write_scp=True)
             )
             for utt_id, ivector in query:
-
                 if ivector is None:
                     continue
                 kaldi_ivector = FloatVector()

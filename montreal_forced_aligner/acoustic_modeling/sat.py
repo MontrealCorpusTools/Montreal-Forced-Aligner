@@ -73,10 +73,9 @@ class AccStatsTwoFeatsFunction(KaldiFunction):
 
     def _run(self):
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.train", self.log_path, job_name=self.job_name) as train_logger,
-        ):
+        with self.session() as session, thread_logger(
+            "kalpy.train", self.log_path, job_name=self.job_name
+        ) as train_logger:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -272,7 +271,6 @@ class SatTrainer(TriphoneTrainer):
         if self.iteration in self.realignment_iterations:
             self.align_iteration()
         if self.iteration in self.fmllr_iterations:
-
             self.calc_fmllr()
 
         self.acc_stats()

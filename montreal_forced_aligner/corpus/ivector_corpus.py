@@ -153,11 +153,10 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         if self.stopped.is_set():
             logger.debug("Speaker ivector computation stopped early.")
             return
-        with (
-            self.session() as session,
-            tqdm(total=self.num_utterances, disable=config.QUIET) as pbar,
-            mfa_open(num_utts_path, "w") as num_utts_archive,
-            kalpy_logger("kalpy.ivector", log_path),
+        with self.session() as session, tqdm(
+            total=self.num_utterances, disable=config.QUIET
+        ) as pbar, mfa_open(num_utts_path, "w") as num_utts_archive, kalpy_logger(
+            "kalpy.ivector", log_path
         ):
             speaker_mean_archive = BaseFloatVectorWriter(
                 generate_write_specifier(speaker_ivector_ark_path)
@@ -212,11 +211,11 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
             dim = config.XVECTOR_DIMENSION
         else:
             dim = config.IVECTOR_DIMENSION
-        with (
-            tqdm(total=self.num_utterances, disable=config.QUIET) as pbar,
-            self.session() as session,
-            kalpy_logger("kalpy.ivector", log_path) as ivector_logger,
-        ):
+        with tqdm(
+            total=self.num_utterances, disable=config.QUIET
+        ) as pbar, self.session() as session, kalpy_logger(
+            "kalpy.ivector", log_path
+        ) as ivector_logger:
             plda_config = PldaEstimationConfig()
             plda_stats = PldaStats()
             num_utt_done = 0

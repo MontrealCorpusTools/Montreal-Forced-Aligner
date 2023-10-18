@@ -91,12 +91,9 @@ class GmmGselectFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[None]:
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger(
-                "kalpy.ivector", self.log_path, job_name=self.job_name
-            ) as ivector_logger,
-        ):
+        with self.session() as session, thread_logger(
+            "kalpy.ivector", self.log_path, job_name=self.job_name
+        ) as ivector_logger:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
@@ -178,12 +175,9 @@ class GaussToPostFunction(KaldiFunction):
         modified_posterior_scale = (
             self.ivector_options["posterior_scale"] * self.ivector_options["subsample"]
         )
-        with (
-            self.session() as session,
-            thread_logger(
-                "kalpy.ivector", self.log_path, job_name=self.job_name
-            ) as ivector_logger,
-        ):
+        with self.session() as session, thread_logger(
+            "kalpy.ivector", self.log_path, job_name=self.job_name
+        ) as ivector_logger:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
@@ -266,9 +260,8 @@ class AccGlobalStatsFunction(KaldiFunction):
 
     def _run(self):
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.ivector", self.log_path, job_name=self.job_name),
+        with self.session() as session, thread_logger(
+            "kalpy.ivector", self.log_path, job_name=self.job_name
         ):
             job: Job = (
                 session.query(Job)
@@ -317,9 +310,8 @@ class AccIvectorStatsFunction(KaldiFunction):
 
     def _run(self):
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.ivector", self.log_path, job_name=self.job_name),
+        with self.session() as session, thread_logger(
+            "kalpy.ivector", self.log_path, job_name=self.job_name
         ):
             job: Job = (
                 session.query(Job)

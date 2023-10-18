@@ -66,10 +66,9 @@ class MonoAlignEqualFunction(KaldiFunction):
 
     def _run(self):
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.train", self.log_path, job_name=self.job_name) as train_logger,
-        ):
+        with self.session() as session, thread_logger(
+            "kalpy.train", self.log_path, job_name=self.job_name
+        ) as train_logger:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -269,9 +268,8 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
         transition_model.InitStats(transition_accs)
         gmm_accs.init(acoustic_model)
         log_path = self.working_log_directory.joinpath("mono_align_equal.log")
-        with (
-            tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar,
-            kalpy_logger("kalpy.train", log_path),
+        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar, kalpy_logger(
+            "kalpy.train", log_path
         ):
             for result in run_kaldi_function(MonoAlignEqualFunction, arguments, pbar.update):
                 if isinstance(result, tuple):
@@ -316,7 +314,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
         dict_id = job.dictionary_ids[0]
         feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
         feats = []
-        with (kalpy_logger("kalpy.train", init_log_path) as train_logger,):
+        with kalpy_logger("kalpy.train", init_log_path) as train_logger:
             for i, (_, mat) in enumerate(feature_archive):
                 if i > 10:
                     break
