@@ -554,7 +554,7 @@ class SegmentTranscriptFunction(KaldiFunction):
 
     def _run(self):
         """Run the function"""
-        with (self.session() as session):
+        with self.session() as session:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))

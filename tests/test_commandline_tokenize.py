@@ -94,6 +94,8 @@ def test_train_tokenizer_phonetisaurus(combined_corpus_dir, temp_dir, generated_
         "--debug",
         "--phonetisaurus",
         "--validate",
+        "--num_jobs",
+        "3",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False).invoke(

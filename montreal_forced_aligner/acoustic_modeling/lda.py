@@ -88,10 +88,9 @@ class LdaAccStatsFunction(KaldiFunction):
 
     def _run(self):
         """Run the function"""
-        with (
-            self.session() as session,
-            thread_logger("kalpy.lda", self.log_path, job_name=self.job_name) as lda_logger,
-        ):
+        with self.session() as session, thread_logger(
+            "kalpy.lda", self.log_path, job_name=self.job_name
+        ) as lda_logger:
             lda_logger.debug(f"Using acoustic model: {self.model_path}\n")
             job: typing.Optional[Job] = session.get(
                 Job, self.job_name, options=[joinedload(Job.dictionaries), joinedload(Job.corpus)]
@@ -156,10 +155,9 @@ class CalcLdaMlltFunction(KaldiFunction):
     def _run(self) -> typing.Generator[int]:
         """Run the function"""
         # Estimating MLLT
-        with (
-            self.session() as session,
-            thread_logger("kalpy.lda", self.log_path, job_name=self.job_name) as lda_logger,
-        ):
+        with self.session() as session, thread_logger(
+            "kalpy.lda", self.log_path, job_name=self.job_name
+        ) as lda_logger:
             lda_logger.debug(f"Using acoustic model: {self.model_path}\n")
             job: typing.Optional[Job] = session.get(
                 Job, self.job_name, options=[joinedload(Job.dictionaries), joinedload(Job.corpus)]

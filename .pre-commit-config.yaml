@@ -1,28 +1,28 @@
 default_language_version:
-  python: python3.8
+  python: python3.11
 repos:
   - repo: https://github.com/psf/black
-    rev: 22.10.0
+    rev: 23.9.1
     hooks:
       - id: black
-  - repo: https://gitlab.com/pycqa/flake8
-    rev: 4.0.1
+  - repo: https://github.com/pycqa/flake8
+    rev: 6.0.0
     hooks:
       - id: flake8
         additional_dependencies:
-          - flake8-bugbear == 20.1.4
+          - pyproject-flake8
   - repo: https://github.com/pre-commit/mirrors-isort
-    rev: v5.9.3
+    rev: v5.10.1
     hooks:
       - id: isort
         additional_dependencies: [toml]
   - repo: https://github.com/asottile/setup-cfg-fmt
-    rev: v1.19.0
+    rev: v2.2.0
     hooks:
       - id: setup-cfg-fmt
         args:
           - --min-py3-version
-          - "3.5"
+          - "3.8"
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.0.1
     hooks:
