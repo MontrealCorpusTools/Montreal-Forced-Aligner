@@ -5,8 +5,15 @@
 3.0 Changelog
 *************
 
+3.0.0a8
+=======
+
+- Fixed an issue in not normalizing utterance and speaker xvectors from speechbrain
+- Bug fixes for integration with Anchor
+
 3.0.0a7
 =======
+
 - Fixed an issue where using relative paths could delete the all MFA temporary files with :code:`--clean`
 - Fixed an issue where "<eps>" in transcript to force silence was inserting phones for OOVs rather than silence
 

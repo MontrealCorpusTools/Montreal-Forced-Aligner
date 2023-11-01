@@ -248,6 +248,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                     pbar.update(1)
                     vector = DoubleVector()
                     vector.from_numpy(ivector)
+                    ivector_normalize_length(vector)
                     ivector_mat.Row(i).CopyFromVec(vector)
                     num_utt_done += 1
                 update_mapping.append({"id": speaker_id, "num_utterances": num_utterances})
