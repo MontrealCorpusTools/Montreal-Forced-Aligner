@@ -1276,7 +1276,11 @@ class Utterance(MfaSqlBase):
         """
         Phone intervals from :attr:`montreal_forced_aligner.data.WorkflowType.alignment`
         """
-        return [x.as_ctm() for x in self.phone_intervals]
+        return [
+            x.as_ctm()
+            for x in self.phone_intervals
+            if x.workflow.workflow_type in [WorkflowType.alignment, WorkflowType.online_alignment]
+        ]
 
     @property
     def aligned_word_intervals(self) -> typing.List[CtmInterval]:
@@ -1760,7 +1764,6 @@ class Job(MfaSqlBase):
     def construct_feature_archive(
         self, working_directory: Path, dictionary_id: typing.Optional[int] = None, **kwargs
     ):
-
         fmllr_path = self.construct_path(
             self.corpus.current_subset_directory, "trans", "scp", dictionary_id
         )

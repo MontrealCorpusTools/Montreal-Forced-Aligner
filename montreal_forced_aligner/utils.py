@@ -259,7 +259,7 @@ def get_mfa_version() -> str:
     try:
         from ._version import version as __version__  # noqa
     except ImportError:
-        __version__ = "2.0.0"
+        __version__ = "3.0.0"
     return __version__
 
 

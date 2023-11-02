@@ -1,7 +1,7 @@
 
 .. _`filing an issue`: https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/issues
 
-.. _`Montreal Forced Aligner v2 Corpus Phonetics Tutorial`: https://www.eleanorchodroff.com/tutorial/montreal-forced-aligner-v2.html
+.. _`Montreal Forced Aligner v2 Corpus Phonetics Tutorial`: https://eleanorchodroff.com/tutorial/montreal-forced-aligner.html
 
 .. _`Phonetic forced alignment with the Montreal Forced Aligner`: https://www.youtube.com/watch?v=Zhj-ccMDj_w
 

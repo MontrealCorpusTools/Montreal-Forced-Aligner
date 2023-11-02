@@ -540,7 +540,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 bulk_update(session, Utterance, update_mappings, id_field="speaker_id")
             session.commit()
             if session.query(Dictionary2Job).count() == 0:
-
                 dict_job_mappings = []
                 for job_id, dict_id in (
                     session.query(Utterance.job_id, Dictionary.id)
@@ -675,11 +674,11 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 has_words = (
                     session.query(Dictionary).filter(Dictionary.name == "unknown").first() is None
                 )
+                existing_oovs = set()
                 words = session.query(
-                    Word.id, Word.mapping_id, Word.dictionary_id, Word.word
+                    Word.id, Word.mapping_id, Word.dictionary_id, Word.word, Word.word_type
                 ).order_by(Word.mapping_id)
                 if not has_words or getattr(self, "use_g2p", False):
-
                     word_insert_mappings["<eps>"] = {
                         "id": word_key,
                         "word": "<eps>",
@@ -690,7 +689,10 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     }
                     word_key += 1
                     max_mapping_ids[1] = word_key - 1
-                for w_id, m_id, d_id, w in words:
+                for w_id, m_id, d_id, w, wt in words:
+                    if wt is WordType.oov:
+                        existing_oovs.add(w)
+                        continue
                     word_indexes[(d_id, w)] = w_id
                     word_mapping_ids[(d_id, w)] = m_id
                     max_mapping_ids[d_id] = m_id
@@ -818,6 +820,8 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                 word_key += 1
                     else:
                         for word in to_g2p:
+                            if word in existing_oovs:
+                                continue
                             if word not in word_insert_mappings:
                                 word_insert_mappings[word] = {
                                     "id": word_key,
@@ -1151,7 +1155,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     logger.debug(f"For {dict_id}, total number of utterances is {num_utts}")
                     larger_subset_num = int(subset_per_dictionary * 10)
                     if num_utts > larger_subset_num:
-
                         larger_subset_query = (
                             session.query(Utterance.id)
                             .join(Utterance.speaker)
@@ -1182,7 +1185,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         session.execute(query)
                         logger.debug(f"For {dict_id}, subset is {subset_per_dictionary}")
                     elif num_utts > subset_per_dictionary:
-
                         larger_subset_query = (
                             session.query(Utterance.id)
                             .join(Utterance.speaker)
