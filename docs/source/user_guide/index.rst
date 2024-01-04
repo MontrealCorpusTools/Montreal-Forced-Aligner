@@ -122,7 +122,7 @@ Montreal Forced Aligner: trainable text-speech alignment using Kaldi. In
 Funding
 =======
 
-We acknowledge funding from Social Sciences and Humanities Research Council (SSHRC) #430-2014-00018, Fonds de Recherche du Québec – Société et Culture (FRQSC) #183356 and Canada Foundation for Innovation (CFI) #32451 to Morgan Sonderegger.
+We acknowledge funding from Social Sciences and Humanities Research Council (SSHRC) #430-2014-00018, Fonds de Recherche du Québec – Société et Culture (FRQSC) #183356 and Canada Foundation for Innovation (CFI) #32451 to Morgan Sonderegger and funding from SSHRC #SSHRC 435-2014-150 and a SSHRC Canada Research Chair to Michael Wagner.
 
 .. toctree::
    :hidden:
