@@ -55,6 +55,7 @@ from montreal_forced_aligner.db import (
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
 from montreal_forced_aligner.exceptions import (
+    CorpusError,
     FeatureGenerationError,
     SoundFileError,
     TextGridParseError,
@@ -106,6 +107,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         self.features_generated = False
         self.transcription_done = False
         self.alignment_evaluation_done = False
+        self.transcriptions_required = True
 
     def has_alignments(self, workflow_id: typing.Optional[int] = None) -> bool:
         with self.session() as session:
@@ -346,12 +348,33 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             )
             session.commit()
 
+    def validate_corpus(self):
+        """
+        Validate the loaded files
+        """
+        if self.transcriptions_required:
+            with self.session() as session:
+                has_transcriptions = (
+                    session.query(Utterance)
+                    .filter(Utterance.text != None, Utterance.text != "")  # noqa
+                    .first()
+                    is not None
+                )
+            if not has_transcriptions:
+                raise CorpusError(
+                    "MFA could not find transcription files for the sound files, "
+                    "please see "
+                    "https://montreal-forced-aligner.readthedocs.io/en/latest/user_guide/corpus_structure.html "
+                    "for details on how to structure your corpus"
+                )
+
     def load_corpus(self) -> None:
         """
         Load the corpus
         """
         self.initialize_database()
         self._load_corpus()
+        self.validate_corpus()
         self._create_dummy_dictionary()
         self.initialize_jobs()
         self.normalize_text()
@@ -426,9 +449,10 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         log_directory = self.split_directory.joinpath("log")
         os.makedirs(log_directory, exist_ok=True)
         arguments = self.final_feature_arguments()
-        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
-            for _ in run_kaldi_function(FinalFeatureFunction, arguments, pbar.update):
-                pass
+        for _ in run_kaldi_function(
+            FinalFeatureFunction, arguments, total_count=self.num_utterances
+        ):
+            pass
         with self.session() as session:
             update_mapping = {}
             session.query(Utterance).update({"ignored": True})
@@ -537,7 +561,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         return [
             VadArguments(
                 j.id,
-                getattr(self, "session", ""),
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.split_directory.joinpath("log", f"compute_vad.{j.id}.log"),
                 self.vad_options,
             )
@@ -557,18 +581,16 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         if iteration is not None:
             base_log += f".{iteration}"
         arguments = []
-        thread_lock = threading.Lock()
         for j in self.jobs:
             arguments.append(
                 CalcFmllrArguments(
                     j.id,
-                    getattr(self, "session", ""),
+                    getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                     self.working_log_directory.joinpath(f"{base_log}.{j.id}.log"),
                     self.working_directory,
                     self.alignment_model_path,
                     self.model_path,
                     self.fmllr_options,
-                    thread_lock,
                 )
             )
         return arguments
@@ -585,7 +607,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         return [
             MfccArguments(
                 j.id,
-                self.session,
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.split_directory.joinpath("log", f"make_mfcc.{j.id}.log"),
                 self.split_directory,
                 self.mfcc_computer,
@@ -606,7 +628,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         return [
             FinalFeatureArguments(
                 j.id,
-                self.session,
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.split_directory.joinpath("log", f"generate_final_features.{j.id}.log"),
                 self.split_directory,
                 self.uses_cmvn,
@@ -637,9 +659,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         log_directory = self.split_directory.joinpath("log")
         os.makedirs(log_directory, exist_ok=True)
         arguments = self.mfcc_arguments()
-        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
-            for _ in run_kaldi_function(MfccFunction, arguments, pbar.update):
-                pass
+        for _ in run_kaldi_function(MfccFunction, arguments, total_count=self.num_utterances):
+            pass
         logger.debug(f"Generating MFCCs took {time.time() - begin:.3f} seconds")
 
     def calc_cmvn(self) -> None:
@@ -704,10 +725,15 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         begin = time.time()
         logger.info("Calculating fMLLR for speaker adaptation...")
 
+        with self.session() as session:
+            corpus = session.query(Corpus).first()
+            num_utterances = corpus.current_subset
+        if not num_utterances:
+            num_utterances = self.num_utterances
+
         arguments = self.calc_fmllr_arguments(iteration=iteration)
-        with tqdm(total=self.num_speakers, disable=config.QUIET) as pbar:
-            for _ in run_kaldi_function(CalcFmllrFunction, arguments, pbar.update):
-                pass
+        for _ in run_kaldi_function(CalcFmllrFunction, arguments, total_count=num_utterances):
+            pass
 
         self.uses_speaker_adaptation = True
         update_mapping = []
@@ -715,6 +741,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             for j in self.jobs:
                 for d_id in j.dictionary_ids:
                     scp_p = j.construct_path(self.split_directory, "trans", "scp", d_id)
+                    if not scp_p.exists():
+                        continue
                     with mfa_open(scp_p) as f:
                         for line in f:
                             line = line.strip()
@@ -746,9 +774,10 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         logger.info("Computing VAD...")
 
         arguments = self.compute_vad_arguments()
-        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
-            for _ in run_kaldi_function(ComputeVadFunction, arguments, pbar.update):
-                pass
+        for _ in run_kaldi_function(
+            ComputeVadFunction, arguments, total_count=self.num_utterances
+        ):
+            pass
         vad_lines = []
         utterance_mapping = []
         for j in self.jobs:
@@ -792,7 +821,6 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 .order_by(Utterance.kaldi_id)
             )
             for u_id, features in utterances:
-
                 f.write(f"{u_id} {features}\n")
 
     def get_feat_dim(self) -> int:
@@ -987,7 +1015,6 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     all_sound_files.update(other_audio_files)
                     all_sound_files.update(wav_files)
                 for file_name in exts.identifiers:
-
                     wav_path = None
                     transcription_path = None
                     if file_name in all_sound_files:
@@ -1059,8 +1086,8 @@ class AcousticCorpusPronunciationMixin(
         Load the corpus
         """
         all_begin = time.time()
-
-        if self.dictionary_model is not None:
+        self.initialize_database()
+        if self.dictionary_model is not None and not self.imported:
             logger.debug(f"Using {self.phone_set_type}")
             self.dictionary_setup()
             logger.debug(f"Loaded dictionary in {time.time() - all_begin:.3f} seconds")
@@ -1078,12 +1105,15 @@ class AcousticCorpusPronunciationMixin(
         self.normalize_text()
 
         if self.dictionary_model is not None and not initialized_check:
+            self.apply_phonological_rules()
             self.calculate_disambiguation()
             self.calculate_phone_mapping()
 
-        begin = time.time()
-        self.write_lexicon_information()
-        logger.debug(f"Wrote lexicon information in {time.time() - begin:.3f} seconds")
+            begin = time.time()
+            self.write_lexicon_information()
+            logger.debug(f"Wrote lexicon information in {time.time() - begin:.3f} seconds")
+        else:
+            self.load_lexicon_compilers()
 
         begin = time.time()
         self.generate_features()

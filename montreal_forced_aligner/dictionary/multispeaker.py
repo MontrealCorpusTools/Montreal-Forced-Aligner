@@ -5,10 +5,8 @@ from __future__ import annotations
 import abc
 import collections
 import logging
-import math
 import os
 import re
-import subprocess
 import typing
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -20,9 +18,10 @@ import yaml
 from kalpy.fstext.lexicon import G2PCompiler, LexiconCompiler
 from kalpy.fstext.lexicon import Pronunciation as KalpyPronunciation
 from sqlalchemy.orm import selectinload
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner import config
-from montreal_forced_aligner.data import PhoneType, PhonologicalRule, WordType
+from montreal_forced_aligner.data import PhoneSetType, PhoneType, WordType
 from montreal_forced_aligner.db import (
     Corpus,
     Dialect,
@@ -30,27 +29,19 @@ from montreal_forced_aligner.db import (
     Dictionary,
     Grapheme,
     Phone,
+    PhonologicalRule,
     Pronunciation,
+    RuleApplication,
     Speaker,
     Utterance,
     Word,
     bulk_update,
 )
 from montreal_forced_aligner.dictionary.mixins import TemporaryDictionaryMixin
-from montreal_forced_aligner.exceptions import (
-    DictionaryError,
-    DictionaryFileError,
-    KaldiProcessingError,
-)
-from montreal_forced_aligner.helper import (
-    comma_join,
-    format_correction,
-    format_probability,
-    mfa_open,
-    split_phone_position,
-)
-from montreal_forced_aligner.models import DictionaryModel, PhoneSetType
-from montreal_forced_aligner.utils import parse_dictionary_file, thirdparty_binary
+from montreal_forced_aligner.exceptions import DictionaryError, DictionaryFileError
+from montreal_forced_aligner.helper import comma_join, mfa_open, split_phone_position
+from montreal_forced_aligner.models import DictionaryModel
+from montreal_forced_aligner.utils import parse_dictionary_file
 
 if typing.TYPE_CHECKING:
     from montreal_forced_aligner.models import AcousticModel
@@ -121,7 +112,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         self.rules_path = rules_path
         self.phone_groups_path = phone_groups_path
         self.lexicon_compilers: typing.Dict[int, typing.Union[LexiconCompiler, G2PCompiler]] = {}
-        self.phonological_rules: typing.List[PhonologicalRule] = []
         self._tokenizers = {}
 
     @property
@@ -130,7 +120,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
 
         if not self._tokenizers:
             with self.session() as session:
-
                 grapheme_set = set()
                 grapheme_query = session.query(Grapheme.grapheme)
                 for (g,) in grapheme_query:
@@ -307,6 +296,11 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         self.initialize_database()
         if self.use_g2p:
             return set(), collections.Counter()
+        if getattr(self, "text_normalized", False):
+            logger.debug(
+                "Skipping setup from original dictionary file due to text already normalized."
+            )
+            return
         auto_set = {PhoneSetType.AUTO, PhoneSetType.UNKNOWN, "AUTO", "UNKNOWN"}
         if not isinstance(self.phone_set_type, PhoneSetType):
             self.phone_set_type = PhoneSetType[self.phone_set_type]
@@ -673,7 +667,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 )
                 for w in words:
                     for p in w.pronunciations:
-
                         pron = p.pronunciation.split()
                         while pron:
                             subsequences.add(tuple(pron))
@@ -701,154 +694,123 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 bulk_update(session, Pronunciation, update_pron_objs)
                 session.commit()
 
-    def load_phonological_rules(self):
+    def load_phonological_rules(self) -> None:
         if not self.rules_path or not self.rules_path.exists():
             return
         with mfa_open(self.rules_path) as f:
             rule_data = yaml.load(f, Loader=yaml.Loader)
-        sets = rule_data.get("sets", {})
-        rules = [(None, x) for x in rule_data.get("rules", [])]
-        dialects = rule_data.get("dialects", {})
-        self.phonological_rules = []
-        for d, dialect_data in dialects.items():
-            rules.extend((d, x) for x in dialect_data)
-        for d, r in rules:
-            initial = False
-            final = False
-            if r["following_context"].endswith("$"):
-                final = True
-                r["following_context"] = r["following_context"][:-1].strip()
-            if r["preceding_context"].endswith("^"):
-                initial = True
-                r["preceding_context"] = r["preceding_context"][1:].strip()
-            for k in ["preceding_context", "following_context", "segment"]:
-                p_seq = [x for x in r[k].split() if x]
-                for i, p in enumerate(p_seq):
-                    for s_name, phone_set in sets.items():
-                        if p == f"{{{s_name}}}":
-                            p_seq[i] = phone_set
-                            break
-                    else:
-                        p_seq[i] = [p]
-                r[k] = p_seq
-            r["replacement"] = [x for x in r["replacement"].split() if x]
-            if r["replacement"]:
-                self.non_silence_phones.update(r["replacement"])
-            probability = r.get("probability", None)
-            self.phonological_rules.append(
-                PhonologicalRule(
-                    r["preceding_context"],
-                    r["segment"],
-                    r["following_context"],
-                    r["replacement"],
-                    dialect=d,
-                    probability=probability,
-                    initial=initial,
-                    final=final,
-                )
-            )
-
-    def construct_phonological_rule_fst(self, dialect: str = None) -> typing.Optional[pynini.Fst]:
-        if not self.phonological_rules:
-            return
-        rewriter = None
-        with pynini.default_token_type(self.phone_table):
-            sigma_star = pynini.union(
-                *[
-                    self.phone_table.find(x)
-                    for x in range(self.phone_table.num_symbols())
-                    if not self.phone_table.find(x).startswith("#")
-                    or self.phone_table.find(x) in {"#0", "#1", "#2"}
-                ]
-            ).closure()
-            sigma_star.optimize()
-
-            sigma_star.add_arc(
-                sigma_star.start(),
-                pywrapfst.Arc(
-                    self.phone_table.find("<eps>"),
-                    self.phone_table.find("<eps>"),
-                    pywrapfst.Weight.one(sigma_star.weight_type()),
-                    sigma_star.start(),
-                ),
-            )
-            for r in self.phonological_rules:
-                if r.dialect != dialect and r.dialect is not None:
+        with self.session() as session:
+            if session.query(PhonologicalRule).first() is not None:
+                return
+            dialect_ids = {d.name: d.id for d in session.query(Dialect).all()}
+            for rule in rule_data["rules"]:
+                for d_id in dialect_ids.values():
+                    r = PhonologicalRule(dialect_id=d_id, **rule)
+                    session.add(r)
+                    if r.replacement:
+                        self.non_silence_phones.update(r.replacement.split())
+            for k, v in rule_data.get("dialects", {}).items():
+                d_id = dialect_ids.get(k, None)
+                if not d_id:
                     continue
+                for rule in v:
+                    r = PhonologicalRule(dialect_id=d_id, **rule)
+                    session.add(r)
+                    if r.replacement:
+                        self.non_silence_phones.update(r.replacement.split())
+            session.commit()
 
-                if r.initial:
-                    preceding_acceptor = pynini.accep("[BOS]", token_type="byte")
-                else:
-                    preceding_acceptor = ""
-                for phone_set in r.preceding_context:
-                    fsts = []
-                    for p in phone_set:
-                        fsts.append(pynini.accep(p))
-                    u = pynini.union(*fsts)
-                    if not preceding_acceptor:
-                        preceding_acceptor = u
-                    else:
-                        preceding_acceptor += u
-                if preceding_acceptor:
-                    preceding_acceptor.optimize()
-
-                segment_acceptor = None
-                for phone_set in r.segment:
-                    fsts = []
-                    for p in phone_set:
-                        fsts.append(pynini.accep(p))
-                    u = pynini.union(*fsts)
-                    if segment_acceptor is None:
-                        segment_acceptor = u
-                    else:
-                        segment_acceptor += u
-
-                following_acceptor = ""
-                for phone_set in r.following_context:
-                    fsts = []
-                    for p in phone_set:
-                        fsts.append(pynini.accep(p))
-                    u = pynini.union(*fsts)
-                    if not following_acceptor:
-                        following_acceptor = u
-                    else:
-                        following_acceptor += u
-                if following_acceptor:
-                    following_acceptor.optimize()
-                    if r.final:
-                        following_acceptor += pynini.accep("[EOS]", token_type="byte")
-                elif r.final:
-                    following_acceptor = pynini.accep("[EOS]", token_type="byte")
-
-                replacement_acceptor = pynini.accep(" ".join(r.replacement))
-                if r.probability is not None:
-                    prob = r.probability
-                    correction = format_correction(
-                        format_probability(prob) / format_probability(1 - prob)
+    def apply_phonological_rules(self) -> None:
+        """Apply any phonological rules specified in the rules file path"""
+        with self.session() as session:
+            num_words = (
+                session.query(Word)
+                .filter(Word.included == True)  # noqa
+                .filter(Word.word_type.in_(WordType.speech_types()))
+                .count()
+            )
+            if session.query(PhonologicalRule).first() is None:
+                return
+            logger.info("Applying phonological rules...")
+            with tqdm(total=num_words, disable=config.QUIET) as pbar:
+                new_pron_objs = []
+                rule_application_objs = []
+                pronunciation_primary_key = session.query(
+                    sqlalchemy.func.max(Pronunciation.id)
+                ).scalar()
+                if not pronunciation_primary_key:
+                    pronunciation_primary_key = 0
+                pronunciation_primary_key += 1
+                dictionaries = session.query(Dictionary)
+                for d in dictionaries:
+                    if d.rules_applied:
+                        continue
+                    words = (
+                        session.query(Word)
+                        .filter(Word.dictionary_id == d.id)
+                        .filter(Word.included == True)  # noqa
+                        .filter(Word.word_type.in_(WordType.speech_types()))
+                        .options(selectinload(Word.pronunciations))
                     )
-                    replacement_acceptor.set_final(
-                        replacement_acceptor.num_states() - 1,
-                        -math.log(format_correction(correction)),
+                    rules = (
+                        session.query(PhonologicalRule)
+                        .filter(PhonologicalRule.dialect_id == d.dialect_id)
+                        .all()
                     )
-                tau = pynini.cross(segment_acceptor, replacement_acceptor)
-                direction = "ltr"
-                mode = "opt"
-                rewrite = pynini.cdrewrite(
-                    tau,
-                    preceding_acceptor,
-                    following_acceptor,
-                    sigma_star,
-                    direction=direction,
-                    mode=mode,
-                )
-                if rewriter is None:
-                    rewriter = rewrite
-                else:
-                    rewriter = pynini.compose(rewriter, rewrite)
-            rewriter.optimize()
-            rewriter.invert()
-            rewriter.arcsort("olabel")
-            return rewriter
+                    for w in words:
+                        pbar.update(1)
+                        variant_to_rule_mapping = collections.defaultdict(set)
+                        variant_mapping = {}
+                        existing_prons = {p.pronunciation for p in w.pronunciations}
+                        for p in w.pronunciations:
+                            new_variants = [p.pronunciation]
+
+                            variant_index = 0
+                            while True:
+                                s = new_variants[variant_index]
+                                for r in rules:
+                                    n = r.apply_rule(s)
+                                    if any(x not in self.non_silence_phones for x in n.split()):
+                                        continue
+                                    if n and n not in existing_prons and n not in new_variants:
+                                        new_pron_objs.append(
+                                            {
+                                                "id": pronunciation_primary_key,
+                                                "pronunciation": n,
+                                                "probability": None,
+                                                "disambiguation": None,
+                                                "silence_after_probability": None,
+                                                "silence_before_correction": None,
+                                                "non_silence_before_correction": None,
+                                                "generated_by_rule": True,
+                                                "word_id": w.id,
+                                            }
+                                        )
+                                        new_variants.append(n)
+                                        existing_prons.add(n)
+                                        variant_mapping[n] = pronunciation_primary_key
+                                        variant_to_rule_mapping[n].update(
+                                            variant_to_rule_mapping[s]
+                                        )
+                                        variant_to_rule_mapping[n].add(r)
+                                        pronunciation_primary_key += 1
+                                variant_index += 1
+
+                                if variant_index >= len(new_variants):
+                                    break
+                        for v, rs in variant_to_rule_mapping.items():
+                            for r in rs:
+                                rule_application_objs.append(
+                                    {"rule_id": r.id, "pronunciation_id": variant_mapping[v]}
+                                )
+                if new_pron_objs:
+                    session.execute(sqlalchemy.insert(Pronunciation.__table__), new_pron_objs)
+                d.rules_applied = True
+                if rule_application_objs:
+                    session.execute(
+                        sqlalchemy.insert(RuleApplication.__table__), rule_application_objs
+                    )
+                    session.commit()
 
     def calculate_phone_mapping(self) -> None:
         """Calculate the necessary phones and add phone objects to the database"""
@@ -881,10 +843,11 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     )
                     i += 1
             else:
-                for r in self.phonological_rules:
+                rules = session.query(PhonologicalRule)
+                for r in rules:
                     if not r.replacement:
                         continue
-                    self.non_silence_phones.update(r.replacement)
+                    self.non_silence_phones.update(r.replacement.split())
                 phone_objs.append(
                     {
                         "id": i,
@@ -1005,23 +968,29 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         output_directory: str
             Directory for export
         """
-        if self.phonological_rules:
-            output_rules_path = os.path.join(output_directory, "rules.yaml")
-            dialectal_rules = {"rules": []}
-            for r in self.phonological_rules:
-                d = r.to_json()
-                dialect = d.pop("dialect")
-                if dialect is None:
-                    dialectal_rules["rules"].append(d)
-                else:
-                    dialect = dialect.name
-                    if "dialects" not in dialectal_rules:
-                        dialectal_rules["dialects"] = {}
-                    if dialect not in dialectal_rules["dialects"]:
-                        dialectal_rules["dialects"][dialect] = []
-                    dialectal_rules["dialects"][dialect].append(d)
-            with mfa_open(output_rules_path, "w") as f:
-                yaml.dump(dict(dialectal_rules), f, Dumper=yaml.Dumper, allow_unicode=True)
+        with self.session() as session:
+            rules = (
+                session.query(PhonologicalRule)
+                .filter(PhonologicalRule.probability != None)  # noqa
+                .all()
+            )
+            if rules:
+                output_rules_path = os.path.join(output_directory, "rules.yaml")
+                dialectal_rules = {"rules": []}
+                for r in rules:
+                    d = r.to_json()
+                    dialect = d.pop("dialect")
+                    if dialect is None:
+                        dialectal_rules["rules"].append(d)
+                    else:
+                        dialect = dialect.name
+                        if "dialects" not in dialectal_rules:
+                            dialectal_rules["dialects"] = {}
+                        if dialect not in dialectal_rules["dialects"]:
+                            dialectal_rules["dialects"][dialect] = []
+                        dialectal_rules["dialects"][dialect].append(d)
+                with mfa_open(output_rules_path, "w") as f:
+                    yaml.dump(dict(dialectal_rules), f, Dumper=yaml.Dumper, allow_unicode=True)
 
     def add_words(
         self, new_word_data: typing.List[typing.Dict[str, typing.Any]], dictionary_id: int = None
@@ -1193,115 +1162,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         """Path to file containing phone symbols and their integer IDs"""
         return os.path.join(self.phones_dir, "phone_disambig.txt")
 
-    def _write_fst_binary(
-        self,
-        dictionary: Dictionary,
-        write_disambiguation: bool = False,
-        path: typing.Optional[Path] = None,
-    ) -> None:
-        """
-        Write the binary fst file to the temporary directory
-
-        See Also
-        --------
-        :kaldi_src:`fstaddselfloops`
-            Relevant Kaldi binary
-        :openfst_src:`fstcompile`
-            Relevant OpenFst binary
-        :openfst_src:`fstarcsort`
-            Relevant OpenFst binary
-
-        Parameters
-        ----------
-        dictionary: :class:`~montreal_forced_aligner.db.Dictionary`
-            Dictionary object
-        write_disambiguation: bool, optional
-            Flag for including disambiguation symbols
-        path: :class:`~pathlib.Path`, optional
-            Full path to write compiled L.fst to
-        """
-        text_ext = ".text_fst"
-        binary_ext = ".fst"
-        word_disambig_path = dictionary.temp_directory.joinpath("word_disambig.txt")
-        with mfa_open(word_disambig_path, "w") as f:
-            f.write(str(self.word_mapping(dictionary.id)["#0"]))
-        if write_disambiguation:
-            text_ext = ".disambig_text_fst"
-            binary_ext = ".disambig_fst"
-        if path is not None:
-            text_path = path.with_suffix(text_ext)
-            binary_path = path.with_suffix(binary_ext)
-        else:
-            text_path = dictionary.temp_directory.joinpath("lexicon" + text_ext)
-            binary_path = dictionary.temp_directory.joinpath("L" + binary_ext)
-
-        words_file_path = dictionary.temp_directory.joinpath("words.txt")
-
-        log_path = dictionary.temp_directory.joinpath(binary_path.name + ".log")
-        with mfa_open(log_path, "w") as log_file:
-            log_file.write(f"Phone isymbols: {self.phone_symbol_table_path}\n")
-            log_file.write(f"Word osymbols: {words_file_path}\n")
-            com = [
-                thirdparty_binary("fstcompile"),
-                f"--isymbols={self.phone_symbol_table_path}",
-                f"--osymbols={words_file_path}",
-                "--keep_isymbols=false",
-                "--keep_osymbols=false",
-                "--keep_state_numbering=true",
-                text_path,
-            ]
-            log_file.write(f"{' '.join(map(str,com))}\n")
-            log_file.flush()
-            compile_proc = subprocess.Popen(
-                com,
-                stderr=log_file,
-                stdout=subprocess.PIPE,
-            )
-            if write_disambiguation:
-                com = [
-                    thirdparty_binary("fstaddselfloops"),
-                    self.phone_disambig_path,
-                    word_disambig_path,
-                ]
-                log_file.write(f"{' '.join(map(str,com))}\n")
-                log_file.flush()
-                selfloop_proc = subprocess.Popen(
-                    com,
-                    stdin=compile_proc.stdout,
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                )
-                com = [
-                    thirdparty_binary("fstarcsort"),
-                    "--sort_type=olabel",
-                    "-",
-                    binary_path,
-                ]
-                log_file.write(f"{' '.join(map(str,com))}\n")
-                log_file.flush()
-                arc_sort_proc = subprocess.Popen(
-                    com,
-                    stdin=selfloop_proc.stdout,
-                    stderr=log_file,
-                )
-            else:
-                com = [
-                    thirdparty_binary("fstarcsort"),
-                    "--sort_type=olabel",
-                    "-",
-                    binary_path,
-                ]
-                log_file.write(f"{' '.join(map(str,com))}\n")
-                log_file.flush()
-                arc_sort_proc = subprocess.Popen(
-                    com,
-                    stdin=compile_proc.stdout,
-                    stderr=log_file,
-                )
-            arc_sort_proc.communicate()
-            if arc_sort_proc.returncode != 0:
-                raise KaldiProcessingError([log_path])
-
     @property
     def phone_mapping(self) -> Dict[str, int]:
         """Mapping of phone symbols to integer IDs for Kaldi processing"""
@@ -1338,24 +1198,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 )
                 self._grapheme_mapping = {x[0]: x[1] for x in graphemes}
         return self._grapheme_mapping
-
-    def lookup_grapheme(self, grapheme: str) -> int:
-        """
-        Look up grapheme in the dictionary's mapping
-
-        Parameters
-        ----------
-        grapheme: str
-            Grapheme
-
-        Returns
-        -------
-        int
-            Integer ID for the grapheme
-        """
-        if grapheme in self.grapheme_mapping:
-            return self.grapheme_mapping[grapheme]
-        return self.grapheme_mapping[self.oov_word]
 
     @property
     def reversed_grapheme_mapping(self) -> Dict[int, str]:
@@ -1597,6 +1439,13 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     )
                     self.lexicon_compilers[d.id].word_table.write_text(d.words_symbol_path)
 
+    def load_lexicon_compilers(self):
+        with self.session() as session:
+            self.lexicon_compilers = {}
+            dictionaries = session.get(Dictionary)
+            for d in dictionaries:
+                self.lexicon_compilers[d.id] = d.lexicon_compiler
+
     def build_lexicon_compiler(
         self,
         dictionary_id: int,
@@ -1623,7 +1472,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 lexicon_compiler.phone_table = self.phone_table
             else:
                 lexicon_compiler = acoustic_model.lexicon_compiler
-                self.phonological_rules = acoustic_model.phonological_rules
             lexicon_compiler.disambiguation = disambiguation
             query = (
                 session.query(Word, Pronunciation)
@@ -1642,7 +1490,8 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 else:
                     if any(not lexicon_compiler.phone_table.member(x) for x in phones):
                         continue
-                lexicon_compiler.word_table.add_symbol(w.word, w.mapping_id)
+                if not lexicon_compiler.word_table.member(w.word):
+                    lexicon_compiler.word_table.add_symbol(w.word, w.mapping_id)
                 lexicon_compiler.pronunciations.append(
                     KalpyPronunciation(
                         w.word,
@@ -1657,11 +1506,8 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             if not lexicon_compiler.pronunciations:
                 raise DictionaryError("Lexicon compiler did not have any pronunciations.")
             lexicon_compiler.compute_disambiguation_symbols()
-            rule_fst = None
-            if self.phonological_rules:
-                rule_fst = self.construct_phonological_rule_fst(d.dialect.name)
 
-            lexicon_compiler.create_fsts(rule_fst)
+            lexicon_compiler.create_fsts()
             if disambiguation:
                 lexicon_compiler.align_fst.write(d.align_lexicon_disambig_path)
                 lexicon_compiler.fst.write(d.lexicon_disambig_fst_path)

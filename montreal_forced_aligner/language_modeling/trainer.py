@@ -313,7 +313,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
                     stdout=f,
                     env=os.environ,
                 )
-                for (normalized_text, text) in utterance_query:
+                for normalized_text, text in utterance_query:
                     if not normalized_text:
                         normalized_text = text
                     text = " ".join(
@@ -411,7 +411,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
         for j in self.jobs:
             args = TrainLmArguments(
                 j.id,
-                getattr(self, "session", ""),
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"ngram_count.{j.id}.log"),
                 self.working_directory,
                 self.sym_path,

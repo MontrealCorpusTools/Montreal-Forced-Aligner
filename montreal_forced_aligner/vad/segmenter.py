@@ -192,6 +192,7 @@ class VadSegmenter(
         **kwargs,
     ):
         super().__init__(**kwargs)
+        self.transcriptions_required = False
 
     @classmethod
     def parse_parameters(
@@ -245,7 +246,7 @@ class VadSegmenter(
         return [
             SegmentVadArguments(
                 j.id,
-                getattr(self, "session", ""),
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"segment_vad.{j.id}.log"),
                 j.construct_path(self.split_directory, "vad", "scp"),
                 self.segmentation_options,
@@ -332,16 +333,16 @@ class VadSegmenter(
         old_utts = set()
         new_utts = []
 
-        with tqdm(
-            total=self.num_utterances, disable=config.QUIET
-        ) as pbar, self.session() as session:
+        with self.session() as session:
             utterances = session.query(
                 Utterance.id, Utterance.channel, Utterance.speaker_id, Utterance.file_id
             )
             utterance_cache = {}
             for u_id, channel, speaker_id, file_id in utterances:
                 utterance_cache[u_id] = (channel, speaker_id, file_id)
-            for utt, segments in run_kaldi_function(SegmentVadFunction, arguments, pbar.update):
+            for utt, segments in run_kaldi_function(
+                SegmentVadFunction, arguments, total_count=self.num_utterances
+            ):
                 old_utts.add(utt)
                 channel, speaker_id, file_id = utterance_cache[utt]
                 for seg in segments:
@@ -527,7 +528,7 @@ class TranscriptionSegmenter(
         return [
             SegmentTranscriptArguments(
                 j.id,
-                getattr(self, "session", ""),
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"segment_vad.{j.id}.log"),
                 self.acoustic_model,
                 self.vad_model,
@@ -541,39 +542,37 @@ class TranscriptionSegmenter(
         ]
 
     def segment_transcripts(self) -> None:
-
         arguments = self.segment_transcript_arguments()
         old_utts = set()
         new_utterance_mapping = []
 
-        with tqdm(
-            total=self.num_utterances, disable=config.QUIET
-        ) as pbar, self.session() as session:
+        with self.session() as session:
             utterances = session.query(Utterance.id, Utterance.speaker_id, Utterance.file_id)
             utterance_cache = {}
             for u_id, speaker_id, file_id in utterances:
                 utterance_cache[u_id] = (speaker_id, file_id)
-            for utt, new_utts in run_kaldi_function(
-                SegmentTranscriptFunction, arguments, pbar.update
-            ):
-                old_utts.add(utt)
-                speaker_id, file_id = utterance_cache[utt]
-                for new_utt in new_utts:
-                    new_utterance_mapping.append(
-                        {
-                            "begin": new_utt.segment.begin,
-                            "end": new_utt.segment.end,
-                            "speaker_id": speaker_id,
-                            "file_id": file_id,
-                            "oovs": "",
-                            "text": new_utt.transcript,
-                            "normalized_text": new_utt.transcript,
-                            "features": "",
-                            "in_subset": False,
-                            "ignored": False,
-                            "channel": new_utt.segment.channel,
-                        }
-                    )
+        for utt, new_utts in run_kaldi_function(
+            SegmentTranscriptFunction, arguments, total_count=self.num_utterances
+        ):
+            old_utts.add(utt)
+            speaker_id, file_id = utterance_cache[utt]
+            for new_utt in new_utts:
+                new_utterance_mapping.append(
+                    {
+                        "begin": new_utt.segment.begin,
+                        "end": new_utt.segment.end,
+                        "speaker_id": speaker_id,
+                        "file_id": file_id,
+                        "oovs": "",
+                        "text": new_utt.transcript,
+                        "normalized_text": new_utt.transcript,
+                        "features": "",
+                        "in_subset": False,
+                        "ignored": False,
+                        "channel": new_utt.segment.channel,
+                    }
+                )
+        with self.session() as session:
             session.query(Utterance).filter(Utterance.id.in_(old_utts)).delete()
             session.bulk_insert_mappings(
                 Utterance, new_utterance_mapping, return_defaults=False, render_nulls=True

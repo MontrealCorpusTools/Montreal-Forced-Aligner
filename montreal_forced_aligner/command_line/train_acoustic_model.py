@@ -112,6 +112,7 @@ def train_acoustic_model_cli(context, **kwargs) -> None:
     """
     if kwargs.get("profile", None) is not None:
         config.profile = kwargs.pop("profile")
+    kwargs["USE_THREADING"] = False
     config.update_configuration(kwargs)
     config_path = kwargs.get("config_path", None)
     output_model_path = kwargs.get("output_model_path", None)

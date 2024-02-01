@@ -5,6 +5,16 @@
 3.0 Changelog
 *************
 
+3.0.0a9
+=======
+
+- Fixed a bug related to fMLLR computation in kalpy that was causing a degradation in aligner performance
+- Improved memory usage for large corpora when generating MFCCs
+- Improved subset logic in acoustic model training to ensure all speakers in the subset have at least 5 utterances for better training
+- Fixed a bug in triphone training initialization that was causing a degradation in aligner performance
+- Reimplemented multiprocessing in addition to threading from 3.0.0a1
+- Made logging more verbose
+
 3.0.0a8
 =======
 

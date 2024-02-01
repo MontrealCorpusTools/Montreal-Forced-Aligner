@@ -14,7 +14,6 @@ from _kalpy.matrix import DoubleVector
 from kalpy.gmm.utils import read_gmm_model, write_gmm_model
 from kalpy.utils import kalpy_logger
 from sqlalchemy.orm import Session
-from tqdm.rich import tqdm
 
 from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import MfaWorker, ModelExporterMixin, TrainerMixin
@@ -22,7 +21,8 @@ from montreal_forced_aligner.alignment import AlignMixin
 from montreal_forced_aligner.alignment.multiprocessing import AccStatsArguments, AccStatsFunction
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
 from montreal_forced_aligner.corpus.features import FeatureConfigMixin
-from montreal_forced_aligner.db import CorpusWorkflow, Utterance
+from montreal_forced_aligner.data import PhoneType
+from montreal_forced_aligner.db import CorpusWorkflow, Phone, Utterance
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.utils import log_kaldi_errors, parse_logs, run_kaldi_function
@@ -91,7 +91,7 @@ class AcousticModelTrainingMixin(
         num_iterations: int = 40,
         subset: int = 0,
         max_gaussians: int = 1000,
-        boost_silence: float = 1.25,
+        boost_silence: float = 1.0,
         power: float = 0.25,
         initial_gaussians: int = 0,
         optional: bool = False,
@@ -130,7 +130,7 @@ class AcousticModelTrainingMixin(
             arguments.append(
                 AccStatsArguments(
                     j.id,
-                    self.session,
+                    self.session if config.USE_THREADING else self.db_string,
                     os.path.join(
                         self.working_directory, "log", f"acc.{self.iteration}.{j.id}.log"
                     ),
@@ -304,16 +304,21 @@ class AcousticModelTrainingMixin(
         gmm_accs = AccumAmDiagGmm()
         transition_model.InitStats(transition_accs)
         gmm_accs.init(acoustic_model)
-        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
-            for result in run_kaldi_function(AccStatsFunction, arguments, pbar.update):
-                if isinstance(result, tuple):
-                    job_transition_accs, job_gmm_accs = result
+        for result in run_kaldi_function(
+            AccStatsFunction, arguments, total_count=self.num_current_utterances
+        ):
+            if isinstance(result, tuple):
+                job_transition_accs, job_gmm_accs = result
 
-                    transition_accs.AddVec(1.0, job_transition_accs)
-                    gmm_accs.Add(1.0, job_gmm_accs)
+                transition_accs.AddVec(1.0, job_transition_accs)
+                gmm_accs.Add(1.0, job_gmm_accs)
 
         log_path = self.working_log_directory.joinpath(f"update.{self.iteration}.log")
         with kalpy_logger("kalpy.train", log_path) as train_logger:
+            train_logger.debug(f"Model path: {self.model_path}")
+            train_logger.debug(f"Next model path: {self.next_model_path}")
+            train_logger.debug(f"Current gaussians: {self.current_gaussians}")
+            train_logger.debug(f"Power: {self.power}")
             objf_impr, count = transition_model.mle_update(transition_accs)
             train_logger.debug(
                 f"Transition model update: Overall {objf_impr/count} "
@@ -486,11 +491,34 @@ class AcousticModelTrainingMixin(
                 Utterance.alignment_log_likelihood != None  # noqa
             )
             utterance_count, duration, average_log_likelihood = summary.first()
+        try:
+            default_dict = self.worker.dictionary_base_names[self.worker._default_dictionary_id]
+        except KeyError:
+            from montreal_forced_aligner.db import Dictionary
+
+            with self.session() as session:
+                default_dict = (
+                    session.query(Dictionary.name)
+                    .filter(Dictionary.default == True)  # noqa
+                    .first()[0]
+                )
+        non_silence_phones = self.non_silence_phones
+        if not non_silence_phones:
+            phone_mapping = {}
+            with self.worker.session() as session:
+                query = session.query(
+                    Phone.kaldi_label, Phone.phone, Phone.mapping_id, Phone.phone_type
+                ).filter(Phone.phone_type != PhoneType.disambiguation)
+                for kaldi_label, phone, m_id, phone_type in query:
+                    if phone_type is PhoneType.non_silence:
+                        non_silence_phones.add(phone)
+                    phone_mapping[kaldi_label] = m_id
+        else:
+            phone_mapping = self.phone_mapping
+
         data = {
-            "phones": sorted(self._generate_non_positional_list(self.non_silence_phones)),
-            "phone_mapping": {
-                k: v for k, v in self.phone_mapping.items() if not k.startswith("#")
-            },
+            "phones": sorted(self._generate_non_positional_list(non_silence_phones)),
+            "phone_mapping": {k: v for k, v in phone_mapping.items() if not k.startswith("#")},
             "phone_groups": self.worker.phone_groups,
             "version": get_mfa_version(),
             "architecture": self.architecture,
@@ -504,7 +532,7 @@ class AcousticModelTrainingMixin(
             },
             "dictionaries": {
                 "names": sorted(self.worker.dictionary_base_names.values()),
-                "default": self.worker.dictionary_base_names[self.worker._default_dictionary_id],
+                "default": default_dict,
                 "silence_word": self.worker.silence_word,
                 "use_g2p": self.worker.use_g2p,
                 "oov_word": self.worker.oov_word,
@@ -539,7 +567,7 @@ class AcousticModelTrainingMixin(
         acoustic_model = AcousticModel.empty(
             output_model_path.stem, root_directory=self.working_log_directory
         )
-        acoustic_model.add_meta_file(self)
+        acoustic_model.add_meta_file(self.worker)
         acoustic_model.add_model(self.working_directory)
         acoustic_model.add_model(self.worker.phones_dir)
         acoustic_model.add_pronunciation_models(

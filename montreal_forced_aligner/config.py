@@ -144,7 +144,8 @@ CLEANUP_TEXTGRIDS = True
 USE_POSTGRES = False
 SEED = 1234
 NUM_JOBS = 3
-USE_MP = False
+USE_MP = True
+USE_THREADING = False
 SINGLE_SPEAKER = False
 DATABASE_LIMITED_MODE = False
 AUTO_SERVER = True
@@ -180,6 +181,7 @@ class MfaProfile:
     num_jobs: int = 3
     blas_num_threads: int = 1
     use_mp: bool = True
+    use_threading: bool = True
     single_speaker: bool = False
     auto_server: bool = True
     temporary_directory: pathlib.Path = get_temporary_directory()
@@ -218,8 +220,7 @@ class MfaConfiguration:
         self.current_profile_name = CURRENT_PROFILE_NAME
         self.config_path = generate_config_path()
         self.global_profile = MfaProfile()
-        self.profiles: Dict[str, MfaProfile] = {}
-        self.profiles["global"] = self.global_profile
+        self.profiles: Dict[str, MfaProfile] = {"global": self.global_profile}
         if not os.path.exists(self.config_path):
             self.save()
         else:
@@ -307,3 +308,7 @@ MEMORY = joblib.Memory(
     verbose=4 if VERBOSE else 0,
     bytes_limit=BYTES_LIMIT,
 )
+
+os.environ["OMP_NUM_THREADS"] = f"{BLAS_NUM_THREADS}"
+os.environ["OPENBLAS_NUM_THREADS"] = f"{BLAS_NUM_THREADS}"
+os.environ["MKL_NUM_THREADS"] = f"{BLAS_NUM_THREADS}"

@@ -138,7 +138,6 @@ def test_extra(basic_dict_path, extra_corpus_dir, generated_dir, db_setup):
 
 
 def test_stereo(basic_dict_path, stereo_corpus_dir, generated_dir, db_setup):
-
     output_directory = generated_dir.joinpath("corpus_tests", "stereo")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
@@ -264,6 +263,7 @@ def test_24bit_wav(transcribe_corpus_24bit_dir, basic_dict_path, generated_dir, 
     corpus = AcousticCorpus(
         corpus_directory=transcribe_corpus_24bit_dir,
     )
+    corpus.transcriptions_required = False
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 2
     assert corpus.get_feat_dim() == 39

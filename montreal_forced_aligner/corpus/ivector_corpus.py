@@ -66,6 +66,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.plda: typing.Optional[Plda] = None
+        self.transcriptions_required = False
 
     @property
     def ie_path(self) -> Path:
@@ -91,7 +92,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
             arguments.append(
                 ExtractIvectorsArguments(
                     j.id,
-                    getattr(self, "session", ""),
+                    getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                     self.working_log_directory.joinpath(f"extract_ivectors.{j.id}.log"),
                     self.ivector_options,
                     self.ie_path,
@@ -305,9 +306,10 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                 return
         logger.info("Extracting ivectors...")
         arguments = self.extract_ivectors_arguments()
-        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
-            for _ in run_kaldi_function(ExtractIvectorsFunction, arguments, pbar.update):
-                pass
+        for _ in run_kaldi_function(
+            ExtractIvectorsFunction, arguments, total_count=self.num_utterances
+        ):
+            pass
         self.collect_utterance_ivectors()
         logger.debug(f"Ivector extraction took {time.time() - begin:.3f} seconds")
 

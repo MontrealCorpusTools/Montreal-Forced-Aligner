@@ -10,9 +10,6 @@ from abc import abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING, List
 
-from kalpy.gmm.align import GmmAligner
-from tqdm.rich import tqdm
-
 from montreal_forced_aligner import config
 from montreal_forced_aligner.alignment.multiprocessing import (
     AlignArguments,
@@ -125,7 +122,7 @@ class AlignMixin(DictionaryMixin):
             args.append(
                 CompileTrainGraphsArguments(
                     j.id,
-                    getattr(self, "session", ""),
+                    getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                     self.working_log_directory.joinpath(f"compile_train_graphs.{j.id}.log"),
                     self.working_directory,
                     lexicon_compilers,
@@ -147,17 +144,6 @@ class AlignMixin(DictionaryMixin):
         """
         args = []
         iteration = getattr(self, "iteration", None)
-        align_options = self.align_options
-        boost_silence = align_options.pop("boost_silence", 1.0)
-        disambiguation_symbols = [self.phone_mapping[p] for p in self.disambiguation_symbols]
-        silence_phones = [self.phone_mapping[p] for p in self.kaldi_silence_phones]
-        aligner = GmmAligner(
-            self.alignment_model_path,
-            disambiguation_symbols=disambiguation_symbols,
-            **align_options,
-        )
-        if boost_silence != 1.0:
-            aligner.boost_silence(boost_silence, silence_phones)
         for j in self.jobs:
             if iteration is not None:
                 log_path = self.working_log_directory.joinpath(f"align.{iteration}.{j.id}.log")
@@ -168,11 +154,11 @@ class AlignMixin(DictionaryMixin):
             args.append(
                 AlignArguments(
                     j.id,
-                    getattr(self, "session", ""),
+                    getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                     log_path,
                     self.working_directory,
-                    aligner,
-                    self.feature_options,
+                    self.alignment_model_path,
+                    self.align_options,
                     self.phone_confidence,
                     getattr(self, "final_alignment", False),
                 )
@@ -194,7 +180,7 @@ class AlignMixin(DictionaryMixin):
             args.append(
                 PhoneConfidenceArguments(
                     j.id,
-                    getattr(self, "session", ""),
+                    getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                     log_path,
                     self.working_directory,
                     self.model_path,
@@ -263,12 +249,12 @@ class AlignMixin(DictionaryMixin):
         logger.info("Calculating phone confidences...")
         begin = time.time()
 
-        with self.session() as session, tqdm(
-            total=self.num_current_utterances, disable=config.QUIET
-        ) as pbar:
+        with self.session() as session:
             arguments = self.phone_confidence_arguments()
             interval_update_mappings = []
-            for result in run_kaldi_function(PhoneConfidenceFunction, arguments, pbar.update):
+            for result in run_kaldi_function(
+                PhoneConfidenceFunction, arguments, total_count=self.num_current_utterances
+            ):
                 interval_update_mappings.extend(result)
             bulk_update(session, PhoneInterval, interval_update_mappings)
             session.commit()
@@ -291,36 +277,35 @@ class AlignMixin(DictionaryMixin):
         """
         begin = time.time()
         logger.info("Generating alignments...")
-        with self.session() as session:
+        self.working_log_directory.mkdir(parents=True, exist_ok=True)
+        log_like_sum = 0
+        log_like_count = 0
+        update_mappings = []
+        num_errors = 0
+        num_successful = 0
+        for utterance, log_likelihood in run_kaldi_function(
+            AlignFunction, self.align_arguments(), total_count=self.num_current_utterances
+        ):
+            if log_likelihood:
+                num_successful += 1
+                if log_likelihood:
+                    log_like_sum += log_likelihood
+                    log_like_count += 1
+            else:
+                num_errors += 1
             if not training:
-                utterances = session.query(Utterance)
-                if hasattr(self, "subset"):
-                    utterances = utterances.filter(Utterance.in_subset == True)  # noqa
-                utterances.update({"alignment_log_likelihood": None})
-                session.commit()
-            self.working_log_directory.mkdir(parents=True, exist_ok=True)
-            with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
-                log_like_sum = 0
-                log_like_count = 0
-                update_mappings = []
-                for utterance, log_likelihood in run_kaldi_function(
-                    AlignFunction, self.align_arguments(), pbar.update
-                ):
-                    if not training:
-                        log_like_sum += log_likelihood
-                        log_like_count += 1
-                        update_mappings.append(
-                            {
-                                "id": int(utterance.split("-")[-1]),
-                                "alignment_log_likelihood": log_likelihood,
-                            }
-                        )
-            if not training:
-                if len(update_mappings) == 0:
-                    raise NoAlignmentsError(
-                        self.num_current_utterances, self.beam, self.retry_beam
-                    )
+                update_mappings.append(
+                    {
+                        "id": int(utterance.split("-")[-1]),
+                        "alignment_log_likelihood": log_likelihood,
+                    }
+                )
+        if not training:
+            if len(update_mappings) == 0:
+                raise NoAlignmentsError(self.num_current_utterances, self.beam, self.retry_beam)
+            with self.session() as session:
                 bulk_update(session, Utterance, update_mappings)
+                session.commit()
                 session.query(Utterance).filter(
                     Utterance.alignment_log_likelihood != None  # noqa
                 ).update(
@@ -338,7 +323,10 @@ class AlignMixin(DictionaryMixin):
                 workflow.time_stamp = datetime.datetime.now()
                 workflow.score = log_like_sum / log_like_count
                 session.commit()
-            logger.debug(f"Alignment round took {time.time() - begin:.3f} seconds")
+        logger.debug(
+            f"Aligned {num_successful}, errors on {num_errors}, total {num_successful + num_errors}"
+        )
+        logger.debug(f"Alignment round took {time.time() - begin:.3f} seconds")
 
     @property
     @abstractmethod

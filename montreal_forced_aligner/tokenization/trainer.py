@@ -259,6 +259,7 @@ class TokenizerMixin(AcousticCorpusMixin, G2PTrainer, DictionaryMixin, TopLevelM
         gen.compute_validation_errors(validation_set, output)
         self.uer = gen.uer
         self.cer = gen.cer
+        gen.cleanup()
 
 
 class PhonetisaurusTokenizerTrainer(PhonetisaurusTrainerMixin, TokenizerMixin):

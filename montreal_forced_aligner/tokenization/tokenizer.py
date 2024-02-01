@@ -306,7 +306,15 @@ class CorpusTokenizer(AcousticCorpusMixin, TopLevelMfaWorker, DictionaryMixin):
                     tg.save(output_path, includeBlankSpaces=True, format=output_format)
 
     def tokenize_arguments(self) -> typing.List[TokenizerArguments]:
-        return [TokenizerArguments(j.id, self.session, None, self.rewriter) for j in self.jobs]
+        return [
+            TokenizerArguments(
+                j.id,
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
+                None,
+                self.rewriter,
+            )
+            for j in self.jobs
+        ]
 
     def tokenize_utterances(self) -> None:
         """
@@ -322,10 +330,11 @@ class CorpusTokenizer(AcousticCorpusMixin, TopLevelMfaWorker, DictionaryMixin):
             self.setup()
         logger.info("Tokenizing utterances...")
         args = self.tokenize_arguments()
-        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
-            update_mapping = []
-            for utt_id, tokenized in run_kaldi_function(TokenizerFunction, args, pbar.update):
-                update_mapping.append({"id": utt_id, "text": tokenized})
+        update_mapping = []
+        for utt_id, tokenized in run_kaldi_function(
+            TokenizerFunction, args, total_count=self.num_utterances
+        ):
+            update_mapping.append({"id": utt_id, "text": tokenized})
         with self.session() as session:
             bulk_update(session, Utterance, update_mapping)
             session.commit()

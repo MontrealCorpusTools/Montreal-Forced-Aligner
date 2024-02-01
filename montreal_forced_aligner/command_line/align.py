@@ -97,7 +97,7 @@ def align_corpus_cli(context, **kwargs) -> None:
     Align a corpus with a pronunciation dictionary and a pretrained acoustic model.
     """
     if kwargs.get("profile", None) is not None:
-        config.profile = kwargs.pop("profile")
+        config.CURRENT_PROFILE_NAME = kwargs.pop("profile")
     config.update_configuration(kwargs)
     config_path = kwargs.get("config_path", None)
     reference_directory = kwargs.get("reference_directory", None)

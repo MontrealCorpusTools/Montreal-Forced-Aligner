@@ -42,6 +42,7 @@ __all__ = [
     "ExportKaldiFilesArguments",
     "NormalizeTextFunction",
     "NormalizeTextArguments",
+    "dictionary_ids_for_job",
 ]
 
 

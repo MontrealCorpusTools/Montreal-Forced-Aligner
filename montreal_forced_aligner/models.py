@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import typing
 from pathlib import Path
@@ -29,7 +30,7 @@ from kalpy.utils import read_kaldi_object
 from rich.pretty import pprint
 
 from montreal_forced_aligner.abc import MfaModel, ModelExporterMixin
-from montreal_forced_aligner.data import Language, PhoneSetType, PhonologicalRule
+from montreal_forced_aligner.data import Language, PhoneSetType
 from montreal_forced_aligner.exceptions import (
     LanguageModelNotFoundError,
     ModelLoadError,
@@ -490,46 +491,6 @@ class AcousticModel(Archive):
         return self._tm
 
     @property
-    def phonological_rules(self) -> typing.List[PhonologicalRule]:
-        if not self.rules_path or not self.rules_path.exists():
-            return []
-        with mfa_open(self.rules_path) as f:
-            rule_data = yaml.load(f, Loader=yaml.Loader)
-        sets = rule_data.get("sets", {})
-        rules = [(None, x) for x in rule_data.get("rules", [])]
-        dialects = rule_data.get("dialects", {})
-        phonological_rules = []
-        for d, dialect_data in dialects.items():
-            rules.extend((d, x) for x in dialect_data)
-        for d, r in rules:
-            if "$" in r["preceding_context"] + r["following_context"]:
-                continue
-            if "^" in r["preceding_context"] + r["following_context"]:
-                continue
-            for k in ["preceding_context", "following_context", "segment"]:
-                p_seq = [x for x in r[k].split() if x]
-                for i, p in enumerate(p_seq):
-                    for s_name, phone_set in sets.items():
-                        if p == f"{{{s_name}}}":
-                            p_seq[i] = phone_set
-                            break
-                    else:
-                        p_seq[i] = [p]
-                r[k] = p_seq
-            r["replacement"] = [x for x in r["replacement"].split() if x]
-            probability = r.get("probability", None)
-            phonological_rules.append(
-                PhonologicalRule(
-                    r["preceding_context"],
-                    r["segment"],
-                    r["following_context"],
-                    r["replacement"],
-                    dialect=d,
-                    probability=probability,
-                )
-            )
-
-    @property
     def lexicon_compiler(self):
         lc = LexiconCompiler(
             silence_probability=self.meta.get("silence_probability", 0.5),
@@ -571,19 +532,20 @@ class AcousticModel(Archive):
     def mfcc_options(self) -> MetaDict:
         """Parameters to use in computing MFCC features."""
         return {
-            "use_energy": self._meta["features"].get("use_energy", False),
-            "dither": self._meta["features"].get("dither", 1),
-            "energy_floor": self._meta["features"].get("energy_floor", 0),
-            "num_coefficients": self._meta["features"].get("num_coefficients", 13),
-            "num_mel_bins": self._meta["features"].get("num_mel_bins", 23),
-            "cepstral_lifter": self._meta["features"].get("cepstral_lifter", 22),
-            "preemphasis_coefficient": self._meta["features"].get("preemphasis_coefficient", 0.97),
+            "sample_frequency": self._meta["features"].get("sample_frequency", 16000),
             "frame_shift": self._meta["features"].get("frame_shift", 10),
             "frame_length": self._meta["features"].get("frame_length", 25),
+            "dither": 0,  # self._meta["features"].get("dither", 1),
+            "preemphasis_coefficient": self._meta["features"].get("preemphasis_coefficient", 0.97),
+            "snip_edges": self._meta["features"].get("snip_edges", True),
+            "num_mel_bins": self._meta["features"].get("num_mel_bins", 23),
             "low_frequency": self._meta["features"].get("low_frequency", 20),
             "high_frequency": self._meta["features"].get("high_frequency", 7800),
-            "sample_frequency": self._meta["features"].get("sample_frequency", 16000),
-            "snip_edges": self._meta["features"].get("snip_edges", True),
+            "num_coefficients": self._meta["features"].get("num_coefficients", 13),
+            "use_energy": self._meta["features"].get("use_energy", False),
+            "energy_floor": self._meta["features"].get("energy_floor", 0.0),
+            "raw_energy": self._meta["features"].get("raw_energy", True),
+            "cepstral_lifter": self._meta["features"].get("cepstral_lifter", 22),
         }
 
     @property
@@ -762,8 +724,17 @@ class AcousticModel(Archive):
             File to add
         """
         for f in self.files:
-            if os.path.exists(os.path.join(source, f)):
-                copyfile(os.path.join(source, f), self.dirname.joinpath(f))
+            source_path = source.joinpath(f)
+            dest_path = self.dirname.joinpath(f)
+            if source_path.exists():
+                if f == "phones.txt":
+                    with mfa_open(source_path, "r") as in_f, mfa_open(dest_path, "w") as out_f:
+                        for line in in_f:
+                            if re.match(r"#\d+", line):
+                                continue
+                            out_f.write(line)
+                else:
+                    copyfile(source_path, dest_path)
 
     def add_pronunciation_models(
         self, source: Path, dictionary_base_names: Collection[str]
@@ -949,7 +920,6 @@ class IvectorExtractorModel(Archive):
             options["add_normalized_log_pitch"] = normalize
             options["add_raw_log_pitch"] = not normalize
         if self._meta["version"] == "2.1.0" and "ivector_dimension" in self._meta:
-
             options["add_normalized_log_pitch"] = True
             options["add_raw_log_pitch"] = True
         options["add_delta_pitch"] = use_delta_pitch

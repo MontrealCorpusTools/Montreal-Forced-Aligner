@@ -907,7 +907,7 @@ class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker)
         return [
             G2PArguments(
                 j.id,
-                getattr(self, "session", ""),
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"g2p_utterances.{j.id}.log"),
                 self.rewriter,
             )
@@ -934,12 +934,11 @@ class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker)
         if self.rewriter is None:
             self.setup()
         logger.info("Generating pronunciations...")
-        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
-            update_mapping = []
-            for utt_id, pronunciation in run_kaldi_function(
-                G2PFunction, self.g2p_arguments(), pbar.update
-            ):
-                update_mapping.append({"id": utt_id, "transcription_text": pronunciation})
+        update_mapping = []
+        for utt_id, pronunciation in run_kaldi_function(
+            G2PFunction, self.g2p_arguments(), total_count=self.num_utterances
+        ):
+            update_mapping.append({"id": utt_id, "transcription_text": pronunciation})
         with self.session() as session:
             bulk_update(session, Utterance, update_mapping)
             session.commit()

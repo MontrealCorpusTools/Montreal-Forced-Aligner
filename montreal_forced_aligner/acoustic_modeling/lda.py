@@ -6,7 +6,6 @@ import os
 import shutil
 import typing
 from pathlib import Path
-from typing import TYPE_CHECKING, List
 
 from _kalpy.matrix import FloatMatrix
 from _kalpy.transform import LdaEstimateOptions, compose_transforms
@@ -16,19 +15,14 @@ from kalpy.gmm.data import AlignmentArchive
 from kalpy.gmm.utils import read_gmm_model, write_gmm_model
 from kalpy.utils import kalpy_logger, read_kaldi_object, write_kaldi_object
 from sqlalchemy.orm import joinedload
-from tqdm.rich import tqdm
 
 from montreal_forced_aligner import config
-from montreal_forced_aligner.abc import KaldiFunction
+from montreal_forced_aligner.abc import KaldiFunction, MetaDict
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
 from montreal_forced_aligner.data import MfaArguments, PhoneType
 from montreal_forced_aligner.db import Job, Phone
 from montreal_forced_aligner.exceptions import TrainerError
 from montreal_forced_aligner.utils import parse_logs, run_kaldi_function, thread_logger
-
-if TYPE_CHECKING:
-    from montreal_forced_aligner.abc import MetaDict
-
 
 __all__ = [
     "LdaTrainer",
@@ -226,7 +220,7 @@ class LdaTrainer(TriphoneTrainer):
         uses_splices: bool = True,
         splice_left_context: int = 3,
         splice_right_context: int = 3,
-        random_prune=4.0,
+        random_prune: float = 4.0,
         boost_silence: float = 1.0,
         power: float = 0.25,
         **kwargs,
@@ -245,7 +239,7 @@ class LdaTrainer(TriphoneTrainer):
         self.splice_left_context = splice_left_context
         self.splice_right_context = splice_right_context
 
-    def lda_acc_stats_arguments(self) -> List[LdaAccStatsArguments]:
+    def lda_acc_stats_arguments(self) -> typing.List[LdaAccStatsArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.LdaAccStatsFunction`
 
@@ -259,7 +253,7 @@ class LdaTrainer(TriphoneTrainer):
             arguments.append(
                 LdaAccStatsArguments(
                     j.id,
-                    getattr(self, "session", ""),
+                    getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                     self.working_log_directory.joinpath(f"lda_acc_stats.{j.id}.log"),
                     self.previous_aligner.working_directory,
                     self.previous_aligner.alignment_model_path,
@@ -268,7 +262,7 @@ class LdaTrainer(TriphoneTrainer):
             )
         return arguments
 
-    def calc_lda_mllt_arguments(self) -> List[CalcLdaMlltArguments]:
+    def calc_lda_mllt_arguments(self) -> typing.List[CalcLdaMlltArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.CalcLdaMlltFunction`
 
@@ -282,7 +276,7 @@ class LdaTrainer(TriphoneTrainer):
             arguments.append(
                 CalcLdaMlltArguments(
                     j.id,
-                    getattr(self, "session", ""),
+                    getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                     os.path.join(
                         self.working_log_directory, f"lda_mllt.{self.iteration}.{j.id}.log"
                     ),
@@ -336,13 +330,14 @@ class LdaTrainer(TriphoneTrainer):
             os.remove(worker_lda_path)
         arguments = self.lda_acc_stats_arguments()
         lda = None
-        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
-            for result in run_kaldi_function(LdaAccStatsFunction, arguments, pbar.update):
-                if not isinstance(result, str):
-                    if lda is None:
-                        lda = result
-                    else:
-                        lda.Add(result)
+        for result in run_kaldi_function(
+            LdaAccStatsFunction, arguments, total_count=self.num_current_utterances
+        ):
+            if not isinstance(result, str):
+                if lda is None:
+                    lda = result
+                else:
+                    lda.Add(result)
 
         log_path = self.working_log_directory.joinpath("lda_est.log")
 
@@ -393,13 +388,14 @@ class LdaTrainer(TriphoneTrainer):
         logger.info("Re-calculating LDA...")
         arguments = self.calc_lda_mllt_arguments()
         mllt_accs = None
-        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
-            for result in run_kaldi_function(CalcLdaMlltFunction, arguments, pbar.update):
-                if not isinstance(result, str):
-                    if mllt_accs is None:
-                        mllt_accs = result
-                    else:
-                        mllt_accs.Add(result)
+        for result in run_kaldi_function(
+            CalcLdaMlltFunction, arguments, total_count=self.num_current_utterances
+        ):
+            if not isinstance(result, str):
+                if mllt_accs is None:
+                    mllt_accs = result
+                else:
+                    mllt_accs.Add(result)
         if mllt_accs is None:
             raise TrainerError("No MLLT stats were found")
         log_path = os.path.join(

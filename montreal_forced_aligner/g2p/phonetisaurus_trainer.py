@@ -838,7 +838,7 @@ class PhonetisaurusTrainerMixin:
                     continue
                 job_name, weights, count = result
                 for symbol, weight in weights.items():
-                    weight = pynini.Weight("log", weight)
+                    weight = pywrapfst.Weight("log", weight)
                     if symbol not in symbols:
                         left_side, right_side = symbol.split(self.alignment_separator)
                         if left_side == self.skip:
@@ -1645,7 +1645,7 @@ class PhonetisaurusTrainer(
         )
         output = gen.generate_pronunciations()
         with mfa_open(temp_dir.joinpath("validation_output.txt"), "w") as f:
-            for (orthography, pronunciations) in output.items():
+            for orthography, pronunciations in output.items():
                 if not pronunciations:
                     continue
                 for p in pronunciations:

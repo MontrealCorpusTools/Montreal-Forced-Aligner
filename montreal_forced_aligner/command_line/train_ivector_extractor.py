@@ -57,6 +57,7 @@ def train_ivector_cli(context, **kwargs) -> None:
     """
     if kwargs.get("profile", None) is not None:
         config.profile = kwargs.pop("profile")
+    kwargs["USE_THREADING"] = False
     config.update_configuration(kwargs)
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"].absolute()
@@ -68,7 +69,6 @@ def train_ivector_cli(context, **kwargs) -> None:
     )
 
     try:
-
         trainer.train()
         trainer.export_model(output_model_path)
 

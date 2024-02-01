@@ -160,7 +160,6 @@ class TextCorpusMixin(CorpusMixin):
                     else:
                         break
         finally:
-
             finished_adding.set()
             for p in procs:
                 p.join()
@@ -189,7 +188,6 @@ class TextCorpusMixin(CorpusMixin):
                 if self.stopped:
                     return
                 for file_name in exts.identifiers:
-
                     wav_path = None
                     if file_name in exts.lab_files:
                         lab_name = exts.lab_files[file_name]
@@ -257,12 +255,15 @@ class DictionaryTextCorpusMixin(TextCorpusMixin, MultispeakerDictionaryMixin):
         Load the corpus
         """
         self.initialize_database()
-        self.dictionary_setup()
+        if not self.imported:
+            self.dictionary_setup()
 
         self._load_corpus()
         self.initialize_jobs()
+        initialized_check = self.text_normalized
         self.normalize_text()
-        self.write_lexicon_information()
+        if not initialized_check:
+            self.write_lexicon_information()
         self.create_corpus_split()
 
 

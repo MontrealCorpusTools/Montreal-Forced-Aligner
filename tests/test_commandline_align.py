@@ -301,7 +301,6 @@ def test_align_multilingual(
     english_mfa_acoustic_model,
     db_setup,
 ):
-
     command = [
         "align",
         multilingual_ipa_corpus_dir,
@@ -340,7 +339,6 @@ def test_align_multilingual_speaker_dict(
     english_mfa_acoustic_model,
     db_setup,
 ):
-
     command = [
         "align",
         multilingual_ipa_corpus_dir,
@@ -379,7 +377,6 @@ def test_align_multilingual_tg_speaker_dict(
     english_mfa_acoustic_model,
     db_setup,
 ):
-
     command = [
         "align",
         multilingual_ipa_tg_corpus_dir,
@@ -418,7 +415,6 @@ def test_align_fine_tune(
     eval_mapping_path,
     db_setup,
 ):
-
     command = [
         "align",
         basic_corpus_dir,
@@ -460,7 +456,6 @@ def test_align_evaluation(
     eval_mapping_path,
     db_setup,
 ):
-
     command = [
         "align",
         basic_corpus_dir,
@@ -785,6 +780,7 @@ def test_acoustic_g2p_model(
         "--clean",
         "--debug",
         "--no_use_mp",
+        "--use_threading",
         "-p",
         "test",
     ]
