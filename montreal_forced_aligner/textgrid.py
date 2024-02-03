@@ -13,7 +13,6 @@ import typing
 from pathlib import Path
 from typing import Dict, List
 
-from line_profiler_pycharm import profile
 from praatio import textgrid as tgio
 from praatio.data_classes.interval_tier import Interval
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -160,7 +159,6 @@ def parse_aligned_textgrid(
     return data
 
 
-@profile
 def construct_output_tiers(
     session: Session,
     file_id: int,
