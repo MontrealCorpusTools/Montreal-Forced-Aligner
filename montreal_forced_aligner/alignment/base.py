@@ -775,14 +775,18 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 word_mappings[dict_id] = {}
                 pronunciation_mappings[dict_id] = {}
                 words = session.query(Word.word, Word.id).filter(
-                    Word.dictionary_id == dict_id, Word.count > 0
+                    Word.dictionary_id == dict_id,
+                    sqlalchemy.or_(Word.count > 0, Word.word.in_(self.specials_set)),
                 )
                 for w, w_id in words:
                     word_mappings[dict_id][w] = w_id
                 pronunciations = (
                     session.query(Word.word, Pronunciation.pronunciation, Pronunciation.id)
                     .join(Pronunciation.word)
-                    .filter(Word.dictionary_id == dict_id, Word.count > 0)
+                    .filter(
+                        Word.dictionary_id == dict_id,
+                        sqlalchemy.or_(Word.count > 0, Word.word.in_(self.specials_set)),
+                    )
                 )
                 for w, pron, p_id in pronunciations:
                     pronunciation_mappings[dict_id][(w, pron)] = p_id
