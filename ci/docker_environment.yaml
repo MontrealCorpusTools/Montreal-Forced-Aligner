@@ -14,7 +14,7 @@ dependencies:
   - sox
   - ffmpeg
   - pynini
-  - openfst=1.8.2
+  - openfst
   - scikit-learn<1.3
   - hdbscan
   - baumwelch

@@ -145,7 +145,9 @@ class RandomStartWorker(threading.Thread):
                                 log_file.write(line)
                                 log_file.flush()
                                 line = line.rstrip()
-                                match = re.match(r"INFO: Iteration \d+: (-?\d*(\.\d*)?)", line)
+                                match = re.match(r"INFO: Iteration \d+.* (-?\d*(\.\d*)?)", line)
+                                if not match:
+                                    continue
                                 assert match, line
                                 likelihood = float(match.group(1))
                                 self.return_queue.put(1)
@@ -363,9 +365,11 @@ class PyniniTrainerMixin:
                 stdout=subprocess.PIPE,
                 env=os.environ,
             )
-
             ngrammake_proc = subprocess.Popen(
-                [thirdparty_binary("ngrammake"), f"--method={self.smoothing_method}"],
+                [
+                    thirdparty_binary("ngrammake"),
+                    f"--method={self.smoothing_method}",
+                ],
                 stdin=ngramcount_proc.stdout,
                 stderr=logf,
                 stdout=subprocess.PIPE,
@@ -380,31 +384,45 @@ class PyniniTrainerMixin:
             else:
                 command.append(f"--theta={self.prune_threshold}")
             ngramshrink_proc = subprocess.Popen(
-                command,
+                command
+                + [
+                    "-",
+                    self.far_path.with_suffix(".shrink"),
+                ],
                 stdin=ngrammake_proc.stdout,
                 stdout=subprocess.PIPE,
                 stderr=logf,
                 env=os.environ,
             )
+            ngramshrink_proc.communicate()
+            assert self.far_path.with_suffix(".shrink").exists()
 
             fstencode_proc = subprocess.Popen(
-                [thirdparty_binary("fstencode"), "--decode", "-", self.encoder_path, "-"],
-                stdin=ngramshrink_proc.stdout,
-                stdout=subprocess.PIPE,
+                [
+                    thirdparty_binary("fstencode"),
+                    "--decode",
+                    self.far_path.with_suffix(".shrink"),
+                    self.encoder_path,
+                    self.far_path.with_suffix(".dec"),
+                ],
                 stderr=logf,
                 env=os.environ,
             )
+            fstencode_proc.communicate()
+            assert self.far_path.with_suffix(".dec").exists()
+            self.far_path.with_suffix(".shrink").unlink()
             sort_proc = subprocess.Popen(
                 [
                     thirdparty_binary("fstarcsort"),
-                    "-",
+                    self.far_path.with_suffix(".dec"),
                     self.fst_path,
                 ],
-                stdin=fstencode_proc.stdout,
                 stderr=logf,
                 env=os.environ,
             )
             sort_proc.communicate()
+            assert self.fst_path.exists()
+            self.far_path.with_suffix(".dec").unlink()
 
     @property
     def fst_path(self) -> Path:
@@ -564,7 +582,6 @@ class PyniniTrainerMixin:
                     try:
                         result = return_queue.get(timeout=1)
                         if isinstance(result, Exception):
-
                             error_dict[getattr(result, "job_name", 0)] = result
                             continue
                         if stopped.is_set():
@@ -619,6 +636,19 @@ class PyniniTrainerMixin:
             ],
             env=os.environ,
         )
+        temp_far_path = self.far_path.with_stem("far_temp")
+        far_reader = pynini.Far(self.far_path, mode="r")
+        far_writer = pynini.Far(temp_far_path, mode="w")
+        for key, fst in far_reader:
+            fst = pynini.arcmap(fst, map_type="rmweight")
+            far_writer.add(key, fst)
+        far_writer.close()
+        far_reader.close()
+        del far_reader
+        del far_writer
+        del fst
+        self.far_path.unlink()
+        temp_far_path.rename(self.far_path)
         logger.info(f"Success! FAR path: {self.far_path}; encoder path: {self.encoder_path}")
 
 
@@ -707,7 +737,7 @@ class PyniniTrainer(
         """Initialize training G2P model"""
         random.seed(config.SEED)
         self._sym_path = self.phone_symbol_table_path
-        self.output_token_type = pynini.SymbolTable.read_text(self.phone_symbol_table_path)
+        self.output_token_type = pywrapfst.SymbolTable.read_text(self.phone_symbol_table_path)
         with self.session() as session:
             self.g2p_training_dictionary = {}
             pronunciations = (
