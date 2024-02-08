@@ -785,7 +785,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
 
                         gen = PyniniGenerator(
                             g2p_model_path=g2p_model.source,
-                            word_list=(x[0] for x in to_g2p),
+                            word_list=[x[0] for x in to_g2p],
                             num_pronunciations=1,
                             strict_graphemes=True,
                         )
