@@ -89,6 +89,12 @@ __all__ = ["align_corpus_cli"]
     help="Path to G2P model to use for OOV items.",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
+@click.option(
+    "--disable_dither",
+    is_flag=True,
+    help="Set dither to 0, overriding model's features metadata.",
+    default=False,
+)
 @common_options
 @click.help_option("-h", "--help")
 @click.pass_context
@@ -118,6 +124,12 @@ def align_corpus_cli(context, **kwargs) -> None:
         g2p_model_path=g2p_model_path,
         **PretrainedAligner.parse_parameters(config_path, context.params, context.args),
     )
+
+    if kwargs["disable_dither"]:
+        # This can enable deterministic feature extraction, with minor caveats.
+        # See https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/issues/525.
+        aligner.acoustic_model._meta["features"]["dither"] = 0
+
     try:
         aligner.align()
         aligner.analyze_alignments()
