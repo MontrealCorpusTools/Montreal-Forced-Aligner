@@ -755,9 +755,9 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
                 incorrect += 1
                 indices.append(word)
                 to_comp.append((gold_pronunciations, hyp))  # Multiple hypotheses to compare
-            logger.debug(
-                f"For the word {word}: gold is {gold_pronunciations}, hypothesized are: {hyp}"
-            )
+                logger.debug(
+                    f"Incorrect: for the word {word}: gold is {gold_pronunciations}, hypothesized are: {hyp}"
+                )
             hyp_pron_count += len(hyp)
             gold_pron_count += len(gold_pronunciations)
         logger.debug(

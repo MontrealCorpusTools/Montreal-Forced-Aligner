@@ -1855,6 +1855,7 @@ class WordInterval(MfaSqlBase):
     id = Column(Integer, primary_key=True, autoincrement=True)
     begin = Column(Float, nullable=False, index=True)
     end = Column(Float, nullable=False)
+    duration = Column(Float, sqlalchemy.Computed('"end" - "begin"'))
 
     utterance_id = Column(
         Integer, ForeignKey("utterance.id", ondelete="CASCADE"), index=True, nullable=False

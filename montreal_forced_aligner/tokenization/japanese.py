@@ -13,7 +13,8 @@ except ImportError:
 
 
 class JapaneseTokenizer:
-    def __init__(self):
+    def __init__(self, ignore_case: bool = True):
+        self.ignore_case = ignore_case
         resource_dir = pathlib.Path(__file__).parent.joinpath("resources")
         config_path = resource_dir.joinpath("japanese", "sudachi_config.json")
         try:
@@ -275,12 +276,17 @@ class JapaneseTokenizer:
             space_indices = [i for i, x in enumerate(new_text) if x == " "]
             new_text = [x for i, x in enumerate(new_text) if i not in space_indices]
             pronunciations = [x for i, x in enumerate(pronunciations) if i not in space_indices]
-        return " ".join(new_text), " ".join(pronunciations)
+        new_text = " ".join(new_text)
+        pronunciations = " ".join(pronunciations)
+        if self.ignore_case:
+            new_text = new_text.lower()
+            pronunciations = pronunciations.lower()
+        return new_text, pronunciations
 
 
-def ja_spacy(accurate=True):
+def ja_spacy(ignore_case: bool = True):
     if not JA_AVAILABLE:
         raise ImportError(
             "Please install Japanese support via `conda install -c conda-forge spacy sudachipy sudachidict-core`"
         )
-    return JapaneseTokenizer()
+    return JapaneseTokenizer(ignore_case)

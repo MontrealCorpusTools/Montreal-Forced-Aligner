@@ -287,7 +287,7 @@ class PhonetisaurusTokenizerTrainer(PhonetisaurusTrainerMixin, TokenizerMixin):
 
         from ..utils import get_mfa_version
 
-        m = {
+        meta = {
             "version": get_mfa_version(),
             "architecture": self.architecture,
             "train_date": str(datetime.now()),
@@ -300,12 +300,14 @@ class PhonetisaurusTokenizerTrainer(PhonetisaurusTrainerMixin, TokenizerMixin):
                 "num_graphemes": len(self.training_graphemes),
             },
         }
+        if self.model_version is not None:
+            meta["version"] = self.model_version
 
         if self.evaluation_mode:
-            m["evaluation"]["num_utterances"] = self.num_validation_utterances
-            m["evaluation"]["utterance_error_rate"] = self.uer
-            m["evaluation"]["character_error_rate"] = self.cer
-        return m
+            meta["evaluation"]["num_utterances"] = self.num_validation_utterances
+            meta["evaluation"]["utterance_error_rate"] = self.uer
+            meta["evaluation"]["character_error_rate"] = self.cer
+        return meta
 
     def train(self) -> None:
         if os.path.exists(self.fst_path):

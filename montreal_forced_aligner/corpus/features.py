@@ -284,7 +284,7 @@ class FinalFeatureFunction(KaldiFunction):
         self.sliding_cmvn = args.sliding_cmvn
         self.subsample_feats = args.subsample_feats
 
-    def _run(self) -> typing.Generator[int]:
+    def _run(self) -> None:
         """Run the function"""
         with self.session() as session, thread_logger(
             "kalpy.mfcc", self.log_path, job_name=self.job_name
@@ -341,15 +341,18 @@ class FinalFeatureFunction(KaldiFunction):
                 pitch_archive = FeatureArchive(
                     pitch_scp_path, vad_file_name=vad_scp_path, subsample_n=self.subsample_feats
                 )
-                for (utt_id, feats), (utt_id2, pitch) in zip(mfcc_archive, pitch_archive):
+                for (utt_id, mfccs), (utt_id2, pitch) in zip(mfcc_archive, pitch_archive):
                     assert utt_id == utt_id2
-                    mfcc_logger.info(f"Processing {utt_id}: len = {feats.NumRows()}")
                     try:
-                        feats = paste_feats([feats, pitch], 0)
+                        feats = paste_feats([mfccs, pitch], 1)
                     except Exception as e:
                         mfcc_logger.warning(f"Exception encountered: {e}")
                         num_error += 1
                         continue
+                    mfcc_logger.info(
+                        f"Processing {utt_id}: MFCC len = {mfccs.NumRows()}, "
+                        f"Pitch len = {pitch.NumRows()}, Combined len = {feats.NumRows()}"
+                    )
                     feats = CompressedMatrix(feats)
                     feature_writer.Write(utt_id, feats)
                     num_done += 1
@@ -357,7 +360,7 @@ class FinalFeatureFunction(KaldiFunction):
                 pitch_archive.close()
             else:
                 for utt_id, mfccs in mfcc_archive:
-                    mfcc_logger.info(f"Processing {utt_id}: len = {mfccs.NumCols()}")
+                    mfcc_logger.info(f"Processing {utt_id}: len = {mfccs.NumRows()}")
                     mfccs = CompressedMatrix(mfccs)
                     feature_writer.Write(utt_id, mfccs)
                     num_done += 1

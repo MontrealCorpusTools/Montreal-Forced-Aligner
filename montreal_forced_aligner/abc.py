@@ -861,6 +861,8 @@ class TrainerMixin(ModelExporterMixin):
     ----------
     num_iterations: int
         Number of training iterations
+    model_version: str
+        Override for model version
 
     Attributes
     ----------
@@ -868,10 +870,11 @@ class TrainerMixin(ModelExporterMixin):
         Current iteration
     """
 
-    def __init__(self, num_iterations: int = 40, **kwargs):
+    def __init__(self, num_iterations: int = 40, model_version: str = None, **kwargs):
         super().__init__(**kwargs)
         self.iteration: int = 0
         self.num_iterations = num_iterations
+        self.model_version = model_version
 
     @abc.abstractmethod
     def initialize_training(self) -> None:

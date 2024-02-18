@@ -553,7 +553,6 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
     """
 
     def __init__(self, **kwargs):
-
         super().__init__(**kwargs)
         self._disambiguation_symbols_int_path = None
         self._phones_dir = None
@@ -746,9 +745,19 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
                 else:
                     mapped = [sp]
                 phone_sets.append([self.phone_mapping[x] for x in mapped])
+        found_phones = set()
         for group in self.kaldi_grouped_phones.values():
+            for x in group:
+                if x in found_phones:
+                    raise Exception(f"The phone {x} in multiple phone groups.")
+            found_phones.update(group)
             group = sorted(self.phone_mapping[x] for x in group)
             phone_sets.append(group)
+        missing_phones = self.non_silence_phones - found_phones
+        if missing_phones:
+            raise Exception(
+                f"The following phones were missing from phone groups: {', '.join(missing_phones)}"
+            )
         return phone_sets
 
     def shared_phones_roots(self):
@@ -781,7 +790,6 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
         with mfa_open(sets_file, "w") as setf, mfa_open(roots_file, "w") as rootf, mfa_open(
             sets_int_file, "w"
         ) as setintf, mfa_open(roots_int_file, "w") as rootintf:
-
             # process silence phones
             if self.shared_silence_phones:
                 phone_string = " ".join(self.kaldi_silence_phones)

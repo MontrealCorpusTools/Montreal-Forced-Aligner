@@ -645,6 +645,7 @@ class NgramCountWorker(threading.Thread):
             farcompile_proc = subprocess.Popen(
                 [
                     thirdparty_binary("farcompilestrings"),
+                    "--fst_type=compact",
                     "--token_type=symbol",
                     f"--symbols={self.alignment_symbols_path}",
                     one_best_path,
@@ -1341,28 +1342,30 @@ class PhonetisaurusTrainerMixin:
         if error_list:
             for v in error_list:
                 raise v
+        with mfa_open(self.working_log_directory.joinpath("symbols.log"), "w") as log_file:
+            symbols_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("ngramsymbols"),
+                    "--OOV_symbol=<unk>",
+                    "--epsilon_symbol=<eps>",
+                    "-",
+                    self.alignment_symbols_path,
+                ],
+                encoding="utf8",
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=log_file,
+            )
+            for j in range(1, config.NUM_JOBS + 1):
+                text_path = self.working_directory.joinpath(f"{j}.strings")
+                with mfa_open(text_path, "r") as f:
+                    for line in f:
+                        symbols_proc.stdin.write(line)
+                        symbols_proc.stdin.flush()
+            symbols_proc.stdin.close()
+            symbols_proc.wait()
 
-        symbols_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngramsymbols"),
-                "--OOV_symbol=<unk>",
-                "--epsilon_symbol=<eps>",
-                "-",
-                self.alignment_symbols_path,
-            ],
-            encoding="utf8",
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-        )
-        for j in range(1, config.NUM_JOBS + 1):
-            text_path = self.working_directory.joinpath(f"{j}.strings")
-            with mfa_open(text_path, "r") as f:
-                for line in f:
-                    symbols_proc.stdin.write(line)
-                    symbols_proc.stdin.flush()
-        symbols_proc.stdin.close()
-        symbols_proc.wait()
-        self.symbol_table = pynini.SymbolTable.read_text(self.alignment_symbols_path)
+        self.symbol_table = pywrapfst.SymbolTable.read_text(self.alignment_symbols_path)
         logger.info("Done exporting alignments!")
 
     def compute_initial_ngrams(self) -> None:
@@ -1372,156 +1375,170 @@ class PhonetisaurusTrainerMixin:
             logger.info("Initial ngrams already computed")
             return
         logger.info("Computing initial ngrams...")
-        input_symbols_path = self.working_directory.joinpath("input_ngram.syms")
-        symbols_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngramsymbols"),
-                "--OOV_symbol=<unk>",
-                "--epsilon_symbol=<eps>",
-                input_path,
-                input_symbols_path,
-            ],
-            encoding="utf8",
-        )
-        symbols_proc.communicate()
-        farcompile_proc = subprocess.Popen(
-            [
-                thirdparty_binary("farcompilestrings"),
-                "--token_type=symbol",
-                f"--symbols={input_symbols_path}",
-                input_path,
-            ],
-            stdout=subprocess.PIPE,
-            env=os.environ,
-        )
-        ngramcount_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngramcount"),
-                "--require_symbols=false",
-                "--round_to_int",
-                f"--order={self.input_order}",
-            ],
-            stdin=farcompile_proc.stdout,
-            stdout=subprocess.PIPE,
-            env=os.environ,
-        )
-        ngrammake_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngrammake"),
-                f"--method={self.smoothing_method}",
-            ],
-            stdin=ngramcount_proc.stdout,
-            stdout=subprocess.PIPE,
-            env=os.environ,
-        )
+        with mfa_open(self.working_log_directory.joinpath("initial_ngrams.log"), "w") as log_file:
+            input_symbols_path = self.working_directory.joinpath("input_ngram.syms")
+            subprocess.check_call(
+                [
+                    thirdparty_binary("ngramsymbols"),
+                    "--OOV_symbol=<unk>",
+                    "--epsilon_symbol=<eps>",
+                    input_path,
+                    input_symbols_path,
+                ],
+                encoding="utf8",
+                stderr=log_file,
+            )
+            farcompile_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("farcompilestrings"),
+                    "--fst_type=compact",
+                    "--token_type=symbol",
+                    f"--symbols={input_symbols_path}",
+                    input_path,
+                ],
+                env=os.environ,
+                stderr=log_file,
+                stdout=subprocess.PIPE,
+            )
+            ngramcount_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("ngramcount"),
+                    "--require_symbols=false",
+                    "--round_to_int",
+                    f"--order={self.input_order}",
+                ],
+                stdin=farcompile_proc.stdout,
+                stdout=subprocess.PIPE,
+                env=os.environ,
+                stderr=log_file,
+            )
+            ngrammake_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("ngrammake"),
+                    f"--method={self.smoothing_method}",
+                ],
+                stdin=ngramcount_proc.stdout,
+                stdout=subprocess.PIPE,
+                env=os.environ,
+                stderr=log_file,
+            )
 
-        ngramshrink_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngramshrink"),
-                f"--method={self.pruning_method}",
-                f"--theta={self.initial_prune_threshold}",
-            ],
-            stdin=ngrammake_proc.stdout,
-            stdout=subprocess.PIPE,
-            env=os.environ,
-        )
-        print_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngramprint"),
-                f"--symbols={input_symbols_path}",
-            ],
-            env=os.environ,
-            stdin=ngramshrink_proc.stdout,
-            stdout=subprocess.PIPE,
-            encoding="utf8",
-        )
-        ngrams = set()
-        for line in print_proc.stdout:
-            line = line.strip().split()[:-1]
-            ngram = self.sequence_separator.join(x for x in line if x not in {"<s>", "</s>"})
-            if self.sequence_separator not in ngram:
-                continue
-            ngrams.add(ngram)
+            ngramshrink_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("ngramshrink"),
+                    f"--method={self.pruning_method}",
+                    f"--theta={self.initial_prune_threshold}",
+                ],
+                stdin=ngrammake_proc.stdout,
+                stdout=subprocess.PIPE,
+                env=os.environ,
+                stderr=log_file,
+            )
+            print_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("ngramprint"),
+                    f"--symbols={input_symbols_path}",
+                ],
+                env=os.environ,
+                stdin=ngramshrink_proc.stdout,
+                stdout=subprocess.PIPE,
+                encoding="utf8",
+                stderr=log_file,
+            )
+            ngrams = set()
+            for line in print_proc.stdout:
+                line = line.strip().split()[:-1]
+                ngram = self.sequence_separator.join(x for x in line if x not in {"<s>", "</s>"})
+                if self.sequence_separator not in ngram:
+                    continue
+                ngrams.add(ngram)
 
-        print_proc.wait()
-        with mfa_open(input_ngram_path.with_suffix(".ngrams"), "w") as f:
-            for ngram in sorted(ngrams):
-                f.write(f"{ngram}\n")
+            print_proc.wait()
+            with mfa_open(input_ngram_path.with_suffix(".ngrams"), "w") as f:
+                for ngram in sorted(ngrams):
+                    f.write(f"{ngram}\n")
 
-        output_path = self.working_directory.joinpath("output.txt")
-        output_ngram_path = self.working_directory.joinpath("output_ngram.fst")
-        output_symbols_path = self.working_directory.joinpath("output_ngram.syms")
-        symbols_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngramsymbols"),
-                "--OOV_symbol=<unk>",
-                "--epsilon_symbol=<eps>",
-                output_path,
-                output_symbols_path,
-            ],
-            encoding="utf8",
-        )
-        symbols_proc.communicate()
-        farcompile_proc = subprocess.Popen(
-            [
-                thirdparty_binary("farcompilestrings"),
-                "--token_type=symbol",
-                f"--symbols={output_symbols_path}",
-                output_path,
-            ],
-            stdout=subprocess.PIPE,
-            env=os.environ,
-        )
-        ngramcount_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngramcount"),
-                "--require_symbols=false",
-                "--round_to_int",
-                f"--order={self.output_order}",
-            ],
-            stdin=farcompile_proc.stdout,
-            stdout=subprocess.PIPE,
-            env=os.environ,
-        )
-        ngrammake_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngrammake"),
-                f"--method={self.smoothing_method}",
-            ],
-            stdin=ngramcount_proc.stdout,
-            stdout=subprocess.PIPE,
-            env=os.environ,
-        )
+            output_path = self.working_directory.joinpath("output.txt")
+            output_ngram_path = self.working_directory.joinpath("output_ngram.fst")
+            output_symbols_path = self.working_directory.joinpath("output_ngram.syms")
+            symbols_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("ngramsymbols"),
+                    "--OOV_symbol=<unk>",
+                    "--epsilon_symbol=<eps>",
+                    output_path,
+                    output_symbols_path,
+                ],
+                encoding="utf8",
+                stderr=log_file,
+            )
+            symbols_proc.communicate()
+            farcompile_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("farcompilestrings"),
+                    "--fst_type=compact",
+                    "--token_type=symbol",
+                    f"--symbols={output_symbols_path}",
+                    output_path,
+                ],
+                stdout=subprocess.PIPE,
+                env=os.environ,
+                stderr=log_file,
+            )
+            ngramcount_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("ngramcount"),
+                    "--require_symbols=false",
+                    "--round_to_int",
+                    f"--order={self.output_order}",
+                ],
+                stdin=farcompile_proc.stdout,
+                stdout=subprocess.PIPE,
+                env=os.environ,
+                stderr=log_file,
+            )
+            ngrammake_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("ngrammake"),
+                    f"--method={self.smoothing_method}",
+                ],
+                stdin=ngramcount_proc.stdout,
+                stdout=subprocess.PIPE,
+                env=os.environ,
+                stderr=log_file,
+            )
 
-        ngramshrink_proc = subprocess.Popen(
-            [
-                thirdparty_binary("ngramshrink"),
-                f"--method={self.pruning_method}",
-                f"--theta={self.initial_prune_threshold}",
-            ],
-            stdin=ngrammake_proc.stdout,
-            stdout=subprocess.PIPE,
-            env=os.environ,
-        )
-        print_proc = subprocess.Popen(
-            [thirdparty_binary("ngramprint"), f"--symbols={output_symbols_path}"],
-            env=os.environ,
-            stdin=ngramshrink_proc.stdout,
-            stdout=subprocess.PIPE,
-            encoding="utf8",
-        )
-        ngrams = set()
-        for line in print_proc.stdout:
-            line = line.strip().split()[:-1]
-            ngram = self.sequence_separator.join(x for x in line if x not in {"<s>", "</s>"})
-            if self.sequence_separator not in ngram:
-                continue
-            ngrams.add(ngram)
+            ngramshrink_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("ngramshrink"),
+                    f"--method={self.pruning_method}",
+                    f"--theta={self.initial_prune_threshold}",
+                ],
+                stdin=ngrammake_proc.stdout,
+                stdout=subprocess.PIPE,
+                env=os.environ,
+                stderr=log_file,
+            )
+            print_proc = subprocess.Popen(
+                [thirdparty_binary("ngramprint"), f"--symbols={output_symbols_path}"],
+                env=os.environ,
+                stdin=ngramshrink_proc.stdout,
+                stdout=subprocess.PIPE,
+                encoding="utf8",
+                stderr=log_file,
+            )
+            ngrams = set()
+            for line in print_proc.stdout:
+                line = line.strip().split()[:-1]
+                ngram = self.sequence_separator.join(x for x in line if x not in {"<s>", "</s>"})
+                if self.sequence_separator not in ngram:
+                    continue
+                ngrams.add(ngram)
 
-        print_proc.wait()
-        with mfa_open(output_ngram_path.with_suffix(".ngrams"), "w") as f:
-            for ngram in sorted(ngrams):
-                f.write(f"{ngram}\n")
+            print_proc.wait()
+            with mfa_open(output_ngram_path.with_suffix(".ngrams"), "w") as f:
+                for ngram in sorted(ngrams):
+                    f.write(f"{ngram}\n")
 
     def train(self) -> None:
         """
@@ -1597,7 +1614,7 @@ class PhonetisaurusTrainer(
 
         from ..utils import get_mfa_version
 
-        m = {
+        meta = {
             "version": get_mfa_version(),
             "architecture": self.architecture,
             "train_date": str(datetime.now()),
@@ -1613,12 +1630,14 @@ class PhonetisaurusTrainer(
                 "num_phones": len(self.non_silence_phones),
             },
         }
+        if self.model_version is not None:
+            meta["version"] = self.model_version
 
         if self.evaluation_mode:
-            m["evaluation"]["num_words"] = self.g2p_num_validation_words
-            m["evaluation"]["word_error_rate"] = self.wer
-            m["evaluation"]["phone_error_rate"] = self.ler
-        return m
+            meta["evaluation"]["num_words"] = self.g2p_num_validation_words
+            meta["evaluation"]["word_error_rate"] = self.wer
+            meta["evaluation"]["phone_error_rate"] = self.ler
+        return meta
 
     def evaluate_g2p_model(self) -> None:
         """
@@ -1712,6 +1731,63 @@ class PhonetisaurusTrainer(
                     self.g2p_validation_graphemes.update(word)
                     self.g2p_validation_phones.update(pronunciation.split())
                     self.g2p_num_validation_pronunciations += 1
+                query = (
+                    session.query(Pronunciation.pronunciation, Word.word)
+                    .join(Pronunciation.word)
+                    .join(Word.job)
+                    .filter(Word2Job.training == True)  # noqa
+                )
+                for pronunciation, word in query:
+                    word = list(word)
+                    self.g2p_training_graphemes.update(word)
+                    self.g2p_training_phones.update(pronunciation.split())
+
+                grapheme_diff = sorted(self.g2p_validation_graphemes - self.g2p_training_graphemes)
+                phone_diff = sorted(self.g2p_validation_phones - self.g2p_training_phones)
+                if grapheme_diff:
+                    low_count_grapheme_pattern = rf'[{"".join(grapheme_diff)}]'
+                    query = session.query(Word.id).filter(
+                        Word.word.op("~")(low_count_grapheme_pattern)
+                        if config.USE_POSTGRES
+                        else Word.word.regexp_match(low_count_grapheme_pattern)
+                    )
+                    logger.debug(
+                        f'Adding {query.count()} low grapheme count words to training data for: {", ".join(grapheme_diff)}'
+                    )
+                    query = (
+                        sqlalchemy.update(Word2Job)
+                        .execution_options(synchronize_session="fetch")
+                        .values(training=True)
+                        .where(Word2Job.word_id.in_(query.subquery()))
+                    )
+                    with session.begin_nested():
+                        session.execute(query)
+                        session.commit()
+                    self.g2p_training_graphemes.update(grapheme_diff)
+                if phone_diff:
+                    low_count_phone_pattern = rf'\b({"|".join(phone_diff)})\b'
+                    query = (
+                        session.query(Pronunciation.word_id)
+                        .filter(
+                            Pronunciation.pronunciation.op("~")(low_count_phone_pattern)
+                            if config.USE_POSTGRES
+                            else Pronunciation.pronunciation.regexp_match(low_count_phone_pattern)
+                        )
+                        .distinct()
+                    )
+                    logger.debug(
+                        f'Adding {query.count()} low phone count words to training data for: {", ".join(phone_diff)}'
+                    )
+                    query = (
+                        sqlalchemy.update(Word2Job)
+                        .execution_options(synchronize_session="fetch")
+                        .values(training=True)
+                        .where(Word2Job.word_id.in_(query.subquery()))
+                    )
+                    with session.begin_nested():
+                        session.execute(query)
+                        session.commit()
+                    self.g2p_training_graphemes.update(phone_diff)
                 self.g2p_num_validation_words = (
                     session.query(Word2Job.word_id)
                     .filter(Word2Job.training == False)  # noqa
@@ -1758,14 +1834,4 @@ class PhonetisaurusTrainer(
                     f"Graphemes in validation data: {sorted(self.g2p_validation_graphemes)}"
                 )
                 logger.debug(f"Phones in validation data: {sorted(self.g2p_validation_phones)}")
-                grapheme_diff = sorted(self.g2p_validation_graphemes - self.g2p_training_graphemes)
-                phone_diff = sorted(self.g2p_validation_phones - self.g2p_training_phones)
-                if grapheme_diff:
-                    logger.debug(
-                        f"The following graphemes appear only in the validation set: {', '.join(grapheme_diff)}"
-                    )
-                if phone_diff:
-                    logger.debug(
-                        f"The following phones appear only in the validation set: {', '.join(phone_diff)}"
-                    )
             self.compute_initial_ngrams()

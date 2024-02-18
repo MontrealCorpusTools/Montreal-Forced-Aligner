@@ -15,17 +15,19 @@ from typing import Dict, List
 
 from praatio import textgrid as tgio
 from praatio.data_classes.interval_tier import Interval
-from sqlalchemy.orm import Session, joinedload, selectinload
+from praatio.utilities import utils as tgio_utils
+from sqlalchemy.orm import Session
 
 from montreal_forced_aligner.data import (
     CtmInterval,
+    PhoneType,
     TextFileType,
     TextgridFormats,
     WordType,
-    WorkflowType,
 )
 from montreal_forced_aligner.db import (
     CorpusWorkflow,
+    Phone,
     PhoneInterval,
     Speaker,
     Utterance,
@@ -42,6 +44,141 @@ __all__ = [
     "construct_output_path",
     "output_textgrid_writing_errors",
 ]
+
+
+class Textgrid(tgio.Textgrid):
+    def save(
+        self,
+        fn: str,
+        format: typing.Literal["short_textgrid", "long_textgrid", "json", "textgrid_json"],
+        includeBlankSpaces: bool,
+        minTimestamp: typing.Optional[float] = None,
+        maxTimestamp: typing.Optional[float] = None,
+        minimumIntervalLength: float = None,
+        reportingMode: typing.Literal["silence", "warning", "error"] = "warning",
+    ) -> None:
+        """Save the current textgrid to a file
+
+        Args:
+            fn: the fullpath filename of the output
+            format: one of ['short_textgrid', 'long_textgrid', 'json', 'textgrid_json']
+                'short_textgrid' and 'long_textgrid' are both used by praat
+                'json' and 'textgrid_json' are two json variants. 'json' cannot represent
+                tiers with different min and max timestamps than the textgrid.
+            includeBlankSpaces: if True, blank sections in interval
+                tiers will be filled in with an empty interval
+                (with a label of ""). If you are unsure, True is recommended
+                as Praat needs blanks to render textgrids properly.
+            minTimestamp: the minTimestamp of the saved Textgrid;
+                if None, use whatever is defined in the Textgrid object.
+                If minTimestamp is larger than timestamps in your textgrid,
+                an exception will be thrown.
+            maxTimestamp: the maxTimestamp of the saved Textgrid;
+                if None, use whatever is defined in the Textgrid object.
+                If maxTimestamp is smaller than timestamps in your textgrid,
+                an exception will be thrown.
+            minimumIntervalLength: any labeled intervals smaller
+                than this will be removed, useful for removing ultrashort
+                or fragmented intervals; if None, don't remove any.
+                Removed intervals are merged (without their label) into
+                adjacent entries.
+            reportingMode: one of "silence", "warning", or "error". This flag
+                determines the behavior if there is a size difference between the
+                maxTimestamp in the tier and the current textgrid.
+
+        Returns:
+            a string representation of the textgrid
+        """
+
+        with mfa_open(fn, mode="w") as fd:
+            if format == TextgridFormats.LONG_TEXTGRID:
+                fd.write('File type = "ooTextFile"\n')
+                fd.write('Object class = "TextGrid"\n\n')
+
+                tab = " " * 4
+
+                # Header
+                fd.write(f"xmin = {self.minTimestamp} \n")
+                fd.write(f"xmax = {self.maxTimestamp} \n")
+                fd.write("tiers? <exists> \n")
+                fd.write(f"size = {len(self._tierDict)} \n")
+                fd.write("item []: \n")
+
+                for tierNum, (name, tier) in enumerate(self._tierDict.items()):
+                    # Interval header
+                    tier_name = tgio_utils.escapeQuotes(name)
+                    fd.write(tab + f"item [{tierNum + 1}]:\n")
+                    fd.write(tab * 2 + f'class = "{tier.tierType}" \n')
+                    fd.write(tab * 2 + f'name = "{tier_name}" \n')
+                    fd.write(tab * 2 + f"xmin = {self.minTimestamp} \n")
+                    fd.write(tab * 2 + f"xmax = {self.maxTimestamp} \n")
+
+                    fd.write(tab * 2 + f"intervals: size = {len(tier._entries)} \n")
+                    interval_index = 1
+                    if includeBlankSpaces and tier._entries:
+                        if tier._entries[0][0] > 0.001:
+                            fd.write(
+                                f"{tab * 2}intervals [{interval_index}]:\n"
+                                f"{tab * 3}xmin = 0.0 \n"
+                                f"{tab * 3}xmax = {tier._entries[0][0]} \n"
+                                f'{tab * 3}text = "" \n'
+                            )
+                            interval_index += 1
+
+                    for i, entry in enumerate(tier._entries):
+                        start, end, label = entry
+                        if (
+                            includeBlankSpaces
+                            and i > 0
+                            and start - tier._entries[i - 1][1] > 0.001
+                        ):
+                            fd.write(
+                                f"{tab * 2}intervals [{interval_index}]:\n"
+                                f"{tab * 3}xmin = {tier._entries[i-1][1]} \n"
+                                f"{tab * 3}xmax = {start} \n"
+                                f'{tab * 3}text = "" \n'
+                            )
+                            interval_index += 1
+                        fd.write(
+                            f"{tab * 2}intervals [{interval_index}]:\n"
+                            f"{tab * 3}xmin = {start} \n"
+                            f"{tab * 3}xmax = {end} \n"
+                            f'{tab * 3}text = "{tgio_utils.escapeQuotes(label)}" \n'
+                        )
+                        interval_index += 1
+                    if includeBlankSpaces and tier._entries:
+                        if self.maxTimestamp - tier._entries[-1][1] > 0.001:
+                            fd.write(
+                                f"{tab * 2}intervals [{interval_index}]:\n"
+                                f"{tab * 3}xmin = {tier._entries[-1][1]} \n"
+                                f"{tab * 3}xmax = {self.maxTimestamp} \n"
+                                f'{tab * 3}text = "" \n'
+                            )
+                            interval_index += 1
+            elif format == TextgridFormats.SHORT_TEXTGRID:
+                # Header
+                fd.write('File type = "ooTextFile"\n')
+                fd.write('Object class = "TextGrid"\n\n')
+                fd.write(f"{self.minTimestamp}\n{self.maxTimestamp}\n")
+                fd.write(f"<exists>\n{len(self._tierDict)}\n")
+                for name, tier in self._tierDict.items():
+                    tier_name = tgio_utils.escapeQuotes(name)
+                    c = tier.tierType
+                    fd.write(f'"{c}"\n')
+                    fd.write(f'"{tier_name}"\n')
+                    fd.write(f"{self.minTimestamp}\n{self.maxTimestamp}\n{len(tier._entries)}\n")
+
+                    if includeBlankSpaces and tier._entries:
+                        if tier._entries[0][0] > 0.001:
+                            fd.write(f'0.0\n{tier._entries[0][0]}\n""\n')
+                    for entry in tier._entries:
+                        start, end, label = entry
+                        label = tgio_utils.escapeQuotes(label)
+
+                        fd.write(f'{start}\n{end}\n"{label}"\n')
+                    if includeBlankSpaces and tier._entries:
+                        if self.maxTimestamp - tier._entries[-1][1] > 0.001:
+                            fd.write(f'{tier._entries[-1][1]}\n{self.maxTimestamp}\n""\n')
 
 
 def process_ctm_line(
@@ -182,69 +319,62 @@ def construct_output_tiers(
     Dict[str, Dict[str,List[CtmInterval]]]
         Aligned tiers
     """
-    utterances = (
-        session.query(Utterance)
-        .options(
-            joinedload(Utterance.speaker, innerjoin=True).load_only(Speaker.name),
-        )
-        .filter(Utterance.file_id == file_id)
-    )
     data = {}
-    for utt in utterances:
-        word_intervals = (
-            session.query(WordInterval, Word)
-            .join(WordInterval.word)
-            .filter(WordInterval.utterance_id == utt.id)
-            .filter(WordInterval.workflow_id == workflow.id)
-            .options(
-                selectinload(WordInterval.phone_intervals).joinedload(
-                    PhoneInterval.phone, innerjoin=True
-                )
-            )
-            .order_by(WordInterval.begin)
-        )
-        if cleanup_textgrids:
-            word_intervals = word_intervals.filter(Word.word_type != WordType.silence)
-        if utt.speaker.name not in data:
-            data[utt.speaker.name] = {"words": [], "phones": []}
+    phone_intervals = (
+        session.query(PhoneInterval.begin, PhoneInterval.end, Phone.phone, Speaker.name)
+        .join(PhoneInterval.phone)
+        .join(PhoneInterval.utterance)
+        .join(Utterance.speaker)
+        .filter(Utterance.file_id == file_id)
+        .filter(PhoneInterval.workflow_id == workflow.id)
+        .filter(PhoneInterval.duration > 0)
+        .order_by(PhoneInterval.begin)
+    )
+    word_intervals = (
+        session.query(WordInterval.begin, WordInterval.end, Word.word, Speaker.name)
+        .join(WordInterval.word)
+        .join(WordInterval.utterance)
+        .join(Utterance.speaker)
+        .filter(Utterance.file_id == file_id)
+        .filter(WordInterval.workflow_id == workflow.id)
+        .filter(WordInterval.duration > 0)
+        .order_by(WordInterval.begin)
+    )
+    if cleanup_textgrids:
+        phone_intervals = phone_intervals.filter(Phone.phone_type != PhoneType.silence)
+        word_intervals = word_intervals.filter(Word.word_type != WordType.silence)
+
+    for w_begin, w_end, w, speaker_name in word_intervals:
+        if speaker_name not in data:
+            data[speaker_name] = {"words": [], "phones": []}
             if include_original_text:
-                data[utt.speaker.name]["utterances"] = []
-        actual_words = utt.normalized_text.split()
-        if include_original_text:
-            data[utt.speaker.name]["utterances"].append(CtmInterval(utt.begin, utt.end, utt.text))
-        for i, (wi, w) in enumerate(word_intervals.all()):
-            if len(wi.phone_intervals) == 0:
-                continue
-            label = w.word
-            if cleanup_textgrids:
-                if (
-                    w.word_type is WordType.oov
-                    and workflow.workflow_type is WorkflowType.alignment
-                ):
-                    label = actual_words[i]
-                if (
-                    data[utt.speaker.name]["words"]
-                    and clitic_marker
-                    and (
-                        data[utt.speaker.name]["words"][-1].label.endswith(clitic_marker)
-                        or label.startswith(clitic_marker)
-                    )
-                ):
-                    data[utt.speaker.name]["words"][-1].end = wi.end
-                    data[utt.speaker.name]["words"][-1].label += label
+                data[speaker_name]["utterances"] = []
+        if (
+            data[speaker_name]["words"]
+            and w_begin - data[speaker_name]["words"][-1].end < 0.02
+            and clitic_marker
+            and (
+                data[speaker_name]["words"][-1].label.endswith(clitic_marker)
+                or w.startswith(clitic_marker)
+            )
+        ):
+            data[speaker_name]["words"][-1].end = w_end
+            data[speaker_name]["words"][-1].label += w
 
-                    for pi in sorted(wi.phone_intervals, key=lambda x: x.begin):
-                        data[utt.speaker.name]["phones"].append(
-                            CtmInterval(pi.begin, pi.end, pi.phone.phone)
-                        )
-                    continue
+        else:
+            data[speaker_name]["words"].append(CtmInterval(w_begin, w_end, w))
 
-            data[utt.speaker.name]["words"].append(CtmInterval(wi.begin, wi.end, label))
+    if include_original_text:
+        utterances = (
+            session.query(Utterance.begin, Utterance.end, Utterance.text, Speaker.name)
+            .join(Utterance.speaker)
+            .filter(Utterance.file_id == file_id)
+        )
+        for utt_begin, utt_end, utt_text, speaker_name in utterances:
+            data[speaker_name]["utterances"].append(CtmInterval(utt_begin, utt_end, utt_text))
 
-            for pi in wi.phone_intervals:
-                data[utt.speaker.name]["phones"].append(
-                    CtmInterval(pi.begin, pi.end, pi.phone.phone)
-                )
+    for p_begin, p_end, phone, speaker_name in phone_intervals:
+        data[speaker_name]["phones"].append(CtmInterval(p_begin, p_end, phone))
     return data
 
 
@@ -355,7 +485,7 @@ def export_textgrid(
                 json.dump(json_data, f, indent=4, ensure_ascii=False)
     else:
         # Create initial textgrid
-        tg = tgio.Textgrid()
+        tg = Textgrid()
         tg.minTimestamp = 0
         tg.maxTimestamp = duration
         for speaker, data in speaker_data.items():
@@ -374,19 +504,24 @@ def export_textgrid(
                         frame_shift * 2
                     ):  # Fix rounding issues
                         a.end = duration
-                    if i > 0 and tier.entries[-1].end > a.to_tg_interval().start:
-                        a.begin = tier.entries[-1].end
-                    tier.insertEntry(a.to_tg_interval(duration))
+                    tg_interval = a.to_tg_interval()
+                    if i > 0 and tier._entries[-1].end > tg_interval.start:
+                        a.begin = tier._entries[-1].end
+                        tg_interval = a.to_tg_interval()
+                    tier._entries.append(tg_interval)
         if has_data:
             for tier in tg.tiers:
-                if len(tier.entries) > 0 and tier.entries[-1][1] > tg.maxTimestamp:
+                if len(tier._entries) > 0 and tier._entries[-1][1] > tg.maxTimestamp:
                     tier.insertEntry(
-                        Interval(tier.entries[-1].start, tg.maxTimestamp, tier.entries[-1].label),
+                        Interval(
+                            tier._entries[-1].start, tg.maxTimestamp, tier._entries[-1].label
+                        ),
                         collisionMode="replace",
                     )
             tg.save(
                 str(output_path),
                 includeBlankSpaces=True,
                 format=output_format,
-                reportingMode="error",
+                minimumIntervalLength=None,
+                reportingMode="silence",
             )

@@ -21,7 +21,7 @@ def anchor_cli(*args, **kwargs) -> None:  # pragma: no cover
         from anchor.command_line import main
     except ImportError:
         logger.error(
-            "Anchor annotator utility is not installed, please install it via pip install anchor-annotator."
+            "Anchor annotator utility is not installed, please install it via `conda install -c conda-forge anchor-annotator`."
         )
         sys.exit(1)
     main()

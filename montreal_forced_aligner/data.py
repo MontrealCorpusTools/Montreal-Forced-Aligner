@@ -491,6 +491,7 @@ class Language(enum.Enum):
     slovenian = "slovenian"
     spanish = "spanish"
     swedish = "swedish"
+    thai = "thai"
     ukrainian = "ukrainian"
 
     def __str__(self) -> str:
@@ -1977,7 +1978,8 @@ class CtmInterval:
         begin = round(self.begin, 6)
         if file_duration is not None and end > file_duration:
             end = round(file_duration, 6)
-        assert begin < end
+        if begin >= end:
+            raise CtmError(self)
         return Interval(round(self.begin, 6), end, self.label)
 
 

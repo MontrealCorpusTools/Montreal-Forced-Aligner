@@ -393,6 +393,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         with kalpy_logger("kalpy.train", log_path) as train_logger:
             train_logger.debug(f"Topo path: {topo_path}")
             train_logger.debug(f"Tree path: {self.tree_path}")
+            train_logger.debug(f"Phone sets: {phone_sets}")
             questions = automatically_obtain_questions(tree_stats, phone_sets, [1], 1)
             train_logger.debug(f"Automatically obtained {len(questions)} questions")
             for v in self.worker.extra_questions_mapping.values():

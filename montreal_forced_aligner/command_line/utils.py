@@ -128,6 +128,7 @@ def common_options(f: typing.Callable) -> typing.Callable:
         ),
         click.option(
             "--textgrid_cleanup/--no_textgrid_cleanup",
+            "--cleanup_textgrids/--no_cleanup_textgrids",
             "cleanup_textgrids",
             help="Turn on/off post-processing of TextGrids that cleans up "
             "silences and recombines compound words and clitics.",

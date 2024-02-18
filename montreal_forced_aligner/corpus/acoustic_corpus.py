@@ -936,7 +936,6 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 logger.info(
                     "Detected ctrl-c, please wait a moment while we clean everything up..."
                 )
-                self.stopped.set_sigint_source()
             self.stopped.set()
             finished_adding.set()
             while True:
@@ -1113,6 +1112,7 @@ class AcousticCorpusPronunciationMixin(
             self.write_lexicon_information()
             logger.debug(f"Wrote lexicon information in {time.time() - begin:.3f} seconds")
         else:
+            self.load_phone_groups()
             self.load_lexicon_compilers()
 
         begin = time.time()

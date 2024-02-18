@@ -130,6 +130,7 @@ class TrainLmFunction(KaldiFunction):
             farcompile_proc = subprocess.Popen(
                 [
                     thirdparty_binary("farcompilestrings"),
+                    "--fst_type=compact",
                     "--token_type=symbol",
                     "--generate_keys=16",
                     "--keep_symbols",
@@ -152,7 +153,7 @@ class TrainLmFunction(KaldiFunction):
                 stdin=farcompile_proc.stdout,
                 env=os.environ,
             )
-            for (normalized_text, text) in utterance_query:
+            for normalized_text, text in utterance_query:
                 if not normalized_text:
                     normalized_text = text
                 text = " ".join(
@@ -210,6 +211,7 @@ class TrainPhoneLmFunction(KaldiFunction):
             farcompile_proc = subprocess.Popen(
                 [
                     thirdparty_binary("farcompilestrings"),
+                    "--fst_type=compact",
                     "--token_type=symbol",
                     "--generate_keys=16",
                     f"--symbols={self.symbols_path}",
@@ -274,7 +276,6 @@ class TrainSpeakerLmFunction(KaldiFunction):
     def _run(self) -> typing.Generator[bool]:
         """Run the function"""
         with self.session() as session, mfa_open(self.log_path, "w") as log_file:
-
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))

@@ -45,6 +45,7 @@ from montreal_forced_aligner.alignment.multiprocessing import (
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
 from montreal_forced_aligner.data import (
     CtmInterval,
+    PhoneType,
     PronunciationProbabilityCounter,
     TextFileType,
     WordType,
@@ -793,7 +794,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         word_index = self.get_next_primary_key(Word)
 
         logger.info(f"Collecting phone and word alignments from {workflow.name} lattices...")
-
+        all_begin = time.time()
         arguments = self.alignment_extraction_arguments()
         has_words = False
         phone_interval_count = 0
@@ -989,10 +990,14 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 {CorpusWorkflow.alignments_collected: True}
             )
             session.commit()
-            if config.USE_POSTGRES:
-                session.execute(sqlalchemy.text("ALTER TABLE word_interval ENABLE TRIGGER all"))
-                session.execute(sqlalchemy.text("ALTER TABLE phone_interval ENABLE TRIGGER all"))
-                session.commit()
+        if config.USE_POSTGRES:
+            conn = self.db_engine.connect()
+            conn.execution_options(isolation_level="AUTOCOMMIT")
+            conn.execute(sqlalchemy.text("VACUUM ANALYZE word_interval, phone_interval;"))
+            conn.execute(sqlalchemy.text("ALTER TABLE word_interval ENABLE TRIGGER all"))
+            conn.execute(sqlalchemy.text("ALTER TABLE phone_interval ENABLE TRIGGER all"))
+            conn.close()
+        logger.debug(f"Collecting alignments took {time.time() - all_begin:.3f} seconds")
 
     def fine_tune_alignments(self) -> None:
         """
@@ -1010,7 +1015,10 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 update_mappings.extend([{"id": x, "begin": 0, "end": 0} for x in result[1]])
             bulk_update(session, PhoneInterval, update_mappings)
             session.flush()
-            session.execute(PhoneInterval.__table__.delete().where(PhoneInterval.end == 0))
+            deleted_count = session.execute(
+                PhoneInterval.__table__.delete().where(PhoneInterval.end == 0)
+            )
+            logger.debug(f"Deleted {deleted_count} phone intervals of zero duration")
             session.flush()
             word_update_mappings = []
             word_intervals = (
@@ -1025,6 +1033,23 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             for wi_id, begin, end in word_intervals:
                 word_update_mappings.append({"id": wi_id, "begin": begin, "end": end})
             bulk_update(session, WordInterval, word_update_mappings)
+            session.commit()
+            sq = (
+                session.query(
+                    WordInterval.id, sqlalchemy.func.count(PhoneInterval.id).label("phone_count")
+                )
+                .outerjoin(WordInterval.phone_intervals)
+                .group_by(WordInterval.id)
+            ).subquery()
+            word_interval_deletions = session.query(sq.c.id).filter(sq.c.phone_count == 0)
+            deleted_count = (
+                session.query(WordInterval)
+                .filter(WordInterval.id.in_(word_interval_deletions))
+                .delete()
+            )
+            logger.debug(
+                f"Deleted {deleted_count} word intervals no longer containing phone intervals"
+            )
             session.commit()
         self.export_frame_shift = round(self.export_frame_shift / 10, 4)
         logger.debug(f"Fine tuning alignments took {time.time() - begin:.3f} seconds")
@@ -1242,6 +1267,35 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 analysis_csv, self.export_output_directory.joinpath("alignment_analysis.csv")
             )
         self.export_textgrids(output_format, include_original_text)
+
+    def validate_mapping(self, mapping: Dict[str, typing.Union[str, typing.List[str]]]):
+        with self.session() as session:
+            extra_phones = set(
+                x[0]
+                for x in session.query(Phone.phone).filter(Phone.phone_type == PhoneType.extra)
+            )
+            phones = set(
+                x[0]
+                for x in session.query(Phone.phone).filter(
+                    Phone.phone_type == PhoneType.non_silence
+                )
+            )
+            found_phones = set()
+            found_extra_phones = set()
+            for aligned_phones, ref_phones in mapping.items():
+                aligned_phones = aligned_phones.split()
+                if isinstance(ref_phones, str):
+                    ref_phones = [ref_phones]
+                found_phones.update(aligned_phones)
+                found_extra_phones.update(ref_phones)
+            unreferenced_phones = sorted(phones - found_phones)
+            unreferenced_extra_phones = sorted(extra_phones - found_extra_phones)
+            logger.debug(
+                f"Phones not referenced in mapping file: {', '.join(unreferenced_phones)}"
+            )
+            logger.debug(
+                f"Reference phones not referenced in mapping file: {', '.join(unreferenced_extra_phones)}"
+            )
 
     def evaluate_alignments(
         self,

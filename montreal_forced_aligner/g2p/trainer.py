@@ -713,7 +713,7 @@ class PyniniTrainer(
 
         from ..utils import get_mfa_version
 
-        m = {
+        meta = {
             "version": get_mfa_version(),
             "architecture": self.architecture,
             "train_date": str(datetime.now()),
@@ -726,12 +726,14 @@ class PyniniTrainer(
                 "num_phones": len(self.non_silence_phones),
             },
         }
+        if self.model_version is not None:
+            meta["version"] = self.model_version
 
         if self.evaluation_mode:
-            m["evaluation"]["num_words"] = len(self.g2p_validation_dictionary)
-            m["evaluation"]["word_error_rate"] = self.wer
-            m["evaluation"]["phone_error_rate"] = self.ler
-        return m
+            meta["evaluation"]["num_words"] = len(self.g2p_validation_dictionary)
+            meta["evaluation"]["word_error_rate"] = self.wer
+            meta["evaluation"]["phone_error_rate"] = self.ler
+        return meta
 
     def initialize_training(self) -> None:
         """Initialize training G2P model"""

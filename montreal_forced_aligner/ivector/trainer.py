@@ -64,13 +64,15 @@ class IvectorModelTrainingMixin(AcousticModelTrainingMixin):
 
         from ..utils import get_mfa_version
 
-        data = {
+        meta = {
             "version": get_mfa_version(),
             "architecture": self.architecture,
             "train_date": str(datetime.now()),
             "features": self.feature_options,
         }
-        return data
+        if self.model_version is not None:
+            meta["version"] = self.model_version
+        return meta
 
     def refresh_training_graph_compilers(self):
         pass

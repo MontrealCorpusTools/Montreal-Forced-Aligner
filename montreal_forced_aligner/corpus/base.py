@@ -620,6 +620,11 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         if self.language is Language.unknown:
             tokenizers = getattr(self, "tokenizers", None)
         else:
+            from montreal_forced_aligner.tokenization.spacy import (
+                check_language_tokenizer_availability,
+            )
+
+            check_language_tokenizer_availability(self.language)
             tokenizers = self.language
         if tokenizers is None:
             if isinstance(self, DictionaryMixin):
@@ -637,6 +642,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     self.split_directory.joinpath("log", f"normalize.{j.id}.log"),
                     tokenizers,
                     getattr(self, "g2p_model", None),
+                    self.ignore_case,
                 )
                 for j in jobs
             ]
@@ -890,7 +896,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 session.commit()
                 session.query(Word).filter(Word.word_type == WordType.speech).filter(
                     Word.count <= self.oov_count_threshold
-                ).update({Word.included: False})
+                ).update({Word.included: False, Word.word_type: WordType.oov})
                 session.commit()
 
     def add_speaker(self, name: str, session: Session = None):
@@ -1142,9 +1148,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             Number of utterances to include in subset
         """
         logger.info(f"Creating subset directory with {subset} utterances...")
-        subset_directory = self.corpus_output_directory.joinpath(f"subset_{subset}")
-        log_dir = subset_directory.joinpath("log")
-        os.makedirs(log_dir, exist_ok=True)
         multiword_pattern = r"\s\S+\s"
         with self.session() as session:
             begin = time.time()
@@ -1357,7 +1360,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         sqlalchemy.func.sum(sq.c.utt_count)
                     ).first()[0]
                     remaining = subset_per_dictionary - total_speaker_utterances
-                    if remaining:
+                    if remaining > 0:
                         speaker_ids = (x for x, in session.query(sq.c.speaker_id))
 
                         larger_subset_query = (
@@ -1427,6 +1430,9 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     session.query(Utterance).update({Utterance.in_subset: True})
 
             session.commit()
+            subset_directory = self.corpus_output_directory.joinpath(f"subset_{subset}")
+            log_dir = subset_directory.joinpath("log")
+            os.makedirs(log_dir, exist_ok=True)
 
             logger.debug(f"Setting subset flags took {time.time()-begin} seconds")
             with self.session() as session:

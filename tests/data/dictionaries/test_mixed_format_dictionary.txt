@@ -17,7 +17,7 @@ going	g	ow	ih	ng
 else	eh	l	s
 on	ah	n
 we're	w	iy	r
-just	j	ah	s	t
+just	jh	ah	s	t
 yknow	y	ah	n	ow
 some	s	ah	m
 speech	s	p	iy	ch
@@ -77,7 +77,6 @@ cough	k	aa	f
 for	f	ao	r
 little	l	ih	t	ah	l
 bit	b	ih	t
-just	j	ah	s	t
 to	t	uw
 yup	y	ah	p
 happened	hh	ae	p	ah	n	d

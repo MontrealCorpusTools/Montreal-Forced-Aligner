@@ -486,7 +486,7 @@ class AcousticModelTrainingMixin(
             summary = session.query(
                 func.count(Utterance.id),
                 func.sum(Utterance.duration),
-                func.avg(Utterance.alignment_log_likelihood / Utterance.num_frames),
+                func.sum(Utterance.alignment_log_likelihood) / func.sum(Utterance.num_frames),
             ).filter(
                 Utterance.alignment_log_likelihood != None  # noqa
             )
