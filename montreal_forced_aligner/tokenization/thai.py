@@ -2,25 +2,18 @@ from __future__ import annotations
 
 import re
 
-try:
-    import attacut
-
-    TH_AVAILABLE = True
-except ImportError:
-    TH_AVAILABLE = False
-    attacut = None
-
 
 class ThaiTokenizer:
     def __init__(self, ignore_case: bool):
+        import attacut
+
         self.tokenizer = attacut.Tokenizer(model="attacut-sc")
         self.ignore_case = ignore_case
 
     def __call__(self, text):
         new_text = []
-        morphs = self.tokenizer.tokenizer(text)
-        for morph in morphs:
-            normalized = morph.surface
+        morphs = self.tokenizer.tokenize(text)
+        for normalized in morphs:
             join = False
             m = re.search(r"[]})>][<({[]", normalized)
             if new_text and m:
@@ -39,7 +32,9 @@ class ThaiTokenizer:
             if join:
                 new_text[-1] += normalized
                 continue
-            if morph.pos in {"w"} and normalized not in {"<", "(", "{", "["}:
+            # if normalized in {"w"} and normalized not in {"<", "(", "{", "["}:
+            #    continue
+            if re.match(r"^\W+$", normalized):
                 continue
             new_text.append(normalized)
         new_text = " ".join(new_text)
@@ -49,6 +44,8 @@ class ThaiTokenizer:
 
 
 def th_spacy(ignore_case: bool = True):
-    if not TH_AVAILABLE:
+    try:
+        import attacut  # noqa
+    except ImportError:
         raise ImportError("Please install Thai tokenization support via `pip install attacut`")
     return ThaiTokenizer(ignore_case)
