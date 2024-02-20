@@ -186,7 +186,7 @@ class PhonologicalRule:
         return " ".join(self.replacement)
 
     @property
-    def unapplied_pattern(self):
+    def unapplied_pattern(self) -> re.Pattern:
         if not hasattr(self, "_unapplied_pattern"):
             components = []
             preceding = self.preceding_regex
@@ -202,10 +202,10 @@ class PhonologicalRule:
             if following:
                 components.append(rf"(?P<following>{following})")
             pattern = " ".join(components)
-            if not self.initial:
-                pattern = r"(?:^|(?<=\s))" + pattern
-            if not self.final:
-                pattern += r"(?:$|(?=\s))"
+            if self.initial:
+                pattern = "^" + pattern
+            if self.final:
+                pattern += "$"
             return re.compile(pattern, flags=re.UNICODE)
         return self._unapplied_pattern
 
@@ -238,7 +238,6 @@ class PhonologicalRule:
             if following.endswith("$"):
                 following = following.replace("$", "").strip()
             if preceding:
-
                 components.append(rf"(?P<preceding>{preceding})")
             if self.replacement_regex:
                 components.append(rf"(?P<replacement>{self.replacement_regex})")
@@ -247,12 +246,8 @@ class PhonologicalRule:
             pattern = " ".join(components)
             if self.initial:
                 pattern = "^" + pattern
-            else:
-                pattern = r"(?:^|(?<=\s))" + pattern
             if self.final:
                 pattern += "$"
-            else:
-                pattern += r"(?:$|(?=\s))"
             return re.compile(pattern, flags=re.UNICODE)
         return self._applied_pattern
 
@@ -285,7 +280,7 @@ class MfaArguments:
     """
 
     job_name: int
-    session: scoped_session
+    session: typing.Union[scoped_session, str]
     log_path: Path
 
 
@@ -449,7 +444,6 @@ class WordType(enum.Enum):
 
 
 class DistanceMetric(enum.Enum):
-
     cosine = "cosine"
     plda = "plda"
     euclidean = "euclidean"
@@ -497,6 +491,7 @@ class Language(enum.Enum):
     slovenian = "slovenian"
     spanish = "spanish"
     swedish = "swedish"
+    thai = "thai"
     ukrainian = "ukrainian"
 
     def __str__(self) -> str:
@@ -1983,7 +1978,8 @@ class CtmInterval:
         begin = round(self.begin, 6)
         if file_duration is not None and end > file_duration:
             end = round(file_duration, 6)
-        assert begin < end
+        if begin >= end:
+            raise CtmError(self)
         return Interval(round(self.begin, 6), end, self.label)
 
 

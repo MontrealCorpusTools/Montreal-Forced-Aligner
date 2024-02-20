@@ -95,9 +95,14 @@ def common_options(f: typing.Callable) -> typing.Callable:
         ),
         click.option(
             "--use_mp/--no_use_mp",
-            "--use_threading/--no_use_threading",
             "use_mp",
-            help="Turn on/off multithreading. Multithreading is recommended will allow for faster executions.",
+            help="Turn on/off multiprocessing. Multiprocessing is recommended will allow for faster executions.",
+            default=None,
+        ),
+        click.option(
+            "--use_threading/--no_use_threading",
+            "use_threading",
+            help="Use threading library rather than multiprocessing library. Multiprocessing is recommended will allow for faster executions.",
             default=None,
         ),
         click.option(
@@ -123,6 +128,7 @@ def common_options(f: typing.Callable) -> typing.Callable:
         ),
         click.option(
             "--textgrid_cleanup/--no_textgrid_cleanup",
+            "--cleanup_textgrids/--no_cleanup_textgrids",
             "cleanup_textgrids",
             help="Turn on/off post-processing of TextGrids that cleans up "
             "silences and recombines compound words and clitics.",
@@ -454,7 +460,6 @@ def stop_server(mode: str = "smart") -> None:
         f"pg_mfa_{config.CURRENT_PROFILE_NAME}"
     )
     if not db_directory.exists():
-
         logger.error(f"There was no database found at {db_directory}.")
         sys.exit(1)
     logger.info(f"Stopping the {config.CURRENT_PROFILE_NAME} MFA database server...")

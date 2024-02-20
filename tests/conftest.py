@@ -78,11 +78,11 @@ def generated_dir(test_dir):
 def global_config():
     config.CURRENT_PROFILE_NAME = "test"
     config.CLEAN = True
-    config.USE_POSTGRES = False
+    config.USE_POSTGRES = True
     config.DEBUG = True
     config.VERBOSE = True
     config.NUM_JOBS = 2
-    config.USE_MP = False
+    config.USE_MP = True
     config.DATABASE_LIMITED_MODE = True
     config.AUTO_SERVER = False
     config.TEMPORARY_DIRECTORY = get_temporary_directory()

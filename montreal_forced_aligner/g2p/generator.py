@@ -554,7 +554,7 @@ class PyniniGenerator(G2PTopLevelMixin):
         logger.info("Generating pronunciations...")
         to_return = {}
         skipped_words = 0
-        if num_words < 30 or config.NUM_JOBS == 1:
+        if not config.USE_MP or num_words < 30 or config.NUM_JOBS == 1:
             with tqdm(total=num_words, disable=config.QUIET) as pbar:
                 for word in self.words_to_g2p:
                     w, m = clean_up_word(word, self.g2p_model.meta["graphemes"])
@@ -755,9 +755,9 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
                 incorrect += 1
                 indices.append(word)
                 to_comp.append((gold_pronunciations, hyp))  # Multiple hypotheses to compare
-            logger.debug(
-                f"For the word {word}: gold is {gold_pronunciations}, hypothesized are: {hyp}"
-            )
+                logger.debug(
+                    f"Incorrect: for the word {word}: gold is {gold_pronunciations}, hypothesized are: {hyp}"
+                )
             hyp_pron_count += len(hyp)
             gold_pron_count += len(gold_pronunciations)
         logger.debug(
@@ -907,7 +907,7 @@ class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker)
         return [
             G2PArguments(
                 j.id,
-                getattr(self, "session", ""),
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"g2p_utterances.{j.id}.log"),
                 self.rewriter,
             )
@@ -934,12 +934,11 @@ class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker)
         if self.rewriter is None:
             self.setup()
         logger.info("Generating pronunciations...")
-        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
-            update_mapping = []
-            for utt_id, pronunciation in run_kaldi_function(
-                G2PFunction, self.g2p_arguments(), pbar.update
-            ):
-                update_mapping.append({"id": utt_id, "transcription_text": pronunciation})
+        update_mapping = []
+        for utt_id, pronunciation in run_kaldi_function(
+            G2PFunction, self.g2p_arguments(), total_count=self.num_utterances
+        ):
+            update_mapping.append({"id": utt_id, "transcription_text": pronunciation})
         with self.session() as session:
             bulk_update(session, Utterance, update_mapping)
             session.commit()
@@ -1029,6 +1028,11 @@ class PyniniDictionaryCorpusGenerator(
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._word_list = None
+
+    @property
+    def data_source_identifier(self) -> str:
+        """Corpus name"""
+        return os.path.basename(self.corpus_directory)
 
     def setup(self) -> None:
         """Set up the pronunciation generator"""

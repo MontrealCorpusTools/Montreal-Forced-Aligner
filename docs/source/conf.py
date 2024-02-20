@@ -79,6 +79,8 @@ xref_links = {
     "anchor": ("Anchor Annotator", "https://anchor-annotator.readthedocs.io/en/latest/"),
     "speechbrain": ("SpeechBrain", "https://speechbrain.github.io/"),
     "scikit-learn": ("scikit-learn", "https://scikit-learn.org/stable/index.html"),
+    "spacy-pkuseg": ("spacy-pkuseg", "https://github.com/explosion/spacy-pkuseg"),
+    "hanziconv": ("hanziconv", "https://github.com/berniey/hanziconv"),
     "click": ("click", "https://click.palletsprojects.com/en/8.1.x/"),
     "pgvector": ("pgvector", "https://github.com/pgvector/pgvector"),
     "pretrained_acoustic_models": (

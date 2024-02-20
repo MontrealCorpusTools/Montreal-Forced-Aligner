@@ -74,7 +74,10 @@ def transcribe_utterance_online(
         acoustic_model.mfcc_computer.frame_shift,
     )
     ctm = lexicon_compiler.phones_to_pronunciations(
-        utterance.transcript, alignment.words, phone_intervals, transcription=False
+        alignment.words,
+        phone_intervals,
+        transcription=False,
+        text=utterance.transcript,
     )
     ctm.likelihood = alignment.likelihood
     ctm.update_utterance_boundaries(utterance.segment.begin, utterance.segment.end)

@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
-import threading
 import typing
 from abc import abstractmethod
 from pathlib import Path
@@ -27,7 +25,7 @@ from sqlalchemy.orm import joinedload
 
 from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import KaldiFunction
-from montreal_forced_aligner.data import MfaArguments, PhoneType
+from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.db import File, Job, Phone, SoundFile, Utterance
 from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import thread_logger
@@ -121,7 +119,6 @@ class CalcFmllrArguments(MfaArguments):
     ali_model_path: Path
     model_path: Path
     fmllr_options: MetaDict
-    thread_lock: threading.Lock
 
 
 # noinspection PyUnresolvedReferences
@@ -198,52 +195,60 @@ class MfccFunction(KaldiFunction):
         with self.session() as session, thread_logger(
             "kalpy.mfcc", self.log_path, job_name=self.job_name
         ) as mfcc_logger:
+            mfcc_logger.debug(f"MFCC parameters: {self.mfcc_computer.parameters}")
             job: typing.Optional[Job] = session.get(Job, self.job_name)
             raw_ark_path = job.construct_path(self.data_directory, "feats", "ark")
             raw_pitch_ark_path = job.construct_path(self.data_directory, "pitch", "ark")
             if raw_ark_path.exists():
                 return
+            limit = 10000
+            offset = 0
             min_length = 0.1
-            utterances = (
-                session.query(Utterance, SoundFile)
-                .join(Utterance.file)
-                .join(File.sound_file)
-                .filter(
-                    Utterance.job_id == self.job_name,
-                    Utterance.duration >= min_length,
-                )
-                .order_by(Utterance.kaldi_id)
-            )
             mfcc_specifier = generate_write_specifier(raw_ark_path, True)
             pitch_specifier = generate_write_specifier(raw_pitch_ark_path, True)
             mfcc_writer = CompressedMatrixWriter(mfcc_specifier)
             pitch_writer = None
             if self.pitch_computer is not None:
+                mfcc_logger.debug(f"Pitch parameters: {self.pitch_computer.parameters}")
                 pitch_writer = CompressedMatrixWriter(pitch_specifier)
             num_done = 0
             num_error = 0
-            for u, sf in utterances:
-                seg = Segment(str(sf.sound_file_path), u.begin, u.end, u.channel)
-                mfcc_logger.info(f"Thread {self.job_name}: Processing {u.kaldi_id}")
-                try:
-                    mfccs = self.mfcc_computer.compute_mfccs_for_export(seg, compress=True)
-                except Exception as e:
-                    mfcc_logger.warning(str(e))
-                    num_error += 1
-                    continue
+            while True:
+                utterances = (
+                    session.query(Utterance, SoundFile)
+                    .join(Utterance.file)
+                    .join(File.sound_file)
+                    .filter(
+                        Utterance.job_id == self.job_name,
+                        Utterance.duration >= min_length,
+                    )
+                    .order_by(Utterance.kaldi_id)
+                    .limit(limit)
+                    .offset(offset)
+                )
+                if utterances.count() == 0:
+                    break
+                for u, sf in utterances:
+                    seg = Segment(str(sf.sound_file_path), u.begin, u.end, u.channel)
+                    mfcc_logger.info(f"Processing {u.kaldi_id}")
+                    try:
+                        mfccs = self.mfcc_computer.compute_mfccs_for_export(seg, compress=True)
+                    except Exception as e:
+                        mfcc_logger.warning(str(e))
+                        num_error += 1
+                        continue
 
-                mfcc_writer.Write(u.kaldi_id, mfccs)
-                if self.pitch_computer is not None:
-                    pitch = self.pitch_computer.compute_pitch_for_export(seg, compress=True)
-                    pitch_writer.Write(u.kaldi_id, pitch)
-                num_done += 1
-                self.callback(1)
+                    mfcc_writer.Write(u.kaldi_id, mfccs)
+                    if self.pitch_computer is not None:
+                        pitch = self.pitch_computer.compute_pitch_for_export(seg, compress=True)
+                        pitch_writer.Write(u.kaldi_id, pitch)
+                    num_done += 1
+                    self.callback(1)
+                offset += limit
             mfcc_writer.Close()
             if self.pitch_computer is not None:
                 pitch_writer.Close()
-            mfcc_logger.info(
-                f"Thread {self.job_name}: Done {num_done} utterances, errors on {num_error}."
-            )
+            mfcc_logger.info(f"Done {num_done} utterances, errors on {num_error}.")
 
 
 class FinalFeatureFunction(KaldiFunction):
@@ -279,7 +284,7 @@ class FinalFeatureFunction(KaldiFunction):
         self.sliding_cmvn = args.sliding_cmvn
         self.subsample_feats = args.subsample_feats
 
-    def _run(self) -> typing.Generator[int]:
+    def _run(self) -> None:
         """Run the function"""
         with self.session() as session, thread_logger(
             "kalpy.mfcc", self.log_path, job_name=self.job_name
@@ -300,7 +305,7 @@ class FinalFeatureFunction(KaldiFunction):
                     spk2utt[speaker_id] = []
                 spk2utt[speaker_id].append(utt_id)
             feats_scp_path = job.construct_path(self.data_directory, "feats", "scp")
-            cmvn_ark_path = job.construct_path(self.data_directory, "cmvn", "scp")
+            cmvn_scp_path = job.construct_path(self.data_directory, "cmvn", "scp")
             pitch_scp_path = job.construct_path(self.data_directory, "pitch", "scp")
             pitch_ark_path = job.construct_path(self.data_directory, "pitch", "ark")
             vad_scp_path = job.construct_path(self.data_directory, "vad", "scp")
@@ -318,7 +323,7 @@ class FinalFeatureFunction(KaldiFunction):
                     mfcc_archive = FeatureArchive(
                         feats_scp_path,
                         utt2spk=utt2spk,
-                        cmvn_file_name=cmvn_ark_path,
+                        cmvn_file_name=cmvn_scp_path,
                         vad_file_name=vad_scp_path,
                         subsample_n=self.subsample_feats,
                     )
@@ -336,17 +341,18 @@ class FinalFeatureFunction(KaldiFunction):
                 pitch_archive = FeatureArchive(
                     pitch_scp_path, vad_file_name=vad_scp_path, subsample_n=self.subsample_feats
                 )
-                for (utt_id, feats), (utt_id2, pitch) in zip(mfcc_archive, pitch_archive):
+                for (utt_id, mfccs), (utt_id2, pitch) in zip(mfcc_archive, pitch_archive):
                     assert utt_id == utt_id2
-                    mfcc_logger.info(
-                        f"Thread {self.job_name}: Processing {utt_id}: len = {feats.NumRows()}"
-                    )
                     try:
-                        feats = paste_feats([feats, pitch], 0)
+                        feats = paste_feats([mfccs, pitch], 1)
                     except Exception as e:
-                        mfcc_logger.warning(f"Thread {self.job_name}: Exception encountered: {e}")
+                        mfcc_logger.warning(f"Exception encountered: {e}")
                         num_error += 1
                         continue
+                    mfcc_logger.info(
+                        f"Processing {utt_id}: MFCC len = {mfccs.NumRows()}, "
+                        f"Pitch len = {pitch.NumRows()}, Combined len = {feats.NumRows()}"
+                    )
                     feats = CompressedMatrix(feats)
                     feature_writer.Write(utt_id, feats)
                     num_done += 1
@@ -354,24 +360,20 @@ class FinalFeatureFunction(KaldiFunction):
                 pitch_archive.close()
             else:
                 for utt_id, mfccs in mfcc_archive:
-                    mfcc_logger.info(
-                        f"Thread {self.job_name}: Processing {utt_id}: len = {mfccs.NumCols()}"
-                    )
+                    mfcc_logger.info(f"Processing {utt_id}: len = {mfccs.NumRows()}")
                     mfccs = CompressedMatrix(mfccs)
                     feature_writer.Write(utt_id, mfccs)
                     num_done += 1
                     self.callback(1)
             feature_writer.Close()
             mfcc_archive.close()
-            os.remove(raw_ark_path)
-            if os.path.exists(pitch_scp_path):
-                os.remove(pitch_ark_path)
-                os.remove(pitch_scp_path)
-            os.remove(feats_scp_path)
-            os.rename(temp_scp_path, feats_scp_path)
-            mfcc_logger.info(
-                f"Thread {self.job_name}: Done {num_done} utterances, errors on {num_error}."
-            )
+            raw_ark_path.unlink()
+            if pitch_scp_path.exists():
+                pitch_ark_path.unlink()
+                pitch_scp_path.unlink()
+            feats_scp_path.unlink()
+            temp_scp_path.rename(feats_scp_path)
+            mfcc_logger.info(f"Done {num_done} utterances, errors on {num_error}.")
 
 
 class ComputeVadFunction(KaldiFunction):
@@ -448,37 +450,34 @@ class CalcFmllrFunction(KaldiFunction):
         Arguments for the function
     """
 
-    progress_pattern = re.compile(r"^LOG.*For speaker (?P<speaker>.*),.*$")
-    memory_error_pattern = re.compile(
-        r"^ERROR \(gmm-est-fmllr-gpost.*Failed to read vector from stream..*$"
-    )
-
     def __init__(self, args: CalcFmllrArguments):
         super().__init__(args)
         self.working_directory = args.working_directory
         self.ali_model_path = args.ali_model_path
         self.model_path = args.model_path
         self.fmllr_options = args.fmllr_options
-        self.thread_lock = args.thread_lock
 
-    def _run(self) -> typing.Generator[str]:
+    def _run(self) -> None:
         """Run the function"""
+        from montreal_forced_aligner.db import Dictionary
+
         with self.session() as session, thread_logger(
             "kalpy.fmllr", self.log_path, job_name=self.job_name
         ) as fmllr_logger:
-            fmllr_logger.debug(f"Using acoustic model: {self.ali_model_path}\n")
             job: typing.Optional[Job] = session.get(
                 Job, self.job_name, options=[joinedload(Job.dictionaries), joinedload(Job.corpus)]
             )
-            silence_phones = [
-                x
-                for x, in session.query(Phone.mapping_id).filter(
-                    Phone.phone_type.in_([PhoneType.silence, PhoneType.oov])
-                )
-            ]
+
             for dict_id in job.dictionary_ids:
+                d = session.get(Dictionary, dict_id)
+                silence_phones = [
+                    x
+                    for x, in session.query(Phone.mapping_id).filter(
+                        Phone.phone.in_([d.optional_silence_phone, d.oov_phone])
+                    )
+                ]
                 fmllr_trans_path = job.construct_path(
-                    job.corpus.split_directory, "trans", "scp", dictionary_id=dict_id
+                    job.corpus.current_subset_directory, "trans", "scp", dictionary_id=dict_id
                 )
                 previous_transform_archive = None
                 if not fmllr_trans_path.exists():
@@ -494,16 +493,25 @@ class CalcFmllrFunction(KaldiFunction):
                 spk2utt.load(spk2utt_path)
                 feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
 
+                fmllr_logger.debug("Feature Archive information:")
+                fmllr_logger.debug(f"CMVN: {feature_archive.cmvn_read_specifier}")
+                fmllr_logger.debug(f"Deltas: {feature_archive.use_deltas}")
+                fmllr_logger.debug(f"Splices: {feature_archive.use_splices}")
+                fmllr_logger.debug(f"LDA: {feature_archive.lda_mat_file_name}")
+                fmllr_logger.debug(f"fMLLR: {feature_archive.transform_read_specifier}")
+                fmllr_logger.debug("Model information:")
+                fmllr_logger.debug(f"Align model path: {self.ali_model_path}")
+                fmllr_logger.debug(f"Model path: {self.model_path}")
+
                 computer = FmllrComputer(
                     self.ali_model_path,
+                    self.model_path,
                     silence_phones,
                     spk2utt=spk2utt,
-                    two_models=self.ali_model_path != self.model_path,
-                    thread_lock=self.thread_lock,
                     **self.fmllr_options,
                 )
                 ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
-                fmllr_logger.debug(f"Processing {ali_path}")
+                fmllr_logger.debug(f"Alignment path: {ali_path}")
                 alignment_archive = AlignmentArchive(ali_path)
                 temp_trans_path = job.construct_path(
                     self.working_directory, "trans", "ark", dict_id
@@ -521,12 +529,12 @@ class CalcFmllrFunction(KaldiFunction):
                 del alignment_archive
                 del computer
                 if fmllr_trans_path is not None:
-                    os.remove(fmllr_trans_path)
-                    os.remove(fmllr_trans_path.with_suffix(".ark"))
+                    fmllr_trans_path.unlink()
+                    fmllr_trans_path.with_suffix(".ark").unlink()
                 trans_archive = MatrixArchive(temp_trans_path)
                 write_specifier = generate_write_specifier(
                     job.construct_path(
-                        job.corpus.split_directory, "trans", "ark", dictionary_id=dict_id
+                        job.corpus.current_subset_directory, "trans", "ark", dictionary_id=dict_id
                     ),
                     write_scp=True,
                 )
@@ -535,7 +543,7 @@ class CalcFmllrFunction(KaldiFunction):
                     writer.Write(str(speaker), trans)
                 writer.Close()
                 del trans_archive
-                os.remove(temp_trans_path)
+                temp_trans_path.unlink()
 
 
 class FeatureConfigMixin:
@@ -588,7 +596,7 @@ class FeatureConfigMixin:
         use_energy: bool = False,
         frame_shift: int = 10,
         frame_length: int = 25,
-        snip_edges: bool = True,
+        snip_edges: bool = False,
         low_frequency: int = 20,
         high_frequency: int = 7800,
         sample_frequency: int = 16000,

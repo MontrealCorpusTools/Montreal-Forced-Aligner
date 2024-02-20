@@ -16,7 +16,6 @@ from kalpy.gmm.train import TwoFeatsStatsAccumulator
 from kalpy.gmm.utils import read_gmm_model, write_gmm_model
 from kalpy.utils import kalpy_logger
 from sqlalchemy.orm import joinedload, subqueryload
-from tqdm.rich import tqdm
 
 from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import KaldiFunction
@@ -83,11 +82,12 @@ class AccStatsTwoFeatsFunction(KaldiFunction):
                 .first()
             )
             for d in job.dictionaries:
-                train_logger.debug(f"Accumulating stats for dictionary {d.id}")
+                train_logger.debug(f"Accumulating stats for dictionary {d.name} ({d.id})")
                 train_logger.debug(f"Accumulating stats for model: {self.model_path}")
                 dict_id = d.id
                 accumulator = TwoFeatsStatsAccumulator(self.model_path)
 
+                ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
                 fmllr_path = job.construct_path(
                     job.corpus.current_subset_directory, "trans", "scp", dict_id
                 )
@@ -108,7 +108,19 @@ class AccStatsTwoFeatsFunction(KaldiFunction):
                     lda_mat_file_name=lda_mat_path,
                     deltas=True,
                 )
-                ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                train_logger.debug("SAT Feature Archive information:")
+                train_logger.debug(f"CMVN: {feature_archive.cmvn_read_specifier}")
+                train_logger.debug(f"Deltas: {feature_archive.use_deltas}")
+                train_logger.debug(f"Splices: {feature_archive.use_splices}")
+                train_logger.debug(f"LDA: {feature_archive.lda_mat_file_name}")
+                train_logger.debug(f"fMLLR: {feature_archive.transform_read_specifier}")
+                train_logger.debug("SI Feature Archive information:")
+                train_logger.debug(f"CMVN: {si_feature_archive.cmvn_read_specifier}")
+                train_logger.debug(f"Deltas: {si_feature_archive.use_deltas}")
+                train_logger.debug(f"Splices: {si_feature_archive.use_splices}")
+                train_logger.debug(f"LDA: {si_feature_archive.lda_mat_file_name}")
+                train_logger.debug(f"fMLLR: {si_feature_archive.transform_read_specifier}")
+                train_logger.debug(f"\nAlignment path: {ali_path}")
                 alignment_archive = AlignmentArchive(ali_path)
                 accumulator.accumulate_stats(
                     feature_archive, si_feature_archive, alignment_archive, callback=self.callback
@@ -148,17 +160,22 @@ class SatTrainer(TriphoneTrainer):
         num_leaves: int = 2500,
         max_gaussians: int = 15000,
         power: float = 0.2,
+        boost_silence: float = 1.0,
         quick: bool = False,
         **kwargs,
     ):
-        super().__init__(**kwargs)
-        self.subset = subset
-        self.num_leaves = num_leaves
-        self.max_gaussians = max_gaussians
-        self.power = power
+        super().__init__(
+            power=power,
+            subset=subset,
+            num_leaves=num_leaves,
+            max_gaussians=max_gaussians,
+            boost_silence=boost_silence,
+            **kwargs,
+        )
         self.fmllr_iterations = []
         self.quick = quick
-        self.graph_batch_size = 0
+        if self.quick:
+            self.power = 0.2
 
     def acc_stats_two_feats_arguments(self) -> List[AccStatsTwoFeatsArguments]:
         """
@@ -174,7 +191,7 @@ class SatTrainer(TriphoneTrainer):
             arguments.append(
                 AccStatsTwoFeatsArguments(
                     j.id,
-                    getattr(self, "session", ""),
+                    getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                     self.working_log_directory.joinpath(f"acc_stats_two_feats.{j.id}.log"),
                     self.working_directory,
                     self.model_path,
@@ -195,9 +212,7 @@ class SatTrainer(TriphoneTrainer):
         else:
             self.realignment_iterations = [10, 15]
             self.fmllr_iterations = [2, 6, 12]
-            self.graph_batch_size = 750
             self.final_gaussian_iteration = self.num_iterations - 5
-            self.power = 0.0
             self.initial_gaussians = int(self.max_gaussians / 2)
             if self.initial_gaussians < self.num_leaves:
                 self.initial_gaussians = self.num_leaves
@@ -315,13 +330,14 @@ class SatTrainer(TriphoneTrainer):
         gmm_accs = AccumAmDiagGmm()
         transition_model.InitStats(transition_accs)
         gmm_accs.init(acoustic_model)
-        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
-            for result in run_kaldi_function(AccStatsTwoFeatsFunction, arguments, pbar.update):
-                if isinstance(result, tuple):
-                    job_transition_accs, job_gmm_accs = result
+        for result in run_kaldi_function(
+            AccStatsTwoFeatsFunction, arguments, total_count=self.num_current_utterances
+        ):
+            if isinstance(result, tuple):
+                job_transition_accs, job_gmm_accs = result
 
-                    transition_accs.AddVec(1.0, job_transition_accs)
-                    gmm_accs.Add(1.0, job_gmm_accs)
+                transition_accs.AddVec(1.0, job_transition_accs)
+                gmm_accs.Add(1.0, job_gmm_accs)
 
         log_path = self.working_log_directory.joinpath("align_model_est.log")
 
@@ -331,13 +347,10 @@ class SatTrainer(TriphoneTrainer):
                 f"Transition model update: Overall {objf_impr/count} "
                 f"log-like improvement per frame over {count} frames."
             )
-            power = self.power
-            if self.quick:
-                power = 0.2
             objf_impr, count = acoustic_model.mle_update(
                 gmm_accs,
                 mixup=self.current_gaussians,
-                power=power,
+                power=self.power,
                 remove_low_count_gaussians=False,
             )
             logger.debug(

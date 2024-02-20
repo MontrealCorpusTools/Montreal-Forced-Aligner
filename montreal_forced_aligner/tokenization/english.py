@@ -457,7 +457,7 @@ class BracketedReTokenize:
         return doc
 
 
-def en_spacy():
+def en_spacy(ignore_case: bool = True):
     name = "en_core_web_sm"
     try:
         nlp = spacy.load(name)

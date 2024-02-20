@@ -308,7 +308,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         return [
             PldaClassificationArguments(
                 j.id,
-                getattr(self, "session", ""),
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"plda_classification.{j.id}.log"),
                 self.plda,
                 self.speaker_ivector_path,
@@ -323,9 +323,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         self.setup()
         logger.info("Classifying utterances...")
 
-        with self.session() as session, tqdm(
-            total=self.num_utterances, disable=config.QUIET
-        ) as pbar, mfa_open(
+        with self.session() as session, mfa_open(
             self.working_directory.joinpath("speaker_classification_results.csv"), "w"
         ) as f:
             writer = csv.DictWriter(f, ["utt_id", "file", "begin", "end", "speaker", "score"])
@@ -355,7 +353,13 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
 
             if self.use_xvector:
                 arguments = [
-                    SpeechbrainArguments(j.id, self.session, None, self.cuda, self.cluster)
+                    SpeechbrainArguments(
+                        j.id,
+                        getattr(self, "session" if config.USE_THREADING else "db_string", ""),
+                        None,
+                        self.cuda,
+                        self.cluster,
+                    )
                     for j in self.jobs
                 ]
                 func = SpeechbrainClassificationFunction
@@ -364,7 +368,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 arguments = self.plda_classification_arguments()
                 func = PldaClassificationFunction
             for utt_id, classified_speaker, score in run_kaldi_function(
-                func, arguments, pbar.update
+                func, arguments, total_count=self.num_utterances
             ):
                 classified_speaker = str(classified_speaker)
                 self.classification_score += score / self.num_utterances
@@ -629,24 +633,23 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
     def export_xvectors(self):
         logger.info("Exporting SpeechBrain embeddings...")
         os.makedirs(self.split_directory, exist_ok=True)
-        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
-            arguments = [
-                ExportIvectorsArguments(
-                    j.id,
-                    self.session,
-                    j.construct_path(self.working_log_directory, "export_ivectors", "log"),
-                    self.use_xvector,
-                )
-                for j in self.jobs
-            ]
-            utterance_mapping = []
-            for utt_id, ark_path in run_kaldi_function(
-                ExportIvectorsFunction, arguments, pbar.update
-            ):
-                utterance_mapping.append({"id": utt_id, "ivector_ark": ark_path})
-            with self.session() as session:
-                bulk_update(session, Utterance, utterance_mapping)
-                session.commit()
+        arguments = [
+            ExportIvectorsArguments(
+                j.id,
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
+                j.construct_path(self.working_log_directory, "export_ivectors", "log"),
+                self.use_xvector,
+            )
+            for j in self.jobs
+        ]
+        utterance_mapping = []
+        for utt_id, ark_path in run_kaldi_function(
+            ExportIvectorsFunction, arguments, total_count=self.num_utterances
+        ):
+            utterance_mapping.append({"id": utt_id, "ivector_ark": ark_path})
+        with self.session() as session:
+            bulk_update(session, Utterance, utterance_mapping)
+            session.commit()
         self._write_ivectors()
 
     def fix_speaker_ordering(self):
@@ -683,7 +686,13 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             unk_count = 0
             if self.use_xvector:
                 arguments = [
-                    SpeechbrainArguments(j.id, self.session, None, self.cuda, self.cluster)
+                    SpeechbrainArguments(
+                        j.id,
+                        getattr(self, "session" if config.USE_THREADING else "db_string", ""),
+                        None,
+                        self.cuda,
+                        self.cluster,
+                    )
                     for j in self.jobs
                 ]
                 func = SpeechbrainClassificationFunction
@@ -697,31 +706,30 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
 
             logger.info("Generating initial speaker labels...")
             utt2spk = {k: v for k, v in session.query(Utterance.id, Utterance.speaker_id)}
-            with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
-                for utt_id, classified_speaker, score in run_kaldi_function(
-                    func, arguments, pbar.update
-                ):
-                    classified_speaker = str(classified_speaker)
-                    self.classification_score += score / self.num_utterances
-                    if score < score_threshold:
-                        unk_count += 1
-                        utterance_mapping.append(
-                            {"id": utt_id, "speaker_id": existing_speakers["MFA_UNKNOWN"]}
-                        )
-                        continue
-                    if classified_speaker in existing_speakers:
-                        speaker_id = existing_speakers[classified_speaker]
-                    else:
-                        if classified_speaker not in speaker_mapping:
-                            speaker_mapping[classified_speaker] = {
-                                "id": next_speaker_id,
-                                "name": classified_speaker,
-                            }
-                            next_speaker_id += 1
-                        speaker_id = speaker_mapping[classified_speaker]["id"]
-                    if speaker_id == utt2spk[utt_id]:
-                        continue
-                    utterance_mapping.append({"id": utt_id, "speaker_id": speaker_id})
+            for utt_id, classified_speaker, score in run_kaldi_function(
+                func, arguments, total_count=self.num_utterances
+            ):
+                classified_speaker = str(classified_speaker)
+                self.classification_score += score / self.num_utterances
+                if score < score_threshold:
+                    unk_count += 1
+                    utterance_mapping.append(
+                        {"id": utt_id, "speaker_id": existing_speakers["MFA_UNKNOWN"]}
+                    )
+                    continue
+                if classified_speaker in existing_speakers:
+                    speaker_id = existing_speakers[classified_speaker]
+                else:
+                    if classified_speaker not in speaker_mapping:
+                        speaker_mapping[classified_speaker] = {
+                            "id": next_speaker_id,
+                            "name": classified_speaker,
+                        }
+                        next_speaker_id += 1
+                    speaker_id = speaker_mapping[classified_speaker]["id"]
+                if speaker_id == utt2spk[utt_id]:
+                    continue
+                utterance_mapping.append({"id": utt_id, "speaker_id": speaker_id})
             if speaker_mapping:
                 session.bulk_insert_mappings(Speaker, list(speaker_mapping.values()))
                 session.flush()
@@ -800,9 +808,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 self.max_iterations,
             )[iteration]
         logger.debug(f"Score threshold: {score_threshold}")
-        with self.session() as session, tqdm(
-            total=self.num_utterances, disable=config.QUIET
-        ) as pbar:
+        with self.session() as session:
             unknown_speaker_id = (
                 session.query(Speaker.id).filter(Speaker.name == "MFA_UNKNOWN").first()[0]
             )
@@ -815,7 +821,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             utt2spk = {k: v for k, v in session.query(Utterance.id, Utterance.speaker_id)}
 
             for utt_id, classified_speaker, score in run_kaldi_function(
-                func, arguments, pbar.update
+                func, arguments, total_count=self.num_utterances
             ):
                 self.classification_score += score / self.num_utterances
                 if score < score_threshold:
@@ -1265,69 +1271,69 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         limit_per_speaker = 5
         limit_within_speaker = 30
         begin = time.time()
-        with tqdm(total=self.num_speakers, disable=config.QUIET) as pbar:
-            arguments = [
-                ComputeEerArguments(
-                    j.id,
-                    self.session,
-                    None,
-                    self.plda,
-                    self.metric,
-                    self.use_xvector,
-                    limit_within_speaker,
-                    limit_per_speaker,
-                )
-                for j in self.jobs
-            ]
-            match_scores = []
-            mismatch_scores = []
-            for result in run_kaldi_function(ComputeEerFunction, arguments, pbar.update):
-                matches, mismatches = result
-                match_scores.extend(matches)
-                mismatch_scores.extend(mismatches)
-            random.shuffle(mismatches)
-            mismatch_scores = mismatch_scores[: len(match_scores)]
-            match_scores = np.array(match_scores)
-            mismatch_scores = np.array(mismatch_scores)
-            device = torch.device("cuda" if self.cuda else "cpu")
-            eer, thresh = EER(
-                torch.tensor(mismatch_scores, device=device),
-                torch.tensor(match_scores, device=device),
+        arguments = [
+            ComputeEerArguments(
+                j.id,
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
+                None,
+                self.plda,
+                self.metric,
+                self.use_xvector,
+                limit_within_speaker,
+                limit_per_speaker,
             )
-            logger.debug(
-                f"Matching scores: {np.min(match_scores):.3f}-{np.max(match_scores):.3f} (mean = {match_scores.mean():.3f}, n = {match_scores.shape[0]})"
-            )
-            logger.debug(
-                f"Mismatching scores: {np.min(mismatch_scores):.3f}-{np.max(mismatch_scores):.3f} (mean = {mismatch_scores.mean():.3f}, n = {mismatch_scores.shape[0]})"
-            )
-            logger.info(f"EER: {eer*100:.2f}%")
-            logger.info(f"Threshold: {thresh:.4f}")
+            for j in self.jobs
+        ]
+        match_scores = []
+        mismatch_scores = []
+        for result in run_kaldi_function(
+            ComputeEerFunction, arguments, total_count=self.num_speakers
+        ):
+            matches, mismatches = result
+            match_scores.extend(matches)
+            mismatch_scores.extend(mismatches)
+        random.shuffle(mismatches)
+        mismatch_scores = mismatch_scores[: len(match_scores)]
+        match_scores = np.array(match_scores)
+        mismatch_scores = np.array(mismatch_scores)
+        device = torch.device("cuda" if self.cuda else "cpu")
+        eer, thresh = EER(
+            torch.tensor(mismatch_scores, device=device),
+            torch.tensor(match_scores, device=device),
+        )
+        logger.debug(
+            f"Matching scores: {np.min(match_scores):.3f}-{np.max(match_scores):.3f} (mean = {match_scores.mean():.3f}, n = {match_scores.shape[0]})"
+        )
+        logger.debug(
+            f"Mismatching scores: {np.min(mismatch_scores):.3f}-{np.max(mismatch_scores):.3f} (mean = {mismatch_scores.mean():.3f}, n = {mismatch_scores.shape[0]})"
+        )
+        logger.info(f"EER: {eer*100:.2f}%")
+        logger.info(f"Threshold: {thresh:.4f}")
         logger.debug(f"Calculating EER took {time.time() - begin:.3f} seconds")
         return eer, thresh
 
     def load_embeddings(self) -> None:
         """Load embeddings from a speechbrain model"""
         logger.info("Loading SpeechBrain embeddings...")
-        with tqdm(
-            total=self.num_utterances, disable=config.QUIET
-        ) as pbar, self.session() as session:
+        with self.session() as session:
             begin = time.time()
             update_mapping = {}
             arguments = [SpeechbrainArguments(1, self.session, None, self.cuda, self.cluster)]
             utterance_ids = []
             original_use_mp = config.USE_MP
             if self.cuda:
-                config.USE_MP = False
+                config.update_configuration(
+                    {
+                        "USE_MP": False,
+                    }
+                )
             batch_size = 100000
             for u_id, emb in run_kaldi_function(
-                SpeechbrainEmbeddingFunction, arguments, pbar.update
+                SpeechbrainEmbeddingFunction, arguments, total_count=self.num_utterances
             ):
                 utterance_ids.append(u_id)
 
-                kaldi_ivector = DoubleVector()
-                kaldi_ivector.from_numpy(emb)
-                ivector_normalize_length(kaldi_ivector)
-                update_mapping[u_id] = {"id": u_id, "xvector": kaldi_ivector.numpy()}
+                update_mapping[u_id] = {"id": u_id, "xvector": emb}
                 if len(update_mapping) >= batch_size:
                     bulk_update(session, Utterance, list(update_mapping.values()))
                     session.commit()
@@ -1335,6 +1341,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             if len(update_mapping):
                 bulk_update(session, Utterance, list(update_mapping.values()))
                 session.commit()
+            if len(utterance_ids):
                 speaker_ids = (
                     session.query(Speaker.id)
                     .join(Utterance.speaker)
@@ -1358,7 +1365,11 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             session.query(Corpus).update({Corpus.xvectors_loaded: True})
             session.commit()
             if self.cuda:
-                config.USE_MP = original_use_mp
+                config.update_configuration(
+                    {
+                        "USE_MP": original_use_mp,
+                    }
+                )
             logger.debug(f"Loading embeddings took {time.time() - begin:.3f} seconds")
 
     def refresh_plda_vectors(self):
@@ -1425,7 +1436,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 if not s_ivectors:
                     continue
                 mean_ivector = np.mean(np.array(s_ivectors), axis=0)
-                speaker_mean = FloatVector()
+                speaker_mean = DoubleVector()
                 speaker_mean.from_numpy(mean_ivector)
                 ivector_normalize_length(speaker_mean)
 
@@ -1466,17 +1477,23 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                     u_query = session.query(Utterance.xvector).filter(
                         Utterance.speaker_id == s_id, Utterance.xvector != None  # noqa
                     )
-                    if not u_query.count():
+                    num_utterances = u_query.count()
+                    if not num_utterances:
                         continue
-                    embeddings = np.empty((u_query.count(), XVECTOR_DIMENSION))
+                    embeddings = np.empty((num_utterances, XVECTOR_DIMENSION))
                     for i, (xvector,) in enumerate(u_query):
                         embeddings[i, :] = xvector
                     speaker_xvector = np.mean(embeddings, axis=0)
-                    speaker_mean = FloatVector()
+                    speaker_mean = DoubleVector()
                     speaker_mean.from_numpy(speaker_xvector)
                     ivector_normalize_length(speaker_mean)
                     update_mapping.append(
-                        {"id": s_id, "xvector": speaker_mean.numpy(), "modified": False}
+                        {
+                            "id": s_id,
+                            "xvector": speaker_mean.numpy(),
+                            "modified": False,
+                            "num_utterances": num_utterances,
+                        }
                     )
                     pbar.update(1)
             logger.debug(f"Updating {len(update_mapping)} speakers...")

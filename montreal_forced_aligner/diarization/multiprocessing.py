@@ -503,7 +503,6 @@ class PldaClassificationFunction(KaldiFunction):
         ivector_subtract_mean(speaker_ivectors)
         speaker_ivectors = self.plda.transform_ivectors(speaker_ivectors, num_utts)
         with self.session() as session:
-
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
@@ -649,7 +648,6 @@ class SpeechbrainClassificationFunction(KaldiFunction):
         )
         device = torch.device("cuda" if self.cuda else "cpu")
         with self.session() as session:
-
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
@@ -743,6 +741,7 @@ class SpeechbrainEmbeddingFunction(KaldiFunction):
                 .numpy()
                 .squeeze(axis=1)
             )
+            embeddings = preprocessing.normalize(embeddings)
             for i, u_id in enumerate(batch.utterance_id):
                 self.callback((int(u_id), embeddings[i]))
             del embeddings

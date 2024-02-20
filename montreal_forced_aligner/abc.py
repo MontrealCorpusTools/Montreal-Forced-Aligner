@@ -6,6 +6,7 @@ Abstract Base Classes
 from __future__ import annotations
 
 import abc
+import contextlib
 import logging
 import os
 import shutil
@@ -71,14 +72,33 @@ class KaldiFunction(metaclass=abc.ABCMeta):
 
     def __init__(self, args: MfaArguments):
         self.args = args
-        self.session = self.args.session
+        self.db_string = None
+        self._session = None
+        if isinstance(self.args.session, str):
+            self.db_string = self.args.session
+        else:
+            self._session = self.args.session
         self.job_name = self.args.job_name
         self.log_path = self.args.log_path
         self.callback = None
 
+    @contextlib.contextmanager
+    def session(self):
+        if self._session is not None:
+            with self._session() as session:
+                yield session
+        else:
+            db_engine = sqlalchemy.create_engine(self.db_string)
+            with sqlalchemy.orm.Session(db_engine) as session:
+                yield session
+
     def run(self):
         """Run the function, calls subclassed object's ``_run`` with error handling"""
         try:
+            if self._session is not None:
+                config.USE_THREADING = True
+            else:
+                config.USE_THREADING = False
             self._run()
         except Exception:
             exc_type, exc_value, exc_traceback = sys.exc_info()
@@ -568,6 +588,8 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         self.check_previous_run()
         if hasattr(self, "initialize_database"):
             self.initialize_database()
+        if hasattr(self, "inspect_database"):
+            self.inspect_database()
 
     @property
     def working_directory(self) -> Path:
@@ -714,13 +736,17 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         """
         if not os.path.exists(self.worker_config_path):
             return True
-        conf = load_configuration(self.worker_config_path)
-        self._validate_previous_configuration(conf)
-        if not config.CLEAN and self.dirty:
-            logger.warning(
-                "The previous run had a different configuration than the current, which may cause issues."
-                " Please see the log for details or use --clean flag if issues are encountered."
-            )
+        try:
+            conf = load_configuration(self.worker_config_path)
+            self._validate_previous_configuration(conf)
+            if not config.CLEAN and self.dirty:
+                logger.warning(
+                    "The previous run had a different configuration than the current, which may cause issues."
+                    " Please see the log for details or use --clean flag if issues are encountered."
+                )
+        except yaml.error.YAMLError:
+            logger.warning("The previous run's configuration could not be loaded.")
+            return False
 
     @property
     def identifier(self) -> str:
@@ -835,6 +861,8 @@ class TrainerMixin(ModelExporterMixin):
     ----------
     num_iterations: int
         Number of training iterations
+    model_version: str
+        Override for model version
 
     Attributes
     ----------
@@ -842,10 +870,11 @@ class TrainerMixin(ModelExporterMixin):
         Current iteration
     """
 
-    def __init__(self, num_iterations: int = 40, **kwargs):
+    def __init__(self, num_iterations: int = 40, model_version: str = None, **kwargs):
         super().__init__(**kwargs)
         self.iteration: int = 0
         self.num_iterations = num_iterations
+        self.model_version = model_version
 
     @abc.abstractmethod
     def initialize_training(self) -> None:

@@ -124,54 +124,65 @@ class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
         logger.info("Pruning large ngram model to medium and small versions...")
         small_mod_path = self.mod_path.with_stem(self.mod_path.stem + "_small")
         med_mod_path = self.mod_path.with_stem(self.mod_path.stem + "_med")
-        subprocess.check_call(
-            [
-                "ngramshrink",
-                f"--method={self.prune_method}",
-                f"--theta={self.prune_thresh_medium}",
-                self.mod_path,
-                med_mod_path,
-            ]
-        )
-        assert med_mod_path.exists()
-        if getattr(self, "sym_path", None):
+        with mfa_open(self.working_log_directory.joinpath("prune.log"), "w") as log_file:
             subprocess.check_call(
                 [
-                    "ngramprint",
-                    "--ARPA",
-                    f"--symbols={self.sym_path}",
+                    "ngramshrink",
+                    f"--method={self.prune_method}",
+                    f"--theta={self.prune_thresh_medium}",
+                    self.mod_path,
                     med_mod_path,
-                    self.medium_arpa_path,
-                ]
+                ],
+                stderr=log_file,
             )
-        else:
-            subprocess.check_call(["ngramprint", "--ARPA", med_mod_path, self.medium_arpa_path])
-        assert self.medium_arpa_path.exists()
+            assert med_mod_path.exists()
+            if getattr(self, "sym_path", None):
+                subprocess.check_call(
+                    [
+                        "ngramprint",
+                        "--ARPA",
+                        f"--symbols={self.sym_path}",
+                        med_mod_path,
+                        self.medium_arpa_path,
+                    ],
+                    stderr=log_file,
+                )
+            else:
+                subprocess.check_call(
+                    ["ngramprint", "--ARPA", med_mod_path, self.medium_arpa_path],
+                    stderr=log_file,
+                )
+            assert self.medium_arpa_path.exists()
 
-        logger.debug("Finished pruning medium arpa!")
-        subprocess.check_call(
-            [
-                "ngramshrink",
-                f"--method={self.prune_method}",
-                f"--theta={self.prune_thresh_small}",
-                self.mod_path,
-                small_mod_path,
-            ]
-        )
-        assert small_mod_path.exists()
-        if getattr(self, "sym_path", None):
+            logger.debug("Finished pruning medium arpa!")
             subprocess.check_call(
                 [
-                    "ngramprint",
-                    "--ARPA",
-                    f"--symbols={self.sym_path}",
+                    "ngramshrink",
+                    f"--method={self.prune_method}",
+                    f"--theta={self.prune_thresh_small}",
+                    self.mod_path,
                     small_mod_path,
-                    self.small_arpa_path,
-                ]
+                ],
+                stderr=log_file,
             )
-        else:
-            subprocess.check_call(["ngramprint", "--ARPA", small_mod_path, self.small_arpa_path])
-        assert self.small_arpa_path.exists()
+            assert small_mod_path.exists()
+            if getattr(self, "sym_path", None):
+                subprocess.check_call(
+                    [
+                        "ngramprint",
+                        "--ARPA",
+                        f"--symbols={self.sym_path}",
+                        small_mod_path,
+                        self.small_arpa_path,
+                    ],
+                    stderr=log_file,
+                )
+            else:
+                subprocess.check_call(
+                    ["ngramprint", "--ARPA", small_mod_path, self.small_arpa_path],
+                    stderr=log_file,
+                )
+            assert self.small_arpa_path.exists()
 
         logger.debug("Finished pruning small arpa!")
         logger.info("Done pruning!")
@@ -267,7 +278,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
             )
             if not oov_count:
                 oov_count = 0
-        return {
+        meta = {
             "architecture": "ngram",
             "order": self.order,
             "method": self.method,
@@ -283,6 +294,9 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
                 "small_perplexity": self.small_perplexity,
             },
         }
+        if self.model_version is not None:
+            meta["version"] = self.model_version
+        return meta
 
     def evaluate(self) -> None:
         """
@@ -303,6 +317,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
                 farcompile_proc = subprocess.Popen(
                     [
                         thirdparty_binary("farcompilestrings"),
+                        "--fst_type=compact",
                         "--token_type=symbol",
                         "--generate_keys=16",
                         f"--symbols={self.sym_path}",
@@ -313,7 +328,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
                     stdout=f,
                     env=os.environ,
                 )
-                for (normalized_text, text) in utterance_query:
+                for normalized_text, text in utterance_query:
                     if not normalized_text:
                         normalized_text = text
                     text = " ".join(
@@ -411,7 +426,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
         for j in self.jobs:
             args = TrainLmArguments(
                 j.id,
-                getattr(self, "session", ""),
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"ngram_count.{j.id}.log"),
                 self.working_directory,
                 self.sym_path,

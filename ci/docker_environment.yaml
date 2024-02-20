@@ -3,7 +3,7 @@ channels:
   - pytorch
   - nvidia
 dependencies:
-  - python>=3.8
+  - python>=3.11
   - numpy
   - librosa
   - tqdm
@@ -14,7 +14,7 @@ dependencies:
   - sox
   - ffmpeg
   - pynini
-  - openfst
+  - openfst=1.8.3
   - scikit-learn<1.3
   - hdbscan
   - baumwelch
@@ -35,10 +35,17 @@ dependencies:
   - matplotlib
   - seaborn
   - sqlite
-  - pip
   - rich
   - rich-click
   - kalpy
-  - spacy[ja]
+  - spacy
+  - sudachipy
+  - sudachidict-core
+  - spacy-pkuseg
+  - pip
   - pip:
       - speechbrain
+      - python-mecab-ko
+      - jamo
+      - pythainlp
+      - hanziconv

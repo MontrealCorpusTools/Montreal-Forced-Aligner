@@ -38,15 +38,15 @@ Installing older versions of MFA
 
 If you need to use an older version of MFA, you can install it via:
 
-```
-conda install montreal-forced-aligner=X.X.X
-```
+.. code-block:: bash
+
+   conda install montreal-forced-aligner=X.X.X
 
 More stable key versions:
 
-* Stable 2.2 release: :code:`conda install montreal-forced-aligner=2.2.17`
-* Stable 2.1 release: :code:`conda install montreal-forced-aligner=2.1.7`
-* Stable 2.0 release: :code:`conda install montreal-forced-aligner=2.0.6`
+* Stable 2.2 release: :code:`conda install -c conda-forge montreal-forced-aligner=2.2.17`
+* Stable 2.1 release: :code:`conda install -c conda-forge montreal-forced-aligner=2.1.7`
+* Stable 2.0 release: :code:`conda install -c conda-forge montreal-forced-aligner=2.0.6`
 * Stable 1.0 release: https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/releases/tag/v1.0.1
 
 .. _docker_installation:

@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import datetime
 import logging
+import multiprocessing as mp
 import os
 import pathlib
+import queue
 import re
 import shutil
 import subprocess
@@ -17,11 +19,11 @@ import time
 import typing
 from contextlib import contextmanager
 from pathlib import Path
-from queue import Empty, Queue
 from typing import Any, Dict, List
 
 import sqlalchemy
 from sqlalchemy.orm import Session
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import KaldiFunction
@@ -509,7 +511,7 @@ class KaldiProcessWorker(threading.Thread):
     def __init__(
         self,
         job_name: int,
-        return_q: Queue,
+        return_q: typing.Union[mp.Queue, queue.Queue],
         function: KaldiFunction,
         stopped: threading.Event,
     ):
@@ -545,22 +547,80 @@ class KaldiProcessWorker(threading.Thread):
             self.finished.set()
 
 
+class KaldiProcessWorkerMp(mp.Process):
+    """
+    Multiprocessing function work
+
+    Parameters
+    ----------
+    job_name: int
+        Integer number of job
+    return_q: :class:`~queue.Queue`
+        Queue for returning results
+    function: KaldiFunction
+        Multiprocessing function to call on arguments from job_q
+    stopped: :class:`~threading.Event`
+        Stop check
+    """
+
+    def __init__(
+        self,
+        job_name: int,
+        return_q: mp.Queue,
+        function: KaldiFunction,
+        stopped: mp.Event,
+    ):
+        super().__init__(name=str(job_name))
+        self.job_name = job_name
+        self.function = function
+        self.function.callback = self.add_to_return_queue
+        self.return_q = return_q
+        self.stopped = stopped
+        self.finished = mp.Event()
+
+    def add_to_return_queue(self, result):
+        if self.stopped.is_set():
+            return
+        self.return_q.put(result)
+
+    def run(self) -> None:
+        """
+        Run through the arguments in the queue apply the function to them
+        """
+
+        os.environ["OMP_NUM_THREADS"] = f"{config.BLAS_NUM_THREADS}"
+        os.environ["OPENBLAS_NUM_THREADS"] = f"{config.BLAS_NUM_THREADS}"
+        os.environ["MKL_NUM_THREADS"] = f"{config.BLAS_NUM_THREADS}"
+        try:
+            self.function.run()
+        except Exception as e:
+            self.stopped.set()
+            if isinstance(e, KaldiProcessingError):
+                e.job_name = self.job_name
+            self.return_q.put(e)
+        finally:
+            self.finished.set()
+
+
 @contextmanager
 def thread_logger(
     log_name: str, log_path: typing.Union[pathlib.Path, str], job_name: int = None
 ) -> logging.Logger:
     kalpy_logging = logging.getLogger(log_name)
-    if job_name is None:
-        log_filter = IgnoreThreadsFilter()
-    else:
-        log_filter = ThreadFilter(job_name)
-    file_handler = logging.FileHandler(log_path, encoding="utf8", mode="w")
+    file_handler = logging.FileHandler(log_path, encoding="utf8")
     file_handler.setLevel(logging.DEBUG)
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(thread)d - %(threadName)s - %(levelname)s - %(message)s"
-    )
+    if config.USE_THREADING:
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(thread)d - %(threadName)s - %(levelname)s - %(message)s"
+        )
+        if job_name is None:
+            log_filter = IgnoreThreadsFilter()
+        else:
+            log_filter = ThreadFilter(job_name)
+        file_handler.addFilter(log_filter)
+    else:
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     file_handler.setFormatter(formatter)
-    file_handler.addFilter(log_filter)
     try:
         kalpy_logging.addHandler(file_handler)
         yield kalpy_logging
@@ -592,23 +652,44 @@ class IgnoreThreadsFilter(logging.Filter):
 
 
 def run_kaldi_function(
-    function, arguments, progress_callback: typing.Callable = None, stopped: threading.Event = None
+    function, arguments, stopped: threading.Event = None, total_count: int = None
 ):
+    if config.USE_THREADING:
+        Event = threading.Event
+        Queue = queue.Queue
+        Worker = KaldiProcessWorker
+    else:
+        Event = mp.Event
+        Queue = mp.Queue
+        Worker = KaldiProcessWorkerMp
     if stopped is None:
-        stopped = threading.Event()
+        stopped = Event()
     error_dict = {}
     return_queue = Queue(10000)
+    callback_interval = 100
+    if total_count is not None:
+        callback_interval = int(total_count / 100)
+        if callback_interval <= 0:
+            callback_interval = 2
+    num_done = 0
+    last_update = 0
+    pbar = None
+    progress_callback = None
+    if not config.QUIET and total_count:
+        pbar = tqdm(total=total_count, maxinterval=0)
+        progress_callback = pbar.update
+
     if config.USE_MP:
         procs = []
         for args in arguments:
             f = function(args)
-            p = KaldiProcessWorker(args.job_name, return_queue, f, stopped)
+            p = Worker(args.job_name, return_queue, f, stopped)
             procs.append(p)
             p.start()
         try:
             while True:
                 try:
-                    result = return_queue.get(timeout=2)
+                    result = return_queue.get(timeout=1)
                     if isinstance(result, Exception):
                         error_dict[getattr(result, "job_name", 0)] = result
                         stopped.set()
@@ -618,21 +699,21 @@ def run_kaldi_function(
                     yield result
                     if progress_callback is not None:
                         if isinstance(result, int):
-                            progress_callback(result)
+                            num_done += result
                         else:
-                            progress_callback(1)
-                    return_queue.task_done()
-                except Empty:
+                            num_done += 1
+                        if num_done - last_update > callback_interval:
+                            progress_callback(num_done - last_update)
+                            last_update = num_done
+                    if isinstance(return_queue, queue.Queue):
+                        return_queue.task_done()
+                except queue.Empty:
                     for proc in procs:
                         if not proc.finished.is_set():
                             break
                     else:
                         break
                     continue
-                # except (KeyboardInterrupt, SystemExit):
-                #    logger.debug("Received ctrl+c event")
-                #    stopped.set()
-                #    continue
                 except Exception as e:
                     if isinstance(e, KeyboardInterrupt):
                         logger.debug("Received ctrl+c event")
@@ -652,12 +733,10 @@ def run_kaldi_function(
         if error_dict:
             for v in error_dict.values():
                 raise v
-        # if stopped.set():
-        #    sys.exit(1)
     else:
         for args in arguments:
             f = function(args)
-            p = KaldiProcessWorker(args.job_name, return_queue, f, stopped)
+            p = Worker(args.job_name, return_queue, f, stopped)
             p.start()
             try:
                 while True:
@@ -672,11 +751,15 @@ def run_kaldi_function(
                         yield result
                         if progress_callback is not None:
                             if isinstance(result, int):
-                                progress_callback(result)
+                                num_done += result
                             else:
-                                progress_callback(1)
-                        return_queue.task_done()
-                    except Empty:
+                                num_done += 1
+                            if num_done - last_update >= callback_interval:
+                                progress_callback(num_done - last_update)
+                                last_update = num_done
+                        if isinstance(return_queue, queue.Queue):
+                            return_queue.task_done()
+                    except queue.Empty:
                         if not p.finished.is_set():
                             continue
                         else:
@@ -698,3 +781,7 @@ def run_kaldi_function(
         if error_dict:
             for v in error_dict.values():
                 raise v
+    if pbar is not None and num_done > last_update:
+        progress_callback(num_done - last_update)
+        pbar.refresh()
+        pbar.close()

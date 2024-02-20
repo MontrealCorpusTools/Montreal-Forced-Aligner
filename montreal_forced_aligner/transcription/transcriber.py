@@ -89,7 +89,6 @@ from montreal_forced_aligner.utils import (
 )
 
 if TYPE_CHECKING:
-
     from montreal_forced_aligner.abc import MetaDict
 
 __all__ = ["Transcriber", "TranscriberMixin"]
@@ -171,7 +170,7 @@ class TranscriberMixin(CorpusAligner):
             arguments.append(
                 TrainSpeakerLmArguments(
                     j.id,
-                    getattr(self, "session", ""),
+                    getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                     self.working_log_directory.joinpath(f"train_lm.{j.id}.log"),
                     self.model_path,
                     self.tree_path,
@@ -191,9 +190,10 @@ class TranscriberMixin(CorpusAligner):
         os.makedirs(log_directory, exist_ok=True)
         logger.info("Compiling per speaker biased language models...")
         arguments = self.train_speaker_lm_arguments()
-        with tqdm(total=self.num_speakers, disable=config.QUIET) as pbar:
-            for _ in run_kaldi_function(TrainSpeakerLmFunction, arguments, pbar.update):
-                pass
+        for _ in run_kaldi_function(
+            TrainSpeakerLmFunction, arguments, total_count=self.num_speakers
+        ):
+            pass
         logger.debug(f"Compiling speaker language models took {time.time() - begin:.3f} seconds")
 
     @property
@@ -219,9 +219,10 @@ class TranscriberMixin(CorpusAligner):
         """
         arguments = self.lm_rescore_arguments()
         logger.info("Rescoring lattices with medium G.fst...")
-        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar:
-            for _ in run_kaldi_function(LmRescoreFunction, arguments, pbar.update):
-                pass
+        for _ in run_kaldi_function(
+            LmRescoreFunction, arguments, total_count=self.num_current_utterances
+        ):
+            pass
 
     def carpa_lm_rescore(self) -> None:
         """
@@ -236,9 +237,10 @@ class TranscriberMixin(CorpusAligner):
         """
         logger.info("Rescoring lattices with large G.carpa...")
         arguments = self.carpa_lm_rescore_arguments()
-        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
-            for _ in run_kaldi_function(CarpaLmRescoreFunction, arguments, pbar.update):
-                pass
+        for _ in run_kaldi_function(
+            CarpaLmRescoreFunction, arguments, total_count=self.num_utterances
+        ):
+            pass
 
     def train_phone_lm(self):
         """Train a phone-based language model (i.e., not using words)."""
@@ -247,12 +249,14 @@ class TranscriberMixin(CorpusAligner):
             return
         if self.use_g2p:
             return
+        phone_lm_path = self.phones_dir.joinpath("phone_lm.fst")
+        if phone_lm_path.exists():
+            return
         logger.info("Beginning phone LM training...")
         logger.info("Collecting training data...")
 
         ngram_order = 4
         num_ngrams = 20000
-        phone_lm_path = self.phones_dir.joinpath("phone_lm.fst")
         log_path = self.phones_dir.joinpath("phone_lm_training.log")
         unigram_phones = set()
         return_queue = Queue()
@@ -264,14 +268,13 @@ class TranscriberMixin(CorpusAligner):
         with self.session() as session, tqdm(
             total=self.num_current_utterances, disable=config.QUIET
         ) as pbar:
-
             with mfa_open(self.phones_dir.joinpath("phone_boundaries.int"), "w") as f:
                 for p in session.query(Phone):
                     f.write(f"{p.mapping_id} singleton\n")
             for j in self.jobs:
                 args = TrainLmArguments(
                     j.id,
-                    getattr(self, "session", ""),
+                    getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                     self.working_log_directory.joinpath(f"ngram_count.{j.id}.log"),
                     self.phones_dir,
                     self.phone_symbol_table_path,
@@ -675,24 +678,25 @@ class TranscriberMixin(CorpusAligner):
             Arguments for function
         """
         logger.info("Generating lattices...")
-        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
-            workflow = self.current_workflow
-            arguments = self.decode_arguments(workflow.workflow_type)
-            log_likelihood_sum = 0
-            log_likelihood_count = 0
-            if workflow.workflow_type is WorkflowType.per_speaker_transcription:
-                decode_function = PerSpeakerDecodeFunction
-            elif workflow.workflow_type is WorkflowType.phone_transcription:
-                decode_function = DecodePhoneFunction
-            else:
-                decode_function = DecodeFunction
-            for _, log_likelihood in run_kaldi_function(decode_function, arguments, pbar.update):
-                log_likelihood_sum += log_likelihood
-                log_likelihood_count += 1
-            if log_likelihood_count:
-                with self.session() as session:
-                    workflow.score = log_likelihood_sum / log_likelihood_count
-                    session.commit()
+        workflow = self.current_workflow
+        arguments = self.decode_arguments(workflow.workflow_type)
+        log_likelihood_sum = 0
+        log_likelihood_count = 0
+        if workflow.workflow_type is WorkflowType.per_speaker_transcription:
+            decode_function = PerSpeakerDecodeFunction
+        elif workflow.workflow_type is WorkflowType.phone_transcription:
+            decode_function = DecodePhoneFunction
+        else:
+            decode_function = DecodeFunction
+        for _, log_likelihood in run_kaldi_function(
+            decode_function, arguments, total_count=self.num_utterances
+        ):
+            log_likelihood_sum += log_likelihood
+            log_likelihood_count += 1
+        if log_likelihood_count:
+            with self.session() as session:
+                workflow.score = log_likelihood_sum / log_likelihood_count
+                session.commit()
 
     def calc_initial_fmllr(self) -> None:
         """
@@ -707,9 +711,10 @@ class TranscriberMixin(CorpusAligner):
         """
         logger.info("Calculating initial fMLLR transforms...")
         arguments = self.initial_fmllr_arguments()
-        with tqdm(total=self.num_speakers, disable=config.QUIET) as pbar:
-            for _ in run_kaldi_function(InitialFmllrFunction, arguments, pbar.update):
-                pass
+        for _ in run_kaldi_function(
+            InitialFmllrFunction, arguments, total_count=self.num_speakers
+        ):
+            pass
 
     def calc_final_fmllr(self) -> None:
         """
@@ -724,9 +729,8 @@ class TranscriberMixin(CorpusAligner):
         """
         logger.info("Calculating final fMLLR transforms...")
         arguments = self.final_fmllr_arguments()
-        with tqdm(total=self.num_speakers, disable=config.QUIET) as pbar:
-            for _ in run_kaldi_function(FinalFmllrFunction, arguments, pbar.update):
-                pass
+        for _ in run_kaldi_function(FinalFmllrFunction, arguments, total_count=self.num_speakers):
+            pass
 
     def fmllr_rescore(self) -> None:
         """
@@ -741,9 +745,10 @@ class TranscriberMixin(CorpusAligner):
         """
         logger.info("Rescoring fMLLR lattices with final transform...")
         arguments = self.fmllr_rescore_arguments()
-        with tqdm(total=self.num_utterances, disable=config.QUIET) as pbar:
-            for _ in run_kaldi_function(FmllrRescoreFunction, arguments, pbar.update):
-                pass
+        for _ in run_kaldi_function(
+            FmllrRescoreFunction, arguments, total_count=self.num_utterances
+        ):
+            pass
 
     def transcribe_fmllr(self) -> None:
         """
@@ -793,7 +798,7 @@ class TranscriberMixin(CorpusAligner):
                 arguments.append(
                     PerSpeakerDecodeArguments(
                         j.id,
-                        getattr(self, "session", ""),
+                        getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                         self.working_log_directory.joinpath(f"per_speaker_decode.{j.id}.log"),
                         self.working_directory,
                         self.model_path,
@@ -807,7 +812,7 @@ class TranscriberMixin(CorpusAligner):
                 arguments.append(
                     DecodePhoneArguments(
                         j.id,
-                        getattr(self, "session", ""),
+                        getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                         self.working_log_directory.joinpath(f"decode.{j.id}.log"),
                         self.working_directory,
                         self.alignment_model_path,
@@ -819,7 +824,7 @@ class TranscriberMixin(CorpusAligner):
                 arguments.append(
                     DecodeArguments(
                         j.id,
-                        getattr(self, "session", ""),
+                        getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                         self.working_log_directory.joinpath(f"decode.{j.id}.log"),
                         self.working_directory,
                         self.alignment_model_path,
@@ -843,7 +848,7 @@ class TranscriberMixin(CorpusAligner):
         return [
             LmRescoreArguments(
                 j.id,
-                getattr(self, "session", ""),
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"lm_rescore.{j.id}.log"),
                 self.working_directory,
                 self.lm_rescore_options,
@@ -865,7 +870,7 @@ class TranscriberMixin(CorpusAligner):
         return [
             CarpaLmRescoreArguments(
                 j.id,
-                getattr(self, "session", ""),
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"carpa_lm_rescore.{j.id}.log"),
                 self.working_directory,
                 self.lm_rescore_options,
@@ -889,9 +894,10 @@ class TranscriberMixin(CorpusAligner):
             arguments.append(
                 InitialFmllrArguments(
                     j.id,
-                    getattr(self, "session", ""),
+                    getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                     self.working_log_directory.joinpath(f"initial_fmllr.{j.id}.log"),
                     self.working_directory,
+                    self.alignment_model_path,
                     self.model_path,
                     self.fmllr_options,
                 )
@@ -912,9 +918,10 @@ class TranscriberMixin(CorpusAligner):
             arguments.append(
                 FinalFmllrArguments(
                     j.id,
-                    getattr(self, "session", ""),
+                    getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                     self.working_log_directory.joinpath(f"final_fmllr.{j.id}.log"),
                     self.working_directory,
+                    self.alignment_model_path,
                     self.model_path,
                     self.fmllr_options,
                 )
@@ -939,7 +946,7 @@ class TranscriberMixin(CorpusAligner):
             arguments.append(
                 FmllrRescoreArguments(
                     j.id,
-                    getattr(self, "session", ""),
+                    getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                     self.working_log_directory.joinpath(f"fmllr_rescore.{j.id}.log"),
                     self.working_directory,
                     self.model_path,
@@ -994,6 +1001,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
         self.language_model = LanguageModel(language_model_path)
         self.output_type = output_type
         self.ignore_empty_utterances = False
+        self.transcriptions_required = False
 
     def create_hclgs_arguments(self) -> typing.List[CreateHclgArguments]:
         """
@@ -1010,7 +1018,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
                 args.append(
                     CreateHclgArguments(
                         d.id,
-                        getattr(self, "session", ""),
+                        getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                         self.model_directory.joinpath("log", f"hclg.{d.id}.log"),
                         self.lexicon_compilers[d.id],
                         self.model_directory,
@@ -1032,9 +1040,8 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
 
         arguments = self.create_hclgs_arguments()
         logger.info("Generating HCLG.fst...")
-        with tqdm(total=len(arguments), disable=config.QUIET) as pbar:
-            for _ in run_kaldi_function(CreateHclgFunction, arguments, pbar.update):
-                pass
+        for _ in run_kaldi_function(CreateHclgFunction, arguments, total_count=len(arguments)):
+            pass
 
     def create_decoding_graph(self) -> None:
         """

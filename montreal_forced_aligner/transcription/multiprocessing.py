@@ -258,6 +258,7 @@ class InitialFmllrArguments(MfaArguments):
     """
 
     working_directory: Path
+    ali_model_path: Path
     model_path: Path
     fmllr_options: MetaDict
 
@@ -284,6 +285,7 @@ class FinalFmllrArguments(MfaArguments):
     """
 
     working_directory: Path
+    ali_model_path: Path
     model_path: Path
     fmllr_options: MetaDict
 
@@ -422,12 +424,12 @@ class DecodeFunction(KaldiFunction):
             silence_phones = [
                 x
                 for x, in session.query(Phone.mapping_id).filter(
-                    Phone.phone_type.in_([PhoneType.silence, PhoneType.oov])
+                    Phone.phone_type.in_([PhoneType.silence])
                 )
             ]
 
             for d in job.dictionaries:
-                decode_logger.debug(f"Decoding for dictionary {d.id}")
+                decode_logger.debug(f"Decoding for dictionary {d.name} ({d.id})")
                 decode_logger.debug(f"Decoding with model: {self.model_path}")
                 dict_id = d.id
 
@@ -597,6 +599,7 @@ class InitialFmllrFunction(KaldiFunction):
     def __init__(self, args: InitialFmllrArguments):
         super().__init__(args)
         self.working_directory = args.working_directory
+        self.ali_model_path = args.ali_model_path
         self.model_path = args.model_path
         self.fmllr_options = args.fmllr_options
 
@@ -639,10 +642,10 @@ class InitialFmllrFunction(KaldiFunction):
                     )
                 ]
                 computer = FmllrComputer(
+                    self.ali_model_path,
                     self.model_path,
                     silence_phones,
                     spk2utt=spk2utt,
-                    two_models=False,
                     **self.fmllr_options,
                 )
                 lat_path = job.construct_path(self.working_directory, "lat", "ark", dict_id)
@@ -709,6 +712,7 @@ class FinalFmllrFunction(KaldiFunction):
     def __init__(self, args: FinalFmllrArguments):
         super().__init__(args)
         self.working_directory = args.working_directory
+        self.ali_model_path = args.ali_model_path
         self.model_path = args.model_path
         self.fmllr_options = args.fmllr_options
 
@@ -729,7 +733,7 @@ class FinalFmllrFunction(KaldiFunction):
                     job.corpus.current_subset_directory, "feats", "scp", dictionary_id=dict_id
                 )
                 fmllr_trans_path = job.construct_path(
-                    job.corpus.split_directory, "trans", "scp", dictionary_id=dict_id
+                    job.corpus.current_subset_directory, "trans", "scp", dictionary_id=dict_id
                 )
                 previous_transform_archive = None
                 if not fmllr_trans_path.exists():
@@ -762,10 +766,10 @@ class FinalFmllrFunction(KaldiFunction):
                     )
                 ]
                 computer = FmllrComputer(
+                    self.ali_model_path,
                     self.model_path,
                     silence_phones,
                     spk2utt=spk2utt,
-                    two_models=True,
                     **self.fmllr_options,
                 )
                 lat_path = job.construct_path(self.working_directory, "lat", "ark", dict_id)
@@ -844,7 +848,7 @@ class FmllrRescoreFunction(KaldiFunction):
             )
             rescorer = GmmRescorer(self.model_path, **self.rescore_options)
             for d in job.dictionaries:
-                decode_logger.debug(f"Aligning for dictionary {d.id}")
+                decode_logger.debug(f"Aligning for dictionary {d.name} ({d.id})")
                 decode_logger.debug(f"Aligning with model: {self.model_path}")
                 dict_id = d.id
                 fst_path = job.construct_path(self.working_directory, "fsts", "ark", dict_id)
@@ -953,12 +957,12 @@ class PerSpeakerDecodeFunction(KaldiFunction):
             silence_phones = [
                 x
                 for x, in session.query(Phone.mapping_id).filter(
-                    Phone.phone_type.in_([PhoneType.silence, PhoneType.oov])
+                    Phone.phone_type.in_([PhoneType.silence])
                 )
             ]
 
             for d in job.dictionaries:
-                decode_logger.debug(f"Decoding for dictionary {d.id}")
+                decode_logger.debug(f"Decoding for dictionary {d.name} ({d.id})")
                 decode_logger.debug(f"Decoding with model: {self.model_path}")
                 dict_id = d.id
 
@@ -1080,7 +1084,7 @@ class DecodePhoneFunction(KaldiFunction):
             silence_phones = [
                 x
                 for x, in session.query(Phone.mapping_id).filter(
-                    Phone.phone_type.in_([PhoneType.silence, PhoneType.oov])
+                    Phone.phone_type.in_([PhoneType.silence])
                 )
             ]
             phones = session.query(Phone.mapping_id, Phone.phone)
@@ -1089,7 +1093,7 @@ class DecodePhoneFunction(KaldiFunction):
                 reversed_phone_mapping[p_id] = phone
             hclg_fst = ConstFst.Read(str(self.hclg_path))
             for d in job.dictionaries:
-                decode_logger.debug(f"Decoding for dictionary {d.id}")
+                decode_logger.debug(f"Decoding for dictionary {d.name} ({d.id})")
                 decode_logger.debug(f"Decoding with model: {self.model_path}")
                 dict_id = d.id
                 feature_archive = job.construct_feature_archive(self.working_directory, dict_id)

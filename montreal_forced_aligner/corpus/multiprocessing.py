@@ -42,6 +42,7 @@ __all__ = [
     "ExportKaldiFilesArguments",
     "NormalizeTextFunction",
     "NormalizeTextArguments",
+    "dictionary_ids_for_job",
 ]
 
 
@@ -231,6 +232,7 @@ class NormalizeTextArguments(MfaArguments):
 
     tokenizers: typing.Union[typing.Dict[int, SimpleTokenizer], Language]
     g2p_model: typing.Optional[G2PModel]
+    ignore_case: bool
 
 
 @dataclass
@@ -259,6 +261,7 @@ class NormalizeTextFunction(KaldiFunction):
         super().__init__(args)
         self.tokenizers = args.tokenizers
         self.g2p_model = args.g2p_model
+        self.ignore_case = args.ignore_case
 
     def _run(self):
         """Run the function"""
@@ -280,7 +283,9 @@ class NormalizeTextFunction(KaldiFunction):
                             generate_language_tokenizer,
                         )
 
-                        tokenizer = generate_language_tokenizer(tokenizer)
+                        tokenizer = generate_language_tokenizer(
+                            tokenizer, ignore_case=self.ignore_case
+                        )
 
                     utterances = (
                         session.query(Utterance.id, Utterance.text)
@@ -304,7 +309,11 @@ class NormalizeTextFunction(KaldiFunction):
                                 )
                             )
                         else:
-                            normalized_text, pronunciation_form = tokenizer(u_text)
+                            tokenized = tokenizer(u_text)
+                            if isinstance(tokenized, tuple):
+                                normalized_text, pronunciation_form = tokenized
+                            else:
+                                normalized_text, pronunciation_form = tokenized, tokenized
                             oovs = set()
                             self.callback(
                                 (

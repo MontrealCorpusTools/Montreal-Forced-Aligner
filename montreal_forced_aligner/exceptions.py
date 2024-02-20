@@ -34,6 +34,7 @@ __all__ = [
     "ConfigError",
     "LMError",
     "LanguageModelNotFoundError",
+    "FeatureGenerationError",
     "ModelExtensionError",
     "ThirdpartyError",
     "IvectorTrainingError",
@@ -45,6 +46,7 @@ __all__ = [
     "CorpusReadError",
     "AlignerError",
     "AlignmentError",
+    "AlignmentCollectionError",
     "AlignmentExportError",
     "NoSuccessfulAlignments",
     "KaldiProcessingError",
@@ -504,6 +506,44 @@ class AlignmentError(MFAError):
         ]
         for path in error_logs:
             self.message_lines.append(path)
+
+
+class AlignmentCollectionError(MFAError):
+    """
+    Class for errors during alignment
+
+    Parameters
+    ----------
+    sound_file_path: str or :class:`~pathlib.Path`
+        Sound file associated with utterance that hit an error
+    text_file_path: str or :class:`~pathlib.Path`
+        Text file associated with utterance that hit an error
+    utterance_begin: float
+        Utterance beginning timestamp
+    utterance_end: float
+        Utterance end timestamp
+    traceback: list[str]
+        Traceback of the exception encountered
+    log_path: str or :class:`~pathlib.Path`, optional
+        Path to log file if saved
+    """
+
+    def __init__(
+        self,
+        sound_file_path: typing.Union[str, Path],
+        text_file_path: typing.Union[str, Path],
+        utterance_begin: float,
+        utterance_end: float,
+        traceback: typing.List[str],
+        log_path: typing.Union[str, Path] = None,
+    ):
+        super().__init__("")
+        self.message_lines.extend(traceback)
+        self.message_lines.append(
+            f"The above error was encountered for the utterance from {utterance_begin} to {utterance_end} for {sound_file_path} and {text_file_path}."
+        )
+        if log_path is not None:
+            self.message_lines.append(f"This error has been logged to {log_path}.")
 
 
 class AlignmentExportError(AlignmentError):

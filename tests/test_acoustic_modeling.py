@@ -6,6 +6,7 @@ import sqlalchemy.orm
 
 from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 from montreal_forced_aligner.alignment import PretrainedAligner
+from montreal_forced_aligner.db import PhonologicalRule
 
 
 def test_trainer(basic_dict_path, temp_dir, basic_corpus_dir):
@@ -13,10 +14,62 @@ def test_trainer(basic_dict_path, temp_dir, basic_corpus_dir):
         corpus_directory=basic_corpus_dir,
         dictionary_path=basic_dict_path,
     )
+
+    assert a.training_configs["monophone"].subset == 10000
+    assert a.training_configs["monophone"].initial_gaussians == 135
+    assert a.training_configs["monophone"].max_gaussians == 1000
+    assert a.training_configs["monophone"].boost_silence == 1.25
+    assert a.training_configs["monophone"].power == 0.25
+    assert a.training_configs["monophone"].num_iterations == 40
+
+    assert a.training_configs["triphone"].subset == 20000
+    assert a.training_configs["triphone"].num_leaves == 2000
+    assert a.training_configs["triphone"].initial_gaussians == 2000
+    assert a.training_configs["triphone"].max_gaussians == 10000
+    assert a.training_configs["triphone"].boost_silence == 1.25
+    assert a.training_configs["triphone"].power == 0.25
+    assert a.training_configs["triphone"].num_iterations == 35
+
+    assert a.training_configs["lda"].subset == 20000
+    assert a.training_configs["lda"].num_leaves == 2500
+    assert a.training_configs["lda"].initial_gaussians == 2500
+    assert a.training_configs["lda"].max_gaussians == 15000
+    assert a.training_configs["lda"].boost_silence == 1.0
+    assert a.training_configs["lda"].power == 0.25
+    assert a.training_configs["lda"].num_iterations == 35
+
+    assert a.training_configs["sat"].subset == 20000
+    assert a.training_configs["sat"].num_leaves == 2500
+    assert a.training_configs["sat"].initial_gaussians == 2500
+    assert a.training_configs["sat"].max_gaussians == 15000
+    assert a.training_configs["sat"].boost_silence == 1.0
+    assert a.training_configs["sat"].power == 0.2
+    assert a.training_configs["sat"].num_iterations == 35
+
+    assert a.training_configs["sat_2"].subset == 50000
+    assert a.training_configs["sat_2"].num_leaves == 4200
+    assert a.training_configs["sat_2"].initial_gaussians == 4200
+    assert a.training_configs["sat_2"].max_gaussians == 40000
+    assert a.training_configs["sat_2"].boost_silence == 1.0
+    assert a.training_configs["sat_2"].power == 0.2
+    assert a.training_configs["sat_2"].num_iterations == 35
+
+    assert a.training_configs["sat_3"].subset == 150000
+    assert a.training_configs["sat_3"].num_leaves == 5000
+    assert a.training_configs["sat_3"].initial_gaussians == 5000
+    assert a.training_configs["sat_3"].max_gaussians == 100000
+    assert a.training_configs["sat_3"].boost_silence == 1.0
+    assert a.training_configs["sat_3"].power == 0.2
+    assert a.training_configs["sat_3"].num_iterations == 35
+
     assert a.final_identifier == "sat_4"
-    assert a.training_configs[a.final_identifier].subset == 0
-    assert a.training_configs[a.final_identifier].num_leaves == 7000
-    assert a.training_configs[a.final_identifier].max_gaussians == 150000
+    assert a.training_configs["sat_4"].subset == 0
+    assert a.training_configs["sat_4"].num_leaves == 7000
+    assert a.training_configs["sat_4"].initial_gaussians == 7000
+    assert a.training_configs["sat_4"].max_gaussians == 150000
+    assert a.training_configs["sat_4"].boost_silence == 1.0
+    assert a.training_configs["sat_4"].power == 0.2
+    assert a.training_configs["sat_4"].num_iterations == 20
     a.cleanup()
 
 
@@ -75,9 +128,11 @@ def test_pronunciation_training(
     a.train()
     assert "coronal_fricatives" in a.phone_groups
     assert set(a.phone_groups["coronal_fricatives"]) == {"s", "z", "sh"}
-    assert len(a.phonological_rules) > 0
-    assert a.phonological_rules[0].probability > 0
-    assert a.phonological_rules[0].probability < 1
+    with a.session() as session:
+        assert session.query(PhonologicalRule).count() > 0
+        rule_query = session.query(PhonologicalRule).first()
+        assert rule_query.probability > 0
+        assert rule_query.probability < 1
 
     a.cleanup()
     a.clean_working_directory()

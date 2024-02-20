@@ -14,17 +14,13 @@ from kalpy.gmm.train import GmmStatsAccumulator
 from kalpy.gmm.utils import read_gmm_model, read_topology, read_tree, write_gmm_model
 from kalpy.utils import generate_write_specifier, kalpy_logger
 from sqlalchemy.orm import joinedload, subqueryload
-from tqdm.rich import tqdm
 
 from montreal_forced_aligner import config
-from montreal_forced_aligner.abc import KaldiFunction
+from montreal_forced_aligner.abc import KaldiFunction, MetaDict
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
 from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.db import Job
 from montreal_forced_aligner.utils import run_kaldi_function, thread_logger
-
-if typing.TYPE_CHECKING:
-    from montreal_forced_aligner.abc import MetaDict
 
 __all__ = ["MonophoneTrainer", "MonoAlignEqualFunction", "MonoAlignEqualArguments"]
 
@@ -81,17 +77,15 @@ class MonoAlignEqualFunction(KaldiFunction):
             tot_t = 0.0
             for d in job.dictionaries:
                 dict_id = d.id
-                train_logger.debug(f"Thread {self.job_name}: Aligning for dictionary {d.id}")
-                train_logger.debug(
-                    f"Thread {self.job_name}: Aligning with model: {self.model_path}"
-                )
+                train_logger.debug(f"Aligning for dictionary {d.name} ({d.id})")
+                train_logger.debug(f"Aligning with model: {self.model_path}")
                 fst_path = job.construct_path(self.working_directory, "fsts", "ark", dict_id)
-                train_logger.debug(f"Thread {self.job_name}: Training graph archive: {fst_path}")
+                train_logger.debug(f"Training graph archive: {fst_path}")
                 accumulator = GmmStatsAccumulator(self.model_path)
                 feat_path = job.construct_path(
                     job.corpus.current_subset_directory, "feats", "scp", dictionary_id=dict_id
                 )
-                train_logger.debug(f"Thread {self.job_name}: Feature path: {feat_path}")
+                train_logger.debug(f"Feature path: {feat_path}")
                 feature_archive = FeatureArchive(
                     feat_path,
                     deltas=True,
@@ -101,25 +95,19 @@ class MonoAlignEqualFunction(KaldiFunction):
                 write_specifier = generate_write_specifier(ali_path, write_scp=False)
                 writer = Int32VectorWriter(write_specifier)
                 for utt_id, decode_fst in training_graph_archive:
-                    train_logger.debug(f"Thread {self.job_name}: Aligning {utt_id}")
+                    train_logger.debug(f"Aligning {utt_id}")
                     feats = feature_archive[utt_id]
                     if feats.NumRows() == 0:
-                        train_logger.warning(
-                            f"Thread {self.job_name}: Zero-length utterance: {utt_id}"
-                        )
+                        train_logger.warning(f"Zero-length utterance: {utt_id}")
                         num_error += 1
                         continue
                     if decode_fst.Start() == -1:
-                        train_logger.warning(
-                            f"Thread {self.job_name}: Empty decoding graph for {utt_id}"
-                        )
+                        train_logger.warning(f"Empty decoding graph for {utt_id}")
                         num_error += 1
                         continue
                     alignment, words = gmm_align_equal(decode_fst, feats)
                     if alignment is None or len(alignment) == 0:
-                        train_logger.warning(
-                            f"Thread {self.job_name}: AlignEqual: did not align utterance {utt_id}"
-                        )
+                        train_logger.warning(f"AlignEqual: did not align utterance {utt_id}")
                         num_error += 1
                         continue
                     writer.Write(utt_id, alignment)
@@ -136,7 +124,7 @@ class MonoAlignEqualFunction(KaldiFunction):
                     tot_t += len(alignment)
                     if num_done % 50 == 0:
                         train_logger.info(
-                            f"Thread {self.job_name}: Processed {num_done} utterances; for utterance "
+                            f"Processed {num_done} utterances; for utterance "
                             f"{utt_id} avg. like is "
                             f"{tot_like_this_file / len(alignment)} "
                             f"over {len(alignment)} frames."
@@ -144,11 +132,9 @@ class MonoAlignEqualFunction(KaldiFunction):
                     self.callback(utt_id)
                 writer.Close()
                 self.callback((accumulator.transition_accs, accumulator.gmm_accs))
+                train_logger.info(f"Done {num_done} utterances, errors on {num_error} utterances.")
                 train_logger.info(
-                    f"Thread {self.job_name}: Done {num_done} utterances, errors on {num_error} utterances."
-                )
-                train_logger.info(
-                    f"Thread {self.job_name}: Overall avg like per frame (Gaussian only) = {tot_like/tot_t} over {tot_t} frames."
+                    f"Overall avg like per frame (Gaussian only) = {tot_like/tot_t} over {tot_t} frames."
                 )
 
 
@@ -180,14 +166,19 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
         initial_beam: int = 6,
         max_gaussians: int = 1000,
         power: float = 0.25,
+        boost_silence: float = 1.25,
         **kwargs,
     ):
-        super().__init__(**kwargs)
+        super().__init__(
+            power=power,
+            subset=subset,
+            initial_gaussians=initial_gaussians,
+            max_gaussians=max_gaussians,
+            boost_silence=boost_silence,
+            **kwargs,
+        )
         self.subset = subset
-        self.initial_gaussians = initial_gaussians
         self.initial_beam = initial_beam
-        self.max_gaussians = max_gaussians
-        self.power = power
         self.last_gaussian_increase_iteration = 0
 
     def mono_align_equal_arguments(self) -> typing.List[MonoAlignEqualArguments]:
@@ -202,7 +193,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
         return [
             MonoAlignEqualArguments(
                 j.id,
-                getattr(self, "session", ""),
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"mono_align_equal.{j.id}.log"),
                 self.working_directory,
                 self.model_path,
@@ -268,10 +259,10 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
         transition_model.InitStats(transition_accs)
         gmm_accs.init(acoustic_model)
         log_path = self.working_log_directory.joinpath("mono_align_equal.log")
-        with tqdm(total=self.num_current_utterances, disable=config.QUIET) as pbar, kalpy_logger(
-            "kalpy.train", log_path
-        ):
-            for result in run_kaldi_function(MonoAlignEqualFunction, arguments, pbar.update):
+        with kalpy_logger("kalpy.train", log_path):
+            for result in run_kaldi_function(
+                MonoAlignEqualFunction, arguments, total_count=self.num_current_utterances
+            ):
                 if isinstance(result, tuple):
                     job_transition_accs, job_gmm_accs = result
 

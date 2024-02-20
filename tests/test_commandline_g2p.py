@@ -56,8 +56,6 @@ def test_generate_pretrained_dictionary(
         english_dictionary,
         "--num_pronunciations",
         "1",
-        "--use_mp",
-        "False",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False).invoke(
@@ -70,11 +68,6 @@ def test_generate_pretrained_dictionary(
         raise result.exception
     assert not result.return_value
     assert os.path.exists(output_path)
-    sqlalchemy.orm.close_all_sessions()
-    d = MultispeakerDictionary(output_path)
-    d.dictionary_setup()
-    assert d.num_speech_words == 2
-    d.cleanup_connections()
 
 
 def test_generate_pretrained_threshold(

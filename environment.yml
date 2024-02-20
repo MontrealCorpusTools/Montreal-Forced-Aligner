@@ -2,6 +2,7 @@ channels:
   - conda-forge
   - pytorch
   - nvidia
+  - anaconda
 dependencies:
   - python>=3.8
   - numpy
@@ -16,7 +17,7 @@ dependencies:
   - ffmpeg
   - scipy
   - pynini
-  - openfst
+  - openfst=1.8.3
   - scikit-learn<1.3
   - hdbscan
   - baumwelch
@@ -49,7 +50,14 @@ dependencies:
   - rich-click
   - kalpy
   - spacy
+  - sudachipy
+  - sudachidict-core
+  - spacy-pkuseg
   - pip:
       - build
       - twine
       - speechbrain
+      - python-mecab-ko
+      - jamo
+      - pythainlp
+      - hanziconv
