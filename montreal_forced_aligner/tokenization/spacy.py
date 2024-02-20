@@ -16,7 +16,7 @@ from montreal_forced_aligner.tokenization.chinese import ZH_AVAILABLE, zh_spacy
 from montreal_forced_aligner.tokenization.english import en_spacy
 from montreal_forced_aligner.tokenization.japanese import JA_AVAILABLE, ja_spacy
 from montreal_forced_aligner.tokenization.korean import KO_AVAILABLE, ko_spacy
-from montreal_forced_aligner.tokenization.thai import th_spacy
+from montreal_forced_aligner.tokenization.thai import TH_AVAILABLE, th_spacy
 
 language_model_mapping = {
     # Use small models optimized for CPU because tokenizer accuracy does not depend on model
@@ -88,10 +88,10 @@ def check_language_tokenizer_availability(language: Language):
 
         spacy_pkuseg.pkuseg(postag=True)
     elif language is Language.thai:
-        try:
-            import attacut  # noqa
-        except ImportError:
-            raise ImportError("Please install Thai tokenization support via `pip install attacut`")
+        if not TH_AVAILABLE:
+            raise ImportError(
+                "Please install Thai tokenization support via `pip install pythainlp`"
+            )
     else:
         if not SPACY_AVAILABLE:
             raise ImportError("Please install spacy via `conda install spacy`")

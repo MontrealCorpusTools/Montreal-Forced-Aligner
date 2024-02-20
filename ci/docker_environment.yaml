@@ -47,5 +47,5 @@ dependencies:
       - speechbrain
       - python-mecab-ko
       - jamo
-      - attacut
+      - pythainlp
       - hanziconv

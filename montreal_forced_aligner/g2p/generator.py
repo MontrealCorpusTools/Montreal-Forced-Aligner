@@ -554,7 +554,7 @@ class PyniniGenerator(G2PTopLevelMixin):
         logger.info("Generating pronunciations...")
         to_return = {}
         skipped_words = 0
-        if num_words < 30 or config.NUM_JOBS == 1:
+        if not config.USE_MP or num_words < 30 or config.NUM_JOBS == 1:
             with tqdm(total=num_words, disable=config.QUIET) as pbar:
                 for word in self.words_to_g2p:
                     w, m = clean_up_word(word, self.g2p_model.meta["graphemes"])
@@ -1028,6 +1028,11 @@ class PyniniDictionaryCorpusGenerator(
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._word_list = None
+
+    @property
+    def data_source_identifier(self) -> str:
+        """Corpus name"""
+        return os.path.basename(self.corpus_directory)
 
     def setup(self) -> None:
         """Set up the pronunciation generator"""
