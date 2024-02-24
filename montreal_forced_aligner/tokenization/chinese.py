@@ -63,6 +63,11 @@ class ChineseTokenizer:
                 new_text[-1] += normalized
                 pronunciations[-1] += p
                 continue
+            if pos == "m":
+                for c in normalized:
+                    new_text.append(c)
+                    pronunciations.append(to_pinyin(c))
+                continue
             new_text.append(normalized)
             pronunciations.append(p)
         assert len(new_text) == len(pronunciations)
