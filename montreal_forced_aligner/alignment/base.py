@@ -121,7 +121,10 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         if g2p_model_path:
             from montreal_forced_aligner.models import G2PModel
 
-            self.g2p_model = G2PModel(g2p_model_path)
+            if isinstance(g2p_model_path, dict):
+                self.g2p_model = {k: G2PModel(v) for k, v in g2p_model_path.items()}
+            else:
+                self.g2p_model = G2PModel(g2p_model_path)
 
     @property
     def hclg_options(self) -> MetaDict:
@@ -258,7 +261,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                     self.working_log_directory.joinpath(f"get_phone_ctm.{j.id}.log"),
                     self.working_directory,
-                    getattr(self, "lexicon_compilers", {}),
+                    {},
                     transition_model,
                     round(self.frame_shift / 1000, 4),
                     self.score_options,
@@ -324,7 +327,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"generate_pronunciations.{j.id}.log"),
                 aligner,
-                getattr(self, "lexicon_compilers", {}),
+                {},
                 False,
             )
             for j in self.jobs

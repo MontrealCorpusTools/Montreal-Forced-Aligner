@@ -61,3 +61,4 @@ dependencies:
       - jamo
       - pythainlp
       - hanziconv
+      - dragonmapper

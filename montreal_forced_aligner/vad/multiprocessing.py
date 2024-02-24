@@ -122,9 +122,9 @@ def segment_utterance_transcript(
         Acoustic model to use in splitting transcriptions
     utterance: :class:`~kalpy.utterance.Utterance`
         Utterance to split
-    lexicon_compiler :class:`~kalpy.fstext.lexicon.LexiconCompiler`
+    lexicon_compiler: :class:`~kalpy.fstext.lexicon.LexiconCompiler`
         Lexicon compiler
-    vad_model :class:`~speechbrain.pretrained.VAD` or None
+    vad_model: :class:`~speechbrain.pretrained.VAD` or None
         VAD model from SpeechBrain, if None, then Kaldi's energy-based VAD is used
     segmentation_options: dict[str, Any]
         Segmentation options
@@ -161,7 +161,6 @@ def segment_utterance_transcript(
     -------
     list[:class:`~kalpy.utterance.Utterance`]
         Split utterances
-
     """
     graph_compiler = TrainingGraphCompiler(
         acoustic_model.alignment_model_path,

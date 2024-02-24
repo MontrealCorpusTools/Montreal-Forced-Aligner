@@ -1537,6 +1537,17 @@ class MultispeakerDictionary(MultispeakerDictionaryMixin):
     """
 
     @property
+    def actual_words(self) -> typing.List[str]:
+        with self.session() as session:
+            actual_words = [
+                x[0]
+                for x in session.query(Word.word).filter(
+                    Word.word_type.in_(WordType.speech_types())
+                )
+            ]
+        return actual_words
+
+    @property
     def data_source_identifier(self) -> str:
         """Name of the dictionary"""
         return f"{self.name}"

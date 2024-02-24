@@ -220,9 +220,16 @@ def validate_language_model(ctx, param, value):
         return validate_model_arg(value, "language_model")
 
 
-def validate_g2p_model(ctx, param, value):
+def validate_g2p_model(ctx, param, value: Path):
     """Validation callback for G2P model paths"""
-    return validate_model_arg(value, "g2p")
+    if value.suffix == ".yaml":
+        with open(value, encoding="utf8") as f:
+            data = yaml.safe_load(f)
+            for k, v in data.items():
+                data[k] = validate_model_arg(v, "g2p")
+        return data
+    else:
+        return validate_model_arg(value, "g2p")
 
 
 def validate_tokenizer_model(ctx, param, value):

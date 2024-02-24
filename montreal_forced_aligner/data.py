@@ -543,7 +543,7 @@ class PhoneSetType(enum.Enum):
     def suprasegmental_phone_regex(self) -> typing.Optional[re.Pattern]:
         """Regex for creating base phones"""
         if self is PhoneSetType.IPA:
-            return re.compile(r"([ː̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˤ̻̙̘̤̜̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌ̍ʱʰʲ̚ʼ͈ˈ̣]+)")
+            return re.compile(r"([ː̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˤ̻̙̘̤̜̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌ̍ʱʰʲʷ̚ʼ͈ˈ̣]+)")
         return None
 
     @property
@@ -554,7 +554,7 @@ class PhoneSetType(enum.Enum):
         elif self is PhoneSetType.PINYIN:
             return re.compile(r"[12345]")
         elif self is PhoneSetType.IPA:
-            return re.compile(r"([ː˩˨˧˦˥̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̤̜̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌ̍ˈ]+)")
+            return re.compile(r"([ː˩˨˧˦˥̟̥̂̀̄ˑʱʰʲʷ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̤̜̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌ̍ˈʼ͈̚]+)")
         return None
 
     @property
@@ -597,6 +597,7 @@ class PhoneSetType(enum.Enum):
         if self is PhoneSetType.IPA:
             return {
                 "b",
+                "β",
                 "d",
                 "g",
                 "ɖ",

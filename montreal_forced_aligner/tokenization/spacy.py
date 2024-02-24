@@ -82,7 +82,7 @@ def check_language_tokenizer_availability(language: Language):
     elif language is Language.chinese:
         if not ZH_AVAILABLE:
             raise ImportError(
-                "Please install Chinese tokenization support via `pip install spacy-pkuseg hanziconv`"
+                "Please install Chinese tokenization support via `pip install spacy-pkuseg dragonmapper hanziconv`"
             )
         import spacy_pkuseg
 

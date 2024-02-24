@@ -1109,7 +1109,11 @@ class GeneratePronunciationsFunction(KaldiFunction):
                 utterance_texts = {}
                 for u_id, text in utts:
                     utterance_texts[u_id] = text
-                lexicon_compiler = self.lexicon_compilers[d.id]
+
+                if self.lexicon_compilers and d.id in self.lexicon_compilers:
+                    lexicon_compiler = self.lexicon_compilers[d.id]
+                else:
+                    lexicon_compiler = d.lexicon_compiler
 
                 words_path = job.construct_path(workflow.working_directory, "words", "ark", d.id)
                 alignment_archive = AlignmentArchive(ali_path, words_file_name=words_path)
@@ -1227,7 +1231,10 @@ class AlignmentExtractionFunction(KaldiFunction):
                     )
                     for u_id, begin, end in utts:
                         utterance_times[u_id] = (begin, end)
-                lexicon_compiler = self.lexicon_compilers[d.id]
+                if self.lexicon_compilers and d.id in self.lexicon_compilers:
+                    lexicon_compiler = self.lexicon_compilers[d.id]
+                else:
+                    lexicon_compiler = d.lexicon_compiler
                 if self.transcription:
                     lat_path = job.construct_path(workflow.working_directory, "lat", "ark", d.id)
 

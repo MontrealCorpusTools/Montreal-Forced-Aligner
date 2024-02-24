@@ -142,7 +142,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                 getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"generate_pronunciations.{j.id}.log"),
                 aligner,
-                self.lexicon_compilers,
+                {},
                 True,
             )
             for j in self.jobs

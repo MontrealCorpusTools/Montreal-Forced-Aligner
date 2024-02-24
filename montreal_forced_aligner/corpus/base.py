@@ -680,6 +680,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             dictionaries: typing.Dict[int, Dictionary] = {
                 d.id: d for d in session.query(Dictionary)
             }
+            dict_name_to_id = {v.name: k for k, v in dictionaries.items()}
             has_words = (
                 session.query(Dictionary).filter(Dictionary.name == "unknown").first() is None
             )
@@ -711,70 +712,73 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             for result in run_kaldi_function(
                 NormalizeTextFunction, args, total_count=self.num_utterances
             ):
-                result, dict_id = result
-                if dict_id is None:
-                    dict_id = list(dictionaries.keys())[0]
-                if has_words and not getattr(self, "use_g2p", False) and g2p_model is not None:
-                    oovs = set(result["oovs"].split())
-                    pronunciation_text = result["normalized_character_text"].split()
-                    for i, w in enumerate(result["normalized_text"].split()):
-                        if (dict_id, w) not in word_indexes:
-                            if w in dictionaries[dict_id].special_set:
-                                continue
-                            word_counts[(dict_id, w)] += 1
-                            oovs.add(w)
-                            if self.language is Language.unknown:
-                                to_g2p.add((w, dict_id))
-                            else:
-                                if g2p_model is not None:
-                                    if any(
-                                        not g2p_model.grapheme_table.member(x)
-                                        for x in pronunciation_text[i]
-                                    ):
-                                        log_file.write(
-                                            f"{result['id']}: {result['normalized_text']} ({result['normalized_character_text']})\n"
-                                        )
-                                to_g2p.add((pronunciation_text[i], dict_id))
-                                word_to_g2p_mapping[dict_id][w].add(pronunciation_text[i])
-                        elif (dict_id, w) not in word_update_mappings:
-                            word_update_mappings[(dict_id, w)] = {
-                                "id": word_indexes[(dict_id, w)],
-                                "count": 1,
-                            }
-                        else:
-                            word_update_mappings[(dict_id, w)]["count"] += 1
-                    result["oovs"] = " ".join(sorted(oovs))
-                else:
-                    for w in result["normalized_text"].split():
-                        if (dict_id, w) not in word_indexes:
-                            if (dict_id, w) not in word_insert_mappings:
-                                word_insert_mappings[(dict_id, w)] = {
-                                    "id": word_key,
-                                    "word": w,
-                                    "word_type": WordType.oov,
-                                    "mapping_id": word_key - 1,
-                                    "count": 0,
-                                    "dictionary_id": dict_id,
+                try:
+                    result, dict_id = result
+                    if dict_id is None:
+                        dict_id = list(dictionaries.keys())[0]
+                    if has_words and not getattr(self, "use_g2p", False) and g2p_model is not None:
+                        oovs = set(result["oovs"].split())
+                        pronunciation_text = result["normalized_character_text"].split()
+                        for i, w in enumerate(result["normalized_text"].split()):
+                            if (dict_id, w) not in word_indexes:
+                                if w in dictionaries[dict_id].special_set:
+                                    continue
+                                word_counts[(dict_id, w)] += 1
+                                oovs.add(w)
+                                if self.language is Language.unknown:
+                                    to_g2p.add((w, dict_id))
+                                else:
+                                    to_g2p.add((pronunciation_text[i], dict_id))
+                                    word_to_g2p_mapping[dict_id][w].add(pronunciation_text[i])
+                            elif (dict_id, w) not in word_update_mappings:
+                                word_update_mappings[(dict_id, w)] = {
+                                    "id": word_indexes[(dict_id, w)],
+                                    "count": 1,
                                 }
-                                pronunciation_insert_mappings.append(
-                                    {
-                                        "id": pronunciation_key,
-                                        "word_id": word_key,
-                                        "pronunciation": getattr(self, "oov_phone", "spn"),
+                            else:
+                                word_update_mappings[(dict_id, w)]["count"] += 1
+                        result["oovs"] = " ".join(sorted(oovs))
+                    else:
+                        for w in result["normalized_text"].split():
+                            if (dict_id, w) not in word_indexes:
+                                if (dict_id, w) not in word_insert_mappings:
+                                    word_insert_mappings[(dict_id, w)] = {
+                                        "id": word_key,
+                                        "word": w,
+                                        "word_type": WordType.oov,
+                                        "mapping_id": word_key - 1,
+                                        "count": 0,
+                                        "dictionary_id": dict_id,
                                     }
-                                )
-                                word_key += 1
-                                pronunciation_key += 1
-                            word_insert_mappings[(dict_id, w)]["count"] += 1
-                        elif (dict_id, w) not in word_update_mappings:
-                            word_update_mappings[(dict_id, w)] = {
-                                "id": word_indexes[(dict_id, w)],
-                                "count": 1,
-                            }
-                        else:
-                            word_update_mappings[(dict_id, w)]["count"] += 1
+                                    pronunciation_insert_mappings.append(
+                                        {
+                                            "id": pronunciation_key,
+                                            "word_id": word_key,
+                                            "pronunciation": getattr(self, "oov_phone", "spn"),
+                                        }
+                                    )
+                                    word_key += 1
+                                    pronunciation_key += 1
+                                word_insert_mappings[(dict_id, w)]["count"] += 1
+                            elif (dict_id, w) not in word_update_mappings:
+                                word_update_mappings[(dict_id, w)] = {
+                                    "id": word_indexes[(dict_id, w)],
+                                    "count": 1,
+                                }
+                            else:
+                                word_update_mappings[(dict_id, w)]["count"] += 1
 
-                update_mapping.append(result)
+                    update_mapping.append(result)
+                except Exception:
+                    import sys
+                    import traceback
+
+                    exc_type, exc_value, exc_traceback = sys.exc_info()
+                    print(
+                        "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+                    )
+                    raise
+
             bulk_update(session, Utterance, update_mapping)
             session.commit()
             if word_update_mappings:
@@ -789,13 +793,25 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     if g2p_model is not None:
                         from montreal_forced_aligner.g2p.generator import PyniniGenerator
 
-                        gen = PyniniGenerator(
-                            g2p_model_path=g2p_model.source,
-                            word_list=[x[0] for x in to_g2p],
-                            num_pronunciations=1,
-                            strict_graphemes=True,
-                        )
-                        g2pped = gen.generate_pronunciations()
+                        if isinstance(g2p_model, dict):
+                            g2pped = {}
+                            for dict_name, g2p_model in g2p_model.items():
+                                dict_id = dict_name_to_id[dict_name]
+                                gen = PyniniGenerator(
+                                    g2p_model_path=g2p_model.source,
+                                    word_list=[x[0] for x in to_g2p if x[1] == dict_id],
+                                    num_pronunciations=1,
+                                    strict_graphemes=True,
+                                )
+                                g2pped[dict_id] = gen.generate_pronunciations()
+                        else:
+                            gen = PyniniGenerator(
+                                g2p_model_path=g2p_model.source,
+                                word_list=[x[0] for x in to_g2p],
+                                num_pronunciations=1,
+                                strict_graphemes=True,
+                            )
+                            g2pped = gen.generate_pronunciations()
                         for dict_id, mapping in word_to_g2p_mapping.items():
                             log_file.write(f"For dictionary {dict_id}:\n")
                             for w, ps in mapping.items():
@@ -809,9 +825,16 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                     pronunciations = [getattr(self, "oov_phone", "spn")]
                                 else:
                                     word_type = WordType.speech
-                                    pronunciations = [
-                                        g2pped[x][0] for x in ps if x in g2pped and g2pped[x]
-                                    ]
+                                    if isinstance(g2pped, dict):
+                                        pronunciations = [
+                                            g2pped[dict_id][x][0]
+                                            for x in ps
+                                            if x in g2pped[dict_id] and g2pped[dict_id][x]
+                                        ]
+                                    else:
+                                        pronunciations = [
+                                            g2pped[x][0] for x in ps if x in g2pped and g2pped[x]
+                                        ]
                                     if not pronunciations:
                                         word_type = WordType.oov
                                         pronunciations = [getattr(self, "oov_phone", "spn")]

@@ -42,7 +42,8 @@ __all__ = ["train_acoustic_model_cli"]
 @click.option(
     "--config_path",
     "-c",
-    help="Path to config file to use for training.",
+    help="Path to config file to use for training. See "
+    "https://github.com/MontrealCorpusTools/mfa-models/tree/main/config/acoustic for examples.",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
@@ -69,13 +70,15 @@ __all__ = ["train_acoustic_model_cli"]
 @click.option(
     "--phone_groups_path",
     "phone_groups_path",
-    help="Path to yaml file defining phone groups.",
+    help="Path to yaml file defining phone groups. See "
+    "https://github.com/MontrealCorpusTools/mfa-models/tree/main/config/acoustic/phone_groups for examples.",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
     "--rules_path",
     "rules_path",
-    help="Path to yaml file defining phonological rules.",
+    help="Path to yaml file defining phonological rules. See "
+    "https://github.com/MontrealCorpusTools/mfa-models/tree/main/config/acoustic/rules for examples.",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
@@ -93,7 +96,7 @@ __all__ = ["train_acoustic_model_cli"]
 @click.option(
     "--language",
     "language",
-    help="Language to use for spacy tokenizers and other preprocessing of language data",
+    help="Language to use for spacy tokenizers and other preprocessing of language data.",
     default=Language.unknown.name,
     type=click.Choice([x.name for x in Language]),
 )
@@ -121,6 +124,15 @@ def train_acoustic_model_cli(context, **kwargs) -> None:
     dictionary_path = kwargs["dictionary_path"]
     g2p_model_path = kwargs.get("g2p_model_path", None)
     phone_groups_path = kwargs.get("phone_groups_path", None)
+    if kwargs.get("phone_set_type", "UNKNOWN") != "UNKNOWN":
+        import warnings
+
+        warnings.warn(
+            "The flag `--phone_set` is deprecated, please use a yaml file for phone groups passed to "
+            "`--phone_groups_path`.  See "
+            "https://github.com/MontrealCorpusTools/mfa-models/tree/main/config/acoustic/phone_groups "
+            "for example phone group configurations that have been used in training MFA models."
+        )
     if g2p_model_path:
         g2p_model_path = validate_g2p_model(context, kwargs, g2p_model_path)
     trainer = TrainableAligner(

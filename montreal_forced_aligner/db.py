@@ -2179,7 +2179,7 @@ class M2MSymbol(MfaSqlBase):
     __tablename__ = "m2m_symbol"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    symbol = Column(String, nullable=False, index=True, unique=True)
+    symbol = Column(String, nullable=False)
     total_order = Column(Integer, nullable=False)
     max_order = Column(Integer, nullable=False)
     grapheme_order = Column(Integer, nullable=False)

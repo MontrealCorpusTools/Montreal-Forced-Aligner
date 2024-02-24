@@ -48,4 +48,4 @@ dependencies:
       - python-mecab-ko
       - jamo
       - pythainlp
-      - hanziconv
+      - dragonmapper
