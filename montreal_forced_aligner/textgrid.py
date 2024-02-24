@@ -90,95 +90,74 @@ class Textgrid(tgio.Textgrid):
             a string representation of the textgrid
         """
 
+        tab = " " * 4
+
         with mfa_open(fn, mode="w") as fd:
-            if format == TextgridFormats.LONG_TEXTGRID:
-                fd.write('File type = "ooTextFile"\n')
-                fd.write('Object class = "TextGrid"\n\n')
-
-                tab = " " * 4
-
+            if format in {TextgridFormats.LONG_TEXTGRID, TextgridFormats.SHORT_TEXTGRID}:
                 # Header
-                fd.write(f"xmin = {self.minTimestamp} \n")
-                fd.write(f"xmax = {self.maxTimestamp} \n")
-                fd.write("tiers? <exists> \n")
-                fd.write(f"size = {len(self._tierDict)} \n")
-                fd.write("item []: \n")
+                if format == TextgridFormats.LONG_TEXTGRID:
+                    fd.write('File type = "ooTextFile"\n')
+                    fd.write('Object class = "TextGrid"\n\n')
+
+                    fd.write(f"xmin = {self.minTimestamp} \n")
+                    fd.write(f"xmax = {self.maxTimestamp} \n")
+                    fd.write("tiers? <exists> \n")
+                    fd.write(f"size = {len(self._tierDict)} \n")
+                    fd.write("item []: \n")
+                elif format == TextgridFormats.SHORT_TEXTGRID:
+                    fd.write('File type = "ooTextFile"\n')
+                    fd.write('Object class = "TextGrid"\n\n')
+                    fd.write(f"{self.minTimestamp}\n{self.maxTimestamp}\n")
+                    fd.write(f"<exists>\n{len(self._tierDict)}\n")
 
                 for tierNum, (name, tier) in enumerate(self._tierDict.items()):
-                    # Interval header
-                    tier_name = tgio_utils.escapeQuotes(name)
-                    fd.write(tab + f"item [{tierNum + 1}]:\n")
-                    fd.write(tab * 2 + f'class = "{tier.tierType}" \n')
-                    fd.write(tab * 2 + f'name = "{tier_name}" \n')
-                    fd.write(tab * 2 + f"xmin = {self.minTimestamp} \n")
-                    fd.write(tab * 2 + f"xmax = {self.maxTimestamp} \n")
-
-                    fd.write(tab * 2 + f"intervals: size = {len(tier._entries)} \n")
-                    interval_index = 1
                     if includeBlankSpaces and tier._entries:
                         if tier._entries[0][0] > 0.001:
-                            fd.write(
-                                f"{tab * 2}intervals [{interval_index}]:\n"
-                                f"{tab * 3}xmin = 0.0 \n"
-                                f"{tab * 3}xmax = {tier._entries[0][0]} \n"
-                                f'{tab * 3}text = "" \n'
-                            )
+                            tier._entries.insert(0, Interval(0.0, tier._entries[0][0], ""))
+                        interval_index = 1
+                        while interval_index < len(tier._entries):
+                            start, end, label = tier._entries[interval_index]
+                            previous_entry = tier._entries[interval_index - 1]
+                            if start - previous_entry[1] > 0.001:
+                                tier._entries.insert(
+                                    interval_index, Interval(previous_entry[1], start, "")
+                                )
+                                interval_index += 1
                             interval_index += 1
+                        if self.maxTimestamp - tier._entries[-1][1] > 0.001:
+                            tier._entries.append(
+                                Interval(tier._entries[-1][1], self.maxTimestamp, "")
+                            )
+
+                    tier_name = tgio_utils.escapeQuotes(name)
+                    if format == TextgridFormats.LONG_TEXTGRID:
+                        # Interval header
+                        fd.write(tab + f"item [{tierNum + 1}]:\n")
+                        fd.write(tab * 2 + f'class = "{tier.tierType}" \n')
+                        fd.write(tab * 2 + f'name = "{tier_name}" \n')
+                        fd.write(tab * 2 + f"xmin = {self.minTimestamp} \n")
+                        fd.write(tab * 2 + f"xmax = {self.maxTimestamp} \n")
+
+                        fd.write(tab * 2 + f"intervals: size = {len(tier._entries)} \n")
+                    elif format == TextgridFormats.SHORT_TEXTGRID:
+                        fd.write(f'"{tier.tierType}"\n')
+                        fd.write(f'"{tier_name}"\n')
+                        fd.write(
+                            f"{self.minTimestamp}\n{self.maxTimestamp}\n{len(tier._entries)}\n"
+                        )
 
                     for i, entry in enumerate(tier._entries):
                         start, end, label = entry
-                        if (
-                            includeBlankSpaces
-                            and i > 0
-                            and start - tier._entries[i - 1][1] > 0.001
-                        ):
-                            fd.write(
-                                f"{tab * 2}intervals [{interval_index}]:\n"
-                                f"{tab * 3}xmin = {tier._entries[i-1][1]} \n"
-                                f"{tab * 3}xmax = {start} \n"
-                                f'{tab * 3}text = "" \n'
-                            )
-                            interval_index += 1
-                        fd.write(
-                            f"{tab * 2}intervals [{interval_index}]:\n"
-                            f"{tab * 3}xmin = {start} \n"
-                            f"{tab * 3}xmax = {end} \n"
-                            f'{tab * 3}text = "{tgio_utils.escapeQuotes(label)}" \n'
-                        )
-                        interval_index += 1
-                    if includeBlankSpaces and tier._entries:
-                        if self.maxTimestamp - tier._entries[-1][1] > 0.001:
-                            fd.write(
-                                f"{tab * 2}intervals [{interval_index}]:\n"
-                                f"{tab * 3}xmin = {tier._entries[-1][1]} \n"
-                                f"{tab * 3}xmax = {self.maxTimestamp} \n"
-                                f'{tab * 3}text = "" \n'
-                            )
-                            interval_index += 1
-            elif format == TextgridFormats.SHORT_TEXTGRID:
-                # Header
-                fd.write('File type = "ooTextFile"\n')
-                fd.write('Object class = "TextGrid"\n\n')
-                fd.write(f"{self.minTimestamp}\n{self.maxTimestamp}\n")
-                fd.write(f"<exists>\n{len(self._tierDict)}\n")
-                for name, tier in self._tierDict.items():
-                    tier_name = tgio_utils.escapeQuotes(name)
-                    c = tier.tierType
-                    fd.write(f'"{c}"\n')
-                    fd.write(f'"{tier_name}"\n')
-                    fd.write(f"{self.minTimestamp}\n{self.maxTimestamp}\n{len(tier._entries)}\n")
-
-                    if includeBlankSpaces and tier._entries:
-                        if tier._entries[0][0] > 0.001:
-                            fd.write(f'0.0\n{tier._entries[0][0]}\n""\n')
-                    for entry in tier._entries:
-                        start, end, label = entry
                         label = tgio_utils.escapeQuotes(label)
-
-                        fd.write(f'{start}\n{end}\n"{label}"\n')
-                    if includeBlankSpaces and tier._entries:
-                        if self.maxTimestamp - tier._entries[-1][1] > 0.001:
-                            fd.write(f'{tier._entries[-1][1]}\n{self.maxTimestamp}\n""\n')
+                        if format == TextgridFormats.LONG_TEXTGRID:
+                            fd.write(
+                                f"{tab * 2}intervals [{i + 1}]:\n"
+                                f"{tab * 3}xmin = {start} \n"
+                                f"{tab * 3}xmax = {end} \n"
+                                f'{tab * 3}text = "{label}" \n'
+                            )
+                        elif format == TextgridFormats.SHORT_TEXTGRID:
+                            fd.write(f'{start}\n{end}\n"{label}"\n')
 
 
 def process_ctm_line(
