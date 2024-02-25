@@ -135,6 +135,9 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
         aligner = GmmAligner(
             self.model_path, disambiguation_symbols=disambiguation_symbols, **align_options
         )
+        lexicon_compilers = {}
+        if getattr(self, "use_g2p", False):
+            lexicon_compilers = getattr(self, "lexicon_compilers", {})
 
         return [
             GeneratePronunciationsArguments(
@@ -142,7 +145,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                 getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"generate_pronunciations.{j.id}.log"),
                 aligner,
-                {},
+                lexicon_compilers,
                 True,
             )
             for j in self.jobs

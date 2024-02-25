@@ -254,6 +254,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             from_transcription = True
 
         transition_model = read_transition_model(str(self.alignment_model_path))
+        lexicon_compilers = {}
+        if getattr(self, "use_g2p", False):
+            lexicon_compilers = getattr(self, "lexicon_compilers", {})
         for j in self.jobs:
             arguments.append(
                 AlignmentExtractionArguments(
@@ -261,7 +264,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                     self.working_log_directory.joinpath(f"get_phone_ctm.{j.id}.log"),
                     self.working_directory,
-                    {},
+                    lexicon_compilers,
                     transition_model,
                     round(self.frame_shift / 1000, 4),
                     self.score_options,
@@ -321,13 +324,16 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         aligner = GmmAligner(
             self.model_path, disambiguation_symbols=disambiguation_symbols, **align_options
         )
+        lexicon_compilers = {}
+        if getattr(self, "use_g2p", False):
+            lexicon_compilers = getattr(self, "lexicon_compilers", {})
         return [
             GeneratePronunciationsArguments(
                 j.id,
                 getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"generate_pronunciations.{j.id}.log"),
                 aligner,
-                {},
+                lexicon_compilers,
                 False,
             )
             for j in self.jobs
