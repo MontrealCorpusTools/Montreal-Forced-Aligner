@@ -510,8 +510,10 @@ class PyniniGenerator(G2PTopLevelMixin):
     def setup(self):
         self.fst = pynini.Fst.read(self.g2p_model.fst_path)
         if self.g2p_model.meta["architecture"] == "phonetisaurus":
-            self.output_token_type = pynini.SymbolTable.read_text(self.g2p_model.sym_path)
-            self.input_token_type = pynini.SymbolTable.read_text(self.g2p_model.grapheme_sym_path)
+            self.output_token_type = pywrapfst.SymbolTable.read_text(self.g2p_model.sym_path)
+            self.input_token_type = pywrapfst.SymbolTable.read_text(
+                self.g2p_model.grapheme_sym_path
+            )
             self.fst.set_input_symbols(self.input_token_type)
             self.fst.set_output_symbols(self.output_token_type)
             self.rewriter = PhonetisaurusRewriter(
@@ -525,7 +527,7 @@ class PyniniGenerator(G2PTopLevelMixin):
             )
         else:
             if self.g2p_model.sym_path is not None and os.path.exists(self.g2p_model.sym_path):
-                self.output_token_type = pynini.SymbolTable.read_text(self.g2p_model.sym_path)
+                self.output_token_type = pywrapfst.SymbolTable.read_text(self.g2p_model.sym_path)
 
             self.rewriter = Rewriter(
                 self.fst,

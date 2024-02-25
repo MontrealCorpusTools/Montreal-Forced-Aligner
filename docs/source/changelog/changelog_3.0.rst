@@ -5,6 +5,13 @@
 3.0 Changelog
 *************
 
+3.0.0rc2
+========
+
+- Add support for per-dictionary g2p models during acoustic model training and alignment
+- Change Chinese language support to require :xref:`dragonmapper`
+- Fixed bug in TextGrid generation for incorrect number of intervals
+
 3.0.0rc1
 ========
 
@@ -17,7 +24,7 @@
 - Improved subset logic for G2P training and validation splits to ensure low-frequency graphemes and phones are reliably in the training data
 - Added better validation for phone groups files in acoustic model training
 - Added better validation for phone mapping files in alignment evaluation
-- Add tokenization support for Chinese languages when :xref:`spacy-pkuseg` and :xref:`hanziconv` are installed via :code:`pip install spacy-pkuseg hanziconv`
+- Add tokenization support for Chinese languages when :xref:`spacy-pkuseg` and :xref:`hanziconv` are installed via :code:`pip install spacy-pkuseg hanziconv dragonmapper`
 - Add tokenization support for Korean when :xref:`python-mecab-ko` and :xref:`jamo` are installed via :code:`pip install python-mecab-ko jamo`
 - Add tokenization support for Thai when :xref:`pythainlp` is installed via :code:`pip install pythainlp`
 - Fixed a bug where pronunciations below the OOV count threshold were being exported at the end of acoustic model training

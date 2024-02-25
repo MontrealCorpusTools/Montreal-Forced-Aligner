@@ -1787,7 +1787,7 @@ class PhonetisaurusTrainer(
                     with session.begin_nested():
                         session.execute(query)
                         session.commit()
-                    self.g2p_training_graphemes.update(phone_diff)
+                    self.g2p_training_phones.update(phone_diff)
                 self.g2p_num_validation_words = (
                     session.query(Word2Job.word_id)
                     .filter(Word2Job.training == False)  # noqa
