@@ -63,7 +63,7 @@ class ChineseTokenizer:
                 new_text[-1] += normalized
                 pronunciations[-1] += p
                 continue
-            if pos == "m":
+            if pos == "m":  # numerals
                 for c in normalized:
                     new_text.append(c)
                     pronunciations.append(to_pinyin(c))

@@ -222,7 +222,7 @@ def validate_language_model(ctx, param, value):
 
 def validate_g2p_model(ctx, param, value: Path):
     """Validation callback for G2P model paths"""
-    if value.suffix == ".yaml":
+    if Path(value).suffix == ".yaml":
         with open(value, encoding="utf8") as f:
             data = yaml.safe_load(f)
             for k, v in data.items():
