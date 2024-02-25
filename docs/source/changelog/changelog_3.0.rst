@@ -5,16 +5,12 @@
 3.0 Changelog
 *************
 
-3.0.0rc3
-========
-
-- Fixed bug in TextGrid generation for incorrect number of intervals
-
 3.0.0rc2
 ========
 
 - Add support for per-dictionary g2p models during acoustic model training and alignment
 - Change Chinese language support to require :xref:`dragonmapper`
+- Fixed bug in TextGrid generation for incorrect number of intervals
 
 3.0.0rc1
 ========
