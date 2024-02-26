@@ -9,7 +9,7 @@ assignees: mmcauliffe
 
 **Debugging checklist**
 
-[ ] Have you updated to latest MFA version?
+[ ] Have you updated to latest MFA version? What is the output of `mfa version`?
 [ ] Have you tried rerunning the command with the `--clean` flag?
 
 **Describe the issue**

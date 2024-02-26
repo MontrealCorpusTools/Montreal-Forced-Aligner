@@ -63,7 +63,7 @@ __all__ = ["train_acoustic_model_cli"]
 @click.option(
     "--phone_set",
     "phone_set_type",
-    help="Enable extra decision tree modeling based on the phone set.",
+    help="DEPRECATED, please use --phone_groups_path to specify phone groups instead.",
     default="UNKNOWN",
     type=click.Choice(["UNKNOWN", "AUTO", "MFA", "IPA", "ARPA", "PINYIN"]),
 )
