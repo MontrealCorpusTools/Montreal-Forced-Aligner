@@ -132,7 +132,7 @@ We acknowledge funding from Social Sciences and Humanities Research Council (SSH
    data_validation
    dictionary
    dictionary_validation
-   performance
+   troubleshooting
    workflows/index
    corpus_creation/index
    configuration/index

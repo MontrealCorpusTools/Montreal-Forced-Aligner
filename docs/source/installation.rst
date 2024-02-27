@@ -7,7 +7,7 @@ Installation
 
 .. important::
 
-   Kaldi and MFA are now built on :xref:`conda_forge` :fas:`party-horn`, so installation of third party binaries is wholly through conda from 2.0.0b4 onwards. Installing MFA via conda will pick up Kaldi as well.
+   Kaldi and MFA are now built on :xref:`conda_forge` :fas:`party-horn`, so installation of third party binaries is wholly through conda. Installing MFA via conda will pick up Kaldi as well.
 
 
 General installation
@@ -52,6 +52,7 @@ If you need to use an older version of MFA, you can install it via:
 
 More stable key versions:
 
+* Stable 3.0 release: :code:`conda install -c conda-forge montreal-forced-aligner=3.0.0`
 * Stable 2.2 release: :code:`conda install -c conda-forge montreal-forced-aligner=2.2.17 openfst=1.8.2 kaldi=5.5.1068`
 * Stable 2.1 release: :code:`conda install -c conda-forge montreal-forced-aligner=2.1.7 openfst=1.8.2 kaldi=5.5.1068`
 * Stable 2.0 release: :code:`conda install -c conda-forge montreal-forced-aligner=2.0.6 openfst=1.8.2 kaldi=5.5.1068`
@@ -169,8 +170,3 @@ MFA temporary files
 ===================
 
 MFA uses a temporary directory for commands that can be specified in running commands with ``--temp_directory`` (or see :ref:`configuration`), and it also uses a directory to store global configuration settings and saved models.  By default this root directory is ``~/Documents/MFA``, but if you would like to put this somewhere else, you can set the environment variable ``MFA_ROOT_DIR`` to use that.  MFA will raise an error on load if it's unable to write the specified root directory.
-
-Supported functionality
-=======================
-
-As of version 2.0.6, all features are available on all platforms.  Prior to this version, G2P and language model training was unavailable on native Windows, but could be used with Windows Subsystem for Linux (WSL).

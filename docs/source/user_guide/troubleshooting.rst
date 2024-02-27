@@ -1,15 +1,58 @@
 
 
-.. _performance:
+.. _troubleshooting:
 
-***************************
-Troubleshooting performance
-***************************
+***************
+Troubleshooting
+***************
 
-There are a number of optimizations that you can do to your corpus to speed up MFA or make it more accurate.
+Errors aligning single files
+============================
+
+In general, MFA is not intended to align single files, particularly if they are long, have noise in the background, a different style such a singing etc.  Some aspects of these can be improved by aligning a larger set of utterances per speaker, as successful alignments on the first pass can aid second pass alignments through feature-space transforms.
+
+If you must align a single file and run into an error, you can increase the beam width via `--beam 100`, this will result in less optimal alignments being generated.  The beam width is intentionally set low so that the fMLLR feature space transform for speaker adaptation is using quality alignments and not potential noise or bad alignments.
+
+.. seealso::
+
+   See :ref:`align_one` for a command geared towards aligning a single file rather than :code:`mfa align`.
+
+Errors training on small corpora
+================================
+
+MFA generally needs a large set of utterances and speakers to train models.  I typically shoot for at least 1000 hours of data for the pretrained models for MFA.  If you do not need a model to be generalizable (i.e. you're just using it on the data that it was trained on to generate alignments for a small corpus), then you do not need as much data, but you will need at least several hours worth. In general, the more the better and the more variation you can include in the form of speakers and utterances per speaker the better.  Obviously training data quality should be inspected, as models and overall alignments can be negatively impacted by noisy files (i.e., files without speech, low SNR, clipping and stuttering, etc).
+
+
+Different numbers of speakers
+=============================
+
+Please refer to :ref:`corpus_structure` for how your corpus directory should be structured for MFA to correctly parse speaker information.
+
+Improving alignment quality
+===========================
+
+Add pronunciations to the pronunciation dictionary
+--------------------------------------------------
+
+Pretrained models are trained a particular dialect/style, and so adding pronunciations more representative of the variety spoken in your dataset will help alignment.
+
+Check the quality of your data
+------------------------------
+
+Double check that your transcription files match the audio.  Ensure that hesitation words like "uh" and "um" are represented, as well as cutoffs or hesitations.
+
+* See :ref:`validating_data` for more information on running MFA's validate command, which aims to detect issues in the dataset.
+* Use MFA's `anchor utility <https://anchor-annotator.readthedocs.io/en/latest/>`_ to visually inspect your data as MFA sees it and correct issues in transcription or OOV items.
+
+Adapt the model to your data
+----------------------------
+
+See :ref:`adapt_acoustic_model` for how to adapt some of the model parameters to your data based on an initial alignment, and then run another alignment with the adapted model.
 
 Speed optimizations
 ===================
+
+There are a number of optimizations that you can do to your corpus to speed up MFA or make it more accurate.
 
 .. _wav_conversion:
 
