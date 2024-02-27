@@ -19,9 +19,12 @@ def test_align_sick(
         dictionary_path=english_dictionary,
         acoustic_model_path=english_acoustic_model,
         oov_count_threshold=1,
+        dither=0,
         **test_align_config
     )
     a.align()
+    assert a.dither == 0
+    assert a.mfcc_options["dither"] == 0
     export_directory = os.path.join(temp_dir, "test_align_export")
     shutil.rmtree(export_directory, ignore_errors=True)
     a.export_files(export_directory)

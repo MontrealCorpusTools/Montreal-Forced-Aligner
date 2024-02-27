@@ -57,7 +57,10 @@ def model_cli() -> None:
     default=None,
 )
 @click.option(
+    "--force",
+    "-f",
     "--ignore_cache",
+    "ignore_cache",
     is_flag=True,
     help="Flag to ignore existing downloaded models and force a re-download.",
     default=False,

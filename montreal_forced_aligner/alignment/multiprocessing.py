@@ -9,6 +9,7 @@ import json
 import logging
 import multiprocessing as mp
 import os
+import shutil
 import statistics
 import sys
 import time
@@ -608,15 +609,31 @@ class AlignFunction(KaldiFunction):
                     callback=self.callback,
                 )
                 if aligner.acoustic_model_path.endswith(".alimdl"):
-                    job.construct_path(self.working_directory, "ali", "ark", dict_id).symlink_to(
-                        ali_path
-                    )
-                    job.construct_path(self.working_directory, "words", "ark", dict_id).symlink_to(
-                        words_path
-                    )
-                    job.construct_path(
-                        self.working_directory, "likelihoods", "ark", dict_id
-                    ).symlink_to(likes_path)
+                    try:
+                        job.construct_path(
+                            self.working_directory, "ali", "ark", dict_id
+                        ).symlink_to(ali_path)
+                        job.construct_path(
+                            self.working_directory, "words", "ark", dict_id
+                        ).symlink_to(words_path)
+                        job.construct_path(
+                            self.working_directory, "likelihoods", "ark", dict_id
+                        ).symlink_to(likes_path)
+                    except OSError:
+                        shutil.copyfile(
+                            job.construct_path(self.working_directory, "ali", "ark", dict_id),
+                            ali_path,
+                        )
+                        shutil.copyfile(
+                            job.construct_path(self.working_directory, "words", "ark", dict_id),
+                            words_path,
+                        )
+                        shutil.copyfile(
+                            job.construct_path(
+                                self.working_directory, "likelihoods", "ark", dict_id
+                            ),
+                            likes_path,
+                        )
 
 
 class AnalyzeAlignmentsFunction(KaldiFunction):

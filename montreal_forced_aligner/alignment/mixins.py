@@ -301,7 +301,7 @@ class AlignMixin(DictionaryMixin):
                     }
                 )
         if not training:
-            if len(update_mappings) == 0:
+            if len(update_mappings) == 0 or num_successful == 0:
                 raise NoAlignmentsError(self.num_current_utterances, self.beam, self.retry_beam)
             with self.session() as session:
                 bulk_update(session, Utterance, update_mappings)

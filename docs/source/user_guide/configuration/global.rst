@@ -85,4 +85,3 @@ This sections details configuration options related to how MFA normalizes text a
    "quote_markers", "“„"”〝〟″「」『』‚ʻʿ‘′'", "Characters that are used as quotes in the language"
    "word_break_markers", "？!()，,.:;¡¿?“„"”&~%#—…‥、。【】$+=〝〟″‹›«»・⟨⟩「」『』", "Characters to use in addition to white space when breaking transcripts into words"
    "brackets", "('[', ']'), ('{', '}'), ('<', '>'), ('(', ')'), , ('＜', '＞')", "Punctuation to keep as bracketing a whole word, i.e., a restart, disfluency, etc"
-   "phone_set_type", "UNKNOWN", ":class:`~montreal_forced_aligner.data.PhoneSetType` to enable extra questions and more directed decision tree clustering during training"

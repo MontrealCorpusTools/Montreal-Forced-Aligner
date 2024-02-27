@@ -26,7 +26,7 @@ Text normalization and dictionary lookup
 
 If a word is not found in the dictionary, and has no orthographic
 markers for morpheme boundaries (apostrophes or hyphens), then it will
-be replaced in the output with '<unk>' for unknown word.
+be replaced in the output with :code:`<unk>` for unknown word.
 
 .. note::
 
@@ -44,11 +44,9 @@ from the ends and beginnings of words, except for the :code:`brackets` specified
 
    The definition of punctuation, clitic markers, and compound markers can be set in a config file, see :ref:`configuration_dictionary` for more details.
 
-Dictionary lookup will attempt to generate the most maximal coverage of
-novel forms if they use some overt morpheme boundary in the orthography.
+Dictionary lookup will attempt to generate the most maximal coverage of novel forms if they use some overt morpheme boundary in the orthography.
 
-For instance, in French, clitics are marked using apostrophes between the
-bound clitic and the stem.  Thus given a dictionary like:
+For instance, in French, clitics are marked using apostrophes between the bound clitic and the stem.  Thus given a dictionary like:
 
 .. highlight:: none
 
@@ -196,7 +194,15 @@ Often in spontaneous speech, speakers will produce truncated or cut-off words of
 1. The cutoff word matches the pattern of :code:`{start_bracket}(cutoff|hes)`, where :code:`{start_bracket}` is the set of all left side brackets defined in :code:`brackets` (:ref:`configuration_dictionary`). The following word must not be an OOV or non-speech word (silence, laughter, another cutoff, etc).
 2. The cutoff word matches the pattern of :code:`{start_bracket}(cutoff|hes)[-_](word){end_bracket}`, where start and end brackets are defined in :code:`brackets` (:ref:`configuration_dictionary`).  The :code:`word` will be used in place of the following word above, but needs to be present in the dictionary, otherwise the target word for the cutoff will default back to the following word.
 
-The generated pronunciations
+The generated pronunciations will be subsequences of the following word, along with an :code:`spn` pronunciation.  For example, given an utterance transcript like "<cutoff> cut off" will have the following pronunciations generated for  the `English (US) MFA dictionary <https://mfa-models.readthedocs.io/en/latest/dictionary/English/English%20%28US%29%20MFA%20dictionary%20v3_0_0.html>`_:
+
+::
+
+  <cutoff-cut>   spn
+  <cutoff-cut>   kʰ ɐ t
+  <cutoff-cut>   kʰ ɐ
+  <cutoff-cut>   kʰ
+
 
 .. _speaker_dictionaries:
 

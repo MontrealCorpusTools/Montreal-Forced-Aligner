@@ -5,6 +5,12 @@
 3.0 Changelog
 *************
 
+3.0.0
+=====
+
+- Fixed a regression where :code:`--dither` was not being passed correctly
+- Fixed a bug on Windows when symlink permissions were not present
+
 3.0.0rc2
 ========
 
