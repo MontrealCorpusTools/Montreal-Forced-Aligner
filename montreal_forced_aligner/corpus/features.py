@@ -602,7 +602,7 @@ class FeatureConfigMixin:
         sample_frequency: int = 16000,
         allow_downsample: bool = True,
         allow_upsample: bool = True,
-        dither: int = 1,
+        dither: float = 1.0,
         energy_floor: float = 0,
         num_coefficients: int = 13,
         num_mel_bins: int = 23,
@@ -777,56 +777,75 @@ class FeatureConfigMixin:
     def mfcc_options(self) -> MetaDict:
         """Parameters to use in computing MFCC features."""
         if getattr(self, "acoustic_model", None) is not None:
-            return self.acoustic_model.mfcc_options
-        if getattr(self, "ivector_extractor", None) is not None:
-            return self.ivector_extractor.mfcc_options
-        return {
-            "use_energy": self.use_energy,
-            "dither": self.dither,
-            "energy_floor": self.energy_floor,
-            "num_coefficients": self.num_coefficients,
-            "num_mel_bins": self.num_mel_bins,
-            "cepstral_lifter": self.cepstral_lifter,
-            "preemphasis_coefficient": self.preemphasis_coefficient,
-            "frame_shift": self.frame_shift,
-            "frame_length": self.frame_length,
-            "low_frequency": self.low_frequency,
-            "high_frequency": self.high_frequency,
-            "sample_frequency": self.sample_frequency,
-            "allow_downsample": self.allow_downsample,
-            "allow_upsample": self.allow_upsample,
-            "snip_edges": self.snip_edges,
-        }
+            options = self.acoustic_model.mfcc_options
+        elif getattr(self, "ivector_extractor", None) is not None:
+            options = self.ivector_extractor.mfcc_options
+        else:
+            options = {
+                "use_energy": self.use_energy,
+                "dither": self.dither,
+                "energy_floor": self.energy_floor,
+                "num_coefficients": self.num_coefficients,
+                "num_mel_bins": self.num_mel_bins,
+                "cepstral_lifter": self.cepstral_lifter,
+                "preemphasis_coefficient": self.preemphasis_coefficient,
+                "frame_shift": self.frame_shift,
+                "frame_length": self.frame_length,
+                "low_frequency": self.low_frequency,
+                "high_frequency": self.high_frequency,
+                "sample_frequency": self.sample_frequency,
+                "allow_downsample": self.allow_downsample,
+                "allow_upsample": self.allow_upsample,
+                "snip_edges": self.snip_edges,
+            }
+        options.update(
+            {
+                "dither": self.dither,
+                "energy_floor": self.energy_floor,
+                "snip_edges": self.snip_edges,
+                "frame_shift": self.frame_shift,
+            }
+        )
+        return options
 
     @property
     def pitch_options(self) -> MetaDict:
         """Parameters to use in computing pitch features."""
         if getattr(self, "acoustic_model", None) is not None:
-            return self.acoustic_model.pitch_options
-        if getattr(self, "ivector_extractor", None) is not None:
-            return self.ivector_extractor.pitch_options
-        use_pitch = self.use_pitch
-        use_voicing = self.use_voicing
-        use_delta_pitch = self.use_delta_pitch
-        normalize = self.normalize_pitch
-        options = {
-            "frame_shift": self.frame_shift,
-            "frame_length": self.frame_length,
-            "min_f0": self.min_f0,
-            "max_f0": self.max_f0,
-            "sample_frequency": self.sample_frequency,
-            "penalty_factor": self.penalty_factor,
-            "delta_pitch": self.delta_pitch,
-            "snip_edges": self.snip_edges,
-            "add_normalized_log_pitch": False,
-            "add_delta_pitch": False,
-            "add_pov_feature": False,
-        }
-        if use_pitch:
-            options["add_normalized_log_pitch"] = normalize
-            options["add_raw_log_pitch"] = not normalize
-        options["add_delta_pitch"] = use_delta_pitch
-        options["add_pov_feature"] = use_voicing
+            options = self.acoustic_model.pitch_options
+        elif getattr(self, "ivector_extractor", None) is not None:
+            options = self.ivector_extractor.pitch_options
+        else:
+            use_pitch = self.use_pitch
+            use_voicing = self.use_voicing
+            use_delta_pitch = self.use_delta_pitch
+            normalize = self.normalize_pitch
+            options = {
+                "frame_shift": self.frame_shift,
+                "frame_length": self.frame_length,
+                "min_f0": self.min_f0,
+                "max_f0": self.max_f0,
+                "sample_frequency": self.sample_frequency,
+                "penalty_factor": self.penalty_factor,
+                "delta_pitch": self.delta_pitch,
+                "snip_edges": self.snip_edges,
+                "add_normalized_log_pitch": False,
+                "add_delta_pitch": False,
+                "add_pov_feature": False,
+            }
+            if use_pitch:
+                options["add_normalized_log_pitch"] = normalize
+                options["add_raw_log_pitch"] = not normalize
+            options["add_delta_pitch"] = use_delta_pitch
+            options["add_pov_feature"] = use_voicing
+        options.update(
+            {
+                "min_f0": self.min_f0,
+                "max_f0": self.max_f0,
+                "snip_edges": self.snip_edges,
+                "frame_shift": self.frame_shift,
+            }
+        )
         return options
 
 

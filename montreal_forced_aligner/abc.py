@@ -632,7 +632,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
                 unknown_dict[name] = val
         for name, param_type in param_types.items():
             if (name.endswith("_directory") and name != "audio_directory") or (
-                name.endswith("_path") and name not in {"rules_path", "groups_path"}
+                name.endswith("_path") and name not in {"rules_path", "phone_groups_path"}
             ):
                 continue
             if args is not None and name in args and args[name] is not None:
