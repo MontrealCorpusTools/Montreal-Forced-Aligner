@@ -123,7 +123,6 @@ def train_acoustic_model_cli(context, **kwargs) -> None:
     corpus_directory = kwargs["corpus_directory"].absolute()
     dictionary_path = kwargs["dictionary_path"]
     g2p_model_path = kwargs.get("g2p_model_path", None)
-    phone_groups_path = kwargs.get("phone_groups_path", None)
     if kwargs.get("phone_set_type", "UNKNOWN") != "UNKNOWN":
         import warnings
 
@@ -139,7 +138,6 @@ def train_acoustic_model_cli(context, **kwargs) -> None:
         corpus_directory=corpus_directory,
         dictionary_path=dictionary_path,
         g2p_model_path=g2p_model_path,
-        phone_groups_path=phone_groups_path,
         **TrainableAligner.parse_parameters(config_path, context.params, context.args),
     )
     try:

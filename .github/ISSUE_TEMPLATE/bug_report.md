@@ -10,7 +10,7 @@ assignees: mmcauliffe
 **Debugging checklist**
 
 [ ] Have you read the troubleshooting page (https://montreal-forced-aligner.readthedocs.io/en/latest/user_guide/troubleshooting.html) and searched the documentation to ensure that your issue is not addressed there?
-[ ] Have you updated to latest MFA version? What is the output of `mfa version`?
+[ ] Have you updated to latest MFA version (check https://montreal-forced-aligner.readthedocs.io/en/latest/changelog/changelog_3.0.html)? What is the output of `mfa version`?
 [ ] Have you tried rerunning the command with the `--clean` flag?
 
 **Describe the issue**

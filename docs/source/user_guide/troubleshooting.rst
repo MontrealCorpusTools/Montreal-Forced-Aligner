@@ -11,7 +11,7 @@ Errors aligning single files
 
 In general, MFA is not intended to align single files, particularly if they are long, have noise in the background, a different style such a singing etc.  Some aspects of these can be improved by aligning a larger set of utterances per speaker, as successful alignments on the first pass can aid second pass alignments through feature-space transforms.
 
-If you must align a single file and run into an error, you can increase the beam width via `--beam 100`, this will result in less optimal alignments being generated.  The beam width is intentionally set low so that the fMLLR feature space transform for speaker adaptation is using quality alignments and not potential noise or bad alignments.
+If you must align a single file and run into an error, you can increase the beam width via :code:`--beam 100`, this will result in less optimal alignments being generated.  The beam width is intentionally set low so that the fMLLR feature space transform for speaker adaptation is using quality alignments and not potential noise or bad alignments.
 
 .. seealso::
 

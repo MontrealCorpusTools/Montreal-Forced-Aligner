@@ -1,4 +1,4 @@
-praatio>=6.0
+praatio>=6.0.0
 tqdm
 pyyaml
 librosa
