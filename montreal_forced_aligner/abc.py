@@ -402,8 +402,8 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
         if not config.USE_POSTGRES:
             if kwargs.pop("read_only", False):
                 db_string += "?mode=ro&nolock=1&uri=true"
-        kwargs["pool_size"] = config.NUM_JOBS
-        kwargs["max_overflow"] = config.NUM_JOBS
+        kwargs["pool_size"] = config.NUM_JOBS + 10
+        kwargs["max_overflow"] = config.NUM_JOBS + 10
         e = sqlalchemy.create_engine(
             db_string,
             **kwargs,
