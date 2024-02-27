@@ -5,6 +5,12 @@
 3.0 Changelog
 *************
 
+3.0.1
+=====
+
+- Fixed an issue where pool size would be too low for number of jobs
+- Fixed an issue with specifying :code:`--phone_groups_path` causing a crash
+
 3.0.0
 =====
 
