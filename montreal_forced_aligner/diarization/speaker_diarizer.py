@@ -81,7 +81,12 @@ try:
         torch_logger = logging.getLogger("speechbrain.utils.train_logger")
         torch_logger.setLevel(logging.ERROR)
         import torch
-        from speechbrain.pretrained import EncoderClassifier, SpeakerRecognition
+
+        try:
+            from speechbrain.pretrained import EncoderClassifier, SpeakerRecognition
+        except ImportError:  # speechbrain 1.0
+            from speechbrain.inference.classifiers import EncoderClassifier
+            from speechbrain.inference.speaker import SpeakerRecognition
         from speechbrain.utils.metric_stats import EER
 
     FOUND_SPEECHBRAIN = True

@@ -54,7 +54,9 @@ def align_utterance_online(
                     if not lexicon_compiler.word_table.member(w):
                         pron = rewriter(w)
                         if pron:
-                            lexicon_compiler.add_pronunciation(KalpyPronunciation(w, pron[0]))
+                            lexicon_compiler.add_pronunciation(
+                                KalpyPronunciation(w, pron[0], None, None, None, None, None)
+                            )
 
         else:
             text, pronunciation_form = tokenizer(text)
@@ -70,7 +72,7 @@ def align_utterance_online(
                         g2p_cache[w] = pron[0]
                     if w in g2p_cache and not lexicon_compiler.word_table.member(norm_w):
                         lexicon_compiler.add_pronunciation(
-                            KalpyPronunciation(norm_w, g2p_cache[w])
+                            KalpyPronunciation(norm_w, g2p_cache[w], None, None, None, None, None)
                         )
 
     graph_compiler = TrainingGraphCompiler(

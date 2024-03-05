@@ -14,6 +14,12 @@ Prior to running the aligner, make sure the following are set up:
 
 3. Orthographic annotations in .lab files for individual sound files (:ref:`prosodylab_format`)
    or in TextGrid intervals for longer sound files (:ref:`textgrid_format`).
+.. note::
+
+   A collection of preprocessing scripts to get various corpora of other formats is available in the :xref:`mfa_reorg_scripts` and :xref:`corpus_creation_scripts`.
+
+Specifying speakers
+===================
 
 The sound files and the orthographic annotations should be contained in one directory structured as follows::
 
@@ -36,10 +42,48 @@ The sound files and the orthographic annotations should be contained in one dire
     |   --- ...
 
 
+.. _speaker_characters_flag:
 
-.. note::
+Using :code:`--speaker_characters` flag
+---------------------------------------
 
-   A collection of preprocessing scripts to get various corpora of other formats is available in the :xref:`mfa_reorg_scripts` and :xref:`corpus_creation_scripts`.
+.. warning::
+
+   In general I would not recommend using this flag and instead sticking to the default behavior of per-speaker directories for :ref:`prosodylab_format` and per-speaker tiers for :ref:`textgrid_format`.
+
+MFA also has limited support for a flat structure directory structure where speaker information is encoded in the file like::
+
+    +-- prosodylab_corpus_directory
+    |   --- speaker1_recording1.wav
+    |   --- speaker1_recording1.lab
+    |   --- speaker1_recording2.wav
+    |   --- speaker1_recording2.lab
+    |   --- speaker2_recording3.wav
+    |   --- speaker2_recording3.lab
+    |   --- ...
+
+By specifying :code:`--speaker_characters 8`, then the above files will be assigned "speaker1" and "speaker2" as their speakers from the first 8 characters of their file name.  Note that because this is dependent on the number of initial characters, if your speaker codes have varying lengths, then it will not behave correctly.
+
+For historical reasons, MFA also supports reading speaker information from files like the following::
+
+    +-- prosodylab_corpus_directory
+    |   --- experiment1_speaker1_recording1.wav
+    |   --- experiment1_speaker1_recording1.lab
+    |   --- experiment1_speaker1_recording2.wav
+    |   --- experiment1_speaker1_recording2.lab
+    |   --- experiment1_speaker2_recording3.wav
+    |   --- experiment1_speaker2_recording3.lab
+    |   --- ...
+
+By specifying :code:`--speaker_characters prosodylab`, then the above files will be assigned "speaker1" and "speaker2" from the second element when splitting by underscores in the file name.
+
+.. _single_speaker_flag:
+
+Using :code:`--single_speaker` flag
+-----------------------------------
+
+MFA uses multiple jobs to process utterances in parallel.  The default setup assigns utterances to jobs based on speakers, so all utterances from ``speaker1`` would be assigned to Job 1, all utterances from ``speaker2`` would be assigned to Job 2, and so on.  However, if there is only one speaker in the corpus (say if you're generating alignments for a Text-to-Speech corpus), then all files would be assigned to Job 1 and only one process would be used.  By using the :code:`--single_speaker` flag, MFA will distribute utterances across jobs equally and it will skip any speaker adaptation steps.
+
 
 Transcription file formats
 ==========================
@@ -57,10 +101,9 @@ transcription files must have the same name. For example, if you have ``givrep_1
 its transcription should be in ``givrep_1027_2_1.lab`` (which is just a
 text file with the .lab extension).
 
-.. note:: If you have transcriptions in a
-   tab-separated text file (or an Excel file, which can be saved as one),
-   you can generate .lab files from it using the relabel function of relabel_clean.py.
-   The relabel_clean.py script is currently in the prosodylab.alignertools repository on GitHub.
+.. note::
+
+   If you have transcriptions in a tab-separated text file (or an Excel file, which can be saved as one), you can generate .lab files from it using the relabel function of relabel_clean.py. The `relabel_clean.py script <https://github.com/prosodylab/prosodylab.alignertools/blob/master/relabel_clean.py>`_ is currently in the `prosodylab.alignertools repository on GitHub <https://github.com/prosodylab/prosodylab.alignertools>`_.
 
 If no ``.lab`` file is found, then the aligner will look for any matching ``.txt`` files and use those.
 
@@ -69,7 +112,7 @@ files are separated into subdirectories based on their speaker (with one
 speaker per file).
 
 An alternative way to specify which speaker says which
-segment is to use the ``-s`` flag with some number of characters of the file name as the speaker identifier.
+segment is to :ref:`speaker_characters_flag` with some number of characters of the file name as the speaker identifier.
 
 The output from aligning this format of data will be TextGrids that have a tier
 for words and a tier for phones.
@@ -88,7 +131,7 @@ of speech.
         :align: center
         :alt: Input TextGrid in Praat with intervals for each utterance and a single tier for a speaker
 
-If the ``-s`` flag is specified, the tier names will not be used as speaker names, and instead the first X characters
+If :ref:`speaker_characters_flag`, the tier names will not be used as speaker names, and instead the first X characters
 specified by the flag will be used as the speaker name.
 
 By default, each tier corresponds to a speaker (speaker "237" in the above example), so it is possible to

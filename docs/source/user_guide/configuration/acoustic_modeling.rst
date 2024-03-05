@@ -155,6 +155,14 @@ The below configuration file shows the equivalent of the current 2.0 training re
          num_iterations: 35
 
      - sat:
+         subset: 20000
+         num_leaves: 2500
+         max_gaussians: 15000
+         power: 0.2
+         silence_weight: 0.0
+         fmllr_update_type: "full"
+
+     - sat:
          subset: 50000
          num_leaves: 4200
          max_gaussians: 40000

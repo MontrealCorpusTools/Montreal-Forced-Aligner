@@ -52,7 +52,7 @@ If you need to use an older version of MFA, you can install it via:
 
 More stable key versions:
 
-* Stable 3.0 release: :code:`conda install -c conda-forge montreal-forced-aligner=3.0.0`
+* Stable 3.0 release: :code:`conda install -c conda-forge montreal-forced-aligner=3.0.2`
 * Stable 2.2 release: :code:`conda install -c conda-forge montreal-forced-aligner=2.2.17 openfst=1.8.2 kaldi=5.5.1068`
 * Stable 2.1 release: :code:`conda install -c conda-forge montreal-forced-aligner=2.1.7 openfst=1.8.2 kaldi=5.5.1068`
 * Stable 2.0 release: :code:`conda install -c conda-forge montreal-forced-aligner=2.0.6 openfst=1.8.2 kaldi=5.5.1068`

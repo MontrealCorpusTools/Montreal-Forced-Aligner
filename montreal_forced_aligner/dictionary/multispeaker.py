@@ -1444,7 +1444,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
     def load_lexicon_compilers(self):
         with self.session() as session:
             self.lexicon_compilers = {}
-            dictionaries = session.get(Dictionary)
+            dictionaries = session.query(Dictionary)
             for d in dictionaries:
                 self.lexicon_compilers[d.id] = d.lexicon_compiler
 

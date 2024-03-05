@@ -602,8 +602,8 @@ class FeatureConfigMixin:
         sample_frequency: int = 16000,
         allow_downsample: bool = True,
         allow_upsample: bool = True,
-        dither: float = 1.0,
-        energy_floor: float = 0,
+        dither: float = 0.0,
+        energy_floor: float = 1.0,
         num_coefficients: int = 13,
         num_mel_bins: int = 23,
         cepstral_lifter: float = 22,
@@ -798,6 +798,12 @@ class FeatureConfigMixin:
                 "allow_upsample": self.allow_upsample,
                 "snip_edges": self.snip_edges,
             }
+        options.update(
+            {
+                "dither": 0.0,
+                "energy_floor": 1.0,
+            }
+        )
         options.update(
             {
                 "dither": self.dither,
