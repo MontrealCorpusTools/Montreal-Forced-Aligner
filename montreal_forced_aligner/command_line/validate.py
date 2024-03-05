@@ -62,9 +62,24 @@ __all__ = ["validate_corpus_cli", "validate_dictionary_cli"]
 )
 @click.option(
     "--phone_set",
-    help="Enable extra decision tree modeling based on the phone set.",
+    "phone_set_type",
+    help="DEPRECATED, please use --phone_groups_path to specify phone groups instead.",
     default="UNKNOWN",
-    type=click.Choice(["UNKNOWN", "AUTO", "IPA", "ARPA", "PINYIN"]),
+    type=click.Choice(["UNKNOWN", "AUTO", "MFA", "IPA", "ARPA", "PINYIN"]),
+)
+@click.option(
+    "--phone_groups_path",
+    "phone_groups_path",
+    help="Path to yaml file defining phone groups. See "
+    "https://github.com/MontrealCorpusTools/mfa-models/tree/main/config/acoustic/phone_groups for examples.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "--rules_path",
+    "rules_path",
+    help="Path to yaml file defining phonological rules. See "
+    "https://github.com/MontrealCorpusTools/mfa-models/tree/main/config/acoustic/rules for examples.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
     "--ignore_acoustics",
@@ -90,11 +105,21 @@ def validate_corpus_cli(context, **kwargs) -> None:
     if kwargs.get("profile", None) is not None:
         config.profile = kwargs.pop("profile")
     config.update_configuration(kwargs)
+    kwargs["USE_THREADING"] = False
 
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"].absolute()
     dictionary_path = kwargs["dictionary_path"]
     acoustic_model_path = kwargs.get("acoustic_model_path", None)
+    if kwargs.get("phone_set_type", "UNKNOWN") != "UNKNOWN":
+        import warnings
+
+        warnings.warn(
+            "The flag `--phone_set` is deprecated, please use a yaml file for phone groups passed to "
+            "`--phone_groups_path`.  See "
+            "https://github.com/MontrealCorpusTools/mfa-models/tree/main/config/acoustic/phone_groups "
+            "for example phone group configurations that have been used in training MFA models."
+        )
     if acoustic_model_path:
         validator = PretrainedValidator(
             corpus_directory=corpus_directory,

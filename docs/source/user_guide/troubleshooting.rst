@@ -92,9 +92,9 @@ Script example
                       else:
                          resampled_file = path.replace(ext, f'.wav')
                       if sys.platform == 'win32' or ext in {'.opus', '.ogg'}:
-                          command = ['ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'error', '-nostats', '-i', path '-acodec' 'pcm_s16le' '-f' 'wav', '-ar', '16000', resampled_file]
+                          command = ['ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'error', '-nostats', '-i', path, '-acodec', 'pcm_s16le', '-f', 'wav', '-ar', '16000', resampled_file]
                       else:
-                          command = ['sox', path, '-t', 'wav' '-r', '16000', '-b', '16', resampled_file]
+                          command = ['sox', path, '-t', 'wav', '-r', '16000', '-b', '16', resampled_file]
                       subprocess.check_call(command)
                       os.remove(path)
                       os.rename(resampled_file, path)

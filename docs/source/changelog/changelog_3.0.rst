@@ -5,6 +5,15 @@
 3.0 Changelog
 *************
 
+3.0.2
+=====
+
+- Added support for :code:`--phone_groups_path` and :code:`--rules_path` to :ref:`validating_data`
+- Added support for speechbrain 1.0 release
+- Allow alignment with older models that don't have a dedicated speaker-independent :code:`.alimdl` model
+- Fixed a bug in loading lexicon compilers
+- Updated default feature configuration to remove dithering and use energy_floor=1.0, following `torchaudio's implementation <https://github.com/pytorch/audio/issues/371>`_
+
 3.0.1
 =====
 

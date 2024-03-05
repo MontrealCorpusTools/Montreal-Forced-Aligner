@@ -359,12 +359,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         try:
             self.uses_speaker_adaptation = False
 
-            if (
-                acoustic_model is not None
-                and acoustic_model.meta["features"]["uses_speaker_adaptation"]
-                and perform_speaker_adaptation
-            ):
-                assert self.alignment_model_path.suffix == ".alimdl"
             self.compile_train_graphs()
 
             logger.info("Performing first-pass alignment...")

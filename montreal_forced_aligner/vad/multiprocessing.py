@@ -41,7 +41,11 @@ try:
         torch_logger = logging.getLogger("speechbrain.utils.train_logger")
         torch_logger.setLevel(logging.ERROR)
         import torch
-        from speechbrain.pretrained import VAD
+
+        try:
+            from speechbrain.pretrained import VAD
+        except ImportError:  # speechbrain 1.0
+            from speechbrain.inference.VAD import VAD
 
     FOUND_SPEECHBRAIN = True
 except (ImportError, OSError):
