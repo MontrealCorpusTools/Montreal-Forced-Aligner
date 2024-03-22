@@ -535,7 +535,7 @@ class AcousticModel(Archive):
             "sample_frequency": self._meta["features"].get("sample_frequency", 16000),
             "frame_shift": self._meta["features"].get("frame_shift", 10),
             "frame_length": self._meta["features"].get("frame_length", 25),
-            "dither": self._meta["features"].get("dither", 0.0),
+            "dither": self._meta["features"].get("dither", 0.0001),
             "preemphasis_coefficient": self._meta["features"].get("preemphasis_coefficient", 0.97),
             "snip_edges": self._meta["features"].get("snip_edges", True),
             "num_mel_bins": self._meta["features"].get("num_mel_bins", 23),
@@ -882,7 +882,7 @@ class IvectorExtractorModel(Archive):
         """Parameters to use in computing MFCC features."""
         return {
             "use_energy": self._meta["features"].get("use_energy", False),
-            "dither": self._meta["features"].get("dither", 0.0),
+            "dither": self._meta["features"].get("dither", 0.0001),
             "energy_floor": self._meta["features"].get("energy_floor", 1.0),
             "num_coefficients": self._meta["features"].get("num_coefficients", 13),
             "num_mel_bins": self._meta["features"].get("num_mel_bins", 23),

@@ -329,7 +329,8 @@ def construct_output_tiers(
             if include_original_text:
                 data[speaker_name]["utterances"] = []
         if (
-            data[speaker_name]["words"]
+            cleanup_textgrids
+            and data[speaker_name]["words"]
             and w_begin - data[speaker_name]["words"][-1].end < 0.02
             and clitic_marker
             and (

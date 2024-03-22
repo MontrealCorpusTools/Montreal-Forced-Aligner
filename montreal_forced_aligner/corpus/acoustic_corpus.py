@@ -1087,7 +1087,6 @@ class AcousticCorpusPronunciationMixin(
         all_begin = time.time()
         self.initialize_database()
         if self.dictionary_model is not None and not self.imported:
-            logger.debug(f"Using {self.phone_set_type}")
             self.dictionary_setup()
             logger.debug(f"Loaded dictionary in {time.time() - all_begin:.3f} seconds")
 

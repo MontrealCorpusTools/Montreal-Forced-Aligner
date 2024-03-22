@@ -28,6 +28,11 @@ General installation
    2. :code:`conda install -c conda-forge mamba`
    3. :code:`mamba create -n aligner -c conda-forge montreal-forced-aligner`
 
+Updating Montreal Forced Aligner
+--------------------------------
+
+To install the latest version, please run either :code:`conda update -c conda-forge montreal-forced-aligner --update-deps` or  :code:`mamba update -c conda-forge montreal-forced-aligner --update-deps` if you have mamba installed.
+
 Installing SpeechBrain
 ----------------------
 
@@ -52,7 +57,7 @@ If you need to use an older version of MFA, you can install it via:
 
 More stable key versions:
 
-* Stable 3.0 release: :code:`conda install -c conda-forge montreal-forced-aligner=3.0.2`
+* Stable 3.0 release: :code:`conda update -c conda-forge montreal-forced-aligner`
 * Stable 2.2 release: :code:`conda install -c conda-forge montreal-forced-aligner=2.2.17 openfst=1.8.2 kaldi=5.5.1068`
 * Stable 2.1 release: :code:`conda install -c conda-forge montreal-forced-aligner=2.1.7 openfst=1.8.2 kaldi=5.5.1068`
 * Stable 2.0 release: :code:`conda install -c conda-forge montreal-forced-aligner=2.0.6 openfst=1.8.2 kaldi=5.5.1068`

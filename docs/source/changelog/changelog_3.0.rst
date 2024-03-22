@@ -5,6 +5,15 @@
 3.0 Changelog
 *************
 
+3.0.3
+=====
+
+- Fixed regression for not merging clitic words when textgrid cleanup is disabled
+- Fixed issue with copying files when symlinks are not possible on windows
+- Fixed an issue with using G2P models during training/alignment
+- Changed default feature config to set :code:`use_energy=True` and :code:`dithering=0.0001`
+- Updated tokenization when lower casing to remove extra dot for capital :code:`i` in Turkish
+
 3.0.2
 =====
 

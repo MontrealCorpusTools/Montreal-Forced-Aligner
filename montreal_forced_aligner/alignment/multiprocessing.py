@@ -621,18 +621,18 @@ class AlignFunction(KaldiFunction):
                         ).symlink_to(likes_path)
                     except OSError:
                         shutil.copyfile(
-                            job.construct_path(self.working_directory, "ali", "ark", dict_id),
                             ali_path,
+                            job.construct_path(self.working_directory, "ali", "ark", dict_id),
                         )
                         shutil.copyfile(
-                            job.construct_path(self.working_directory, "words", "ark", dict_id),
                             words_path,
+                            job.construct_path(self.working_directory, "words", "ark", dict_id),
                         )
                         shutil.copyfile(
+                            likes_path,
                             job.construct_path(
                                 self.working_directory, "likelihoods", "ark", dict_id
                             ),
-                            likes_path,
                         )
 
 
