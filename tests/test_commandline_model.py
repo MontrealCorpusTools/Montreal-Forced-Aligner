@@ -42,7 +42,6 @@ def test_download_error():
 
 
 def test_download_acoustic():
-
     command = ["model", "download", "acoustic", "german_mfa", "--ignore_cache"]
 
     result = click.testing.CliRunner(mix_stderr=False).invoke(
@@ -57,7 +56,7 @@ def test_download_acoustic():
     path = AcousticModel.get_pretrained_path("german_mfa")
     assert path.exists()
 
-    assert AcousticModel(path).version == "2.0.0rc4.dev19+ged818cb.d20220404"
+    assert AcousticModel(path).version == "3.0.0"
 
     command = ["model", "download", "acoustic", "german_mfa", "--version", "2.0.0"]
 
@@ -73,11 +72,10 @@ def test_download_acoustic():
     path = AcousticModel.get_pretrained_path("german_mfa")
     assert path.exists()
 
-    assert AcousticModel(path).version != "2.0.0rc4.dev19+ged818cb.d20220404"
+    assert AcousticModel(path).version != "3.0.0"
 
 
 def test_download_g2p():
-
     command = [
         "model",
         "download",
@@ -98,7 +96,6 @@ def test_download_g2p():
 
 
 def test_download_dictionary():
-
     command = [
         "model",
         "download",
@@ -120,7 +117,6 @@ def test_download_dictionary():
 
 
 def test_download_list_acoustic():
-
     command = ["model", "download", "acoustic", "--ignore_cache"]
 
     result = click.testing.CliRunner(mix_stderr=False).invoke(
@@ -135,7 +131,6 @@ def test_download_list_acoustic():
 
 
 def test_download_list_dictionary():
-
     command = [
         "model",
         "download",
