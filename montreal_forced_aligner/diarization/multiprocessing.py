@@ -23,10 +23,9 @@ except ImportError:
 
 import numpy as np
 import sqlalchemy
-from _kalpy.ivector import Plda, ivector_normalize_length, ivector_subtract_mean
-from _kalpy.matrix import FloatVector
+from _kalpy.ivector import Plda
 from kalpy.data import Segment
-from kalpy.ivector.data import IvectorArchive
+from kalpy.ivector.plda import PldaScorer
 from scipy.spatial import distance
 from sklearn import cluster, manifold, metrics, neighbors, preprocessing
 from sqlalchemy.orm import joinedload
@@ -83,7 +82,7 @@ logger = logging.getLogger("mfa")
 class PldaClassificationArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.diarization.multiprocessing.PldaClassificationFunction`"""
 
-    plda: Plda
+    plda_path: Path
     train_ivector_path: Path
     num_utts_path: Path
     use_xvector: bool
@@ -129,7 +128,7 @@ def visualize_clusters(
         tsne_iterations = 500
         mds_iterations = 150
     if metric_type is DistanceMetric.plda:
-        metric = plda.log_likelihood_distance
+        metric = plda.log_likelihood_distance_vectorized
     if manifold_algorithm is ManifoldAlgorithm.mds:
         if metric_type is DistanceMetric.cosine:
             to_fit = preprocessing.normalize(ivectors, norm="l2")
@@ -291,7 +290,7 @@ def cluster_matrix(
     to_fit = ivectors
     score_metric_params = None
     if score_metric == "plda" and cluster_type is not ClusterType.affinity:
-        score_metric = plda.log_likelihood_distance
+        score_metric = plda.log_likelihood_distance_vectorized
     if cluster_type is ClusterType.affinity:
         affinity = metric
         if metric is DistanceMetric.cosine:
@@ -486,27 +485,15 @@ class PldaClassificationFunction(KaldiFunction):
 
     def __init__(self, args: PldaClassificationArguments):
         super().__init__(args)
-        self.plda = args.plda
+        self.plda_path = args.plda_path
         self.train_ivector_path = args.train_ivector_path
         self.num_utts_path = args.num_utts_path
         self.use_xvector = args.use_xvector
 
     def _run(self):
         """Run the function"""
-
-        ivector_archive = IvectorArchive(
-            self.train_ivector_path, num_utterances_file_name=self.num_utts_path
-        )
-        speaker_ivectors = []
-        speaker_ids = []
-        num_utts = []
-        for speaker_id, ivector, utts in ivector_archive:
-            speaker_ids.append(speaker_id)
-            num_utts.append(utts)
-            ivector_normalize_length(ivector)
-            speaker_ivectors.append(FloatVector(ivector))
-        ivector_subtract_mean(speaker_ivectors)
-        speaker_ivectors = self.plda.transform_ivectors(speaker_ivectors, num_utts)
+        plda_scorer = PldaScorer(self.plda_path)
+        plda_scorer.load_speaker_ivectors(self.train_ivector_path, self.num_utts_path)
         with self.session() as session:
             job: Job = (
                 session.query(Job)
@@ -521,10 +508,7 @@ class PldaClassificationFunction(KaldiFunction):
                 .order_by(Utterance.kaldi_id)
             )
             for u_id, u_ivector in utterances:
-                ivector = FloatVector()
-                ivector.from_numpy(u_ivector)
-                ind, score = self.plda.classify_utterance(ivector, speaker_ivectors, num_utts)
-                speaker = speaker_ids[ind]
+                speaker, score = plda_scorer.classify_speaker(u_ivector)
                 self.callback((u_id, speaker, score))
 
 

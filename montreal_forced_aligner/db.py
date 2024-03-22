@@ -439,6 +439,9 @@ class Dictionary(MfaSqlBase):
         if not hasattr(self, "_phone_table"):
             if self.phone_symbol_table_path.exists():
                 self._phone_table = pywrapfst.SymbolTable.read_text(self.phone_symbol_table_path)
+                for k in ["#0", "#1", "#2"]:
+                    if not self._phone_table.member(k):
+                        self._phone_table.add_symbol(k)
             else:
                 self.phones_directory.mkdir(parents=True, exist_ok=True)
                 session = sqlalchemy.orm.Session.object_session(self)

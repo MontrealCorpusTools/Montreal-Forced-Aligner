@@ -423,7 +423,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                 speaker_ids.append(speaker_id)
                 num_utts.append(utts)
                 ivector_normalize_length(ivector)
-                ivectors.append(FloatVector(ivector))
+                ivectors.append(DoubleVector(ivector))
             ivector_subtract_mean(ivectors)
             update_mapping = []
             for i in range(len(speaker_ids)):

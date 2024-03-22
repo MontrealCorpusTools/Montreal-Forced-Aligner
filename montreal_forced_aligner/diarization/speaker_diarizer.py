@@ -315,7 +315,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 j.id,
                 getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"plda_classification.{j.id}.log"),
-                self.plda,
+                self.plda_path,
                 self.speaker_ivector_path,
                 self.num_utts_path,
                 self.use_xvector,

@@ -74,6 +74,7 @@ class SanitizeFunction:
         """
         if self.ignore_case:
             text = text.lower()
+            text = text.replace("i̇", "i")  # Turkish normalization
         if self.bracket_regex:
             for word_object in self.bracket_regex.finditer(text):
                 word = word_object.group(0)
@@ -458,7 +459,6 @@ class SimpleTokenizer:
                 self.final_clitic_regex = re.compile(rf"(?<=\w)({'|'.join(final_clitics)})$")
 
     def _dictionary_sanitize(self, text):
-
         words = self.sanitize_function(text)
         normalized_text = []
         normalized_character_text = []

@@ -593,7 +593,7 @@ class FeatureConfigMixin:
     def __init__(
         self,
         feature_type: str = "mfcc",
-        use_energy: bool = False,
+        use_energy: bool = True,
         frame_shift: int = 10,
         frame_length: int = 25,
         snip_edges: bool = False,
@@ -602,7 +602,7 @@ class FeatureConfigMixin:
         sample_frequency: int = 16000,
         allow_downsample: bool = True,
         allow_upsample: bool = True,
-        dither: float = 0.0,
+        dither: float = 0.0001,
         energy_floor: float = 1.0,
         num_coefficients: int = 13,
         num_mel_bins: int = 23,
@@ -800,7 +800,7 @@ class FeatureConfigMixin:
             }
         options.update(
             {
-                "dither": 0.0,
+                "dither": 0.0001,
                 "energy_floor": 1.0,
             }
         )

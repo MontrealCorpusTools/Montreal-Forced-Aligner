@@ -727,6 +727,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                 oovs.add(w)
                                 if self.language is Language.unknown:
                                     to_g2p.add((w, dict_id))
+                                    word_to_g2p_mapping[dict_id][w].add(w)
                                 else:
                                     to_g2p.add((pronunciation_text[i], dict_id))
                                     word_to_g2p_mapping[dict_id][w].add(pronunciation_text[i])
@@ -793,8 +794,8 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     if g2p_model is not None:
                         from montreal_forced_aligner.g2p.generator import PyniniGenerator
 
+                        g2pped = {}
                         if isinstance(g2p_model, dict):
-                            g2pped = {}
                             for dict_name, g2p_model in g2p_model.items():
                                 dict_id = dict_name_to_id[dict_name]
                                 gen = PyniniGenerator(
@@ -811,7 +812,8 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                 num_pronunciations=1,
                                 strict_graphemes=True,
                             )
-                            g2pped = gen.generate_pronunciations()
+                            dict_id = list(dictionaries.keys())[0]
+                            g2pped[dict_id] = gen.generate_pronunciations()
                         for dict_id, mapping in word_to_g2p_mapping.items():
                             log_file.write(f"For dictionary {dict_id}:\n")
                             for w, ps in mapping.items():
