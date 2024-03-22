@@ -13,6 +13,7 @@
 - Fixed an issue with using G2P models during training/alignment
 - Changed default feature config to set :code:`use_energy=True` and :code:`dithering=0.0001`
 - Updated tokenization when lower casing to remove extra dot for capital :code:`i` in Turkish
+- Fix an issue where special disambiguation symbols were not always in the phone table
 
 3.0.2
 =====
