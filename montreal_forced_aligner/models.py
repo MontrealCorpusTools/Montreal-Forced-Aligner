@@ -1667,7 +1667,7 @@ class ModelManager:
         }
         self.token = token
         environment_token = os.environ.get("GITHUB_TOKEN", None)
-        if self.token is not None:
+        if self.token is None:
             self.token = environment_token
         self.synced_remote = False
         self.ignore_cache = ignore_cache
