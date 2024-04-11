@@ -1064,6 +1064,7 @@ class File(MfaSqlBase):
         order_by="Utterance.begin",
         collection_class=ordering_list("begin"),
         cascade="all, delete",
+        cascade_backrefs=False,
     )
 
     @property
@@ -1424,8 +1425,8 @@ class Utterance(MfaSqlBase):
         index=True,
     )
     job_id = Column(Integer, ForeignKey("job.id"), index=True, nullable=True)
-    file = relationship("File", back_populates="utterances")
-    speaker = relationship("Speaker", back_populates="utterances")
+    file = relationship("File", back_populates="utterances", cascade_backrefs=False)
+    speaker = relationship("Speaker", back_populates="utterances", cascade_backrefs=False)
     job = relationship("Job", back_populates="utterances")
     phone_intervals = relationship(
         "PhoneInterval",
