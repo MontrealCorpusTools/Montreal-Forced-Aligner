@@ -682,7 +682,7 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
                 for k, m, sd in session.query(
                     Phone.id, Phone.mean_duration, Phone.sd_duration
                 ).filter(
-                    Phone.phone_type.in_([PhoneType.non_silence, PhoneType.oov]),
+                    Phone.phone_type == PhoneType.non_silence,
                     Phone.sd_duration != None,  # noqa
                     Phone.sd_duration != 0,
                 )
@@ -705,13 +705,15 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
                     continue
                 interval_count = len(phone_intervals)
                 log_like_sum = 0
-                duration_zscore_sum = 0
+                duration_zscore_max = 0
                 for pi in phone_intervals:
                     log_like_sum += pi.phone_goodness
                     m, sd = phones[pi.phone_id]
-                    duration_zscore_sum += abs((pi.duration - m) / sd)
+                    duration_zscore = abs((pi.duration - m) / sd)
+                    if duration_zscore > duration_zscore_max:
+                        duration_zscore_max = duration_zscore
                 utterance_speech_log_likelihood = log_like_sum / interval_count
-                utterance_duration_deviation = duration_zscore_sum / interval_count
+                utterance_duration_deviation = duration_zscore_max
                 self.callback(
                     (utterance.id, utterance_speech_log_likelihood, utterance_duration_deviation)
                 )

@@ -1053,7 +1053,7 @@ class PyniniDictionaryCorpusGenerator(
                 query = (
                     session.query(Word.word)
                     .filter(Word.word_type == WordType.oov, Word.word != self.oov_word)
-                    .order_by(Word.word)
+                    .order_by(Word.count.desc())
                 )
             self._word_list = [x for x, in query]
         return self._word_list

@@ -5,6 +5,14 @@
 3.0 Changelog
 *************
 
+3.0.4
+=====
+
+- Fixed issue with github token set in the environment not being respected
+- Changed ordering of g2p output from corpora to be based on word frequency rather than alphabetical
+- Changed duration deviation to save the max z-scored duration, rather than be the average over all phones
+- Update default punctuation markers to cover Arabic script punctuation
+
 3.0.3
 =====
 
