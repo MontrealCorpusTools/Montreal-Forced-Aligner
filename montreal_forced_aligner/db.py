@@ -20,6 +20,7 @@ from pgvector.sqlalchemy import Vector
 from praatio import textgrid
 from praatio.utilities.constants import Interval
 from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integer, String
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.orderinglist import ordering_list
 from sqlalchemy.orm import Bundle, declarative_base, joinedload, relationship
 
@@ -1393,7 +1394,9 @@ class Utterance(MfaSqlBase):
     id = Column(Integer, primary_key=True, autoincrement=True)
     begin = Column(Float, nullable=False, index=True)
     end = Column(Float, nullable=False)
-    duration = Column(Float, sqlalchemy.Computed('"end" - "begin"'), index=True)
+    _duration = sqlalchemy.orm.deferred(
+        Column("duration", Float, sqlalchemy.Computed('"end" - "begin"'), index=True)
+    )
     channel = Column(Integer, nullable=False)
     num_frames = Column(Integer)
     text = Column(String)
@@ -1418,11 +1421,13 @@ class Utterance(MfaSqlBase):
     xvector = Column(Vector(config.XVECTOR_DIMENSION), nullable=True)
     file_id = Column(Integer, ForeignKey("file.id"), index=True, nullable=False)
     speaker_id = Column(Integer, ForeignKey("speaker.id"), index=True, nullable=False)
-    kaldi_id = Column(
-        String,
-        sqlalchemy.Computed("CAST(speaker_id AS text)|| '-' ||CAST(id AS text)"),
-        unique=True,
-        index=True,
+    _kaldi_id = sqlalchemy.orm.deferred(
+        Column(
+            "kaldi_id",
+            String,
+            sqlalchemy.Computed("CAST(speaker_id AS text)|| '-' ||CAST(id AS text)"),
+            unique=True,
+        )
     )
     job_id = Column(Integer, ForeignKey("job.id"), index=True, nullable=True)
     file = relationship("File", back_populates="utterances", cascade_backrefs=False)
@@ -1448,6 +1453,22 @@ class Utterance(MfaSqlBase):
             "utterance_position_index", "file_id", "speaker_id", "begin", "end", "channel"
         ),
     )
+
+    @hybrid_property
+    def duration(self) -> float:
+        return self.end - self.begin
+
+    @duration.expression
+    def duration(cls):
+        return cls._duration
+
+    @hybrid_property
+    def kaldi_id(self) -> str:
+        return f"{self.speaker_id}-{self.id}"
+
+    @kaldi_id.expression
+    def kaldi_id(cls):
+        return cls._kaldi_id
 
     def __repr__(self) -> str:
         """String representation of the utterance object"""
@@ -1751,7 +1772,9 @@ class PhoneInterval(MfaSqlBase):
     begin = Column(Float, nullable=False, index=True)
     end = Column(Float, nullable=False)
     phone_goodness = Column(Float, nullable=True)
-    duration = Column(Float, sqlalchemy.Computed('"end" - "begin"'))
+    _duration = sqlalchemy.orm.deferred(
+        Column("duration", Float, sqlalchemy.Computed('"end" - "begin"'))
+    )
 
     phone_id = Column(
         Integer, ForeignKey("phone.id", ondelete="CASCADE"), index=True, nullable=False
@@ -1776,6 +1799,14 @@ class PhoneInterval(MfaSqlBase):
     __table_args__ = (
         sqlalchemy.Index("phone_utterance_workflow_index", "utterance_id", "workflow_id"),
     )
+
+    @hybrid_property
+    def duration(self) -> float:
+        return self.end - self.begin
+
+    @duration.expression
+    def duration(cls):
+        return cls._duration
 
     def __repr__(self):
         return f"<PhoneInterval {self.phone.kaldi_label} ({self.workflow.workflow_type}) from {self.begin}-{self.end} for utterance {self.utterance_id}>"
@@ -1859,7 +1890,9 @@ class WordInterval(MfaSqlBase):
     id = Column(Integer, primary_key=True, autoincrement=True)
     begin = Column(Float, nullable=False, index=True)
     end = Column(Float, nullable=False)
-    duration = Column(Float, sqlalchemy.Computed('"end" - "begin"'))
+    _duration = sqlalchemy.orm.deferred(
+        Column("duration", Float, sqlalchemy.Computed('"end" - "begin"'))
+    )
 
     utterance_id = Column(
         Integer, ForeignKey("utterance.id", ondelete="CASCADE"), index=True, nullable=False
@@ -1890,6 +1923,14 @@ class WordInterval(MfaSqlBase):
     __table_args__ = (
         sqlalchemy.Index("word_utterance_workflow_index", "utterance_id", "workflow_id"),
     )
+
+    @hybrid_property
+    def duration(self) -> float:
+        return self.end - self.begin
+
+    @duration.expression
+    def duration(cls):
+        return cls._duration
 
     @classmethod
     def from_ctm(

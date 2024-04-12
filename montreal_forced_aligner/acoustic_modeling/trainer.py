@@ -646,7 +646,6 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             Flag for including the original text of the corpus files as a tier
         """
         self.align()
-        self.analyze_alignments()
         super(TrainableAligner, self).export_files(
             output_directory, output_format, include_original_text
         )
@@ -708,6 +707,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                     {"done": True}
                 )
                 session.commit()
+            self.analyze_alignments()
         except Exception as e:
             with self.session() as session:
                 session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update(
