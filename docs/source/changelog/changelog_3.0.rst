@@ -5,6 +5,13 @@
 3.0 Changelog
 *************
 
+3.0.5
+=====
+
+- Added :code:`mfa_update` command to better sync changes across dependencies
+- Updated how calculated properties are loaded to fix crashes in Anchor
+- Change when alignments are analyzed in training
+
 3.0.4
 =====
 
