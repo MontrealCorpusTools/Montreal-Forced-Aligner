@@ -31,7 +31,11 @@ General installation
 Updating Montreal Forced Aligner
 --------------------------------
 
-To install the latest version, please run either :code:`conda update -c conda-forge montreal-forced-aligner --update-deps` or  :code:`mamba update -c conda-forge montreal-forced-aligner --update-deps` if you have mamba installed.
+To install the latest version, please run either :code:`conda update -c conda-forge montreal-forced-aligner kalpy kaldi=*=cpu* --update-deps` or  :code:`mamba update -c conda-forge montreal-forced-aligner kalpy kaldi=*=cpu* --update-deps` if you have mamba installed.
+
+.. versionadded:: 3.0.5
+
+   MFA version 3.0.5 onward has a helper utility for updating to new versions.  Run :code:`mfa_update` to fetch the latest versions of MFA, Kalpy, and Kaldi.
 
 Installing SpeechBrain
 ----------------------
