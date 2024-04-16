@@ -223,7 +223,7 @@ html[data-theme="dark"] .i-navigation{
     color: var(--sd-color-primary-text);
 }
 
-.navbar-light .navbar-nav li a.nav-link:{
+.navbar-light .navbar-nav li a.nav-link {
 font-size: 1.15em;
 }
 

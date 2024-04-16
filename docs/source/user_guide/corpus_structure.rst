@@ -14,6 +14,7 @@ Prior to running the aligner, make sure the following are set up:
 
 3. Orthographic annotations in .lab files for individual sound files (:ref:`prosodylab_format`)
    or in TextGrid intervals for longer sound files (:ref:`textgrid_format`).
+
 .. note::
 
    A collection of preprocessing scripts to get various corpora of other formats is available in the :xref:`mfa_reorg_scripts` and :xref:`corpus_creation_scripts`.
