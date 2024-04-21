@@ -614,7 +614,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         self._num_files = None
         session.commit()
 
-    def normalize_text_arguments(self):
+    def get_tokenizers(self):
         from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 
         if self.language is Language.unknown:
@@ -631,6 +631,16 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 tokenizers = self.tokenizer
             else:
                 return None
+        return tokenizers
+
+    def get_tokenizer(self, dictionary_id: int):
+        tokenizers = self.get_tokenizers()
+        if not isinstance(tokenizers, dict):
+            return tokenizers
+        return tokenizers[dictionary_id]
+
+    def normalize_text_arguments(self):
+        tokenizers = self.get_tokenizers()
         from montreal_forced_aligner.corpus.multiprocessing import NormalizeTextArguments
 
         with self.session() as session:

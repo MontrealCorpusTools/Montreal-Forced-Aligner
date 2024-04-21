@@ -160,6 +160,8 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 if isinstance(self._phone_groups, list):
                     self._phone_groups = {k: v for k, v in enumerate(self._phone_groups)}
                 for k, v in self._phone_groups.items():
+                    if not v:
+                        continue
                     self._phone_groups[k] = sorted(
                         set(x for x in v if x in self.non_silence_phones)
                     )

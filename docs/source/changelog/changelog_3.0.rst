@@ -5,6 +5,13 @@
 3.0 Changelog
 *************
 
+3.0.6
+-----
+
+- Fixed an issue where alignment analysis would not produce data for speech log likelihood and phone duration deviation
+- Changed phone duration deviation metric to be maximum duration deviation rather than average across all phones in the utterance
+- Fixed a crash when an empty phone set was specified in phone groups configuration files
+
 3.0.5
 =====
 
