@@ -652,7 +652,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     self.split_directory.joinpath("log", f"normalize.{j.id}.log"),
                     tokenizers,
                     getattr(self, "g2p_model", None),
-                    self.ignore_case,
+                    getattr(self, "ignore_case", True),
                 )
                 for j in jobs
             ]
