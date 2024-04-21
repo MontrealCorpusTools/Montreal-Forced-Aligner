@@ -671,6 +671,8 @@ def test_swedish_cv(
         swedish_cv_dictionary,
         swedish_cv_acoustic_model,
         output_dir,
+        "--language",
+        "swedish",
         "--config_path",
         basic_align_config_path,
         "-q",
