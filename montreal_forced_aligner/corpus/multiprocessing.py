@@ -313,7 +313,11 @@ class NormalizeTextFunction(KaldiFunction):
                             if isinstance(tokenized, tuple):
                                 normalized_text, pronunciation_form = tokenized
                             else:
-                                normalized_text, pronunciation_form = tokenized, tokenized
+                                if not isinstance(tokenized, str):
+                                    tokenized = " ".join([x.text for x in tokenized])
+                                if self.ignore_case:
+                                    tokenized = tokenized.lower()
+                                normalized_text, pronunciation_form = tokenized, tokenized.lower()
                             oovs = set()
                             self.callback(
                                 (
@@ -334,7 +338,11 @@ class NormalizeTextFunction(KaldiFunction):
                     .filter(Utterance.job_id == self.job_name)
                 )
                 for u_id, u_text in utterances:
-                    normalized_text, normalized_character_text, oovs = tokenizer(u_text)
+                    if tokenizer is None:
+                        normalized_text, normalized_character_text = u_text, u_text
+                        oovs = []
+                    else:
+                        normalized_text, normalized_character_text, oovs = tokenizer(u_text)
                     self.callback(
                         (
                             {
