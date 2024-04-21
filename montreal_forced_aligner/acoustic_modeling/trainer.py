@@ -625,6 +625,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
     def finalize_training(self):
         self.compute_phone_pdf_counts()
         self.collect_alignments()
+        self.analyze_alignments()
         self.train_phone_lm()
 
     def export_files(
@@ -707,7 +708,6 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                     {"done": True}
                 )
                 session.commit()
-            self.analyze_alignments()
         except Exception as e:
             with self.session() as session:
                 session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update(

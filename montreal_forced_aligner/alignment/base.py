@@ -170,6 +170,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         if not config.USE_POSTGRES:
             logger.warning("Alignment analysis not available without using postgresql")
             return
+        workflow = self.current_workflow
+        if not workflow.alignments_collected:
+            self.collect_alignments()
         logger.info("Analyzing alignment quality...")
         begin = time.time()
         with self.session() as session:
