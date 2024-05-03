@@ -1029,7 +1029,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 sample_rate=file.wav_info.sample_rate,
                 duration=file.wav_info.duration,
                 num_channels=file.wav_info.num_channels,
-                sox_string=file.wav_info.sox_string,
             )
             session.add(sf)
         if file.text_path is not None:
@@ -1121,7 +1120,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     "sample_rate": file.wav_info.sample_rate,
                     "duration": file.wav_info.duration,
                     "num_channels": file.wav_info.num_channels,
-                    "sox_string": file.wav_info.sox_string,
                 }
             )
         if file.text_path is not None:
@@ -1208,6 +1206,12 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             else Utterance.normalized_text.regexp_match(multiword_pattern)
                         )
                         .filter(Utterance.ignored == False)  # noqa
+                        .filter(
+                            sqlalchemy.or_(
+                                Utterance.duration_deviation == None,  # noqa
+                                Utterance.duration_deviation < 10,
+                            )
+                        )  # noqa
                         .count()
                     )
                     utts_per_dictionary[dict_name] = num_utts
@@ -1245,6 +1249,12 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             else Utterance.normalized_text.regexp_match(multiword_pattern)
                         )
                         .filter(Utterance.ignored == False)  # noqa
+                        .filter(
+                            sqlalchemy.or_(
+                                Utterance.duration_deviation == None,  # noqa
+                                Utterance.duration_deviation < 10,
+                            )
+                        )  # noqa
                     ).first()[0]
                     for utt_count_cutoff in [30, 15, 5]:
                         sq = (
@@ -1260,6 +1270,12 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                 else Utterance.normalized_text.regexp_match(multiword_pattern)
                             )
                             .filter(Utterance.ignored == False)  # noqa
+                            .filter(
+                                sqlalchemy.or_(
+                                    Utterance.duration_deviation == None,  # noqa
+                                    Utterance.duration_deviation < 10,
+                                )
+                            )  # noqa
                             .filter(Utterance.duration <= average_duration)
                             .group_by(Speaker.id.label("speaker_id"))
                             .subquery()
@@ -1288,6 +1304,12 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                 else Utterance.normalized_text.regexp_match(multiword_pattern)
                             )
                             .filter(Utterance.ignored == False)  # noqa
+                            .filter(
+                                sqlalchemy.or_(
+                                    Utterance.duration_deviation == None,  # noqa
+                                    Utterance.duration_deviation < 10,
+                                )
+                            )  # noqa
                         )
                         if speaker_ids is not None:
                             larger_subset_query = larger_subset_query.filter(
@@ -1340,6 +1362,12 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                 else Utterance.normalized_text.regexp_match(multiword_pattern)
                             )
                             .filter(Utterance.ignored == False)  # noqa
+                            .filter(
+                                sqlalchemy.or_(
+                                    Utterance.duration_deviation == None,  # noqa
+                                    Utterance.duration_deviation < 10,
+                                )
+                            )  # noqa
                         )
                         if speaker_ids is not None:
                             larger_subset_query = larger_subset_query.filter(
@@ -1368,6 +1396,12 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             .join(Utterance.speaker)
                             .filter(Speaker.dictionary_id == dict_id)
                             .filter(Utterance.ignored == False)  # noqa
+                            .filter(
+                                sqlalchemy.or_(
+                                    Utterance.duration_deviation == None,  # noqa
+                                    Utterance.duration_deviation < 10,
+                                )
+                            )  # noqa
                         )
                         sq = larger_subset_query.subquery()
                         subset_utts = sqlalchemy.select(sq.c.id).scalar_subquery()
@@ -1410,6 +1444,12 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             )
                             .filter(Utterance.ignored == False)  # noqa
                             .filter(Utterance.in_subset == False)  # noqa
+                            .filter(
+                                sqlalchemy.or_(
+                                    Utterance.duration_deviation == None,  # noqa
+                                    Utterance.duration_deviation < 10,
+                                )
+                            )  # noqa
                         )
                         if speaker_ids is not None:
                             larger_subset_query = larger_subset_query.filter(

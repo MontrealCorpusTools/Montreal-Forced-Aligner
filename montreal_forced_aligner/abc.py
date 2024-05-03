@@ -9,6 +9,7 @@ import abc
 import contextlib
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,7 @@ from typing import (
     get_type_hints,
 )
 
+import requests
 import sqlalchemy
 import yaml
 from sqlalchemy.orm import scoped_session, sessionmaker
@@ -694,6 +696,30 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
                 logger.error("There was an error in the run, please see the log.")
             else:
                 logger.info(f"Done! Everything took {time.time() - self.start_time:.3f} seconds")
+                if config.FINAL_CLEAN:
+                    logger.debug(
+                        "Cleaning up temporary files, use the --debug flag to keep temporary files."
+                    )
+                    if hasattr(self, "delete_database"):
+                        if config.USE_POSTGRES:
+                            proc = subprocess.run(
+                                [
+                                    "dropdb",
+                                    f"--host={config.database_socket()}",
+                                    "--if-exists",
+                                    "--force",
+                                    self.identifier,
+                                ],
+                                stderr=subprocess.PIPE,
+                                stdout=subprocess.PIPE,
+                                check=True,
+                                encoding="utf-8",
+                            )
+                            logger.debug(f"Stdout: {proc.stdout}")
+                            logger.debug(f"Stderr: {proc.stderr}")
+                        else:
+                            self.delete_database()
+                    self.clean_working_directory()
             self.save_worker_config()
             self.cleanup_logger()
         except (NameError, ValueError):  # already cleaned up
@@ -780,6 +806,24 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         os.makedirs(self.output_directory, exist_ok=True)
         configure_logger("mfa", log_file=self.log_file)
         logger = logging.getLogger("mfa")
+        if config.VERBOSE:
+            try:
+                response = requests.get(
+                    "https://api.github.com/repos/MontrealCorpusTools/Montreal-Forced-Aligner/releases/latest"
+                )
+                latest_version = response.json()["tag_name"].replace("v", "")
+                if current_version < latest_version:
+                    logger.debug(
+                        f"You are currently running an older version of MFA ({current_version}) than the latest available ({latest_version}). "
+                        f"To update, please run mfa_update."
+                    )
+            except KeyError:
+                pass
+        if re.search(r"\d+\.\d+\.\d+a", current_version) is not None:
+            logger.debug(
+                "Please be aware that you are running an alpha version of MFA. If you would like to install a more "
+                "stable version, please visit https://montreal-forced-aligner.readthedocs.io/en/latest/installation.html#installing-older-versions-of-mfa",
+            )
         logger.debug(f"Beginning run for {self.data_source_identifier}")
         logger.debug(f'Using "{config.CURRENT_PROFILE_NAME}" profile')
         if config.USE_MP:

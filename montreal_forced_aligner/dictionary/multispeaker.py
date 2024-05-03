@@ -1284,6 +1284,9 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             final_brackets = re.escape("".join(x[1] for x in self.brackets))
             pronunciation_mapping = {}
             word_mapping = {}
+            cutoff_identifier = re.sub(
+                rf"[{initial_brackets}{final_brackets}]", "", self.cutoff_word
+            )
             max_ids = collections.defaultdict(int)
             max_pron_id = session.query(sqlalchemy.func.max(Pronunciation.id)).scalar()
             max_word_id = session.query(sqlalchemy.func.max(Word.id)).scalar()
@@ -1314,7 +1317,9 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 )
                 .join(Utterance.speaker)
                 .filter(
-                    Utterance.normalized_text.regexp_match(f"[{initial_brackets}](cutoff|hes)")
+                    Utterance.normalized_text.regexp_match(
+                        f"[{initial_brackets}]({cutoff_identifier}|hes)"
+                    )
                 )
             )
             utterance_mapping = []
@@ -1323,17 +1328,13 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 modified = False
                 for i, word in enumerate(text):
                     m = re.match(
-                        f"^[{initial_brackets}](cutoff|hes)([-_](?P<word>[^{final_brackets}]))?[{final_brackets}]$",
+                        f"^[{initial_brackets}]({cutoff_identifier}|hes(itation)?)([-_](?P<word>[^{final_brackets}]+))?[{final_brackets}]$",
                         word,
                     )
                     if not m:
                         continue
-                    next_word = None
-                    try:
-                        next_word = m.group("word")
-                        if next_word not in word_mapping[dict_id]:
-                            raise ValueError
-                    except Exception:
+                    next_word = m.group("word")
+                    if next_word not in word_mapping[dict_id]:
                         if i != len(text) - 1:
                             next_word = text[i + 1]
                     if (
@@ -1343,7 +1344,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         or self.optional_silence_phone in pronunciation_mapping[dict_id][next_word]
                     ):
                         continue
-                    new_word = f"<cutoff-{next_word}>"
+                    new_word = f"{self.cutoff_word[:-1]}-{next_word}{self.cutoff_word[-1]}"
                     if new_word not in word_mapping[dict_id]:
                         max_word_id += 1
                         max_ids[dict_id] += 1

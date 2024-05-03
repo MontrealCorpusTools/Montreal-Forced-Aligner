@@ -2030,7 +2030,7 @@ class Job(MfaSqlBase):
 
     def construct_feature_archive(
         self, working_directory: Path, dictionary_id: typing.Optional[int] = None, **kwargs
-    ):
+    ) -> FeatureArchive:
         fmllr_path = self.construct_path(
             self.corpus.current_subset_directory, "trans", "scp", dictionary_id
         )

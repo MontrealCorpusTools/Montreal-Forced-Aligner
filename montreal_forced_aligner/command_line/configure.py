@@ -37,8 +37,15 @@ __all__ = ["configure_cli"]
 @click.option(
     "--always_clean/--never_clean",
     "clean",
-    help="Turn on/off clean mode where MFA will clean temporary files before each run. "
+    help="Turn on/off mode where MFA will clean temporary files before each run. "
     f"Currently defaults to {config.CLEAN}.",
+    default=None,
+)
+@click.option(
+    "--always_final_clean/--never_final_clean",
+    "final_clean",
+    help="Turn on/off mode where MFA will clean temporary files at the end of each run. "
+    f"Currently defaults to {config.FINAL_CLEAN}.",
     default=None,
 )
 @click.option(

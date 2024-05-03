@@ -273,9 +273,6 @@ def check_third_party():
     -------
     :class:`~montreal_forced_aligner.exceptions.ThirdpartyError`
     """
-    bin_path = shutil.which("sox")
-    if bin_path is None:
-        raise ThirdpartyError("sox")
     bin_path = shutil.which("initdb")
     if bin_path is None and config.USE_POSTGRES:
         raise ThirdpartyError("initdb (for postgresql)")

@@ -74,6 +74,12 @@ def common_options(f: typing.Callable) -> typing.Callable:
             default=None,
         ),
         click.option(
+            "--final_clean/--no_final_clean",
+            "final_clean",
+            help=f"Remove temporary files at the end of run, default is {config.FINAL_CLEAN}",
+            default=None,
+        ),
+        click.option(
             "--verbose/--no_verbose",
             "-v/-nv",
             "verbose",

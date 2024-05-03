@@ -500,6 +500,57 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         self.training_configs[self.final_identifier].export_model(output_model_path)
         logger.info(f"Saved model to {output_model_path}")
 
+    def quality_check_subset(self):
+        from _kalpy.util import Int32VectorWriter
+        from kalpy.gmm.data import AlignmentArchive
+        from kalpy.utils import generate_write_specifier
+
+        with self.session() as session:
+            utterance_ids = set(
+                x[0]
+                for x in session.query(Utterance.id)
+                .filter(Utterance.in_subset == True, Utterance.duration_deviation > 10)  # noqa
+                .all()
+            )
+            logger.debug(
+                f"Removing {len(utterance_ids)} utterances from subset due to large duration deviations"
+            )
+            bulk_update(session, Utterance, [{"id": x, "in_subset": False} for x in utterance_ids])
+            session.commit()
+            for j in self.jobs:
+                ali_paths = j.construct_path_dictionary(self.working_directory, "ali", "ark")
+                temp_ali_paths = j.construct_path_dictionary(
+                    self.working_directory, "temp_ali", "ark"
+                )
+                for dict_id, ali_path in ali_paths.items():
+                    new_path = temp_ali_paths[dict_id]
+                    write_specifier = generate_write_specifier(new_path)
+                    writer = Int32VectorWriter(write_specifier)
+                    alignment_archive = AlignmentArchive(ali_path)
+
+                    for alignment in alignment_archive:
+                        if alignment.utterance_id in utterance_ids:
+                            continue
+                        writer.Write(str(alignment.utterance_id), alignment.alignment)
+                    del alignment_archive
+                    writer.Close()
+                    ali_path.unlink()
+                    new_path.rename(ali_path)
+                    feat_path = j.construct_path(
+                        j.corpus.current_subset_directory, "feats", "scp", dictionary_id=dict_id
+                    )
+                    feat_lines = []
+                    with mfa_open(feat_path, "r") as feat_file:
+                        for line in feat_file:
+                            utterance_id = line.split(maxsplit=1)[0]
+                            if utterance_id in utterance_ids:
+                                continue
+                            feat_lines.append(line)
+
+                    with mfa_open(feat_path, "w") as feat_file:
+                        for line in feat_lines:
+                            feat_file.write(line)
+
     def train(self) -> None:
         """
         Run through the training configurations to produce a final acoustic model
@@ -527,20 +578,21 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                     previous.exported_model_path, self.working_directory
                 )
                 self.align()
-                if config.DEBUG:
-                    with self.session() as session:
-                        session.query(WordInterval).delete()
-                        session.query(PhoneInterval).delete()
-                        session.commit()
-                    self.collect_alignments()
+                with self.session() as session:
+                    session.query(WordInterval).delete()
+                    session.query(PhoneInterval).delete()
+                    session.commit()
+                self.collect_alignments()
+                self.analyze_alignments()
+                if self.current_subset != 0:
+                    self.quality_check_subset()
 
             self.set_current_workflow(trainer.identifier)
             if trainer.identifier.startswith("pronunciation_probabilities"):
-                if config.DEBUG:
-                    with self.session() as session:
-                        session.query(WordInterval).delete()
-                        session.query(PhoneInterval).delete()
-                        session.commit()
+                with self.session() as session:
+                    session.query(WordInterval).delete()
+                    session.query(PhoneInterval).delete()
+                    session.commit()
                 trainer.train_pronunciation_probabilities()
             else:
                 trainer.train()
@@ -623,6 +675,10 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         logger.info("Finished accumulating transition stats!")
 
     def finalize_training(self):
+        with self.session() as session:
+            session.query(WordInterval).delete()
+            session.query(PhoneInterval).delete()
+            session.commit()
         self.compute_phone_pdf_counts()
         self.collect_alignments()
         self.analyze_alignments()
@@ -662,8 +718,11 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
     def align_options(self) -> MetaDict:
         """Alignment options"""
         if self.current_aligner is not None:
-            return self.current_aligner.align_options
-        return super().align_options
+            options = self.current_aligner.align_options
+        else:
+            options = super().align_options
+        options["boost_silence"] = max(1.25, options["boost_silence"])
+        return options
 
     def align(self) -> None:
         """

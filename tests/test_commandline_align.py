@@ -682,6 +682,7 @@ def test_swedish_cv(
         "test",
         "--beam",
         "1000",
+        "--final_clean",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False).invoke(

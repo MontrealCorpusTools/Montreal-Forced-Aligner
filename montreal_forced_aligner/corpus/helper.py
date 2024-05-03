@@ -102,17 +102,15 @@ def get_wav_info(
     Returns
     -------
     :class:`~montreal_forced_aligner.data.SoundFileInformation`
-        Sound information for format, duration, number of channels, bit depth, and
-        sox_string for use in Kaldi feature extraction if necessary
+        Sound information for format, sampling rate, duration, and number of channels
     """
     if isinstance(file_path, str):
         file_path = Path(file_path)
     format = file_path.suffix.lower()
-    sox_string = ""
     with soundfile.SoundFile(file_path) as inf:
         frames = inf.frames
         sample_rate = inf.samplerate
         duration = frames / sample_rate
         num_channels = inf.channels
 
-    return SoundFileInformation(format, sample_rate, duration, num_channels, sox_string)
+    return SoundFileInformation(format, sample_rate, duration, num_channels)
