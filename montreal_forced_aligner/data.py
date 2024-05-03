@@ -1399,8 +1399,7 @@ class PhoneSetType(enum.Enum):
 @dataclassy.dataclass(slots=True)
 class SoundFileInformation:
     """
-    Data class for sound file information with format, duration, number of channels, bit depth, and
-        sox_string for use in Kaldi feature extraction if necessary
+    Data class for sound file information with format, sampling rate, duration, and number of channels
 
     Parameters
     ----------
@@ -1410,17 +1409,14 @@ class SoundFileInformation:
         Sample rate
     duration: float
         Duration
-    sample_rate: int
-        Sample rate
-    sox_string: str
-        String to use for loading with sox
+    num_channels: int
+        Number of channels
     """
 
     format: str
     sample_rate: int
     duration: float
     num_channels: int
-    sox_string: str
 
     @property
     def meta(self) -> typing.Dict[str, typing.Any]:

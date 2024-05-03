@@ -13,8 +13,6 @@ dependencies:
   - pyyaml
   - dataclassy
   - kaldi=*=*cpu*
-  - sox
-  - ffmpeg
   - scipy
   - pynini
   - openfst=1.8.3

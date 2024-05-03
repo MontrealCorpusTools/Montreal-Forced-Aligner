@@ -18,7 +18,9 @@ from montreal_forced_aligner.helper import mfa_open
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
 
-DEFAULT_PUNCTUATION = list(r'、。।，？！!@<>→"”()“„–,.:;—¿?¡：）|؟!\\&%#*،~【】，…‥「」『』〝〟″⟨⟩♪・‚‘‹›«»～′$+=‘۔')
+DEFAULT_PUNCTUATION = list(
+    r'、。।，？！!@<>→"”()“„–,.:;—¿?¡：）|؟!\\&%#*،~【】，…‥「」『』〝〟″⟨⟩♪・‚‘‹›«»～′$+=‘۔―'
+)
 
 DEFAULT_WORD_BREAK_MARKERS = list(r'？！!()，,.:;¡¿?“„"”&~%#—…‥、。|【】$+=〝〟″‹›«»・⟨⟩،「」『』؟')
 
@@ -26,7 +28,7 @@ DEFAULT_QUOTE_MARKERS = list("“„\"”〝〟″「」『』‚ʻʿ‘′'")
 
 DEFAULT_CLITIC_MARKERS = list("'’‘")
 DEFAULT_COMPOUND_MARKERS = list("-/")
-DEFAULT_BRACKETS = [("[", "]"), ("{", "}"), ("<", ">"), ("(", ")"), ("＜", "＞")]
+DEFAULT_BRACKETS = [("<", ">"), ("[", "]"), ("{", "}"), ("(", ")"), ("＜", "＞")]
 
 __all__ = ["DictionaryMixin", "TemporaryDictionaryMixin"]
 
@@ -115,6 +117,7 @@ class DictionaryMixin:
         preserve_suprasegmentals: bool = False,
         base_phone_mapping: Dict[str, str] = None,
         use_cutoff_model: bool = False,
+        cutoff_word: str = "<cutoff>",
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -151,7 +154,9 @@ class DictionaryMixin:
         self.oov_word = oov_word
         self.silence_word = silence_word
         self.bracketed_word = "[bracketed]"
-        self.cutoff_word = "<cutoff>"
+        self.cutoff_word = cutoff_word
+        if (self.cutoff_word[0], self.cutoff_word[-1]) not in self.brackets:
+            self.cutoff_word = f"{self.brackets[0][0]}{self.cutoff_word}{self.brackets[0][1]}"
         self.laughter_word = "[laughter]"
         self.position_dependent_phones = position_dependent_phones
         self.optional_silence_phone = optional_silence_phone

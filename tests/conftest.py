@@ -80,7 +80,7 @@ def global_config():
     config.CLEAN = True
     config.USE_POSTGRES = True
     config.DEBUG = True
-    config.VERBOSE = True
+    config.VERBOSE = False
     config.NUM_JOBS = 2
     config.USE_MP = True
     config.DATABASE_LIMITED_MODE = True

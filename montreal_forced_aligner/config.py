@@ -136,6 +136,7 @@ def update_command_history(command_data: Dict[str, Any]) -> None:
 
 
 CLEAN = False
+FINAL_CLEAN = False
 VERBOSE = False
 DEBUG = False
 QUIET = False

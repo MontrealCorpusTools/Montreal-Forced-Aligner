@@ -142,7 +142,7 @@ class TreeStatsFunction(KaldiFunction):
         self.working_directory = args.working_directory
         self.model_path = args.model_path
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
+    def _run(self):
         """Run the function"""
         with self.session() as session, thread_logger(
             "kalpy.train", self.log_path, job_name=self.job_name
@@ -166,6 +166,7 @@ class TreeStatsFunction(KaldiFunction):
                 feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
                 ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
                 train_logger.debug("Feature Archive information:")
+                train_logger.debug(f"File: {feature_archive.file_name}")
                 train_logger.debug(f"CMVN: {feature_archive.cmvn_read_specifier}")
                 train_logger.debug(f"Deltas: {feature_archive.use_deltas}")
                 train_logger.debug(f"Splices: {feature_archive.use_splices}")

@@ -12,8 +12,6 @@ dependencies:
   - pyyaml
   - dataclassy
   - kaldi=*=*cpu*
-  - sox
-  - ffmpeg
   - pynini
   - openfst=1.8.3
   - scikit-learn<1.3

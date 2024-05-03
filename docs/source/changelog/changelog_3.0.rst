@@ -5,13 +5,22 @@
 3.0 Changelog
 *************
 
+3.0.7
+-----
+
+- Add check for current version vs latest version on run
+- Added :code:`--final_clean` flag to clean temporary files at the end of each run, along with a :code:`--always_final_clean` flag for :code:`mfa configure`
+- Removed dependencies on :code:`sox` and :code:`ffmpeg` as audio loading is done through :code:`librosa` in :code:`kalpy`
+- Removed poorly aligned files in subset from further training
+- Fixed an issue where specified words for cutoff modeling
+
 3.0.6
 -----
 
 - Fixed an issue where alignment analysis would not produce data for speech log likelihood and phone duration deviation
 - Changed phone duration deviation metric to be maximum duration deviation rather than average across all phones in the utterance
 - Fixed a crash when an empty phone set was specified in phone groups configuration files
-- Fixed a crash when when using the :code:`--language` flag with values other than :code`japanese`, :code`thai`, :code`chinese` or :code`korean`
+- Fixed a crash when when using the :code:`--language` flag with values other than :code:`japanese`, :code:`thai`, :code:`chinese` or :code:`korean`
 
 3.0.5
 =====

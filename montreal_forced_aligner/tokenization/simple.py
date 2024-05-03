@@ -400,10 +400,6 @@ class SimpleTokenizer:
         if self.brackets:
             left_brackets = [x[0] for x in self.brackets]
             right_brackets = [x[1] for x in self.brackets]
-            self.cutoff_regex = re.compile(
-                rf"[{re.escape(''.join(left_brackets))}](cutoff|hes).*?[{re.escape(''.join(right_brackets))}]+",
-                flags=re.IGNORECASE,
-            )
             self.bracket_regex = re.compile(
                 rf"[{re.escape(''.join(left_brackets))}].*?[{re.escape(''.join(right_brackets))}]+"
             )
@@ -445,8 +441,6 @@ class SimpleTokenizer:
         self.non_speech_regexes["<eps>"] = re.compile("<eps>")
         if self.laughter_regex is not None:
             self.non_speech_regexes[self.laughter_word] = self.laughter_regex
-        if self.cutoff_regex is not None:
-            self.non_speech_regexes[self.cutoff_word] = self.cutoff_regex
         if self.bracket_regex is not None:
             self.non_speech_regexes[self.bracketed_word] = self.bracket_regex
 
