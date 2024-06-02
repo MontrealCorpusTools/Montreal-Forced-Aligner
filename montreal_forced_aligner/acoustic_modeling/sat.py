@@ -81,13 +81,15 @@ class AccStatsTwoFeatsFunction(KaldiFunction):
                 .filter(Job.id == self.job_name)
                 .first()
             )
-            for d in job.dictionaries:
+            for d in job.training_dictionaries:
                 train_logger.debug(f"Accumulating stats for dictionary {d.name} ({d.id})")
                 train_logger.debug(f"Accumulating stats for model: {self.model_path}")
                 dict_id = d.id
                 accumulator = TwoFeatsStatsAccumulator(self.model_path)
 
                 ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                if not ali_path.exists():
+                    continue
                 fmllr_path = job.construct_path(
                     job.corpus.current_subset_directory, "trans", "scp", dict_id
                 )

@@ -112,7 +112,7 @@ def full_load_utterance(session: sqlalchemy.orm.Session, utterance_id: int):
 def bulk_update(
     session: sqlalchemy.orm.Session,
     table: MfaSqlBase,
-    values: typing.List[typing.Dict[str, typing.Any]],
+    values: typing.Collection[typing.Dict[str, typing.Any]],
     id_field=None,
 ) -> None:
     """
@@ -353,7 +353,7 @@ class Dictionary(MfaSqlBase):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(50), nullable=False)
-    path = Column(PathType, unique=True)
+    path = Column(PathType)
     rules_applied = Column(Boolean, default=False)
     phone_set_type = Column(Enum(PhoneSetType), nullable=True)
     root_temp_directory = Column(PathType, nullable=True)
@@ -2023,6 +2023,14 @@ class Job(MfaSqlBase):
     @property
     def has_dictionaries(self) -> bool:
         return len(self.dictionaries) > 0
+
+    @property
+    def training_dictionaries(self) -> typing.List[int]:
+        if self.corpus.current_subset == 0:
+            return self.dictionaries
+        if self.corpus.current_subset <= 25000:
+            return [x for x in self.dictionaries if x.name not in {"default", "nonnative"}]
+        return [x for x in self.dictionaries if x.name not in {"default"}]
 
     @property
     def dictionary_ids(self) -> typing.List[int]:

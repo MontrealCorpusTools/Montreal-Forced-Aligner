@@ -6,6 +6,7 @@ import csv
 import functools
 import io
 import logging
+import math
 import multiprocessing as mp
 import os
 import re
@@ -77,9 +78,7 @@ from montreal_forced_aligner.helper import (
     mfa_open,
 )
 from montreal_forced_aligner.textgrid import (
-    construct_output_path,
-    construct_output_tiers,
-    export_textgrid,
+    construct_textgrid_output,
     output_textgrid_writing_errors,
 )
 from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
@@ -424,18 +423,26 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         """
 
         begin = time.time()
-        dictionary_counters = {
-            dict_id: PronunciationProbabilityCounter()
-            for dict_id in self.dictionary_lookup.values()
-        }
+        with self.session() as session:
+            dictionary_counters = {
+                dict_id: PronunciationProbabilityCounter()
+                for dict_id, in session.query(Dictionary.id).filter(Dictionary.name != "default")
+            }
         logger.info("Generating pronunciations...")
         arguments = self.generate_pronunciations_arguments()
         for result in run_kaldi_function(
             GeneratePronunciationsFunction, arguments, total_count=self.num_current_utterances
         ):
-            dict_id, utterance_counter = result
-            dictionary_counters[dict_id].add_counts(utterance_counter)
+            try:
+                dict_id, utterance_counter = result
+                dictionary_counters[dict_id].add_counts(utterance_counter)
+            except Exception:
+                import sys
+                import traceback
 
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                print("\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback)))
+                raise
         initial_key = ("<s>", "")
         final_key = ("</s>", "")
         lambda_2 = 2
@@ -450,16 +457,27 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         ) as log_file, self.session() as session:
             session.query(Pronunciation).update({"count": 0})
             session.commit()
-            dictionaries = session.query(Dictionary.id)
+            dictionaries = session.query(Dictionary)
             dictionary_mappings = []
-            for (d_id,) in dictionaries:
+            for d in dictionaries:
+                d_id = d.id
+                if d_id not in dictionary_counters:
+                    continue
                 counter = dictionary_counters[d_id]
-                log_file.write(f"For {d_id}:\n")
+                log_file.write(f"For {d.name}:\n")
                 words = (
                     session.query(Word.word)
                     .filter(Word.dictionary_id == d_id)
-                    .filter(Word.word_type != WordType.silence)
-                    .filter(Word.count > 0)
+                    .filter(
+                        sqlalchemy.or_(
+                            sqlalchemy.and_(
+                                Word.word_type.in_(WordType.speech_types()), Word.count > 0
+                            ),
+                            Word.word.in_(
+                                [d.cutoff_word, d.oov_word, d.laughter_word, d.bracketed_word]
+                            ),
+                        )
+                    )
                 )
                 pronunciations = (
                     session.query(
@@ -470,8 +488,16 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     )
                     .join(Pronunciation.word)
                     .filter(Word.dictionary_id == d_id)
-                    .filter(Word.word_type != WordType.silence)
-                    .filter(Word.count > 0)
+                    .filter(
+                        sqlalchemy.or_(
+                            sqlalchemy.and_(
+                                Word.word_type.in_(WordType.speech_types()), Word.count > 0
+                            ),
+                            Word.word.in_(
+                                [d.cutoff_word, d.oov_word, d.laughter_word, d.bracketed_word]
+                            ),
+                        )
+                    )
                 )
                 pron_mapping = {}
                 pronunciations = [
@@ -479,6 +505,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     for w, p, p_id, generated in pronunciations
                     if not generated or p in counter.word_pronunciation_counts[w]
                 ]
+                pronunciations.append((d.cutoff_word, "cutoff_model", None))
                 for w, p, p_id in pronunciations:
                     pron_mapping[(w, p)] = {"id": p_id}
                     if w in {initial_key[0], final_key[0], self.silence_word}:
@@ -546,8 +573,28 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         (non_silence_count + lambda_3)
                         / (bar_count_non_silence_wp[(w, p)] + lambda_3)
                     )
-                session.bulk_update_mappings(Pronunciation, pron_mapping.values())
+                cutoff_model = pron_mapping.pop((d.cutoff_word, "cutoff_model"))
+                bulk_update(session, Pronunciation, list(pron_mapping.values()))
                 session.flush()
+                cutoff_not_model = pron_mapping[(d.cutoff_word, "spn")]
+                cutoff_query = (
+                    session.query(Pronunciation.id, Pronunciation.pronunciation)
+                    .join(Pronunciation.word)
+                    .filter(Word.word != d.cutoff_word)
+                    .filter(Word.word.like(f"{d.cutoff_word[:-1]}%"))
+                )
+                cutoff_mappings = []
+                for pron_id, pron in cutoff_query:
+                    if pron == d.cutoff_word:
+                        data = dict(cutoff_not_model)
+                    else:
+                        data = dict(cutoff_model)
+                    data["id"] = pron_id
+                    cutoff_mappings.append(data)
+                if cutoff_mappings:
+                    bulk_update(session, Pronunciation, cutoff_mappings)
+                    session.flush()
+
                 initial_silence_count = counter.silence_before_counts[initial_key] + (
                     silence_probability * lambda_2
                 )
@@ -915,6 +962,11 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 cursor.copy_from(phone_buf, PhoneInterval.__tablename__, sep=",", null="")
                 phone_buf.truncate(0)
                 phone_buf.seek(0)
+                conn.commit()
+                cursor.close()
+                conn.close()
+                conn = self.db_engine.raw_connection()
+                cursor = conn.cursor()
 
         if config.USE_POSTGRES:
             if word_buf.tell() != 0:
@@ -1129,21 +1181,31 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             self.collect_alignments()
         begin = time.time()
         error_dict = {}
-
-        with self.session() as session:
-            files = (
-                session.query(
-                    File.id,
-                    File.name,
-                    File.relative_path,
-                    SoundFile.duration,
-                    TextFile.text_file_path,
-                )
-                .join(File.sound_file)
-                .join(File.text_file)
-            ).all()
         with tqdm(total=self.num_files, disable=config.QUIET) as pbar:
             if config.USE_MP and config.NUM_JOBS > 1:
+                with self.session() as session:
+                    files_per_job = math.ceil(self.num_files / len(self.jobs))
+                    file_batches = [{}]
+                    query = (
+                        session.query(
+                            File.id,
+                            File.name,
+                            File.relative_path,
+                            SoundFile.duration,
+                            TextFile.text_file_path,
+                        )
+                        .join(File.sound_file)
+                        .join(File.text_file)
+                    )
+                    for file_id, file_name, relative_path, file_duration, text_file_path in query:
+                        if len(file_batches[-1]) >= files_per_job:
+                            file_batches.append({})
+                        file_batches[-1][file_id] = (
+                            file_name,
+                            relative_path,
+                            file_duration,
+                            text_file_path,
+                        )
                 stopped = mp.Event()
 
                 finished_adding = mp.Event()
@@ -1167,8 +1229,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     export_proc.start()
                     export_procs.append(export_proc)
                 try:
-                    for args in files:
-                        for_write_queue.put(args)
+                    for batch in file_batches:
+                        for_write_queue.put(batch)
                     time.sleep(1)
                     finished_adding.set()
                     while True:
@@ -1197,30 +1259,37 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             else:
                 logger.debug("Not using multiprocessing for TextGrid export")
 
-                for file_id, name, relative_path, duration, text_file_path in files:
-                    output_path = construct_output_path(
-                        name,
-                        relative_path,
-                        self.export_output_directory,
-                        text_file_path,
-                        output_format,
+                with self.session() as session:
+                    file_batch = {}
+                    query = (
+                        session.query(
+                            File.id,
+                            File.name,
+                            File.relative_path,
+                            SoundFile.duration,
+                            TextFile.text_file_path,
+                        )
+                        .join(File.sound_file)
+                        .join(File.text_file)
                     )
-
-                    data = construct_output_tiers(
-                        session,
-                        file_id,
-                        workflow,
-                        config.CLEANUP_TEXTGRIDS,
-                        self.clitic_marker,
-                        include_original_text,
-                    )
-                    export_textgrid(
-                        data,
-                        output_path,
-                        duration,
-                        self.export_frame_shift,
-                        output_format=output_format,
-                    )
+                    for file_id, file_name, relative_path, file_duration, text_file_path in query:
+                        file_batch[file_id] = (
+                            file_name,
+                            relative_path,
+                            file_duration,
+                            text_file_path,
+                        )
+                for _ in construct_textgrid_output(
+                    session,
+                    file_batch,
+                    workflow,
+                    config.CLEANUP_TEXTGRIDS,
+                    self.clitic_marker,
+                    self.export_output_directory,
+                    self.export_frame_shift,
+                    output_format,
+                    include_original_text,
+                ):
                     pbar.update(1)
 
         if error_dict:
@@ -1321,7 +1390,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             Directory to save results, if not specified, it will be saved in the log directory
         comparison_source: :class:`~montreal_forced_aligner.data.WorkflowType`
             Workflow to compare to the reference intervals, defaults to :attr:`~montreal_forced_aligner.data.WorkflowType.alignment`
-        comparison_source: :class:`~montreal_forced_aligner.data.WorkflowType`
+        reference_source: :class:`~montreal_forced_aligner.data.WorkflowType`
             Workflow to use as the reference intervals, defaults to :attr:`~montreal_forced_aligner.data.WorkflowType.reference`
         """
 

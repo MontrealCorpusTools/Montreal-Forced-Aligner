@@ -21,7 +21,6 @@ from montreal_forced_aligner.exceptions import (
     FileArgumentNotFoundError,
     ModelExtensionError,
     ModelTypeNotSupportedError,
-    NoDefaultSpeakerDictionaryError,
     PretrainedModelNotFoundError,
 )
 from montreal_forced_aligner.helper import mfa_open
@@ -145,7 +144,7 @@ def common_options(f: typing.Callable) -> typing.Callable:
     return functools.reduce(lambda x, opt: opt(x), options, f)
 
 
-def validate_model_arg(name: str, model_type: str) -> Path:
+def validate_model_arg(name: str, model_type: str) -> typing.Union[Path, str]:
     """
     Validate pretrained model name argument
 
@@ -181,6 +180,8 @@ def validate_model_arg(name: str, model_type: str) -> Path:
     model_class = MODEL_TYPES[model_type]
     if name in available_models:
         name = model_class.get_pretrained_path(name)
+    elif model_type == "dictionary" and str(name).lower() in {"default", "nonnative"}:
+        return name
     else:
         if isinstance(name, str):
             name = Path(name)
@@ -193,8 +194,6 @@ def validate_model_arg(name: str, model_type: str) -> Path:
                 paths = sorted(set(data.values()))
                 for path in paths:
                     validate_model_arg(path, "dictionary")
-                if "default" not in data:
-                    raise click.BadParameter(str(NoDefaultSpeakerDictionaryError()))
     else:
         if name.exists():
             if name.suffix:
@@ -410,7 +409,7 @@ def check_server() -> None:
         logger.debug(f"pg_ctl stdout: {stdout}")
         logger.debug(f"pg_ctl stderr: {stderr}")
         if "no server running" in stdout:
-            raise DatabaseError()
+            raise DatabaseError(f"stdout: {stdout}\nstderr: {stderr}")
 
 
 def start_server() -> None:

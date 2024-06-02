@@ -511,6 +511,8 @@ class CalcFmllrFunction(KaldiFunction):
                     **self.fmllr_options,
                 )
                 ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                if not ali_path.exists():
+                    continue
                 fmllr_logger.debug(f"Alignment path: {ali_path}")
                 alignment_archive = AlignmentArchive(ali_path)
                 temp_trans_path = job.construct_path(
@@ -594,6 +596,7 @@ class FeatureConfigMixin:
         self,
         feature_type: str = "mfcc",
         use_energy: bool = True,
+        raw_energy: bool = False,
         frame_shift: int = 10,
         frame_length: int = 25,
         snip_edges: bool = False,
@@ -644,6 +647,7 @@ class FeatureConfigMixin:
         # MFCC options
 
         self.use_energy = use_energy
+        self.raw_energy = raw_energy
         self.low_frequency = low_frequency
         self.high_frequency = high_frequency
         self.sample_frequency = sample_frequency
@@ -783,6 +787,7 @@ class FeatureConfigMixin:
         else:
             options = {
                 "use_energy": self.use_energy,
+                "raw_energy": self.raw_energy,
                 "dither": self.dither,
                 "energy_floor": self.energy_floor,
                 "num_coefficients": self.num_coefficients,

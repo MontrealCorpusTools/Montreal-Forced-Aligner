@@ -82,6 +82,13 @@ __all__ = ["train_acoustic_model_cli"]
     type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
+    "--topology_path",
+    "topology_path",
+    help="Path to yaml file defining topologies. See "
+    "https://github.com/MontrealCorpusTools/mfa-models/tree/main/config/acoustic/topologies for examples.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+)
+@click.option(
     "--output_format",
     help="Format for aligned output files (default is long_textgrid).",
     default="long_textgrid",

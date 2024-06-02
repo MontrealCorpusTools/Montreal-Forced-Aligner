@@ -4,6 +4,7 @@ from __future__ import annotations
 import collections
 import logging
 import os
+import re
 import threading
 import time
 import typing
@@ -1182,38 +1183,68 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             Number of utterances to include in subset
         """
         logger.info(f"Creating subset directory with {subset} utterances...")
-        multiword_pattern = r"\s\S+\s"
+        if hasattr(self, "cutoff_word") and hasattr(self, "brackets"):
+            initial_brackets = re.escape("".join(x[0] for x in self.brackets))
+            final_brackets = re.escape("".join(x[1] for x in self.brackets))
+            cutoff_identifier = re.sub(
+                rf"[{initial_brackets}{final_brackets}]", "", self.cutoff_word
+            )
+            cutoff_pattern = f"[{initial_brackets}]({cutoff_identifier}|hes)"
+        else:
+            cutoff_pattern = "<(cutoff|hes)"
+
+        def add_filters(query):
+            multiword_pattern = r"\s\S+\s"
+            filtered = (
+                query.filter(
+                    Utterance.normalized_text.op("~")(multiword_pattern)
+                    if config.USE_POSTGRES
+                    else Utterance.normalized_text.regexp_match(multiword_pattern)
+                )
+                .filter(Utterance.ignored == False)  # noqa
+                .filter(
+                    sqlalchemy.or_(
+                        Utterance.duration_deviation == None,  # noqa
+                        Utterance.duration_deviation < 10,
+                    )
+                )
+            )
+            if subset <= 25000:
+                filtered = filtered.filter(
+                    sqlalchemy.not_(
+                        Utterance.normalized_text.op("~")(cutoff_pattern)
+                        if config.USE_POSTGRES
+                        else Utterance.normalized_text.regexp_match(cutoff_pattern)
+                    )
+                )
+
+            return filtered
+
         with self.session() as session:
             begin = time.time()
             session.query(Utterance).filter(Utterance.in_subset == True).update(  # noqa
                 {Utterance.in_subset: False}
             )
             session.commit()
-            dictionary_lookup = {k: v for k, v in session.query(Dictionary.name, Dictionary.id)}
+            dictionary_query = session.query(Dictionary.name, Dictionary.id).filter(
+                Dictionary.name != "default"
+            )
+            if subset <= 25000:
+                dictionary_query = dictionary_query.filter(Dictionary.name != "nonnative")
+            dictionary_lookup = {k: v for k, v in dictionary_query}
             num_dictionaries = len(dictionary_lookup)
             if num_dictionaries > 1:
                 subsets_per_dictionary = {}
                 utts_per_dictionary = {}
                 subsetted = 0
                 for dict_name, dict_id in dictionary_lookup.items():
-                    num_utts = (
+                    base_query = (
                         session.query(Utterance)
                         .join(Utterance.speaker)
-                        .filter(Speaker.dictionary_id == dict_id)
-                        .filter(
-                            Utterance.normalized_text.op("~")(multiword_pattern)
-                            if config.USE_POSTGRES
-                            else Utterance.normalized_text.regexp_match(multiword_pattern)
-                        )
-                        .filter(Utterance.ignored == False)  # noqa
-                        .filter(
-                            sqlalchemy.or_(
-                                Utterance.duration_deviation == None,  # noqa
-                                Utterance.duration_deviation < 10,
-                            )
-                        )  # noqa
-                        .count()
+                        .filter(Speaker.dictionary_id == dict_id)  # noqa
                     )
+                    base_query = add_filters(base_query)
+                    num_utts = base_query.count()
                     utts_per_dictionary[dict_name] = num_utts
                     if num_utts < int(subset / num_dictionaries):
                         subsets_per_dictionary[dict_name] = num_utts
@@ -1240,42 +1271,22 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     larger_subset_num = int(subset_per_dictionary * 10)
                     speaker_ids = None
                     average_duration = (
-                        session.query(sqlalchemy.func.avg(Utterance.duration))
-                        .join(Utterance.speaker)
-                        .filter(Speaker.dictionary_id == dict_id)
-                        .filter(
-                            Utterance.normalized_text.op("~")(multiword_pattern)
-                            if config.USE_POSTGRES
-                            else Utterance.normalized_text.regexp_match(multiword_pattern)
+                        add_filters(
+                            session.query(sqlalchemy.func.avg(Utterance.duration))
+                            .join(Utterance.speaker)
+                            .filter(Speaker.dictionary_id == dict_id)
                         )
-                        .filter(Utterance.ignored == False)  # noqa
-                        .filter(
-                            sqlalchemy.or_(
-                                Utterance.duration_deviation == None,  # noqa
-                                Utterance.duration_deviation < 10,
-                            )
-                        )  # noqa
                     ).first()[0]
                     for utt_count_cutoff in [30, 15, 5]:
                         sq = (
-                            session.query(
-                                Speaker.id.label("speaker_id"),
-                                sqlalchemy.func.count(Utterance.id).label("utt_count"),
-                            )
-                            .join(Utterance.speaker)
-                            .filter(Speaker.dictionary_id == dict_id)
-                            .filter(
-                                Utterance.normalized_text.op("~")(multiword_pattern)
-                                if config.USE_POSTGRES
-                                else Utterance.normalized_text.regexp_match(multiword_pattern)
-                            )
-                            .filter(Utterance.ignored == False)  # noqa
-                            .filter(
-                                sqlalchemy.or_(
-                                    Utterance.duration_deviation == None,  # noqa
-                                    Utterance.duration_deviation < 10,
+                            add_filters(
+                                session.query(
+                                    Speaker.id.label("speaker_id"),
+                                    sqlalchemy.func.count(Utterance.id).label("utt_count"),
                                 )
-                            )  # noqa
+                                .join(Utterance.speaker)
+                                .filter(Speaker.dictionary_id == dict_id)
+                            )
                             .filter(Utterance.duration <= average_duration)
                             .group_by(Speaker.id.label("speaker_id"))
                             .subquery()
@@ -1286,32 +1297,21 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             )
                         ).first()[0]
                         if total_speaker_utterances >= subset_per_dictionary:
-                            speaker_ids = (
+                            speaker_ids = [
                                 x
                                 for x, in session.query(sq.c.speaker_id).filter(
                                     sq.c.utt_count >= utt_count_cutoff
                                 )
-                            )
+                            ]
                             break
                     if num_utts > larger_subset_num:
                         larger_subset_query = (
                             session.query(Utterance.id)
                             .join(Utterance.speaker)
-                            .filter(Speaker.dictionary_id == dict_id)
-                            .filter(
-                                Utterance.normalized_text.op("~")(multiword_pattern)
-                                if config.USE_POSTGRES
-                                else Utterance.normalized_text.regexp_match(multiword_pattern)
-                            )
-                            .filter(Utterance.ignored == False)  # noqa
-                            .filter(
-                                sqlalchemy.or_(
-                                    Utterance.duration_deviation == None,  # noqa
-                                    Utterance.duration_deviation < 10,
-                                )
-                            )  # noqa
+                            .filter(Speaker.dictionary_id == dict_id)  # noqa
                         )
-                        if speaker_ids is not None:
+                        larger_subset_query = add_filters(larger_subset_query)
+                        if speaker_ids:
                             larger_subset_query = larger_subset_query.filter(
                                 Speaker.id.in_(speaker_ids)
                             )
@@ -1333,7 +1333,8 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         )
                         session.execute(query)
 
-                        # Remove speakers with less than 5 utterances from subset, can't estimate speaker transforms well for low utterance counts
+                        # Remove speakers with less than 5 utterances from subset,
+                        # can't estimate speaker transforms well for low utterance counts
                         sq = (
                             session.query(
                                 Utterance.speaker_id.label("speaker_id"),
@@ -1343,9 +1344,9 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             .group_by(Utterance.speaker_id.label("speaker_id"))
                             .subquery()
                         )
-                        speaker_ids = (
+                        speaker_ids = [
                             x for x, in session.query(sq.c.speaker_id).filter(sq.c.utt_count < 5)
-                        )
+                        ]
                         session.query(Utterance).filter(
                             Utterance.speaker_id.in_(speaker_ids)
                         ).update({Utterance.in_subset: False})
@@ -1355,21 +1356,10 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         larger_subset_query = (
                             session.query(Utterance.id)
                             .join(Utterance.speaker)
-                            .filter(Speaker.dictionary_id == dict_id)
-                            .filter(
-                                Utterance.normalized_text.op("~")(multiword_pattern)
-                                if config.USE_POSTGRES
-                                else Utterance.normalized_text.regexp_match(multiword_pattern)
-                            )
-                            .filter(Utterance.ignored == False)  # noqa
-                            .filter(
-                                sqlalchemy.or_(
-                                    Utterance.duration_deviation == None,  # noqa
-                                    Utterance.duration_deviation < 10,
-                                )
-                            )  # noqa
+                            .filter(Speaker.dictionary_id == dict_id)  # noqa
                         )
-                        if speaker_ids is not None:
+                        larger_subset_query = add_filters(larger_subset_query)
+                        if speaker_ids:
                             larger_subset_query = larger_subset_query.filter(
                                 Speaker.id.in_(speaker_ids)
                             )
@@ -1431,27 +1421,15 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     ).first()[0]
                     remaining = subset_per_dictionary - total_speaker_utterances
                     if remaining > 0:
-                        speaker_ids = (x for x, in session.query(sq.c.speaker_id))
+                        speaker_ids = [x for x, in session.query(sq.c.speaker_id)]
 
                         larger_subset_query = (
                             session.query(Utterance.id)
                             .join(Utterance.speaker)
-                            .filter(Speaker.dictionary_id == dict_id)
-                            .filter(
-                                Utterance.normalized_text.op("~")(multiword_pattern)
-                                if config.USE_POSTGRES
-                                else Utterance.normalized_text.regexp_match(multiword_pattern)
-                            )
-                            .filter(Utterance.ignored == False)  # noqa
-                            .filter(Utterance.in_subset == False)  # noqa
-                            .filter(
-                                sqlalchemy.or_(
-                                    Utterance.duration_deviation == None,  # noqa
-                                    Utterance.duration_deviation < 10,
-                                )
-                            )  # noqa
+                            .filter(Speaker.dictionary_id == dict_id)  # noqa
                         )
-                        if speaker_ids is not None:
+                        larger_subset_query = add_filters(larger_subset_query)
+                        if speaker_ids:
                             larger_subset_query = larger_subset_query.filter(
                                 Speaker.id.in_(speaker_ids)
                             )
@@ -1478,13 +1456,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 if subset < self.num_utterances:
                     # Get all shorter utterances that are not one word long
                     larger_subset_query = (
-                        session.query(Utterance.id)
-                        .filter(
-                            Utterance.normalized_text.op("~")(multiword_pattern)
-                            if config.USE_POSTGRES
-                            else Utterance.normalized_text.regexp_match(multiword_pattern)
-                        )
-                        .filter(Utterance.ignored == False)  # noqa
+                        add_filters(session.query(Utterance.id))
                         .order_by(Utterance.duration)
                         .limit(larger_subset_num)
                     )

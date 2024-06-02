@@ -6,7 +6,7 @@ import abc
 import os
 import re
 import typing
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
@@ -27,7 +27,7 @@ DEFAULT_WORD_BREAK_MARKERS = list(r'？！!()，,.:;¡¿?“„"”&~%#—…‥
 DEFAULT_QUOTE_MARKERS = list("“„\"”〝〟″「」『』‚ʻʿ‘′'")
 
 DEFAULT_CLITIC_MARKERS = list("'’‘")
-DEFAULT_COMPOUND_MARKERS = list("-/")
+DEFAULT_COMPOUND_MARKERS = list("-‑/")
 DEFAULT_BRACKETS = [("<", ">"), ("[", "]"), ("{", "}"), ("(", ")"), ("＜", "＞")]
 
 __all__ = ["DictionaryMixin", "TemporaryDictionaryMixin"]
@@ -190,6 +190,7 @@ class DictionaryMixin:
         self.bracket_sanitize_regex = None
         self.use_cutoff_model = use_cutoff_model
         self._phone_groups = {}
+        self._topologies = {}
 
     @property
     def tokenizer(self):
@@ -491,6 +492,12 @@ class DictionaryMixin:
 
     @property
     def phone_groups(self) -> typing.Dict[str, typing.List[str]]:
+        if (
+            not self._phone_groups
+            and getattr(self, "phone_group_path", None)
+            and hasattr(self, "load_phone_groups")
+        ):
+            self.load_phone_groups()
         if not self._phone_groups:
             for p in sorted(self.non_silence_phones):
                 base_phone = self.get_base_phone(p)
@@ -665,8 +672,14 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
         """
         Write the topo file to the temporary directory
         """
-
+        if (
+            not self._topologies
+            and getattr(self, "topology_path", None)
+            and hasattr(self, "load_phone_topologies")
+        ):
+            self.load_phone_topologies()
         sil_transp = 1 / (self.num_silence_states - 1)
+        topo_groups = defaultdict(set)
 
         silence_lines = [
             "<TopologyEntry>",
@@ -694,9 +707,16 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
         silence_topo_string = "\n".join(silence_lines)
 
         topo_sections = [silence_topo_string]
-        topo_phones = self._get_grouped_phones()
 
-        for phone_list in topo_phones.values():
+        for k, v in self._topologies.items():
+            min_states = v.get("min_states", 1)
+            max_states = v.get("max_states", self.num_non_silence_states)
+            topo_groups[(min_states, max_states)].add(k)
+        for phone in self.non_silence_phones:
+            if phone not in self._topologies:
+                topo_groups[(1, self.num_non_silence_states)].add(phone)
+
+        for (min_states, max_states), phone_list in topo_groups.items():
             if not phone_list:
                 continue
             non_silence_lines = [
@@ -707,16 +727,18 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
                 ),
                 "</ForPhones>",
             ]
-            # num_states = state_mapping[phone_type]
-            num_states = self.num_non_silence_states
+            num_states = max_states
 
             for i in range(num_states):
                 if i == 0:  # Initial non_silence state
-                    transition_probability = 1 / self.num_non_silence_states
-                    transition_string = " ".join(
-                        f"<Transition> {x} {transition_probability}"
-                        for x in range(1, self.num_non_silence_states + 1)
-                    )
+                    if min_states == max_states:
+                        transition_string = f"<Transition> {i} 0.5 <Transition> {i+1} 0.5"
+                    else:
+                        transition_probability = 1 / max_states
+                        transition_string = " ".join(
+                            f"<Transition> {x} {transition_probability}"
+                            for x in range(min_states, max_states + 1)
+                        )
                     non_silence_lines.append(
                         f"<State> {i} <PdfClass> {i} {transition_string} </State>"
                     )

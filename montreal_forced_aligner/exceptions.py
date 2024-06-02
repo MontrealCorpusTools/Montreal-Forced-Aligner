@@ -306,6 +306,34 @@ class PhoneMismatchError(DictionaryError):
         self.message_lines.append(comma_join(missing_phones))
 
 
+class PhoneGroupTopologyMismatchError(DictionaryError):
+    """
+    Exception class for when a dictionary receives a new phone
+
+    Parameters
+    ----------
+    error_topologies: List[Tuple[List[str], List[Tuple[int, int]]]]
+        Phones that are not in the acoustic model
+    """
+
+    def __init__(
+        self,
+        error_topologies: typing.List[
+            typing.Tuple[typing.List[str], typing.List[typing.Tuple[int, int]]]
+        ],
+        phone_groups_path: typing.Union[Path, str],
+        topologies_path: typing.Union[Path, str],
+    ):
+        super().__init__("There were multiple topologies found for phones in the same group: ")
+        for k, v in error_topologies:
+            v = [f"(min_states = {x[0]}, max_states = {x[1]})" for x in v]
+            self.message_lines.append(f"{comma_join(k)}: {comma_join(v)}")
+        self.message_lines.append(
+            f"Please update {phone_groups_path} or {topologies_path} to "
+            f"ensure that phone groups have a single set of minimum and maximum states"
+        )
+
+
 class NoDefaultSpeakerDictionaryError(DictionaryError):
     """
     Exception class for errors in creating MultispeakerDictionary objects

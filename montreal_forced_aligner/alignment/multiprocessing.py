@@ -63,11 +63,7 @@ from montreal_forced_aligner.db import (
 )
 from montreal_forced_aligner.exceptions import AlignmentCollectionError, AlignmentExportError
 from montreal_forced_aligner.helper import mfa_open, split_phone_position
-from montreal_forced_aligner.textgrid import (
-    construct_output_path,
-    construct_output_tiers,
-    export_textgrid,
-)
+from montreal_forced_aligner.textgrid import construct_textgrid_output
 from montreal_forced_aligner.utils import thread_logger
 
 if TYPE_CHECKING:
@@ -418,7 +414,7 @@ class CompileTrainGraphsFunction(KaldiFunction):
                 text_column = Utterance.normalized_character_text
             else:
                 text_column = Utterance.normalized_text
-            for d in job.dictionaries:
+            for d in job.training_dictionaries:
                 begin = time.time()
                 if self.lexicon_compilers and d.id in self.lexicon_compilers:
                     lexicon = self.lexicon_compilers[d.id]
@@ -477,7 +473,7 @@ class AccStatsFunction(KaldiFunction):
         self.working_directory = args.working_directory
         self.model_path = args.model_path
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
+    def _run(self) -> None:
         """Run the function"""
         with self.session() as session, thread_logger(
             "kalpy.train", self.log_path, job_name=self.job_name
@@ -488,7 +484,7 @@ class AccStatsFunction(KaldiFunction):
                 .filter(Job.id == self.job_name)
                 .first()
             )
-            for d in job.dictionaries:
+            for d in job.training_dictionaries:
                 train_logger.debug(f"Accumulating stats for dictionary {d.name} ({d.id})")
                 train_logger.debug(f"Accumulating stats for model: {self.model_path}")
                 dict_id = d.id
@@ -496,6 +492,8 @@ class AccStatsFunction(KaldiFunction):
 
                 feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
                 ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                if not ali_path.exists():
+                    continue
                 alignment_archive = AlignmentArchive(ali_path)
                 train_logger.debug("Feature Archive information:")
                 train_logger.debug(f"CMVN: {feature_archive.cmvn_read_specifier}")
@@ -565,7 +563,7 @@ class AlignFunction(KaldiFunction):
                 **align_options,
             )
             aligner.boost_silence(boost_silence, silence_phones)
-            for d in job.dictionaries:
+            for d in job.training_dictionaries:
                 align_logger.debug(f"Aligning for dictionary {d.name} ({d.id})")
                 align_logger.debug(f"Aligning with model: {aligner.acoustic_model_path}")
                 dict_id = d.id
@@ -1114,21 +1112,10 @@ class GeneratePronunciationsFunction(KaldiFunction):
             silence_words = session.query(Word.word).filter(Word.word_type == WordType.silence)
             self.silence_words.update(x for x, in silence_words)
 
-            for d in job.dictionaries:
+            for d in job.training_dictionaries:
                 ali_path = job.construct_path(workflow.working_directory, "ali", "ark", d.id)
                 if not os.path.exists(ali_path):
                     continue
-
-                utts = (
-                    session.query(Utterance.id, Utterance.normalized_text)
-                    .join(Utterance.speaker)
-                    .filter(Utterance.job_id == self.job_name)
-                    .filter(Speaker.dictionary_id == d.id)
-                )
-                utterance_texts = {}
-                for u_id, text in utts:
-                    utterance_texts[u_id] = text
-
                 if self.lexicon_compilers and d.id in self.lexicon_compilers:
                     lexicon_compiler = self.lexicon_compilers[d.id]
                 else:
@@ -1142,11 +1129,15 @@ class GeneratePronunciationsFunction(KaldiFunction):
                     )
                     utterance = int(alignment.utterance_id.split("-")[-1])
                     ctm = lexicon_compiler.phones_to_pronunciations(alignment.words, intervals)
-                    word_pronunciations = [(x.label, x.pronunciation) for x in ctm.word_intervals]
-                    # word_pronunciations = [
-                    #    x if x[1] != OOV_PHONE else (OOV_WORD, OOV_PHONE)
-                    #    for x in word_pronunciations
-                    # ]
+                    word_pronunciations = []
+                    for wi in ctm.word_intervals:
+                        label = wi.label
+                        pronunciation = wi.pronunciation
+                        if label.startswith(d.cutoff_word[:-1]):
+                            label = d.cutoff_word
+                            if pronunciation != d.oov_phone:
+                                pronunciation = "cutoff_model"
+                        word_pronunciations.append((label, pronunciation))
                     if self.for_g2p:
                         phones = []
                         for i, x in enumerate(word_pronunciations):
@@ -1256,6 +1247,8 @@ class AlignmentExtractionFunction(KaldiFunction):
                     lexicon_compiler = d.lexicon_compiler
                 if self.transcription:
                     lat_path = job.construct_path(workflow.working_directory, "lat", "ark", d.id)
+                    if not lat_path.exists():
+                        continue
 
                     transcription_archive = TranscriptionArchive(
                         lat_path, acoustic_scale=self.score_options["acoustic_scale"]
@@ -1304,6 +1297,8 @@ class AlignmentExtractionFunction(KaldiFunction):
                         self.callback((utterance, d.id, ctm))
                 else:
                     ali_path = job.construct_path(workflow.working_directory, "ali", "ark", d.id)
+                    if not ali_path.exists():
+                        continue
                     words_path = job.construct_path(
                         workflow.working_directory, "words", "ark", d.id
                     )
@@ -1505,13 +1500,7 @@ class ExportTextGridProcessWorker(mp.Process):
             )
             while True:
                 try:
-                    (
-                        file_id,
-                        name,
-                        relative_path,
-                        duration,
-                        text_file_path,
-                    ) = self.for_write_queue.get(timeout=1)
+                    (file_batch) = self.for_write_queue.get(timeout=1)
                 except Empty:
                     if self.finished_adding.is_set():
                         self.finished_processing.set()
@@ -1521,25 +1510,18 @@ class ExportTextGridProcessWorker(mp.Process):
                 if self.stopped.is_set():
                     continue
                 try:
-                    output_path = construct_output_path(
-                        name,
-                        relative_path,
-                        self.output_directory,
-                        text_file_path,
-                        self.output_format,
-                    )
-                    data = construct_output_tiers(
+                    for output_path in construct_textgrid_output(
                         session,
-                        file_id,
+                        file_batch,
                         workflow,
                         self.cleanup_textgrids,
                         self.clitic_marker,
+                        self.output_directory,
+                        self.export_frame_shift,
+                        self.output_format,
                         self.include_original_text,
-                    )
-                    export_textgrid(
-                        data, output_path, duration, self.export_frame_shift, self.output_format
-                    )
-                    self.return_queue.put(1)
+                    ):
+                        self.return_queue.put(1)
                 except Exception:
                     exc_type, exc_value, exc_traceback = sys.exc_info()
                     self.return_queue.put(
