@@ -5,6 +5,24 @@
 3.0 Changelog
 *************
 
+3.1.0
+-----
+
+- Fixed a bug where cutoffs were not properly modelled
+- Added additional filter on create subset to not include utterances with cutoffs in smaller subsets
+- Added the ability to specify HMM topologies for phones
+- Fixed issues caused by validators not cleaning up temporary files and databases
+- Added support for default and nonnative dictionaries generated from other dictionaries
+- Restricted initial training rounds to exclude default and nonnative dictionaries
+- Changed clustering of phones to not mix silence and non-silence phones
+- Optimized textgrid export
+- Added better memory management for collecting alignments
+
+3.0.8
+-----
+
+- Fixed a compatibility issue with models trained under version 1.0 and earlier
+
 3.0.7
 -----
 

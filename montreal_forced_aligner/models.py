@@ -647,7 +647,7 @@ class AcousticModel(Archive):
                 self._meta["other_noise_phone"] = "sp"
             if "phone_set_type" not in self._meta:
                 self._meta["phone_set_type"] = "UNKNOWN"
-            if "language" not in self._meta:
+            if "language" not in self._meta or self._meta["version"] <= "3.0":
                 self._meta["language"] = "unknown"
             self._meta["phones"] = set(self._meta.get("phones", []))
             if (
@@ -1589,7 +1589,9 @@ class DictionaryModel(MfaModel):
                 data = yaml.load(f, Loader=yaml.Loader)
                 for speaker, path in data.items():
                     if path not in mapping:
-                        mapping[path] = (DictionaryModel(path), set())
+                        if path != "nonnative":
+                            path = DictionaryModel(path)
+                        mapping[path] = (path, set())
                     mapping[path][1].add(speaker)
         else:
             mapping[str(self.path)] = (self, {"default"})

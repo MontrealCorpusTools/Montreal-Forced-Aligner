@@ -1111,6 +1111,7 @@ class AcousticCorpusPronunciationMixin(
             self.write_lexicon_information()
             logger.debug(f"Wrote lexicon information in {time.time() - begin:.3f} seconds")
         else:
+            self.load_phone_topologies()
             self.load_phone_groups()
             self.load_lexicon_compilers()
 

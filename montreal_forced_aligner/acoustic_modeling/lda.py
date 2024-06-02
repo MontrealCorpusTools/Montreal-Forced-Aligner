@@ -97,6 +97,8 @@ class LdaAccStatsFunction(KaldiFunction):
             ]
             for dict_id in job.dictionary_ids:
                 ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                if not ali_path.exists():
+                    continue
                 lda_logger.debug(f"Processing {ali_path}")
                 feat_path = job.construct_path(
                     job.corpus.current_subset_directory, "feats", "scp", dictionary_id=dict_id
@@ -164,6 +166,8 @@ class CalcLdaMlltFunction(KaldiFunction):
             ]
             for dict_id in job.dictionary_ids:
                 ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                if not ali_path.exists():
+                    continue
                 lda_logger.debug(f"Processing {ali_path}")
                 feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
                 alignment_archive = AlignmentArchive(ali_path)

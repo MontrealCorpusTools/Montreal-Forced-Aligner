@@ -312,8 +312,12 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
         previous_directory = self.previous_aligner.working_directory
         for j in self.jobs:
             for p in j.construct_path_dictionary(previous_directory, "ali", "ark").values():
+                if not p.exists():
+                    continue
                 shutil.copy(p, wf.working_directory.joinpath(p.name))
             for p in j.construct_path_dictionary(previous_directory, "words", "ark").values():
+                if not p.exists():
+                    continue
                 shutil.copy(p, wf.working_directory.joinpath(p.name))
         for f in ["final.mdl", "final.alimdl", "lda.mat", "tree"]:
             p = previous_directory.joinpath(f)
@@ -384,6 +388,12 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                     )
                     with mfa_open(silence_info_path, "r") as f:
                         data = json.load(f)
+                        for k, v in data.items():
+                            if v is None:
+                                if "correction" in k:
+                                    data[k] = 1.0
+                                else:
+                                    data[k] = 0.5
                     if self.silence_probabilities:
                         d.silence_probability = data["silence_probability"]
                         d.initial_silence_probability = data["initial_silence_probability"]

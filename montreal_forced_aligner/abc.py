@@ -316,7 +316,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
             self._db_engine = self.construct_engine()
         return self._db_engine
 
-    def get_next_primary_key(self, database_table: MfaSqlBase):
+    def get_next_primary_key(self, database_table):
         with self.session() as session:
             pk = session.query(sqlalchemy.func.max(database_table.id)).scalar()
             if not pk:
@@ -634,7 +634,8 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
                 unknown_dict[name] = val
         for name, param_type in param_types.items():
             if (name.endswith("_directory") and name != "audio_directory") or (
-                name.endswith("_path") and name not in {"rules_path", "phone_groups_path"}
+                name.endswith("_path")
+                and name not in {"rules_path", "phone_groups_path", "topology_path"}
             ):
                 continue
             if args is not None and name in args and args[name] is not None:

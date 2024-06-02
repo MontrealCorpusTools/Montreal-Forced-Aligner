@@ -100,6 +100,8 @@ class TransitionAccFunction(KaldiFunction):
             transition_model, acoustic_model = read_gmm_model(self.model_path)
             for dict_id in job.dictionary_ids:
                 ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                if not ali_path.exists():
+                    continue
                 transition_accs = DoubleVector(transition_model.NumTransitionIds() + 1)
                 alignment_archive = AlignmentArchive(ali_path)
                 for alignment in alignment_archive:
@@ -523,6 +525,8 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                     self.working_directory, "temp_ali", "ark"
                 )
                 for dict_id, ali_path in ali_paths.items():
+                    if not ali_path.exists():
+                        continue
                     new_path = temp_ali_paths[dict_id]
                     write_specifier = generate_write_specifier(new_path)
                     writer = Int32VectorWriter(write_specifier)
@@ -577,15 +581,20 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                 self.current_acoustic_model = AcousticModel(
                     previous.exported_model_path, self.working_directory
                 )
-                self.align()
-                with self.session() as session:
-                    session.query(WordInterval).delete()
-                    session.query(PhoneInterval).delete()
-                    session.commit()
-                self.collect_alignments()
-                self.analyze_alignments()
-                if self.current_subset != 0:
-                    self.quality_check_subset()
+                if (
+                    not self.current_workflow.done
+                    or not self.current_workflow.working_directory.exists()
+                ):
+                    logger.debug(f"Skipping {self.current_aligner.identifier} alignments")
+                    self.align()
+                    with self.session() as session:
+                        session.query(WordInterval).delete()
+                        session.query(PhoneInterval).delete()
+                        session.commit()
+                    self.collect_alignments()
+                    self.analyze_alignments()
+                    if self.current_subset != 0:
+                        self.quality_check_subset()
 
             self.set_current_workflow(trainer.identifier)
             if trainer.identifier.startswith("pronunciation_probabilities"):
@@ -721,7 +730,6 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             options = self.current_aligner.align_options
         else:
             options = super().align_options
-        options["boost_silence"] = max(1.25, options["boost_silence"])
         return options
 
     def align(self) -> None:

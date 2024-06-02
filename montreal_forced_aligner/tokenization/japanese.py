@@ -16,7 +16,7 @@ class JapaneseTokenizer:
     def __init__(self, ignore_case: bool = True):
         self.ignore_case = ignore_case
         resource_dir = pathlib.Path(__file__).parent.joinpath("resources")
-        config_path = resource_dir.joinpath("japanese", "sudachi_config.json")
+        config_path = str(resource_dir.joinpath("japanese", "sudachi_config.json"))
         try:
             self.tokenizer = sudachipy.Dictionary(dict="full", config_path=config_path).create(
                 mode=sudachipy.SplitMode.B

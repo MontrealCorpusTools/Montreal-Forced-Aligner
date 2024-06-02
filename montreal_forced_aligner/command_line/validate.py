@@ -139,6 +139,7 @@ def validate_corpus_cli(context, **kwargs) -> None:
         validator.dirty = True
         raise
     finally:
+        config.FINAL_CLEAN = True
         validator.cleanup()
 
 
@@ -196,4 +197,5 @@ def validate_dictionary_cli(*args, **kwargs) -> None:
         validator.dirty = True
         raise
     finally:
+        config.FINAL_CLEAN = True
         validator.cleanup()

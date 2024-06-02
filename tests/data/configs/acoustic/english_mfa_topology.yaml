@@ -1,0 +1,46 @@
+ɾ:
+  max_states: 1
+  min_states: 1
+ɾʲ:
+  max_states: 1
+  min_states: 1
+ɾ̃:
+  max_states: 1
+  min_states: 1
+ʔ:
+  max_states: 1
+  min_states: 1
+ə:
+  max_states: 3
+ɚ:
+  max_states: 3
+ɪ:
+  max_states: 3
+e:
+  max_states: 3
+eː:
+  max_states: 3
+ɛ:
+  max_states: 3
+ɛː:
+  max_states: 3
+ɐ:
+  max_states: 3
+i:
+  max_states: 3
+iː:
+  max_states: 3
+o:
+  max_states: 3
+oː:
+  max_states: 3
+u:
+  max_states: 3
+uː:
+  max_states: 3
+ɝ:
+  max_states: 3
+j:
+  max_states: 3
+w:
+  max_states: 3

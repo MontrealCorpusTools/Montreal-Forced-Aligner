@@ -129,6 +129,7 @@ class SplitWordsFunction:
         initial_clitic_regex: typing.Optional[re.Pattern],
         final_clitic_regex: typing.Optional[re.Pattern],
         compound_regex: typing.Optional[re.Pattern],
+        cutoff_regex: typing.Optional[re.Pattern],
         non_speech_regexes: typing.Dict[str, re.Pattern],
         oov_word: typing.Optional[str] = None,
         grapheme_set: typing.Optional[typing.Collection[str]] = None,
@@ -136,6 +137,7 @@ class SplitWordsFunction:
         self.word_table = word_table
         self.clitic_marker = clitic_marker
         self.compound_regex = compound_regex
+        self.cutoff_regex = cutoff_regex
         self.oov_word = oov_word
         self.specials_set = {self.oov_word, "<s>", "</s>"}
         if not grapheme_set:
@@ -172,6 +174,8 @@ class SplitWordsFunction:
         if self.word_table and self.word_table.member(normalized_text):
             return normalized_text
         for word, regex in self.non_speech_regexes.items():
+            if self.cutoff_regex.match(normalized_text):
+                return normalized_text
             if regex.match(normalized_text):
                 return word
         return normalized_text
@@ -195,7 +199,8 @@ class SplitWordsFunction:
         """
         split = []
         if self.compound_regex is not None:
-            s = self.compound_regex.split(item)
+            s = [x for x in self.compound_regex.split(item) if x]
+
         else:
             s = [item]
         if self.word_table is None:
@@ -292,6 +297,8 @@ class SplitWordsFunction:
         """
         if self.word_table and self.word_table.member(item):
             return [item]
+        if self.cutoff_regex.match(item):
+            return item
         for regex in self.non_speech_regexes.values():
             if regex.match(item):
                 return [item]
@@ -325,7 +332,10 @@ class SimpleTokenizer:
         self.laughter_word = laughter_word
         self.oov_word = oov_word
         self.bracketed_word = bracketed_word
-        self.cutoff_word = cutoff_word
+
+        initial_brackets = re.escape("".join(x[0] for x in self.brackets))
+        final_brackets = re.escape("".join(x[1] for x in self.brackets))
+        self.cutoff_identifier = re.sub(rf"[{initial_brackets}{final_brackets}]", "", cutoff_word)
         self.ignore_case = ignore_case
         self.use_g2p = use_g2p
         self.clitic_set = set()
@@ -372,6 +382,7 @@ class SimpleTokenizer:
             self.initial_clitic_regex,
             self.final_clitic_regex,
             self.compound_regex,
+            self.cutoff_regex,
             self.non_speech_regexes,
             self.oov_word,
             self.grapheme_set,
@@ -396,15 +407,19 @@ class SimpleTokenizer:
             if "-" in self.compound_markers:
                 extra = "-"
                 compound_markers = [x for x in compound_markers if x != "-"]
-            self.compound_regex = re.compile(rf"(?<=\w)[{extra}{''.join(compound_markers)}](?=\w)")
-        if self.brackets:
-            left_brackets = [x[0] for x in self.brackets]
-            right_brackets = [x[1] for x in self.brackets]
-            self.bracket_regex = re.compile(
-                rf"[{re.escape(''.join(left_brackets))}].*?[{re.escape(''.join(right_brackets))}]+"
+            self.compound_regex = re.compile(
+                rf"(?<=\w)[{extra}{''.join(compound_markers)}](?:$|(?=\w))"
             )
+        if self.brackets:
+            left_brackets = re.escape("".join(x[0] for x in self.brackets))
+            right_brackets = re.escape("".join(x[1] for x in self.brackets))
+            self.cutoff_regex = re.compile(
+                rf"^[{left_brackets}]({self.cutoff_identifier}|hes(itation)?)([-_](?P<word>[^{right_brackets}]+))?[{right_brackets}]$",
+                flags=re.IGNORECASE,
+            )
+            self.bracket_regex = re.compile(rf"[{left_brackets}].*?[{right_brackets}]+")
             self.laughter_regex = re.compile(
-                rf"[{re.escape(''.join(left_brackets))}](laugh(ing|ter)?|lachen|lg)[{re.escape(''.join(right_brackets))}]+",
+                rf"[{left_brackets}](laugh(ing|ter)?|lachen|lg)[{right_brackets}]+",
                 flags=re.IGNORECASE,
             )
         all_punctuation = set()

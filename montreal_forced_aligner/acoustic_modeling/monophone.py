@@ -75,7 +75,7 @@ class MonoAlignEqualFunction(KaldiFunction):
             num_error = 0
             tot_like = 0.0
             tot_t = 0.0
-            for d in job.dictionaries:
+            for d in job.training_dictionaries:
                 dict_id = d.id
                 train_logger.debug(f"Aligning for dictionary {d.name} ({d.id})")
                 train_logger.debug(f"Aligning with model: {self.model_path}")
@@ -302,14 +302,22 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
         tree_path = self.working_directory.joinpath("tree")
         init_log_path = self.working_log_directory.joinpath("init.log")
         job = self.jobs[0]
-        dict_id = job.dictionary_ids[0]
-        feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
         feats = []
         with kalpy_logger("kalpy.train", init_log_path) as train_logger:
-            for i, (_, mat) in enumerate(feature_archive):
-                if i > 10:
+            dict_index = 0
+            while len(feats) < 10:
+                try:
+                    dict_id = job.dictionary_ids[dict_index]
+                except IndexError:
                     break
-                feats.append(mat)
+                feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
+                for i, (_, mat) in enumerate(feature_archive):
+                    if i > 10:
+                        break
+                    feats.append(mat)
+                dict_index += 1
+            if not feats:
+                raise Exception("Could not initialize monophone model due to lack of features")
             shared_phones = self.worker.shared_phones_set_symbols()
             topo = read_topology(self.worker.topo_path)
             gmm_init_mono(topo, feats, shared_phones, str(self.model_path), str(tree_path))

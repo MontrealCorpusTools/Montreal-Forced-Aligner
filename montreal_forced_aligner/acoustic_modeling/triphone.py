@@ -94,10 +94,12 @@ class ConvertAlignmentsFunction(KaldiFunction):
             train_logger.debug(f"Previous model path: {self.align_model_path}")
             train_logger.debug(f"Model path: {self.model_path}")
             train_logger.debug(f"Tree path: {self.tree_path}")
-            for d in job.dictionaries:
+            for d in job.training_dictionaries:
                 dict_id = d.id
                 train_logger.debug(f"Converting alignments for {d.name}")
                 ali_path = self.ali_paths[dict_id]
+                if not ali_path.exists():
+                    continue
                 new_ali_path = self.new_ali_paths[dict_id]
                 train_logger.debug(f"Old alignments: {ali_path}")
                 train_logger.debug(f"New alignments: {new_ali_path}")
@@ -159,12 +161,14 @@ class TreeStatsFunction(KaldiFunction):
                 .filter(Phone.phone_type.in_([PhoneType.silence, PhoneType.oov]))
                 .order_by(Phone.mapping_id)
             ]
-            for d in job.dictionaries:
+            for d in job.training_dictionaries:
                 train_logger.debug(f"Accumulating stats for dictionary {d.name} ({d.id})")
                 train_logger.debug(f"Accumulating stats for model: {self.model_path}")
                 dict_id = d.id
                 feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
                 ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                if not ali_path.exists():
+                    continue
                 train_logger.debug("Feature Archive information:")
                 train_logger.debug(f"File: {feature_archive.file_name}")
                 train_logger.debug(f"CMVN: {feature_archive.cmvn_read_specifier}")
@@ -397,8 +401,29 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
             train_logger.debug(f"Phone sets: {phone_sets}")
             questions = automatically_obtain_questions(tree_stats, phone_sets, [1], 1)
             train_logger.debug(f"Automatically obtained {len(questions)} questions")
-            for v in self.worker.extra_questions_mapping.values():
-                questions.append(sorted([self.phone_mapping[x] for x in v]))
+            train_logger.debug("Automatic questions:")
+            for q_set in questions:
+                train_logger.debug(", ".join([self.reversed_phone_mapping[x] for x in q_set]))
+
+            # Remove questions containing silence and other phones
+            train_logger.debug("Filtering the following sets for containing silence phone:")
+            silence_phone_id = self.phone_mapping[self.optional_silence_phone]
+            silence_sets = [
+                x for x in questions if silence_phone_id in x and x != [silence_phone_id]
+            ]
+            for q_set in silence_sets:
+                train_logger.debug(", ".join([self.reversed_phone_mapping[x] for x in q_set]))
+            questions = [
+                x for x in questions if silence_phone_id not in x or x == [silence_phone_id]
+            ]
+
+            extra_questions = self.worker.extra_questions_mapping
+            if extra_questions:
+                train_logger.debug(f"Adding {len(extra_questions)} questions")
+                train_logger.debug("Extra questions:")
+                for v in self.worker.extra_questions_mapping.values():
+                    questions.append(sorted([self.phone_mapping[x] for x in v]))
+                    train_logger.debug(", ".join(v))
             train_logger.debug(f"{len(questions)} total questions")
 
             build_tree(
