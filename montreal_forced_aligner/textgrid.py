@@ -365,7 +365,7 @@ def construct_textgrid_output(
 
     def process_utterance_data():
         for beg, end, u, speaker_name in utterance_data:
-            data[speaker_name]["utterances"].append((beg, end, u))
+            data[speaker_name]["utterances"].append(CtmInterval(beg, end, u))
 
     while True:
         data = {}
