@@ -1114,7 +1114,7 @@ class File(MfaSqlBase):
         save_transcription: bool
             Flag for whether the hypothesized transcription text should be saved instead of the default text
         """
-        from montreal_forced_aligner.alignment.multiprocessing import construct_output_path
+        from montreal_forced_aligner.textgrid import construct_output_path
 
         utterance_count = len(self.utterances)
         if output_format is None:  # Saving directly
