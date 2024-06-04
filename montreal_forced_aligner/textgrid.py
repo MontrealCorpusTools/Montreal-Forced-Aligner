@@ -383,6 +383,7 @@ def construct_textgrid_output(
             if phone_data:
                 process_phone_data()
                 current_file_id = pi_current_file_id
+                phone_data = []
             else:
                 break
         for wi_begin, wi_end, word, wi_speaker_name, wi_file_id in word_intervals:
@@ -417,9 +418,9 @@ def construct_textgrid_output(
         )
         export_textgrid(data, output_path, file_duration, frame_shift, output_format)
         yield output_path
-        word_data = []
-        phone_data = []
-        utterance_data = []
+        # word_data = []
+        # phone_data = []
+        # utterance_data = []
 
 
 def construct_output_path(
