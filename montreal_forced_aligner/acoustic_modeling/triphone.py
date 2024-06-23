@@ -411,11 +411,22 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
             silence_sets = [
                 x for x in questions if silence_phone_id in x and x != [silence_phone_id]
             ]
+            filtered = []
+            existing_sets = {tuple(x) for x in questions}
             for q_set in silence_sets:
                 train_logger.debug(", ".join([self.reversed_phone_mapping[x] for x in q_set]))
-            questions = [
-                x for x in questions if silence_phone_id not in x or x == [silence_phone_id]
-            ]
+
+            for q_set in questions:
+                if silence_phone_id not in q_set or q_set == [silence_phone_id]:
+                    filtered.append(q_set)
+                    continue
+                q_set = [x for x in q_set if x != silence_phone_id]
+                if not q_set:
+                    continue
+                if tuple(q_set) in existing_sets:
+                    continue
+                filtered.append(q_set)
+            questions = filtered
 
             extra_questions = self.worker.extra_questions_mapping
             if extra_questions:

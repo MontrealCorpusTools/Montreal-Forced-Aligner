@@ -104,6 +104,7 @@ def validate_corpus_cli(context, **kwargs) -> None:
     """
     if kwargs.get("profile", None) is not None:
         config.profile = kwargs.pop("profile")
+    config.FINAL_CLEAN = True
     config.update_configuration(kwargs)
     kwargs["USE_THREADING"] = False
 
@@ -139,7 +140,6 @@ def validate_corpus_cli(context, **kwargs) -> None:
         validator.dirty = True
         raise
     finally:
-        config.FINAL_CLEAN = True
         validator.cleanup()
 
 

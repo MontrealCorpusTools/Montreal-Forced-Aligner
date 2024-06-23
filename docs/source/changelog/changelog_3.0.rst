@@ -5,6 +5,15 @@
 3.0 Changelog
 *************
 
+3.1.1
+-----
+
+- Fixed a bug where hidden files and folders would be parsed as corpus data
+- Fixed a bug where validation would not respect :code:`--no_final_clean`
+- Fixed a rare crash in training when a job would not have utterances assigned to it
+- Fixed a bug where MFA would mistakenly report a dictionary and acoustic model phones did not match for older versions
+
+
 3.1.0
 -----
 

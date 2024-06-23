@@ -133,6 +133,7 @@ class SplitWordsFunction:
         non_speech_regexes: typing.Dict[str, re.Pattern],
         oov_word: typing.Optional[str] = None,
         grapheme_set: typing.Optional[typing.Collection[str]] = None,
+        always_split_compounds: bool = False,
     ):
         self.word_table = word_table
         self.clitic_marker = clitic_marker
@@ -154,6 +155,7 @@ class SplitWordsFunction:
             self.has_initial = True
         if self.final_clitic_regex is not None:
             self.has_final = True
+        self.always_split_compounds = always_split_compounds
 
     def to_str(self, normalized_text: str) -> str:
         """
@@ -198,16 +200,17 @@ class SplitWordsFunction:
             List of subwords
         """
         split = []
+        benefit = False
         if self.compound_regex is not None:
             s = [x for x in self.compound_regex.split(item) if x]
-
+            if self.always_split_compounds and len(s) > 1:
+                benefit = True
         else:
             s = [item]
         if self.word_table is None:
             return [item]
         clean_initial_quote_regex = re.compile("^'")
         clean_final_quote_regex = re.compile("'$")
-        benefit = False
         for seg in s:
             if not seg:
                 continue
@@ -386,6 +389,7 @@ class SimpleTokenizer:
             self.non_speech_regexes,
             self.oov_word,
             self.grapheme_set,
+            always_split_compounds=self.use_g2p,
         )
 
     def _compile_regexes(self) -> None:

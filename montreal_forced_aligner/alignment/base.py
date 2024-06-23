@@ -1449,6 +1449,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 align_phones,
                 silence_phone=self.optional_silence_phone,
                 custom_mapping=mapping,
+                debug=config.DEBUG,
             )
             unaligned_utts = []
             utterances: typing.List[Utterance] = session.query(Utterance).options(

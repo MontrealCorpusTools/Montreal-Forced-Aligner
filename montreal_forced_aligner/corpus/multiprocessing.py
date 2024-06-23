@@ -106,6 +106,8 @@ class AcousticDirectoryParser(threading.Thread):
         if self.audio_directory and os.path.exists(self.audio_directory):
             use_audio_directory = True
             for root, _, files in os.walk(self.audio_directory, followlinks=True):
+                if root.startswith("."):  # Ignore hidden directories
+                    continue
                 exts = find_exts(files)
                 wav_files = {k: os.path.join(root, v) for k, v in exts.wav_files.items()}
                 other_audio_files = {
@@ -114,11 +116,12 @@ class AcousticDirectoryParser(threading.Thread):
                 all_sound_files.update(other_audio_files)
                 all_sound_files.update(wav_files)
         for root, _, files in os.walk(self.corpus_directory, followlinks=True):
-            exts = find_exts(files)
-            relative_path = root.replace(str(self.corpus_directory), "").lstrip("/").lstrip("\\")
-
             if self.stopped.is_set():
                 break
+            if root.startswith("."):  # Ignore hidden directories
+                continue
+            exts = find_exts(files)
+            relative_path = root.replace(str(self.corpus_directory), "").lstrip("/").lstrip("\\")
             if not use_audio_directory:
                 all_sound_files = {}
                 exts.wav_files = {k: os.path.join(root, v) for k, v in exts.wav_files.items()}

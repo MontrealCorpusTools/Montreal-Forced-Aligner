@@ -260,11 +260,7 @@ class DictionaryMixin:
     @property
     def extra_questions_mapping(self) -> Dict[str, List[str]]:
         """Mapping of extra questions for the given phone set type"""
-        mapping = {"silence_question": []}
-        for p in sorted(self.silence_phones):
-            mapping["silence_question"].append(p)
-            if self.position_dependent_phones:
-                mapping["silence_question"].extend([p + x for x in self.positions])
+        mapping = {}
         for k, v in self.phone_set_type.extra_questions.items():
             if k not in mapping:
                 mapping[k] = []
@@ -427,7 +423,8 @@ class DictionaryMixin:
             List of positional phones, sorted by base phone
         """
         positional_phones = []
-        phones |= {self.get_base_phone(p) for p in phones}
+        if not hasattr(self, "acoustic_model"):
+            phones |= {self.get_base_phone(p) for p in phones}
         for p in sorted(phones):
             if p not in self.non_silence_phones:
                 continue

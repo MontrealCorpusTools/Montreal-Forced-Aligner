@@ -699,7 +699,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
                 logger.info(f"Done! Everything took {time.time() - self.start_time:.3f} seconds")
                 if config.FINAL_CLEAN:
                     logger.debug(
-                        "Cleaning up temporary files, use the --debug flag to keep temporary files."
+                        "Cleaning up temporary files, use the --no_final_clean flag to keep temporary files."
                     )
                     if hasattr(self, "delete_database"):
                         if config.USE_POSTGRES:

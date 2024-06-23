@@ -152,7 +152,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         bracketed_word=self.bracketed_word,
                         cutoff_word=self.cutoff_word,
                         ignore_case=self.ignore_case,
-                        use_g2p=self.use_g2p,
+                        use_g2p=self.use_g2p or getattr(self, "g2p_model", None) is not None,
                         clitic_set=clitic_set,
                         grapheme_set=grapheme_set,
                     )
