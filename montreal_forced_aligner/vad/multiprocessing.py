@@ -187,7 +187,8 @@ def segment_utterance_transcript(
         )
     else:
         segments = segment_utterance_vad_speech_brain(utterance, vad_model, segmentation_options)
-
+    if not segments:
+        return [utterance]
     config = LatticeFasterDecoderConfig()
     config.beam = beam
     config.lattice_beam = lattice_beam
