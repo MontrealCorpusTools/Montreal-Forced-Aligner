@@ -234,8 +234,12 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     max_id = p_id
             new_phones = []
             for root, _, files in os.walk(reference_directory, followlinks=True):
+                if root.startswith("."):  # Ignore hidden directories
+                    continue
                 root_speaker = os.path.basename(root)
                 for f in files:
+                    if f.startswith("."):  # Ignore hidden files
+                        continue
                     if f.endswith(".TextGrid"):
                         file_name = f.replace(".TextGrid", "")
                         file_id = session.query(File.id).filter_by(name=file_name).scalar()
@@ -988,6 +992,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             for root, _, files in os.walk(self.audio_directory, followlinks=True):
                 if self.stopped.is_set():
                     return
+                if root.startswith("."):  # Ignore hidden directories
+                    continue
                 exts = find_exts(files)
                 exts.wav_files = {k: os.path.join(root, v) for k, v in exts.wav_files.items()}
                 exts.other_audio_files = {
@@ -999,12 +1005,14 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         with self.session() as session:
             import_data = DatabaseImportData()
             for root, _, files in os.walk(self.corpus_directory, followlinks=True):
+                if self.stopped.is_set():
+                    return
+                if root.startswith("."):  # Ignore hidden directories
+                    continue
                 exts = find_exts(files)
                 relative_path = (
                     root.replace(str(self.corpus_directory), "").lstrip("/").lstrip("\\")
                 )
-                if self.stopped.is_set():
-                    return
                 if not use_audio_directory:
                     all_sound_files = {}
                     wav_files = {k: os.path.join(root, v) for k, v in exts.wav_files.items()}

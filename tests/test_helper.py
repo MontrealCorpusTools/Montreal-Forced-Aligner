@@ -1,12 +1,9 @@
-import yaml
-
 from montreal_forced_aligner.data import CtmInterval
-from montreal_forced_aligner.helper import align_phones, mfa_open
+from montreal_forced_aligner.helper import align_phones, load_evaluation_mapping
 
 
 def test_align_phones(basic_corpus_dir, basic_dict_path, temp_dir, eval_mapping_path):
-    with mfa_open(eval_mapping_path) as f:
-        mapping = yaml.safe_load(f)
+    mapping = load_evaluation_mapping(eval_mapping_path)
     reference_phoneset = set()
     for v in mapping.values():
         if isinstance(v, str):

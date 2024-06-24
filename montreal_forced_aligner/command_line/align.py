@@ -4,7 +4,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import rich_click as click
-import yaml
 
 from montreal_forced_aligner import config
 from montreal_forced_aligner.alignment import PretrainedAligner
@@ -15,7 +14,7 @@ from montreal_forced_aligner.command_line.utils import (
     validate_g2p_model,
 )
 from montreal_forced_aligner.data import WorkflowType
-from montreal_forced_aligner.helper import mfa_open
+from montreal_forced_aligner.helper import load_evaluation_mapping
 
 __all__ = ["align_corpus_cli"]
 
@@ -137,8 +136,7 @@ def align_corpus_cli(context, **kwargs) -> None:
             aligner.load_reference_alignments(reference_directory)
             mapping = None
             if custom_mapping_path:
-                with mfa_open(custom_mapping_path, "r") as f:
-                    mapping = yaml.load(f, Loader=yaml.Loader)
+                mapping = load_evaluation_mapping(custom_mapping_path)
                 aligner.validate_mapping(mapping)
             reference_alignments = WorkflowType.reference
         else:

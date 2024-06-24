@@ -62,6 +62,8 @@ def find_exts(files: typing.List[str]) -> FileExtensions:
     """
     exts = FileExtensions(set(), {}, {}, {}, {})
     for full_filename in files:
+        if full_filename.startswith("."):  # Ignore hidden files
+            continue
         try:
             filename, fext = full_filename.rsplit(".", maxsplit=1)
         except ValueError:

@@ -65,13 +65,14 @@ class TextCorpusMixin(CorpusMixin):
             file_count = 0
             with tqdm(total=1, disable=config.QUIET) as pbar, self.session() as session:
                 for root, _, files in os.walk(self.corpus_directory, followlinks=True):
+                    if self.stopped.is_set():
+                        break
+                    if root.startswith("."):  # Ignore hidden directories
+                        continue
                     exts = find_exts(files)
                     relative_path = (
                         root.replace(str(self.corpus_directory), "").lstrip("/").lstrip("\\")
                     )
-
-                    if self.stopped.is_set():
-                        break
                     for file_name in exts.identifiers:
                         if self.stopped.is_set():
                             break
@@ -181,12 +182,14 @@ class TextCorpusMixin(CorpusMixin):
         sanitize_function = getattr(self, "sanitize_function", None)
         with self.session() as session:
             for root, _, files in os.walk(self.corpus_directory, followlinks=True):
+                if self.stopped:
+                    return
+                if root.startswith("."):  # Ignore hidden directories
+                    continue
                 exts = find_exts(files)
                 relative_path = (
                     root.replace(str(self.corpus_directory), "").lstrip("/").lstrip("\\")
                 )
-                if self.stopped:
-                    return
                 for file_name in exts.identifiers:
                     wav_path = None
                     if file_name in exts.lab_files:

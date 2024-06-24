@@ -133,9 +133,10 @@ class MonoAlignEqualFunction(KaldiFunction):
                 writer.Close()
                 self.callback((accumulator.transition_accs, accumulator.gmm_accs))
                 train_logger.info(f"Done {num_done} utterances, errors on {num_error} utterances.")
-                train_logger.info(
-                    f"Overall avg like per frame (Gaussian only) = {tot_like/tot_t} over {tot_t} frames."
-                )
+                if tot_t:
+                    train_logger.info(
+                        f"Overall avg like per frame (Gaussian only) = {tot_like/tot_t} over {tot_t} frames."
+                    )
 
 
 class MonophoneTrainer(AcousticModelTrainingMixin):

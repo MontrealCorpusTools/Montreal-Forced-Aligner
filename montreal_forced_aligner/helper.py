@@ -51,6 +51,7 @@ __all__ = [
     "load_configuration",
     "format_correction",
     "format_probability",
+    "load_evaluation_mapping",
 ]
 
 
@@ -160,7 +161,6 @@ def parse_old_features(config: MetaDict) -> MetaDict:
                 del config["features"][key]
         for key, new_key in feature_key_remapping.items():
             if key in config["features"]:
-
                 config["features"][new_key] = config["features"][key]
                 del config["features"][key]
     else:
@@ -448,7 +448,7 @@ def score_g2p(gold: List[str], hypo: List[str]) -> Tuple[int, int]:
             return 0, len(h)
     edits = 100000
     best_length = 100000
-    for (g, h) in itertools.product(gold, hypo):
+    for g, h in itertools.product(gold, hypo):
         e = edit_distance(g.split(), h.split())
         if e < edits:
             edits = e
@@ -613,6 +613,59 @@ def align_pronunciations(
     return transformed_pronunciations
 
 
+def load_evaluation_mapping(custom_mapping_path):
+    with mfa_open(custom_mapping_path, "r") as f:
+        mapping = yaml.load(f, Loader=yaml.Loader)
+    for k, v in mapping.items():
+        if isinstance(v, str):
+            mapping[k] = {v}
+        else:
+            mapping[k] = set(v)
+    return mapping
+
+
+def fix_many_to_one_alignments(alignments, custom_mapping):
+    test_keys = set(x for x in custom_mapping.keys() if " " in x)
+    ref_keys = set()
+    for val in custom_mapping.values():
+        ref_keys.update(x for x in val if " " in x)
+    new_ref = []
+    new_test = []
+    for a in alignments:
+        for i, sa in enumerate(a.seqA):
+            sb = a.seqB[i]
+            if i != 0:
+                prev_sa = a.seqA[i - 1]
+                prev_sb = a.seqB[i - 1]
+                ref_key = " ".join(x.label for x in [prev_sa, sa] if x != "-")
+                test_key = " ".join(x.label for x in [prev_sb, sb] if x != "-")
+                if (
+                    ref_key in ref_keys
+                    and test_key in custom_mapping
+                    and ref_key in custom_mapping[test_key]
+                ):
+                    new_ref[-1].label = ref_key
+                    new_ref[-1].end = sa.end
+                    if sb != "-":
+                        new_test.append(sb)
+                    continue
+                if (
+                    test_key in test_keys
+                    and test_key in custom_mapping
+                    and ref_key in custom_mapping[test_key]
+                ):
+                    new_test[-1].label = test_key
+                    new_test[-1].end = sb.end
+                    if sa != "-":
+                        new_ref.append(sa)
+                    continue
+            if sa != "-":
+                new_ref.append(sa)
+            if sb != "-":
+                new_test.append(sb)
+        return new_ref, new_test
+
+
 def align_phones(
     ref: List[CtmInterval],
     test: List[CtmInterval],
@@ -633,6 +686,8 @@ def align_phones(
         List of CTM intervals to compare to reference
     silence_phone: str
         Silence phone (these are ignored in the final calculation)
+    ignored_phones: set[str], optional
+        Phones that should be ignored in score calculations (silence phone is automatically added)
     custom_mapping: dict[str, str], optional
         Mapping of phones to treat as matches even if they have different symbols
     debug: bool, optional
@@ -650,6 +705,8 @@ def align_phones(
 
     if ignored_phones is None:
         ignored_phones = set()
+    if not isinstance(ignored_phones, set):
+        ignored_phones = set(ignored_phones)
     if custom_mapping is None:
         score_func = functools.partial(overlap_scoring, silence_phone=silence_phone)
     else:
@@ -660,12 +717,18 @@ def align_phones(
     alignments = pairwise2.align.globalcs(
         ref, test, score_func, -2, -2, gap_char=["-"], one_alignment_only=True
     )
+    if custom_mapping is not None:
+        ref, test = fix_many_to_one_alignments(alignments, custom_mapping)
+        alignments = pairwise2.align.globalcs(
+            ref, test, score_func, -2, -2, gap_char=["-"], one_alignment_only=True
+        )
     overlap_count = 0
     overlap_sum = 0
     num_insertions = 0
     num_deletions = 0
     num_substitutions = 0
     errors = collections.Counter()
+    ignored_phones.add(silence_phone)
     for a in alignments:
         for i, sa in enumerate(a.seqA):
             sb = a.seqB[i]
@@ -689,16 +752,18 @@ def align_phones(
                 if compare_labels(sa.label, sb.label, silence_phone, mapping=custom_mapping) > 0:
                     num_substitutions += 1
                     errors[(sa.label, sb.label)] += 1
-    if debug:
-        import logging
-
-        logger = logging.getLogger("mfa")
-        logger.debug(pairwise2.format_alignment(*alignments[0]))
     if overlap_count:
         score = overlap_sum / overlap_count
     else:
         score = None
     phone_error_rate = (num_insertions + num_deletions + (2 * num_substitutions)) / len(ref)
+    if debug:
+        import logging
+
+        logger = logging.getLogger("mfa")
+        logger.debug(
+            f"{pairwise2.format_alignment(*alignments[0])}\nScore: {score}\nPER: {phone_error_rate}\nErrors: {errors}"
+        )
     return score, phone_error_rate, errors
 
 
