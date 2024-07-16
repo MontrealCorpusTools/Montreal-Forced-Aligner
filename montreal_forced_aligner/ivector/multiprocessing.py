@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-import typing
 from pathlib import Path
 
 from _kalpy.gmm import DiagGmm
@@ -89,7 +88,7 @@ class GmmGselectFunction(KaldiFunction):
         self.dubm_model = args.dubm_model
         self.ivector_options = args.ivector_options
 
-    def _run(self) -> typing.Generator[None]:
+    def _run(self) -> None:
         """Run the function"""
         with self.session() as session, thread_logger(
             "kalpy.ivector", self.log_path, job_name=self.job_name
@@ -170,7 +169,7 @@ class GaussToPostFunction(KaldiFunction):
         self.dubm_model = args.dubm_model
         self.ivector_options = args.ivector_options
 
-    def _run(self) -> typing.Generator[None]:
+    def _run(self) -> None:
         """Run the function"""
         modified_posterior_scale = (
             self.ivector_options["posterior_scale"] * self.ivector_options["subsample"]

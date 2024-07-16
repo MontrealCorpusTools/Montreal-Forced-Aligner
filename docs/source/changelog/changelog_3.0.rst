@@ -5,7 +5,15 @@
 3.0 Changelog
 *************
 
-3.1.1
+3.1.3
+-----
+
+- Fixed an issue where silence probability being zero was not correctly removing silence
+- Compatibility with kalpy v0.6.5
+- Added API functionality for verifying transcripts with interjection words in alignment
+- Fixed an error in fine tuning that generated nonsensical boundaries
+
+3.1.2
 -----
 
 - Fixed a bug where hidden files and folders would be parsed as corpus data
@@ -13,6 +21,10 @@
 - Fixed a rare crash in training when a job would not have utterances assigned to it
 - Fixed a bug where MFA would mistakenly report a dictionary and acoustic model phones did not match for older versions
 
+3.1.1
+-----
+
+- Fixed an issue with TextGrids missing intervals
 
 3.1.0
 -----

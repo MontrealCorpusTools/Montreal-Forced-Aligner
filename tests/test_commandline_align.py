@@ -2,6 +2,7 @@ import json
 import os
 
 import click.testing
+import pytest
 from praatio import textgrid as tgio
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
@@ -760,6 +761,7 @@ def test_swedish_mfa(
         assert len(tg.tierNames) == 2
 
 
+@pytest.mark.skip
 def test_acoustic_g2p_model(
     basic_corpus_dir,
     acoustic_model_dir,

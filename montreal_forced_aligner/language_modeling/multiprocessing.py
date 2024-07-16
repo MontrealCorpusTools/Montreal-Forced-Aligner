@@ -116,7 +116,7 @@ class TrainLmFunction(KaldiFunction):
         self.order = args.order
         self.oov_word = args.oov_word
 
-    def _run(self) -> typing.Generator[bool]:
+    def _run(self) -> None:
         """Run the function"""
         with self.session() as session, mfa_open(self.log_path, "w") as log_file:
             word_query = session.query(Word.word).filter(
@@ -193,7 +193,7 @@ class TrainPhoneLmFunction(KaldiFunction):
         self.symbols_path = args.symbols_path
         self.order = args.order
 
-    def _run(self) -> typing.Generator[bool]:
+    def _run(self) -> None:
         """Run the function"""
         with self.session() as session, mfa_open(self.log_path, "w") as log_file:
             if config.USE_POSTGRES:
@@ -273,7 +273,7 @@ class TrainSpeakerLmFunction(KaldiFunction):
         self.target_num_ngrams = args.target_num_ngrams
         self.hclg_options = args.hclg_options
 
-    def _run(self) -> typing.Generator[bool]:
+    def _run(self) -> None:
         """Run the function"""
         with self.session() as session, mfa_open(self.log_path, "w") as log_file:
             job: Job = (

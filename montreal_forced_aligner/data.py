@@ -409,6 +409,18 @@ class WorkflowType(enum.Enum):
     g2p = 11
     language_model_training = 12
     tokenizer_training = 13
+    transcript_verification = 14
+
+    @classmethod
+    def alignment_workflows(cls):
+        return {
+            cls.alignment,
+            cls.online_alignment,
+            cls.transcript_verification,
+            cls.transcription,
+            cls.per_speaker_transcription,
+            cls.phone_transcription,
+        }
 
 
 class WordType(enum.Enum):

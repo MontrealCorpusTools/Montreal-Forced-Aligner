@@ -79,7 +79,6 @@ def align_utterance_online(
         acoustic_model.alignment_model_path,
         acoustic_model.tree_path,
         lexicon_compiler,
-        lexicon_compiler.word_table,
     )
     if utterance.mfccs is None:
         utterance.generate_mfccs(acoustic_model.mfcc_computer)

@@ -148,7 +148,7 @@ class CalcLdaMlltFunction(KaldiFunction):
         self.model_path = args.model_path
         self.lda_options = args.lda_options
 
-    def _run(self) -> typing.Generator[int]:
+    def _run(self) -> None:
         """Run the function"""
         # Estimating MLLT
         with self.session() as session, thread_logger(

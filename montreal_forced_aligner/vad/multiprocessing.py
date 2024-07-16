@@ -170,7 +170,6 @@ def segment_utterance_transcript(
         acoustic_model.alignment_model_path,
         acoustic_model.tree_path,
         lexicon_compiler,
-        lexicon_compiler.word_table,
     )
     if utterance.cmvn_string:
         cmvn = read_kaldi_object(DoubleMatrix, utterance.cmvn_string)

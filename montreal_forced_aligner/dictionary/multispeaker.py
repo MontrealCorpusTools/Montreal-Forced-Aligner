@@ -969,6 +969,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 words = (
                     session.query(Word)
                     .filter(Word.dictionary_id == d.id)
+                    .filter(Word.included == True)  # noqa
                     .options(selectinload(Word.pronunciations))
                 )
                 for w in words:
@@ -978,16 +979,16 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             subsequences.add(tuple(pron))
                             pron = pron[:-1]
                 last_used = collections.defaultdict(int)
-                for p_id, pron in (
-                    session.query(Pronunciation.id, Pronunciation.pronunciation)
-                    .join(Pronunciation.word)
-                    .filter(Word.dictionary_id == d.id)
-                ):
-                    pron = tuple(pron.split())
-                    if pron in subsequences:
-                        last_used[pron] += 1
+                for w in words:
+                    for p in w.pronunciations:
+                        pron = p.pronunciation
+                        pron = tuple(pron.split())
+                        if pron in subsequences:
+                            last_used[pron] += 1
 
-                        update_pron_objs.append({"id": p_id, "disambiguation": last_used[pron]})
+                            update_pron_objs.append(
+                                {"id": p.id, "disambiguation": last_used[pron]}
+                            )
 
                 if last_used:
                     d.max_disambiguation_symbol = max(
@@ -1584,14 +1585,14 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             logger.info("Finding all cutoffs...")
             initial_brackets = re.escape("".join(x[0] for x in self.brackets))
             final_brackets = re.escape("".join(x[1] for x in self.brackets))
-            pronunciation_mapping = {}
-            word_mapping = {}
             cutoff_identifier = re.sub(
                 rf"[{initial_brackets}{final_brackets}]", "", self.cutoff_word
             )
             max_ids = collections.defaultdict(int)
             max_pron_id = session.query(sqlalchemy.func.max(Pronunciation.id)).scalar()
             max_word_id = session.query(sqlalchemy.func.max(Word.id)).scalar()
+            new_word_mapping = {}
+            new_pronunciation_mapping = []
             for d_id, max_id in (
                 session.query(Dictionary.id, sqlalchemy.func.max(Word.mapping_id))
                 .join(Word.dictionary)
@@ -1599,58 +1600,31 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             ):
                 max_ids[d_id] = max_id
             for d_id in self.dictionary_lookup.values():
-                pronunciation_mapping[d_id] = collections.defaultdict(list)
-                word_mapping[d_id] = {}
+                pronunciation_mapping = collections.defaultdict(set)
+                word_mapping = {}
+                max_id = (
+                    session.query(sqlalchemy.func.max(Word.mapping_id))
+                    .join(Word.dictionary)
+                    .filter(Dictionary.id == d_id)
+                ).first()[0]
                 words = (
                     session.query(Word.mapping_id, Word.word, Pronunciation.pronunciation)
                     .join(Pronunciation.word)
-                    .filter(Word.dictionary_id == d_id)
+                    .filter(
+                        Word.dictionary_id == d_id,
+                        Word.count > 1,
+                        Word.word_type == WordType.speech,
+                    )
                 )
                 for m_id, w, pron in words:
-                    pronunciation_mapping[d_id][w].append(pron)
-                    word_mapping[d_id][w] = m_id
-            new_word_mapping = []
-            new_pronunciation_mapping = []
-            utterances = (
-                session.query(
-                    Utterance.id,
-                    Speaker.dictionary_id,
-                    Utterance.normalized_text,
-                )
-                .join(Utterance.speaker)
-                .filter(
-                    Utterance.normalized_text.regexp_match(
-                        f"[{initial_brackets}]({cutoff_identifier}|hes)"
-                    )
-                )
-            )
-            utterance_mapping = []
-            for u_id, dict_id, normalized_text in utterances:
-                text = normalized_text.split()
-                modified = False
-                for i, word in enumerate(text):
-                    m = re.match(
-                        f"^[{initial_brackets}]({cutoff_identifier}|hes(itation)?)([-_](?P<word>[^{final_brackets}]+))?[{final_brackets}]$",
-                        word,
-                    )
-                    if not m:
-                        continue
-                    next_word = m.group("word")
-                    if next_word not in word_mapping[dict_id]:
-                        if i != len(text) - 1:
-                            next_word = text[i + 1]
-                    if (
-                        next_word is None
-                        or next_word not in pronunciation_mapping[dict_id]
-                        or self.oov_phone in pronunciation_mapping[dict_id][next_word]
-                        or self.optional_silence_phone in pronunciation_mapping[dict_id][next_word]
-                    ):
-                        continue
-                    new_word = f"{self.cutoff_word[:-1]}-{next_word}{self.cutoff_word[-1]}"
-                    if new_word not in word_mapping[dict_id]:
+                    word_mapping[w] = m_id
+                    pronunciation_mapping[w].add(pron)
+                    new_word = f"{self.cutoff_word[:-1]}-{w}{self.cutoff_word[-1]}"
+                    if new_word not in new_word_mapping:
                         max_word_id += 1
-                        max_ids[dict_id] += 1
+                        max_id += 1
                         max_pron_id += 1
+                        pronunciation_mapping[new_word].add(self.oov_phone)
                         new_pronunciation_mapping.append(
                             {
                                 "id": max_pron_id,
@@ -1658,44 +1632,73 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                                 "word_id": max_word_id,
                             }
                         )
-                        prons = pronunciation_mapping[dict_id][next_word]
-                        pronunciation_mapping[dict_id][new_word] = []
-                        for p in prons:
-                            p = p.split()
-                            for pi in range(len(p)):
-                                new_p = " ".join(p[: pi + 1])
-                                if new_p in pronunciation_mapping[dict_id][new_word]:
-                                    continue
-                                pronunciation_mapping[dict_id][new_word].append(new_p)
-                                max_pron_id += 1
-                                new_pronunciation_mapping.append(
-                                    {
-                                        "id": max_pron_id,
-                                        "pronunciation": new_p,
-                                        "word_id": max_word_id,
-                                    }
-                                )
-                        new_word_mapping.append(
+                        new_word_mapping[new_word] = {
+                            "id": max_word_id,
+                            "word": new_word,
+                            "dictionary_id": d_id,
+                            "mapping_id": max_id,
+                            "word_type": WordType.cutoff,
+                        }
+                        word_mapping[new_word] = max_id
+                    p = pron.split()
+                    for pi in range(len(p)):
+                        new_p = " ".join(p[: pi + 1])
+                        if new_p in pronunciation_mapping[new_word]:
+                            continue
+                        pronunciation_mapping[new_word].add(new_p)
+                        max_pron_id += 1
+                        new_pronunciation_mapping.append(
                             {
-                                "id": max_word_id,
-                                "word": new_word,
-                                "dictionary_id": dict_id,
-                                "mapping_id": max_ids[dict_id],
-                                "word_type": WordType.cutoff,
+                                "id": max_pron_id,
+                                "pronunciation": new_p,
+                                "word_id": new_word_mapping[new_word]["id"],
                             }
                         )
-                        word_mapping[dict_id][new_word] = max_ids[dict_id]
-                    text[i] = new_word
-                    modified = True
-                if modified:
-                    utterance_mapping.append(
-                        {
-                            "id": u_id,
-                            "normalized_text": " ".join(text),
-                        }
+                utterances = (
+                    session.query(
+                        Utterance.id,
+                        Utterance.normalized_text,
                     )
+                    .join(Utterance.speaker)
+                    .filter(
+                        Speaker.dictionary_id == d_id,
+                        Utterance.normalized_text.regexp_match(
+                            f"[{initial_brackets}]({cutoff_identifier}|hes)"
+                        ),
+                    )
+                )
+                utterance_mapping = []
+                for u_id, normalized_text in utterances:
+                    text = normalized_text.split()
+                    modified = False
+                    for i, word in enumerate(text):
+                        m = re.match(
+                            f"^[{initial_brackets}]({cutoff_identifier}|hes(itation)?)([-_](?P<word>[^{final_brackets}]+))?[{final_brackets}]$",
+                            word,
+                        )
+                        if not m:
+                            continue
+                        next_word = m.group("word")
+                        new_word = f"{self.cutoff_word[:-1]}-{next_word}{self.cutoff_word[-1]}"
+                        if (
+                            next_word is None
+                            or next_word not in word_mapping
+                            or self.oov_phone in pronunciation_mapping[next_word]
+                            or self.optional_silence_phone in pronunciation_mapping[next_word]
+                            or new_word not in word_mapping
+                        ):
+                            continue
+                        text[i] = new_word
+                        modified = True
+                    if modified:
+                        utterance_mapping.append(
+                            {
+                                "id": u_id,
+                                "normalized_text": " ".join(text),
+                            }
+                        )
             session.bulk_insert_mappings(
-                Word, new_word_mapping, return_defaults=False, render_nulls=True
+                Word, new_word_mapping.values(), return_defaults=False, render_nulls=True
             )
             session.bulk_insert_mappings(
                 Pronunciation, new_pronunciation_mapping, return_defaults=False, render_nulls=True
@@ -1779,7 +1782,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 lexicon_compiler.phone_table = self.phone_table
             else:
                 lexicon_compiler = acoustic_model.lexicon_compiler
-            lexicon_compiler.disambiguation = disambiguation
+                lexicon_compiler.disambiguation = disambiguation
             query = (
                 session.query(Word, Pronunciation)
                 .join(Pronunciation.word)

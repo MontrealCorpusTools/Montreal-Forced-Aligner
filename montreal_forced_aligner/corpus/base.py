@@ -711,8 +711,8 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 word_key += 1
                 max_mapping_ids[1] = word_key - 1
             for w_id, m_id, d_id, w, wt in words:
-                if wt is WordType.oov:
-                    existing_oovs[(d_id, w)] = {"id": w_id, "count": 0}
+                if wt is WordType.oov and w not in self.specials_set:
+                    existing_oovs[(d_id, w)] = {"id": w_id, "count": 0, "included": False}
                     continue
                 word_indexes[(d_id, w)] = w_id
                 word_mapping_ids[(d_id, w)] = m_id
@@ -752,7 +752,9 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         result["oovs"] = " ".join(sorted(oovs))
                     else:
                         for w in result["normalized_text"].split():
-                            if (dict_id, w) not in word_indexes:
+                            if (dict_id, w) in existing_oovs:
+                                existing_oovs[(dict_id, w)]["count"] += 1
+                            elif (dict_id, w) not in word_indexes:
                                 if (dict_id, w) not in word_insert_mappings:
                                     word_insert_mappings[(dict_id, w)] = {
                                         "id": word_key,
@@ -761,6 +763,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                         "mapping_id": word_key - 1,
                                         "count": 0,
                                         "dictionary_id": dict_id,
+                                        "included": False,
                                     }
                                     pronunciation_insert_mappings.append(
                                         {
@@ -886,6 +889,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                     "word_type": WordType.oov,
                                     "mapping_id": word_key - 1,
                                     "count": 0,
+                                    "included": False,
                                     "dictionary_id": dict_id,
                                 }
                                 pronunciation_insert_mappings.append(

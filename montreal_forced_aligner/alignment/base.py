@@ -345,7 +345,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         """Run the aligner"""
         self.alignment_mode = True
         self.initialize_database()
-        self.create_new_current_workflow(WorkflowType.alignment, workflow_name)
+        wf = self.current_workflow
+        if wf is None:
+            self.create_new_current_workflow(WorkflowType.alignment, workflow_name)
         wf = self.current_workflow
         if wf.done:
             logger.info("Alignment already done, skipping.")
@@ -383,11 +385,11 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 assert self.alignment_model_path.suffix == ".mdl"
                 logger.info("Performing second-pass alignment...")
                 self.align_utterances()
-                self.collect_alignments()
-                if self.use_phone_model:
-                    self.transcribe(WorkflowType.phone_transcription)
-                elif self.fine_tune:
-                    self.fine_tune_alignments()
+            self.collect_alignments()
+            if self.use_phone_model:
+                self.transcribe(WorkflowType.phone_transcription)
+            elif self.fine_tune:
+                self.fine_tune_alignments()
 
             with self.session() as session:
                 session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update(
@@ -1062,7 +1064,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         Fine tune aligned boundaries to millisecond precision
         """
         logger.info("Fine tuning alignments...")
-        begin = time.time()
+        all_begin = time.time()
         with self.session() as session:
             arguments = self.fine_tune_arguments()
             update_mappings = []
@@ -1110,7 +1112,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             )
             session.commit()
         self.export_frame_shift = round(self.export_frame_shift / 10, 4)
-        logger.debug(f"Fine tuning alignments took {time.time() - begin:.3f} seconds")
+        logger.debug(f"Fine tuning alignments took {time.time() - all_begin:.3f} seconds")
 
     def fine_tune_arguments(self) -> List[FineTuneArguments]:
         """
@@ -1137,6 +1139,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             options = self.pitch_options
             options["frame_shift"] = 1
             pitch_computer = PitchComputer(**options)
+        align_options = self.align_options
+        # align_options['transition_scale'] = align_options['transition_scale'] / 10
+        align_options["acoustic_scale"] = 1.0
         for j in self.jobs:
             log_path = self.working_log_directory.joinpath(f"fine_tune.{j.id}.log")
             args.append(
@@ -1149,7 +1154,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     lexicon_compiler,
                     self.model_path,
                     self.tree_path,
-                    self.align_options,
+                    align_options,
                     phone_to_group_mapping,
                     self.mfcc_computer.frame_shift,
                 )
