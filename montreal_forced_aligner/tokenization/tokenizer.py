@@ -196,7 +196,7 @@ class TokenizerFunction(KaldiFunction):
         super().__init__(args)
         self.rewriter = args.rewriter
 
-    def _run(self) -> typing.Generator:
+    def _run(self) -> None:
         """Run the function"""
         with self.session() as session:
             utterances = session.query(Utterance.id, Utterance.normalized_text).filter(

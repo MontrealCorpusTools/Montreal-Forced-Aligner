@@ -354,7 +354,7 @@ class CreateHclgFunction(KaldiFunction):
         self.tree_path = args.tree_path
         self.hclg_options = args.hclg_options
 
-    def _run(self) -> typing.Generator[typing.Tuple[bool, str]]:
+    def _run(self) -> None:
         """Run the function"""
         with thread_logger("kalpy.decode_graph", self.log_path, job_name=self.job_name):
             hclg_path = self.working_directory.joinpath(f"HCLG.{self.job_name}.fst")
@@ -943,7 +943,7 @@ class PerSpeakerDecodeFunction(KaldiFunction):
         self.method = args.method
         self.word_symbols_paths = {}
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, str]]:
+    def _run(self) -> None:
         """Run the function"""
         with self.session() as session, thread_logger(
             "kalpy.decode", self.log_path, job_name=self.job_name

@@ -87,7 +87,7 @@ class TransitionAccFunction(KaldiFunction):
         self.working_directory = args.working_directory
         self.model_path = args.model_path
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, str]]:
+    def _run(self) -> None:
         """Run the function"""
 
         with self.session() as session:

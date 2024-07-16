@@ -487,8 +487,15 @@ class Dictionary(MfaSqlBase):
             oov_phone=self.oov_phone,
             position_dependent_phones=self.position_dependent_phones,
         )
-        lexicon_compiler.load_l_from_file(self.lexicon_fst_path)
-        lexicon_compiler.load_l_align_from_file(self.align_lexicon_path)
+        if self.lexicon_disambig_fst_path.exists():
+            lexicon_compiler.load_l_from_file(self.lexicon_disambig_fst_path)
+            lexicon_compiler.disambiguation = True
+        elif self.lexicon_fst_path.exists():
+            lexicon_compiler.load_l_from_file(self.lexicon_fst_path)
+        if self.align_lexicon_disambig_path.exists():
+            lexicon_compiler.load_l_align_from_file(self.align_lexicon_disambig_path)
+        elif self.align_lexicon_path.exists():
+            lexicon_compiler.load_l_align_from_file(self.align_lexicon_path)
         lexicon_compiler.word_table = self.word_table
         lexicon_compiler.phone_table = self.phone_table
         return lexicon_compiler
@@ -1533,7 +1540,11 @@ class Utterance(MfaSqlBase):
         """
         Word intervals from :attr:`montreal_forced_aligner.data.WorkflowType.alignment`
         """
-        return [x.as_ctm() for x in self.word_intervals]
+        return [
+            x.as_ctm()
+            for x in self.word_intervals
+            if x.workflow.workflow_type in [WorkflowType.alignment, WorkflowType.online_alignment]
+        ]
 
     @property
     def transcribed_phone_intervals(self) -> typing.List[CtmInterval]:
@@ -1543,7 +1554,12 @@ class Utterance(MfaSqlBase):
         return [
             x.as_ctm()
             for x in self.phone_intervals
-            if x.workflow.workflow_type is WorkflowType.transcription
+            if x.workflow.workflow_type
+            in [
+                WorkflowType.transcription,
+                WorkflowType.per_speaker_transcription,
+                WorkflowType.transcript_verification,
+            ]
         ]
 
     @property
@@ -1554,7 +1570,12 @@ class Utterance(MfaSqlBase):
         return [
             x.as_ctm()
             for x in self.word_intervals
-            if x.workflow.workflow_type is WorkflowType.transcription
+            if x.workflow.workflow_type
+            in [
+                WorkflowType.transcription,
+                WorkflowType.per_speaker_transcription,
+                WorkflowType.transcript_verification,
+            ]
         ]
 
     @property

@@ -80,7 +80,7 @@ class ConvertAlignmentsFunction(KaldiFunction):
         self.ali_paths = args.ali_paths
         self.new_ali_paths = args.new_ali_paths
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
+    def _run(self) -> None:
         """Run the function"""
         with self.session() as session, thread_logger(
             "kalpy.train", self.log_path, job_name=self.job_name

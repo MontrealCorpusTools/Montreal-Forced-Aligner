@@ -17,6 +17,7 @@ from kalpy.utterance import Utterance as KalpyUtterance
 from sqlalchemy.orm import Session
 
 from montreal_forced_aligner.abc import TopLevelMfaWorker
+from montreal_forced_aligner.alignment.multiprocessing import AnalyzeTranscriptsFunction
 from montreal_forced_aligner.data import PhoneType, WorkflowType
 from montreal_forced_aligner.db import (
     CorpusWorkflow,
@@ -25,6 +26,7 @@ from montreal_forced_aligner.db import (
     Phone,
     Speaker,
     Utterance,
+    bulk_update,
 )
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.helper import (
@@ -39,10 +41,9 @@ from montreal_forced_aligner.online.alignment import (
     update_utterance_intervals,
 )
 from montreal_forced_aligner.transcription.transcriber import TranscriberMixin
-from montreal_forced_aligner.utils import log_kaldi_errors
+from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
 
 if TYPE_CHECKING:
-
     from montreal_forced_aligner.abc import MetaDict
 
 __all__ = ["PretrainedAligner", "DictionaryTrainer"]
@@ -321,6 +322,34 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
             **self.align_options,
         )
         update_utterance_intervals(session, utterance, workflow.id, ctm)
+
+    def verify_transcripts(self, workflow_name=None) -> None:
+        self.initialize_database()
+        self.create_new_current_workflow(WorkflowType.transcript_verification, workflow_name)
+        wf = self.current_workflow
+        if wf.done:
+            logger.info("Transcript verification already done, skipping.")
+            return
+        self.setup()
+        self.write_lexicon_information(write_disambiguation=True)
+        super().align()
+
+        arguments = self.analyze_alignments_arguments()
+        update_mappings = []
+        for utt_id, word_error_rate, duration_deviation, transcript in run_kaldi_function(
+            AnalyzeTranscriptsFunction, arguments, total_count=self.num_current_utterances
+        ):
+            update_mappings.append(
+                {
+                    "id": utt_id,
+                    "word_error_rate": word_error_rate,
+                    "duration_deviation": duration_deviation,
+                    "transcription_text": transcript,
+                }
+            )
+        with self.session() as session:
+            bulk_update(session, Utterance, update_mappings)
+            session.commit()
 
     def align(self, workflow_name=None) -> None:
         """Run the aligner"""

@@ -25,6 +25,8 @@ from rich.logging import RichHandler
 from rich.theme import Theme
 
 if TYPE_CHECKING:
+    from kalpy.fstext.lexicon import LexiconCompiler
+
     from montreal_forced_aligner.abc import MetaDict
     from montreal_forced_aligner.data import CtmInterval
 
@@ -765,6 +767,168 @@ def align_phones(
             f"{pairwise2.format_alignment(*alignments[0])}\nScore: {score}\nPER: {phone_error_rate}\nErrors: {errors}"
         )
     return score, phone_error_rate, errors
+
+
+def fix_unk_words(
+    ref: List[str],
+    test: List[CtmInterval],
+    lexicon_compiler: LexiconCompiler,
+) -> Tuple[float, float, Dict[Tuple[str, str], int]]:
+    """
+    Align phones based on how much they overlap and their phone label, with the ability to specify a custom mapping for
+    different phone labels to be scored as if they're the same phone
+
+    Parameters
+    ----------
+    ref: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
+        List of CTM intervals as reference
+    test: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
+        List of CTM intervals to compare to reference
+    lexicon_compiler: LexiconCompiler
+        Lexicon compiler to use for evaluating the identity of OOV items
+
+    Returns
+    -------
+    float
+        Extra duration of new words
+    float
+        Word error rate
+    float
+        Aligned duration of found words
+    """
+
+    from kalpy.gmm.data import WordCtmInterval
+
+    def score_func(ref, test):
+        ref_label = ref
+        if isinstance(ref_label, WordCtmInterval):
+            ref_label = ref_label.label
+        test_label = test
+        if isinstance(test_label, WordCtmInterval):
+            test_label = test_label.label
+        if ref_label == test_label:
+            return 0
+        if (
+            test_label == lexicon_compiler.silence_word
+            or ref_label == lexicon_compiler.silence_word
+        ):
+            return -10
+        if lexicon_compiler.to_int(ref_label) == lexicon_compiler.to_int(test_label):
+            return 0
+        return -2
+
+    alignments = pairwise2.align.globalcs(
+        ref, test, score_func, -2, -2, gap_char=["-"], one_alignment_only=True
+    )
+    output_ctm = []
+    for a in alignments:
+        for i, sa in enumerate(a.seqA):
+            sb = a.seqB[i]
+            if sa == "-":
+                output_ctm.append(sb)
+            elif sb == "-":
+                continue
+            else:
+                if sa != sb.label and sb.label == lexicon_compiler.oov_word:
+                    sb.label = sa
+                output_ctm.append(sb)
+    return output_ctm
+
+
+def align_words(
+    ref: List[str],
+    test: List[CtmInterval],
+    silence_word: str,
+    ignored_words: typing.Set[str] = None,
+    debug: bool = False,
+) -> Tuple[float, float, Dict[Tuple[str, str], int]]:
+    """
+    Align phones based on how much they overlap and their phone label, with the ability to specify a custom mapping for
+    different phone labels to be scored as if they're the same phone
+
+    Parameters
+    ----------
+    ref: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
+        List of CTM intervals as reference
+    test: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
+        List of CTM intervals to compare to reference
+    silence_word: str
+        Silence word (these are ignored in the final calculation)
+    ignored_words: set[str], optional
+        Words that should be ignored in score calculations (silence phone is automatically added)
+    debug: bool, optional
+        Flag for logging extra information about alignments
+
+    Returns
+    -------
+    float
+        Extra duration of new words
+    float
+        Word error rate
+    float
+        Aligned duration of found words
+    """
+
+    from montreal_forced_aligner.data import CtmInterval
+
+    if ignored_words is None:
+        ignored_words = set()
+    if not isinstance(ignored_words, set):
+        ignored_words = set(ignored_words)
+
+    def score_func(ref, test):
+        ref_label = ref
+        if isinstance(ref_label, CtmInterval):
+            ref_label = ref_label.label
+        test_label = test
+        if isinstance(test_label, CtmInterval):
+            test_label = test_label.label
+        if ref_label == test_label:
+            return 0
+        if test_label == silence_word or ref_label == silence_word:
+            return -10
+        return -2
+
+    alignments = pairwise2.align.globalcs(
+        ref, test, score_func, -2, -2, gap_char=["-"], one_alignment_only=True
+    )
+    num_insertions = 0
+    num_deletions = 0
+    num_substitutions = 0
+
+    ignored_words.add(silence_word)
+    extra_duration = 0
+    aligned_duration = 0
+    for a in alignments:
+        for i, sa in enumerate(a.seqA):
+            sb = a.seqB[i]
+            if sa == "-":
+                if sb.label not in ignored_words:
+                    num_insertions += 1
+                    extra_duration += sb.end - sb.begin
+                else:
+                    continue
+            elif sb == "-":
+                if sa not in ignored_words:
+                    num_deletions += 1
+                else:
+                    continue
+            else:
+                if sa in ignored_words:
+                    continue
+                if sa != sb.label:
+                    num_substitutions += 1
+                else:
+                    aligned_duration += sb.end - sb.begin
+    word_error_rate = (num_insertions + num_deletions + (2 * num_substitutions)) / len(ref)
+    if debug:
+        import logging
+
+        logger = logging.getLogger("mfa")
+        logger.debug(
+            f"{pairwise2.format_alignment(*alignments[0])}\nExtra word duration: {extra_duration}\nWER: {word_error_rate}"
+        )
+    return extra_duration, word_error_rate, aligned_duration
 
 
 def format_probability(probability_value: float) -> float:

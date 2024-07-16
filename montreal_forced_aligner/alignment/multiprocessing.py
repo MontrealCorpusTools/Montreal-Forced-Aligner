@@ -48,6 +48,7 @@ from montreal_forced_aligner.data import (
     PhoneType,
     PronunciationProbabilityCounter,
     WordType,
+    WorkflowType,
 )
 from montreal_forced_aligner.db import (
     CorpusWorkflow,
@@ -60,9 +61,15 @@ from montreal_forced_aligner.db import (
     TextFile,
     Utterance,
     Word,
+    WordInterval,
 )
 from montreal_forced_aligner.exceptions import AlignmentCollectionError, AlignmentExportError
-from montreal_forced_aligner.helper import mfa_open, split_phone_position
+from montreal_forced_aligner.helper import (
+    align_words,
+    fix_unk_words,
+    mfa_open,
+    split_phone_position,
+)
 from montreal_forced_aligner.textgrid import construct_textgrid_output
 from montreal_forced_aligner.utils import thread_logger
 
@@ -80,9 +87,10 @@ __all__ = [
     "AlignmentExtractionArguments",
     "ExportTextGridArguments",
     "AlignFunction",
-    "AnalyzeAlignmentsFunction",
     "AlignArguments",
+    "AnalyzeAlignmentsFunction",
     "AnalyzeAlignmentsArguments",
+    "AnalyzeTranscriptsFunction",
     "AccStatsFunction",
     "AccStatsArguments",
     "CompileTrainGraphsFunction",
@@ -410,6 +418,16 @@ class CompileTrainGraphsFunction(KaldiFunction):
                 .filter(CorpusWorkflow.current == True)  # noqa
                 .first()
             )
+            interjection_costs = {}
+            if workflow.workflow_type is WorkflowType.transcript_verification:
+                interjection_words = (
+                    session.query(Word).filter(Word.word_type == WordType.interjection).all()
+                )
+                if interjection_words:
+                    max_count = max(x.count for x in interjection_words)
+                    for w in interjection_words:
+                        cost = max_count / w.count
+                        interjection_costs[w.word] = cost
             if self.use_g2p:
                 text_column = Utterance.normalized_character_text
             else:
@@ -420,12 +438,18 @@ class CompileTrainGraphsFunction(KaldiFunction):
                     lexicon = self.lexicon_compilers[d.id]
                 else:
                     lexicon = d.lexicon_compiler
+                if workflow.workflow_type is WorkflowType.transcript_verification:
+                    if interjection_words and d.oov_word not in interjection_costs:
+                        interjection_costs[d.oov_word] = min(interjection_costs.values())
+                        # interjection_costs[d.cutoff_word] = min(interjection_costs.values())
                 compiler = TrainingGraphCompiler(
                     self.model_path,
                     self.tree_path,
                     lexicon,
-                    lexicon.word_table,
                     use_g2p=self.use_g2p,
+                    batch_size=1000
+                    if workflow.workflow_type is not WorkflowType.transcript_verification
+                    else 500,
                 )
                 graph_logger.debug(f"Set up took {time.time() - begin} seconds")
                 query = (
@@ -442,7 +466,9 @@ class CompileTrainGraphsFunction(KaldiFunction):
                 compiler.export_graphs(
                     fst_ark_path,
                     query,
-                    # callback=self.callback
+                    # callback=self.callback,
+                    interjection_words=interjection_costs,
+                    # cutoff_pattern = d.cutoff_word
                 )
                 graph_logger.debug(f"Total compilation time: {time.time() - begin} seconds")
                 del compiler
@@ -717,6 +743,77 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
                 )
 
 
+class AnalyzeTranscriptsFunction(KaldiFunction):
+    """
+    Multiprocessing function for analyzing alignments.
+
+    See Also
+    --------
+    :meth:`.CorpusAligner.analyze_alignments`
+        Main function that calls this function in parallel
+    :meth:`.CorpusAligner.calculate_speech_post_arguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`lattice-to-post`
+        Relevant Kaldi binary
+    :kaldi_src:`weight-silence-post`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.alignment.multiprocessing.CalculateSpeechPostArguments`
+        Arguments for the function
+    """
+
+    def __init__(self, args: AnalyzeAlignmentsArguments):
+        super().__init__(args)
+        self.model_path = args.model_path
+        self.align_options = args.align_options
+
+    def _run(self):
+        """Run the function"""
+
+        with self.session() as session:
+            job: Job = (
+                session.query(Job)
+                .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
+                .filter(Job.id == self.job_name)
+                .first()
+            )
+            workflow = (
+                session.query(CorpusWorkflow)
+                .filter(CorpusWorkflow.current == True)  # noqa
+                .first()
+            )
+            query = session.query(Utterance).filter(
+                Utterance.job_id == job.id, Utterance.alignment_log_likelihood != None  # noqa
+            )
+            for utterance in query:
+                word_intervals = [
+                    x.as_ctm()
+                    for x in (
+                        session.query(WordInterval)
+                        .join(WordInterval.word)
+                        .filter(
+                            WordInterval.utterance_id == utterance.id,
+                            WordInterval.workflow_id == workflow.id,
+                            Word.word_type != WordType.silence,
+                            WordInterval.end - WordInterval.begin > 0.03,
+                        )
+                        .options(
+                            joinedload(WordInterval.word, innerjoin=True),
+                        )
+                        .order_by(WordInterval.begin)
+                    )
+                ]
+                if not word_intervals:
+                    continue
+                extra_duration, wer, aligned_duration = align_words(
+                    utterance.normalized_text.split(), word_intervals, "<eps>", debug=True
+                )
+                transcript = " ".join(x.label for x in word_intervals)
+                self.callback((utterance.id, wer, extra_duration, transcript))
+
+
 class FineTuneFunction(KaldiFunction):
     """
     Multiprocessing function for fine tuning alignment.
@@ -739,11 +836,11 @@ class FineTuneFunction(KaldiFunction):
         self.frame_shift_seconds = args.original_frame_shift
 
         self.new_frame_shift_seconds = 0.001
-        self.feature_padding_factor = 4
+        self.feature_padding_factor = 3
         self.padding = round(self.frame_shift_seconds, 3)
         self.splice_frames = 3
 
-    def _run(self) -> typing.Generator[typing.Tuple[int, float]]:
+    def _run(self):
         """Run the function"""
         with self.session() as session, thread_logger(
             "kalpy.align", self.log_path, job_name=self.job_name
@@ -783,7 +880,6 @@ class FineTuneFunction(KaldiFunction):
                 self.model_path,
                 self.tree_path,
                 self.lexicon_compiler,
-                self.lexicon_compiler.word_table,
             )
             for d_id in job.dictionary_ids:
                 utterance_query = (
@@ -852,18 +948,18 @@ class FineTuneFunction(KaldiFunction):
                                 {"id": interval.id, "begin": interval.begin, "end": interval.end}
                             )
                             continue
-                        segment_begin = max(round(interval.begin - self.padding, 4), 0)
+                        end_padding = round(self.frame_shift_seconds * 1.5, 3)
+                        prev_padding = round(self.frame_shift_seconds * 1.5, 3)
+                        segment_begin = max(round(interval.begin - prev_padding, 4), 0)
                         feature_segment_begin = max(
                             round(
-                                interval.begin - (self.padding * self.feature_padding_factor), 4
+                                interval.begin - (prev_padding * self.feature_padding_factor), 4
                             ),
                             0,
                         )
-                        segment_end = min(round(interval.begin + self.padding, 4), utterance.end)
+                        segment_end = round(min(interval.begin + end_padding, interval.end), 3)
                         feature_segment_end = min(
-                            round(
-                                interval.begin + (self.padding * self.feature_padding_factor), 4
-                            ),
+                            round(interval.begin + (end_padding * self.feature_padding_factor), 4),
                             utterance.end,
                         )
                         begin_offset = round(segment_begin - feature_segment_begin, 4)
@@ -875,7 +971,6 @@ class FineTuneFunction(KaldiFunction):
 
                         train_graph = compiler.compile_fst(text)
 
-                        prev_label = phone
                         feats = self.mfcc_computer.compute_mfccs_for_export(
                             segment, compress=False
                         )
@@ -904,17 +999,27 @@ class FineTuneFunction(KaldiFunction):
                         )
                         feats = FloatMatrix(sub_matrix)
                         alignment = aligner.align_utterance(train_graph, feats)
+                        if alignment is None:
+                            aligner.acoustic_scale = 0.1
+                            alignment = aligner.align_utterance(train_graph, feats)
+                            aligner.acoustic_scale = 1.0
                         ctm_intervals = alignment.generate_ctm(
-                            aligner.transition_model, self.lexicon_compiler.phone_table
+                            aligner.transition_model,
+                            self.lexicon_compiler.phone_table,
+                            frame_shift=0.001,
                         )
                         interval_mapping.append(
                             {
                                 "id": interval.id,
-                                "begin": round(ctm_intervals[1].begin + feature_segment_begin, 4),
+                                "begin": round(
+                                    ctm_intervals[1].begin + feature_segment_begin + begin_offset,
+                                    4,
+                                ),
                                 "end": interval.end,
                                 "label": phone_mapping[ctm_intervals[1].label],
                             }
                         )
+                        prev_label = phone
                     deletions = []
                     while True:
                         for i in range(len(interval_mapping) - 1):
@@ -1234,17 +1339,21 @@ class AlignmentExtractionFunction(KaldiFunction):
 
                 else:
                     utts = (
-                        session.query(Utterance.id, Utterance.begin, Utterance.end)
+                        session.query(
+                            Utterance.id, Utterance.begin, Utterance.end, Utterance.normalized_text
+                        )
                         .join(Utterance.speaker)
                         .filter(Utterance.job_id == self.job_name)
                         .filter(Speaker.dictionary_id == d.id)
                     )
-                    for u_id, begin, end in utts:
+                    for u_id, begin, end, text in utts:
                         utterance_times[u_id] = (begin, end)
+                        utterance_texts[u_id] = text
                 if self.lexicon_compilers and d.id in self.lexicon_compilers:
                     lexicon_compiler = self.lexicon_compilers[d.id]
                 else:
                     lexicon_compiler = d.lexicon_compiler
+
                 if self.transcription:
                     lat_path = job.construct_path(workflow.working_directory, "lat", "ark", d.id)
                     if not lat_path.exists():
@@ -1316,13 +1425,18 @@ class AlignmentExtractionFunction(KaldiFunction):
                         utterance = int(alignment.utterance_id.split("-")[-1])
                         found_utterances.add(utterance)
                         try:
+                            text = utterance_texts.get(utterance, None)
                             ctm = lexicon_compiler.phones_to_pronunciations(
                                 alignment.words,
                                 intervals,
                                 transcription=False,
-                                text=utterance_texts.get(utterance, None),
+                                text=text,
                             )
                             ctm.update_utterance_boundaries(*utterance_times[utterance])
+                            if text is not None:
+                                ctm.word_intervals = fix_unk_words(
+                                    text.split(), ctm.word_intervals, lexicon_compiler
+                                )
                             extraction_logger.debug(f"Processed {utterance}")
                             self.callback((utterance, d.id, ctm))
                         except Exception:
