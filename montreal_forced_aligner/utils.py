@@ -179,7 +179,7 @@ def parse_dictionary_file(
     float or None
         Correction factor for no silence before the pronunciation
     """
-    prob_pattern = re.compile(r"\b\d+\.\d+\b")
+    prob_pattern = re.compile(r"\b(\d+\.\d+|1)\b")
     with mfa_open(path) as f:
         for i, line in enumerate(f):
             line = line.strip()
@@ -663,11 +663,7 @@ def run_kaldi_function(
         stopped = Event()
     error_dict = {}
     return_queue = Queue(10000)
-    callback_interval = 100
-    if total_count is not None:
-        callback_interval = int(total_count / 100)
-        if callback_interval <= 0:
-            callback_interval = 2
+    callback_interval = 10
     num_done = 0
     last_update = 0
     pbar = None
@@ -675,7 +671,7 @@ def run_kaldi_function(
     if not config.QUIET and total_count:
         pbar = tqdm(total=total_count, maxinterval=0)
         progress_callback = pbar.update
-
+    update_time = time.time()
     if config.USE_MP:
         procs = []
         for args in arguments:
@@ -699,9 +695,11 @@ def run_kaldi_function(
                             num_done += result
                         else:
                             num_done += 1
-                        if num_done - last_update > callback_interval:
-                            progress_callback(num_done - last_update)
-                            last_update = num_done
+                        if time.time() - update_time >= callback_interval:
+                            if num_done - last_update > 0:
+                                progress_callback(num_done - last_update)
+                                last_update = num_done
+                            update_time = time.time()
                     if isinstance(return_queue, queue.Queue):
                         return_queue.task_done()
                 except queue.Empty:

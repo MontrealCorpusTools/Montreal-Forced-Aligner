@@ -44,6 +44,7 @@ from montreal_forced_aligner.vad.multiprocessing import (
     SegmentTranscriptFunction,
     SegmentVadArguments,
     SegmentVadFunction,
+    segment_utterance,
     segment_utterance_transcript,
 )
 
@@ -443,6 +444,20 @@ class VadSegmenter(
                 joinedload(File.text_file),
             ):
                 f.save(output_directory, output_format=output_format)
+
+    def segment_utterance(self, utterance_id: int, allow_empty: bool = True):
+        with self.session() as session:
+            utterance = full_load_utterance(session, utterance_id)
+
+            new_utterances = segment_utterance(
+                utterance.to_kalpy(),
+                self.vad_model if self.speechbrain else None,
+                self.segmentation_options,
+                mfcc_options=self.mfcc_options if not self.speechbrain else None,
+                vad_options=self.vad_options if not self.speechbrain else None,
+                allow_empty=allow_empty,
+            )
+        return new_utterances
 
 
 class TranscriptionSegmenter(

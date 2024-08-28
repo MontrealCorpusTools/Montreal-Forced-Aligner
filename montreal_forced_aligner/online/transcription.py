@@ -1,6 +1,9 @@
 """Classes for calculating alignments online"""
 from __future__ import annotations
 
+import typing
+
+import torch
 from _kalpy.fstext import ConstFst
 from _kalpy.matrix import DoubleMatrix, FloatMatrix
 from kalpy.feat.cmvn import CmvnComputer
@@ -9,8 +12,16 @@ from kalpy.gmm.data import HierarchicalCtm
 from kalpy.gmm.decode import GmmDecoder
 from kalpy.utterance import Utterance as KalpyUtterance
 
+from montreal_forced_aligner.data import Language
 from montreal_forced_aligner.exceptions import AlignerError
 from montreal_forced_aligner.models import AcousticModel
+from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
+from montreal_forced_aligner.transcription.multiprocessing import (
+    EncoderASR,
+    WhisperASR,
+    WhisperModel,
+    get_suppressed_tokens,
+)
 
 
 def transcribe_utterance_online(
@@ -82,3 +93,44 @@ def transcribe_utterance_online(
     ctm.likelihood = alignment.likelihood
     ctm.update_utterance_boundaries(utterance.segment.begin, utterance.segment.end)
     return ctm
+
+
+def transcribe_utterance_online_whisper(
+    model: WhisperModel,
+    utterance: KalpyUtterance,
+    beam: int = 5,
+    language: Language = Language.unknown,
+    tokenizer: SimpleTokenizer = None,
+) -> str:
+    segment = utterance.segment
+    waveform = segment.load_audio()
+    suppressed = get_suppressed_tokens(model)
+    segments, info = model.transcribe(
+        waveform,
+        language=language.iso_code,
+        beam_size=beam,
+        suppress_tokens=suppressed,
+        temperature=0.0,
+        condition_on_previous_text=False,
+    )
+    text = " ".join([x.text for x in segments])
+    text = text.replace("  ", " ")
+    if tokenizer is not None:
+        text = tokenizer(text)[0]
+    return text.strip()
+
+
+def transcribe_utterance_online_speechbrain(
+    model: typing.Union[WhisperASR, EncoderASR],
+    utterance: KalpyUtterance,
+    tokenizer: SimpleTokenizer = None,
+) -> str:
+    segment = utterance.segment
+    waveform = segment.load_audio()
+    waveform = model.audio_normalizer(waveform, 16000).unsqueeze(0)
+    lens = torch.tensor([1.0])
+    predicted_words, predicted_tokens = model.transcribe_batch(waveform, lens)
+    text = predicted_words[0]
+    if tokenizer is not None:
+        text = tokenizer(text)[0]
+    return text

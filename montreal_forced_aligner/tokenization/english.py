@@ -373,11 +373,6 @@ class EnglishSplitSuffixes:
                         continue
                 except KeyError:
                     continue
-                lemma = w.lemma_
-                norm = w.norm_
-                morph = str(w.morph)
-                pos = w.pos_
-                print(w.text, lemma, norm, morph, pos, w.is_oov)
                 span = None
                 if "Prog" in w.morph.get("Aspect") and w.text.endswith("ing"):
                     span = self.handle_ing(w)
@@ -423,7 +418,6 @@ class EnglishSplitSuffixes:
                     break
             else:
                 break
-            print(span)
             if span is not None:
                 with doc.retokenize() as retokenizer:
                     if len(span) == 4:
@@ -460,65 +454,65 @@ class BracketedReTokenize:
 def en_spacy(ignore_case: bool = True):
     name = "en_core_web_sm"
     try:
-        nlp = spacy.load(name)
+        en_nlp = spacy.load(name)
     except OSError:
         subprocess.call(["python", "-m", "spacy", "download", name], env=os.environ)
-        nlp = spacy.load(name)
+        en_nlp = spacy.load(name)
 
     @spacy.Language.factory("en_re_tokenize")
-    def en_re_tokenize(_nlp, name):
-        return EnglishReTokenize(_nlp.vocab)
+    def en_re_tokenize(nlp, name):
+        return EnglishReTokenize(nlp.vocab)
 
     @spacy.Language.factory("en_split_suffixes")
-    def en_split_suffixes(_nlp, name):
-        return EnglishSplitSuffixes(_nlp.vocab)
+    def en_split_suffixes(nlp, name):
+        return EnglishSplitSuffixes(nlp.vocab)
 
     @spacy.Language.factory("en_split_prefixes")
-    def en_split_prefixes(_nlp, name):
-        return EnglishSplitPrefixes(_nlp.vocab)
+    def en_split_prefixes(nlp, name):
+        return EnglishSplitPrefixes(nlp.vocab)
 
     @spacy.Language.factory("en_bracketed_re_tokenize")
-    def bracketed_re_tokenize(_nlp, name):
-        return BracketedReTokenize(_nlp.vocab)
+    def en_bracketed_re_tokenize(nlp, name):
+        return BracketedReTokenize(nlp.vocab)
 
     initial_brackets = r"\(\[\{<"
     final_brackets = r"\)\]\}>"
 
-    nlp.tokenizer.token_match = re.compile(
+    en_nlp.tokenizer.token_match = re.compile(
         rf"[{initial_brackets}][-\w_']+[?!,][{final_brackets}]"
     ).match
-    nlp.tokenizer.add_special_case(
+    en_nlp.tokenizer.add_special_case(
         "wanna", [{ORTH: "wan", NORM: "want"}, {ORTH: "na", NORM: "to"}]
     )
-    nlp.tokenizer.add_special_case(
+    en_nlp.tokenizer.add_special_case(
         "dunno", [{ORTH: "dun", NORM: "don't"}, {ORTH: "no", NORM: "know"}]
     )
-    nlp.tokenizer.add_special_case(
+    en_nlp.tokenizer.add_special_case(
         "woulda", [{ORTH: "would", NORM: "would"}, {ORTH: "a", NORM: "have"}]
     )
-    nlp.tokenizer.add_special_case(
+    en_nlp.tokenizer.add_special_case(
         "sorta", [{ORTH: "sort", NORM: "sort"}, {ORTH: "a", NORM: "of"}]
     )
-    nlp.tokenizer.add_special_case(
+    en_nlp.tokenizer.add_special_case(
         "kinda", [{ORTH: "kind", NORM: "kind"}, {ORTH: "a", NORM: "of"}]
     )
-    nlp.tokenizer.add_special_case(
+    en_nlp.tokenizer.add_special_case(
         "coulda", [{ORTH: "could", NORM: "could"}, {ORTH: "a", NORM: "have"}]
     )
-    nlp.tokenizer.add_special_case(
+    en_nlp.tokenizer.add_special_case(
         "shoulda", [{ORTH: "should", NORM: "should"}, {ORTH: "a", NORM: "have"}]
     )
-    nlp.tokenizer.add_special_case(
+    en_nlp.tokenizer.add_special_case(
         "finna", [{ORTH: "fin", NORM: "fixing"}, {ORTH: "na", NORM: "to"}]
     )
-    nlp.tokenizer.add_special_case(
+    en_nlp.tokenizer.add_special_case(
         "yknow", [{ORTH: "y", NORM: "you"}, {ORTH: "know", NORM: "know"}]
     )
-    nlp.tokenizer.add_special_case(
+    en_nlp.tokenizer.add_special_case(
         "y'know", [{ORTH: "y'", NORM: "you"}, {ORTH: "know", NORM: "know"}]
     )
-    nlp.add_pipe("en_re_tokenize", before="tagger")
-    nlp.add_pipe("bracketed_re_tokenize", before="tagger")
-    nlp.add_pipe("en_split_prefixes")
-    nlp.add_pipe("en_split_suffixes")
-    return nlp
+    en_nlp.add_pipe("en_re_tokenize", before="tagger")
+    en_nlp.add_pipe("en_bracketed_re_tokenize", before="tagger")
+    en_nlp.add_pipe("en_split_prefixes")
+    en_nlp.add_pipe("en_split_suffixes")
+    return en_nlp

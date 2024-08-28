@@ -818,7 +818,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
                         f"You are currently running an older version of MFA ({current_version}) than the latest available ({latest_version}). "
                         f"To update, please run mfa_update."
                     )
-            except KeyError:
+            except Exception:
                 pass
         if re.search(r"\d+\.\d+\.\d+a", current_version) is not None:
             logger.debug(

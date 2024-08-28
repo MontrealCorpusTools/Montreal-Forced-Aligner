@@ -55,6 +55,9 @@ dependencies:
       - build
       - twine
       - speechbrain
+      - kenlm
+      - pygtrie
+      - faster-whisper
       - python-mecab-ko
       - jamo
       - pythainlp

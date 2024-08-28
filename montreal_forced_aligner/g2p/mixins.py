@@ -70,18 +70,25 @@ class G2PTopLevelMixin(MfaWorker, DictionaryMixin, G2PMixin):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    def generate_pronunciations(self) -> Dict[str, List[str]]:
+    def generate_pronunciations(
+        self,
+    ) -> typing.List[typing.Tuple[str, List[typing.Tuple[str, float]]]]:
         """
         Generate pronunciations
 
         Returns
         -------
-        dict[str, list[str]]
-            Mappings of keys to their generated pronunciations
+        str, list[tuple[str, float]]]
+            Tuple of word with their scored pronunciations
         """
         raise NotImplementedError
 
-    def export_pronunciations(self, output_file_path: typing.Union[str, Path]) -> None:
+    def export_pronunciations(
+        self,
+        output_file_path: typing.Union[str, Path],
+        export_scores: bool = False,
+        ensure_sorted: bool = False,
+    ) -> None:
         """
         Output pronunciations to text file
 
@@ -89,16 +96,26 @@ class G2PTopLevelMixin(MfaWorker, DictionaryMixin, G2PMixin):
         ----------
         output_file_path: :class:`~pathlib.Path`
             Path to save
+        export_scores: bool
+            Flag for appending a column for the score of the pronunciation
+        ensure_sorted: bool
+            Flag for ensuring that output file is sorted alphabetically
         """
         if isinstance(output_file_path, str):
             output_file_path = Path(output_file_path)
         output_file_path.parent.mkdir(parents=True, exist_ok=True)
         results = self.generate_pronunciations()
+        if ensure_sorted:
+            results = sorted(results, key=lambda x: x[0])
         with mfa_open(output_file_path, "w") as f:
-            for (orthography, pronunciations) in results.items():
+            for orthography, pronunciations in results:
                 if not pronunciations:
                     continue
-                for p in pronunciations:
+                for p, score in pronunciations:
                     if not p:
                         continue
-                    f.write(f"{orthography}\t{p}\n")
+                    if export_scores:
+                        f.write(f"{orthography}\t{p}\t{score}\n")
+                    else:
+                        f.write(f"{orthography}\t{p}\n")
+                    f.flush()

@@ -352,9 +352,6 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                 return
 
             silence_prob_sum = 0
-            initial_silence_prob_sum = 0
-            final_silence_correction_sum = 0
-            final_non_silence_correction_sum = 0
 
             with self.worker.session() as session:
                 dictionaries = session.query(Dictionary).all()
@@ -396,25 +393,25 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                                     data[k] = 0.5
                     if self.silence_probabilities:
                         d.silence_probability = data["silence_probability"]
-                        d.initial_silence_probability = data["initial_silence_probability"]
-                        d.final_silence_correction = data["final_silence_correction"]
-                        d.final_non_silence_correction = data["final_non_silence_correction"]
+                        # d.initial_silence_probability = data["initial_silence_probability"]
+                        # d.final_silence_correction = data["final_silence_correction"]
+                        # d.final_non_silence_correction = data["final_non_silence_correction"]
                         silence_prob_sum += d.silence_probability
-                        initial_silence_prob_sum += d.initial_silence_probability
-                        final_silence_correction_sum += d.final_silence_correction
-                        final_non_silence_correction_sum += d.final_non_silence_correction
+                        # initial_silence_prob_sum += d.initial_silence_probability
+                        # final_silence_correction_sum += d.final_silence_correction
+                        # final_non_silence_correction_sum += d.final_non_silence_correction
 
                 if self.silence_probabilities:
                     self.worker.silence_probability = silence_prob_sum / len(dictionaries)
-                    self.worker.initial_silence_probability = initial_silence_prob_sum / len(
-                        dictionaries
-                    )
-                    self.worker.final_silence_correction = final_silence_correction_sum / len(
-                        dictionaries
-                    )
-                    self.worker.final_non_silence_correction = (
-                        final_non_silence_correction_sum / len(dictionaries)
-                    )
+                    # self.worker.initial_silence_probability = initial_silence_prob_sum / len(
+                    #    dictionaries
+                    # )
+                    # self.worker.final_silence_correction = final_silence_correction_sum / len(
+                    #    dictionaries
+                    # )
+                    # self.worker.final_non_silence_correction = (
+                    #    final_non_silence_correction_sum / len(dictionaries)
+                    # )
                 session.commit()
             self.worker.write_lexicon_information()
             return

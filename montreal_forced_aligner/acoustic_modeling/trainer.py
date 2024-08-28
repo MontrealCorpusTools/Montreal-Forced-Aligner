@@ -183,6 +183,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             self.add_config(k, v)
         self.final_alignment = True
         self.model_version = model_version
+        self.boost_silence = 1.5
 
     @classmethod
     def default_training_configurations(cls) -> List[Tuple[str, Dict[str, Any]]]:
@@ -585,7 +586,6 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                     not self.current_workflow.done
                     or not self.current_workflow.working_directory.exists()
                 ):
-                    logger.debug(f"Skipping {self.current_aligner.identifier} alignments")
                     self.align()
                     with self.session() as session:
                         session.query(WordInterval).delete()
@@ -595,6 +595,8 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                     self.analyze_alignments()
                     if self.current_subset != 0:
                         self.quality_check_subset()
+                else:
+                    logger.debug(f"Skipping {self.current_aligner.identifier} alignments")
 
             self.set_current_workflow(trainer.identifier)
             if trainer.identifier.startswith("pronunciation_probabilities"):

@@ -65,6 +65,18 @@ __all__ = ["g2p_cli"]
     help="Included words enclosed by brackets, job_name.e. [...], (...), <...>.",
     default=False,
 )
+@click.option(
+    "--export_scores",
+    is_flag=True,
+    help="Add a column to export for the score of the generated pronunciation.",
+    default=False,
+)
+@click.option(
+    "--sorted",
+    is_flag=True,
+    help="Ensure output file is sorted alphabetically (slower).",
+    default=False,
+)
 @common_options
 @click.help_option("-h", "--help")
 @click.pass_context
@@ -83,6 +95,7 @@ def g2p_cli(context, **kwargs) -> None:
     dictionary_path = kwargs.get("dictionary_path", None)
     use_stdin = input_path == pathlib.Path("-")
     use_stdout = output_path == pathlib.Path("-")
+    export_scores = kwargs.get("export_scores", False)
 
     if input_path.is_dir():
         per_utterance = False
@@ -134,14 +147,22 @@ def g2p_cli(context, **kwargs) -> None:
                         continue
                     pronunciations = g2p.rewriter(word)
                     if not pronunciations:
-                        output.write(f"{word}\t\n")
-                    for p in pronunciations:
-                        output.write(f"{word}\t{p}\n")
+                        if export_scores:
+                            output.write(f"{word}\t\t\n")
+                        else:
+                            output.write(f"{word}\t\n")
+                    for p, score in pronunciations:
+                        if export_scores:
+                            output.write(f"{word}\t{p}\t{score}\n")
+                        else:
+                            output.write(f"{word}\t{p}\n")
                     output.flush()
             finally:
                 output.close()
         else:
-            g2p.export_pronunciations(output_path)
+            g2p.export_pronunciations(
+                output_path, export_scores=export_scores, ensure_sorted=kwargs.get("sorted", False)
+            )
     except Exception:
         g2p.dirty = True
         raise

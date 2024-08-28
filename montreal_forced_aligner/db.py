@@ -406,10 +406,13 @@ class Dictionary(MfaSqlBase):
             session = sqlalchemy.orm.Session.object_session(self)
             query = (
                 session.query(Word.word, Word.mapping_id)
-                .filter(Word.dictionary_id == self.id)
                 .filter(Word.included == True)  # noqa
                 .order_by(Word.mapping_id)
             )
+            if self.name != "default":
+                query = query.filter(Word.dictionary_id == self.id)
+            else:
+                query = query.group_by(Word.word, Word.mapping_id)
             self._word_mapping = {}
             for w, mapping_id in query:
                 self._word_mapping[w] = mapping_id
@@ -425,10 +428,15 @@ class Dictionary(MfaSqlBase):
             session = sqlalchemy.orm.Session.object_session(self)
             query = (
                 session.query(Word.word, Word.mapping_id)
-                .filter(Word.dictionary_id == self.id)
                 .filter(Word.included == True)  # noqa
                 .order_by(Word.mapping_id)
             )
+            if self.name != "default":
+                query = query.filter(
+                    sqlalchemy.or_(Word.dictionary_id == self.id, Word.word.in_(self.special_set))
+                )
+            else:
+                query = query.group_by(Word.word, Word.mapping_id)
             self._word_table = pywrapfst.SymbolTable()
             for w, mapping_id in query:
                 self._word_table.add_symbol(w, mapping_id)
@@ -462,11 +470,14 @@ class Dictionary(MfaSqlBase):
             query = (
                 session.query(Word.word, Pronunciation.pronunciation)
                 .join(Pronunciation.word)
-                .filter(Word.dictionary_id == self.id)
                 .filter(Word.included == True)  # noqa
                 .filter(Pronunciation.pronunciation != self.oov_phone)
                 .order_by(Word.mapping_id)
             )
+            if self.name != "default":
+                query = query.filter(Word.dictionary_id == self.id)
+            else:
+                query = query.group_by(Word.word, Pronunciation.pronunciation)
             self._word_pronunciations = {}
             for w, pronunciation in query:
                 if w not in self._word_pronunciations:

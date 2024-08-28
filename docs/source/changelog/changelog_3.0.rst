@@ -5,6 +5,14 @@
 3.0 Changelog
 *************
 
+3.1.4
+-----
+
+- Optimized :code:`mfa g2p` to better use multiple processes
+- Added :code:`--export_scores` to :code:`mfa g2p` for adding a column representing the final weights of the generated pronunciations
+- Added :code:`--output_directory` to :code:`mfa validate` to save generated validation files rather than the temporary directory
+- Fixed a bug in cutoff modeling that was preventing them from being properly parsed
+
 3.1.3
 -----
 

@@ -22,7 +22,8 @@ def anchor_cli(*args, **kwargs) -> None:  # pragma: no cover
     """
     try:
         from anchor.command_line import main
-    except ImportError:
+    except ImportError as e:
+        logger.error(f"Exception: {e}")
         logger.error(
             "Anchor annotator utility is not installed, please install it via `conda install -c conda-forge anchor-annotator`."
         )

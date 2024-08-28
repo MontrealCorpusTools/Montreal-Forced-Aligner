@@ -367,15 +367,13 @@ class DictionaryFileError(DictionaryError):
 
     Parameters
     ----------
-    input_path: :class:`~pathlib.Path`
-        Path of the pronunciation dictionary
+    message: str
+        Error message
     """
 
-    def __init__(self, input_path: Path):
+    def __init__(self, message: str):
         super().__init__("")
-        self.message_lines = [
-            f"The specified path for the dictionary ({input_path}) is not a file."
-        ]
+        self.message_lines = [message]
 
 
 # Corpus Errors

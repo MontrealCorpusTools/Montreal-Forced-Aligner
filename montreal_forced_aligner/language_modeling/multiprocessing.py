@@ -36,8 +36,8 @@ class TrainSpeakerLmArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     model_path: :class:`~pathlib.Path`
@@ -70,16 +70,18 @@ class TrainLmArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
+    working_directory: :class:`~pathlib.Path`
+        Working directory
     symbols_path: :class:`~pathlib.Path`
         Words symbol table paths
-    oov_word: str
-        OOV word
     order: int
         Ngram order of the language models
+    oov_word: str
+        OOV word
     """
 
     working_directory: Path
@@ -294,7 +296,6 @@ class TrainSpeakerLmFunction(KaldiFunction):
                     .distinct()
                 )
                 for (speaker_id,) in speakers:
-                    print(speaker_id)
                     hclg_path = d.temp_directory.joinpath(f"{speaker_id}.fst")
                     if os.path.exists(hclg_path):
                         continue

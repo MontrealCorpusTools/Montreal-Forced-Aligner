@@ -1663,15 +1663,17 @@ class PhonetisaurusTrainer(
             num_pronunciations=self.num_pronunciations,
         )
         output = gen.generate_pronunciations()
+        hypotheses = {}
         with mfa_open(temp_dir.joinpath("validation_output.txt"), "w") as f:
-            for orthography, pronunciations in output.items():
+            for orthography, pronunciations in output:
+                hypotheses[orthography] = [x[0] for x in pronunciations]
                 if not pronunciations:
                     continue
-                for p in pronunciations:
+                for p, score in pronunciations:
                     if not p:
                         continue
-                    f.write(f"{orthography}\t{p}\n")
-        gen.compute_validation_errors(validation_set, output)
+                    f.write(f"{orthography}\t{p}\t{score}\n")
+        gen.compute_validation_errors(validation_set, hypotheses)
 
     def initialize_training(self) -> None:
         """Initialize training G2P model"""

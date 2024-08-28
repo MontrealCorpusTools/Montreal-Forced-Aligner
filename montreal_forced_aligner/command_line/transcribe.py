@@ -12,9 +12,14 @@ from montreal_forced_aligner.command_line.utils import (
     validate_dictionary,
     validate_language_model,
 )
-from montreal_forced_aligner.transcription import Transcriber
+from montreal_forced_aligner.data import Language
+from montreal_forced_aligner.transcription.transcriber import (
+    SpeechbrainTranscriber,
+    Transcriber,
+    WhisperTranscriber,
+)
 
-__all__ = ["transcribe_corpus_cli"]
+__all__ = ["transcribe_corpus_cli", "transcribe_speechbrain_cli", "transcribe_whisper_cli"]
 
 
 @click.command(
@@ -39,7 +44,7 @@ __all__ = ["transcribe_corpus_cli"]
 @click.option(
     "--config_path",
     "-c",
-    help="Path to config file to use for training.",
+    help="Path to config file to use for transcription.",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
@@ -127,6 +132,198 @@ def transcribe_corpus_cli(context, **kwargs) -> None:
             output_format=output_format,
             include_original_text=include_original_text,
         )
+    except Exception:
+        transcriber.dirty = True
+        raise
+    finally:
+        transcriber.cleanup()
+
+
+@click.command(
+    name="transcribe_speechbrain",
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+        allow_interspersed_args=True,
+    ),
+    short_help="Transcribe utterances using an ASR model trained by SpeechBrain",
+)
+@click.argument(
+    "corpus_directory",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+)
+@click.argument(
+    "language",
+    type=click.Choice(
+        sorted(
+            [
+                "arabic",
+                "german",
+                "english",
+                "spanish",
+                "french",
+                "italian",
+                "kinyarwanda",
+                "portuguese",
+                "mandarin",
+            ]
+        )
+    ),
+)
+@click.argument(
+    "output_directory", type=click.Path(file_okay=False, dir_okay=True, path_type=Path)
+)
+@click.option(
+    "--architecture",
+    help="ASR model architecture",
+    default=SpeechbrainTranscriber.ARCHITECTURES[0],
+    type=click.Choice(SpeechbrainTranscriber.ARCHITECTURES),
+)
+@click.option(
+    "--config_path",
+    "-c",
+    help="Path to config file to use for transcription.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "--speaker_characters",
+    "-s",
+    help="Number of characters of file names to use for determining speaker, "
+    "default is to use directory names.",
+    type=str,
+    default="0",
+)
+@click.option(
+    "--audio_directory",
+    "-a",
+    help="Audio directory root to use for finding audio files.",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+)
+@click.option(
+    "--cuda/--no_cuda",
+    "cuda",
+    help="Flag for using CUDA for Whisper's model",
+    default=False,
+)
+@click.option(
+    "--evaluate",
+    "evaluation_mode",
+    is_flag=True,
+    help="Evaluate the transcription against golden texts.",
+    default=False,
+)
+@common_options
+@click.help_option("-h", "--help")
+@click.pass_context
+def transcribe_speechbrain_cli(context, **kwargs) -> None:
+    """
+    Transcribe utterances using an ASR model trained by SpeechBrain.
+    """
+    if kwargs.get("profile", None) is not None:
+        config.profile = kwargs.pop("profile")
+    config.update_configuration(kwargs)
+
+    config_path = kwargs.get("config_path", None)
+    corpus_directory = kwargs["corpus_directory"].absolute()
+    output_directory = kwargs["output_directory"]
+    transcriber = SpeechbrainTranscriber(
+        corpus_directory=corpus_directory,
+        **SpeechbrainTranscriber.parse_parameters(config_path, context.params, context.args),
+    )
+    try:
+        transcriber.setup()
+        transcriber.transcribe()
+        transcriber.export_files(output_directory)
+    except Exception:
+        transcriber.dirty = True
+        raise
+    finally:
+        transcriber.cleanup()
+
+
+@click.command(
+    name="transcribe_whisper",
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+        allow_interspersed_args=True,
+    ),
+    short_help="Transcribe utterances using a Whisper ASR model via faster-whisper",
+)
+@click.argument(
+    "corpus_directory",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+)
+@click.argument(
+    "output_directory", type=click.Path(file_okay=False, dir_okay=True, path_type=Path)
+)
+@click.option(
+    "--architecture",
+    help="Model size to use",
+    default=WhisperTranscriber.ARCHITECTURES[0],
+    type=click.Choice(WhisperTranscriber.ARCHITECTURES),
+)
+@click.option(
+    "--language",
+    help="Language to use for transcription.",
+    default=Language.unknown.name,
+    type=click.Choice([x.name for x in Language]),
+)
+@click.option(
+    "--config_path",
+    "-c",
+    help="Path to config file to use for transcription.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "--speaker_characters",
+    "-s",
+    help="Number of characters of file names to use for determining speaker, "
+    "default is to use directory names.",
+    type=str,
+    default="0",
+)
+@click.option(
+    "--audio_directory",
+    "-a",
+    help="Audio directory root to use for finding audio files.",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+)
+@click.option(
+    "--cuda/--no_cuda",
+    "cuda",
+    help="Flag for using CUDA for Whisper's model",
+    default=False,
+)
+@click.option(
+    "--evaluate",
+    "evaluation_mode",
+    is_flag=True,
+    help="Evaluate the transcription against golden texts.",
+    default=False,
+)
+@common_options
+@click.help_option("-h", "--help")
+@click.pass_context
+def transcribe_whisper_cli(context, **kwargs) -> None:
+    """
+    Transcribe utterances using a Whisper ASR model via faster-whisper.
+    """
+    if kwargs.get("profile", None) is not None:
+        config.profile = kwargs.pop("profile")
+    config.update_configuration(kwargs)
+
+    config_path = kwargs.get("config_path", None)
+    corpus_directory = kwargs["corpus_directory"].absolute()
+    output_directory = kwargs["output_directory"]
+    transcriber = WhisperTranscriber(
+        corpus_directory=corpus_directory,
+        **WhisperTranscriber.parse_parameters(config_path, context.params, context.args),
+    )
+    try:
+        transcriber.setup()
+        transcriber.transcribe()
+        transcriber.export_files(output_directory)
     except Exception:
         transcriber.dirty = True
         raise

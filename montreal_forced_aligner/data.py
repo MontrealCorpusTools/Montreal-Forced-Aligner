@@ -273,8 +273,8 @@ class MfaArguments:
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     """
@@ -475,6 +475,112 @@ class ClusterType(enum.Enum):
     meanshift = "meanshift"
 
 
+ISO_LANGUAGE_MAPPING = {
+    "afrikaans": "af",
+    "amharic": "am",
+    "arabic": "ar",
+    "assamese": "as",
+    "azerbaijani": "az",
+    "bashkir": "ba",
+    "belarusian": "be",
+    "bulgarian": "bg",
+    "bengali": "bn",
+    "tibetan": "bo",
+    "breton": "br",
+    "bosnian": "bs",
+    "catalan": "ca",
+    "czech": "cs",
+    "welsh": "cy",
+    "danish": "da",
+    "german": "de",
+    "greek": "el",
+    "english": "en",
+    "spanish": "es",
+    "estonian": "et",
+    "basque": "eu",
+    "farsi": "fa",
+    "finnish": "fi",
+    "faroese": "fo",
+    "french": "fr",
+    "galician": "gl",
+    "gujarati": "gu",
+    "hausa": "ha",
+    "hebrew": "he",
+    "hindi": "hi",
+    "croatian": "hr",
+    "haitian": "ht",
+    "hungarian": "hu",
+    "armenian": "hy",
+    "indonesian": "id",
+    "icelandic": "is",
+    "italian": "it",
+    "japanese": "ja",
+    "georgian": "ka",
+    "kazakh": "kk",
+    "central khmer": "km",
+    "kannada": "kn",
+    "korean": "ko",
+    "latin": "la",
+    "luxembourgish": "lb",
+    "lingala": "ln",
+    "lao": "lo",
+    "lithuanian": "lt",
+    "latvian": "lv",
+    "malagasy": "mg",
+    "maori": "mi",
+    "macedonian": "mk",
+    "malayalam": "ml",
+    "mongolian": "mn",
+    "marathi": "mr",
+    "malay": "ms",
+    "maltese": "mt",
+    "burmese": "my",
+    "nepali": "ne",
+    "dutch": "nl",
+    "flemish": "nl",
+    "norwegian nynorsk": "nn",
+    "norwegian": "no",
+    "occitan": "oc",
+    "punjabi": "pa",
+    "polish": "pl",
+    "pashto": "ps",
+    "portuguese": "pt",
+    "romanian": "ro",
+    "moldavian": "ro",
+    "russian": "ru",
+    "sanskrit": "sa",
+    "sindhi": "sd",
+    "sinhala": "si",
+    "slovak": "sk",
+    "slovenian": "sl",
+    "shona": "sn",
+    "somali": "so",
+    "albanian": "sq",
+    "serbian": "sr",
+    "sundanese": "su",
+    "swedish": "sv",
+    "swahili": "sw",
+    "tamil": "ta",
+    "telegu": "te",
+    "tajik": "tg",
+    "thai": "th",
+    "turkmen": "tk",
+    "tagalog": "tl",
+    "turkish": "tr",
+    "tatar": "tt",
+    "ukrainian": "uk",
+    "urdu": "ur",
+    "uzbek": "uz",
+    "vietnamese": "vi",
+    "yiddish": "yi",
+    "yoruba": "yo",
+    "yue": "yue",
+    "chinese": "zh",
+    "kinyarwanda": "rw",
+    "mandarin": "zh-CN",
+}
+
+
 class Language(enum.Enum):
     """Enum for supported languages"""
 
@@ -509,6 +615,12 @@ class Language(enum.Enum):
     def __str__(self) -> str:
         """Name of phone set"""
         return self.name
+
+    @property
+    def iso_code(self) -> typing.Optional[str]:
+        if self.value in ISO_LANGUAGE_MAPPING:
+            return ISO_LANGUAGE_MAPPING[self.value]
+        return None
 
 
 class ManifoldAlgorithm(enum.Enum):

@@ -32,7 +32,11 @@ from montreal_forced_aligner.command_line.train_g2p import train_g2p_cli
 from montreal_forced_aligner.command_line.train_ivector_extractor import train_ivector_cli
 from montreal_forced_aligner.command_line.train_lm import train_lm_cli
 from montreal_forced_aligner.command_line.train_tokenizer import train_tokenizer_cli
-from montreal_forced_aligner.command_line.transcribe import transcribe_corpus_cli
+from montreal_forced_aligner.command_line.transcribe import (
+    transcribe_corpus_cli,
+    transcribe_speechbrain_cli,
+    transcribe_whisper_cli,
+)
 from montreal_forced_aligner.command_line.validate import (
     validate_corpus_cli,
     validate_dictionary_cli,
@@ -194,6 +198,8 @@ mfa_cli.add_command(train_ivector_cli)
 mfa_cli.add_command(train_lm_cli)
 mfa_cli.add_command(train_tokenizer_cli)
 mfa_cli.add_command(transcribe_corpus_cli)
+mfa_cli.add_command(transcribe_speechbrain_cli)
+mfa_cli.add_command(transcribe_whisper_cli)
 mfa_cli.add_command(validate_corpus_cli)
 mfa_cli.add_command(validate_dictionary_cli)
 mfa_cli.add_command(version_cli)

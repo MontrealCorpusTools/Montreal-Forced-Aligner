@@ -94,6 +94,48 @@ class SegmentTranscriptArguments(MfaArguments):
     decode_options: MetaDict
 
 
+def segment_utterance(
+    utterance: KalpyUtterance,
+    vad_model: VAD,
+    segmentation_options: MetaDict,
+    mfcc_options: MetaDict = None,
+    vad_options: MetaDict = None,
+    allow_empty: bool = True,
+) -> typing.List[Segment]:
+    """
+    Split an utterance and its transcript into multiple transcribed utterances
+
+    Parameters
+    ----------
+    utterance: :class:`~kalpy.utterance.Utterance`
+        Utterance to split
+    vad_model: :class:`~speechbrain.pretrained.VAD` or None
+        VAD model from SpeechBrain, if None, then Kaldi's energy-based VAD is used
+    segmentation_options: dict[str, Any]
+        Segmentation options
+    mfcc_options: dict[str, Any], optional
+        MFCC options for energy based VAD
+    vad_options: dict[str, Any], optional
+        Options for energy based VAD
+
+    Returns
+    -------
+    list[:class:`~kalpy.utterance.Utterance`]
+        Split utterances
+    """
+    if vad_model is None:
+        segments = segment_utterance_vad(
+            utterance, mfcc_options, vad_options, segmentation_options
+        )
+    else:
+        segments = segment_utterance_vad_speech_brain(
+            utterance, vad_model, segmentation_options, allow_empty=allow_empty
+        )
+    if not segments:
+        return [utterance.segment]
+    return segments
+
+
 def segment_utterance_transcript(
     acoustic_model: AcousticModel,
     utterance: KalpyUtterance,
@@ -180,12 +222,9 @@ def segment_utterance_transcript(
         cmvn_computer = CmvnComputer()
         cmvn = cmvn_computer.compute_cmvn_from_features([utterance.mfccs])
     current_transcript = utterance.transcript
-    if vad_model is None:
-        segments = segment_utterance_vad(
-            utterance, mfcc_options, vad_options, segmentation_options
-        )
-    else:
-        segments = segment_utterance_vad_speech_brain(utterance, vad_model, segmentation_options)
+    segments = segment_utterance(
+        utterance, vad_model, segmentation_options, mfcc_options, vad_options
+    )
     if not segments:
         return [utterance]
     config = LatticeFasterDecoderConfig()
@@ -381,17 +420,16 @@ def merge_segments(
             or s.begin > merged_segments[-1].end + min_pause_duration
             or s.end - merged_segments[-1].begin > max_segment_length
         ):
-            if s.end - s.begin > min_pause_duration:
-                if merged_segments and snap_boundary_threshold:
-                    boundary_gap = s.begin - merged_segments[-1].end
-                    if boundary_gap < snap_boundary_threshold:
-                        half_boundary = boundary_gap / 2
-                    else:
-                        half_boundary = snap_boundary_threshold / 2
-                    merged_segments[-1].end += half_boundary
-                    s.begin -= half_boundary
+            if merged_segments and snap_boundary_threshold:
+                boundary_gap = s.begin - merged_segments[-1].end
+                if boundary_gap < snap_boundary_threshold:
+                    half_boundary = boundary_gap / 2
+                else:
+                    half_boundary = snap_boundary_threshold / 2
+                merged_segments[-1].end += half_boundary
+                s.begin -= half_boundary
 
-                merged_segments.append(s)
+            merged_segments.append(s)
         else:
             merged_segments[-1].end = s.end
     return [x for x in merged_segments if x.end - x.begin > min_segment_length]
@@ -402,17 +440,32 @@ def segment_utterance_vad(
     mfcc_options: MetaDict,
     vad_options: MetaDict,
     segmentation_options: MetaDict,
+    adaptive: bool = True,
+    allow_empty: bool = True,
 ) -> typing.List[Segment]:
+    mfcc_options["use_energy"] = True
+    mfcc_options["raw_energy"] = False
+    mfcc_options["dither"] = 0.0
+    mfcc_options["energy_floor"] = 0.0
     mfcc_computer = MfccComputer(**mfcc_options)
-    vad_computer = VadComputer(**vad_options)
     feats = mfcc_computer.compute_mfccs_for_export(utterance.segment, compress=False)
+    if adaptive:
+        vad_options["energy_mean_scale"] = 0.0
+        mfccs = feats.numpy()
+        print(mfccs[:, 0])
+        min_0, max_0 = mfccs[:, 0].min(), mfccs[:, 0].max()
+        range = max_0 - min_0
+        thresh = (range * 0.6) + min_0
+        print("THRESHOLD", thresh, min_0, max_0)
+        vad_options["energy_threshold"] = mfccs[:, 0].mean()
+    vad_computer = VadComputer(**vad_options)
     vad = vad_computer.compute_vad(feats).numpy()
     segments = get_initial_segmentation(vad, mfcc_computer.frame_shift)
     segments = merge_segments(
         segments,
         segmentation_options["close_th"],
         segmentation_options["large_chunk_size"],
-        segmentation_options["len_th"],
+        segmentation_options["len_th"] if allow_empty else 0.02,
     )
     new_segments = []
     for s in segments:
@@ -427,7 +480,10 @@ def segment_utterance_vad(
 
 
 def segment_utterance_vad_speech_brain(
-    utterance: KalpyUtterance, vad_model: VAD, segmentation_options: MetaDict
+    utterance: KalpyUtterance,
+    vad_model: VAD,
+    segmentation_options: MetaDict,
+    allow_empty: bool = True,
 ) -> typing.List[Segment]:
     y = utterance.segment.wave
     prob_chunks = vad_model.get_speech_prob_chunk(
@@ -444,12 +500,14 @@ def segment_utterance_vad_speech_brain(
 
     # Apply energy-based VAD on the detected speech segments
     if segmentation_options["apply_energy_VAD"]:
-        boundaries = vad_model.energy_VAD(
+        vad_boundaries = vad_model.energy_VAD(
             utterance.segment.file_path,
             boundaries,
             activation_th=segmentation_options["en_activation_th"],
             deactivation_th=segmentation_options["en_deactivation_th"],
         )
+        if vad_boundaries.size(0) != 0 or allow_empty:
+            boundaries = vad_boundaries
 
     # Merge short segments
     boundaries = vad_model.merge_close_segments(
@@ -457,13 +515,20 @@ def segment_utterance_vad_speech_brain(
     )
 
     # Remove short segments
-    boundaries = vad_model.remove_short_segments(boundaries, len_th=segmentation_options["len_th"])
+    filtered_boundaries = vad_model.remove_short_segments(
+        boundaries, len_th=segmentation_options["len_th"]
+    )
+    if filtered_boundaries.size(0) != 0 or allow_empty:
+        boundaries = filtered_boundaries
 
     # Double check speech segments
     if segmentation_options["double_check"]:
-        boundaries = vad_model.double_check_speech_segments(
+        checked_boundaries = vad_model.double_check_speech_segments(
             boundaries, utterance.segment.file_path, speech_th=segmentation_options["speech_th"]
         )
+        if checked_boundaries.size(0) != 0 or allow_empty:
+            boundaries = checked_boundaries
+    print(boundaries)
     boundaries[:, 0] -= round(segmentation_options["close_th"] / 2, 3)
     boundaries[:, 1] += round(segmentation_options["close_th"] / 2, 3)
     boundaries = boundaries.numpy()
