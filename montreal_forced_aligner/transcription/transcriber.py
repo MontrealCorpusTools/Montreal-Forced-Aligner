@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import collections
 import csv
+import gc
 import logging
 import os
 import shutil
@@ -79,6 +80,9 @@ from montreal_forced_aligner.transcription.multiprocessing import (
     DecodePhoneArguments,
     DecodePhoneFunction,
     EncoderASR,
+    FasterWhisperArguments,
+    FasterWhisperCudaArguments,
+    FasterWhisperFunction,
     FinalFmllrArguments,
     FinalFmllrFunction,
     FmllrRescoreArguments,
@@ -96,7 +100,9 @@ from montreal_forced_aligner.transcription.multiprocessing import (
     WhisperASR,
     WhisperAsrFunction,
     WhisperCudaArguments,
+    WhisperForConditionalGeneration,
     WhisperModel,
+    get_suppressed_tokens,
 )
 from montreal_forced_aligner.utils import (
     KaldiProcessWorker,
@@ -139,7 +145,7 @@ class TranscriptionEvaluationMixin:
         """
         logger.info("Evaluating transcripts...")
         ser, wer, cer = self.compute_wer()
-        logger.info(f"SER: {100 * ser:.2f}%, WER: {100 * wer:.2f}%, CER: {100 * cer:.2f}%")
+        logger.info(f"SER: {100 * ser: .2f}%, WER: {100 * wer: .2f}%, CER: {100 * cer: .2f}%")
 
     def save_transcription_evaluation(self, output_directory: Path) -> None:
         """
@@ -443,7 +449,7 @@ class TranscriberMixin(CorpusAligner, TranscriptionEvaluationMixin):
             TrainSpeakerLmFunction, arguments, total_count=self.num_speakers
         ):
             pass
-        logger.debug(f"Compiling speaker language models took {time.time() - begin:.3f} seconds")
+        logger.debug(f"Compiling speaker language models took {time.time() - begin: .3f} seconds")
 
     @property
     def model_directory(self) -> Path:
@@ -1272,7 +1278,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
         self.setup_acoustic_model()
         self.create_decoding_graph()
         self.initialized = True
-        logger.debug(f"Setup for transcription in {time.time() - begin:.3f} seconds")
+        logger.debug(f"Setup for transcription in {time.time() - begin: .3f} seconds")
 
     def export_files(
         self,
@@ -1428,7 +1434,7 @@ class WhisperTranscriber(HuggingFaceTranscriber):
     def __init__(self, architecture: str = "distil-large-v3", **kwargs):
         if not FOUND_WHISPER:
             logger.error(
-                "Could not import faster_whisper, please ensure it is installed via `pip install faster-whisper`"
+                "Could not import transformers, please ensure it is installed via `conda install transformers`"
             )
             sys.exit(1)
         if architecture not in self.ARCHITECTURES:
@@ -1444,9 +1450,41 @@ class WhisperTranscriber(HuggingFaceTranscriber):
         if self.cuda:
             return [
                 WhisperCudaArguments(
-                    j.id,
+                    1,
                     getattr(self, "session", ""),
-                    self.working_log_directory.joinpath(f"whisper_asr.{j.id}.log"),
+                    self.working_log_directory.joinpath("whisper_asr.log"),
+                    self.working_directory,
+                    f"openai/whisper-{self.architecture}",
+                    self.model,
+                    self.processor,
+                    self.language,
+                    {"beam_size": 5},
+                    self.tokenizer if self.evaluation_mode else None,
+                    self.cuda,
+                )
+            ]
+        return [
+            WhisperArguments(
+                j.id,
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
+                self.working_log_directory.joinpath(f"whisper_asr.{j.id}.log"),
+                self.working_directory,
+                config.TEMPORARY_DIRECTORY.joinpath("models", "whisper", self.architecture),
+                self.language,
+                {"beam_size": 5},
+                self.tokenizer if self.evaluation_mode else None,
+                self.cuda,
+            )
+            for j in self.jobs
+        ]
+
+    def faster_whisper_arguments(self):
+        if self.cuda:
+            return [
+                FasterWhisperCudaArguments(
+                    1,
+                    getattr(self, "session", ""),
+                    self.working_log_directory.joinpath("whisper_asr.log"),
                     self.working_directory,
                     self.model,
                     self.language,
@@ -1454,10 +1492,9 @@ class WhisperTranscriber(HuggingFaceTranscriber):
                     self.tokenizer if self.evaluation_mode else None,
                     self.cuda,
                 )
-                for j in self.jobs
             ]
         return [
-            WhisperArguments(
+            FasterWhisperArguments(
                 j.id,
                 getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"whisper_asr.{j.id}.log"),
@@ -1470,6 +1507,91 @@ class WhisperTranscriber(HuggingFaceTranscriber):
             )
             for j in self.jobs
         ]
+
+    def transcribe_utterances(self) -> None:
+        super().transcribe_utterances()
+        workflow = self.current_workflow
+        iso_code = self.language.iso_code
+        if iso_code is None:
+            raise ModelError(
+                f"The language {self.language.name} not in {', '.join(sorted(ISO_LANGUAGE_MAPPING.keys()))}"
+            )
+        try:
+            arguments = self.faster_whisper_arguments()
+            update_mapping = []
+            with self.session() as session:
+                num_utterances = session.query(Utterance).filter(Utterance.duration > 30).count()
+                if not num_utterances:
+                    return
+                if self.cuda:
+                    import torch
+
+                    run_opts = {"device": "cuda", "compute_type": "float16"}
+                    del self.model
+                    gc.collect()
+                    torch.cuda.empty_cache()
+                    self.model = WhisperModel(
+                        self.architecture,
+                        download_root=os.path.join(
+                            config.TEMPORARY_DIRECTORY,
+                            "models",
+                            "Whisper",
+                        ),
+                        local_files_only=False,
+                        cpu_threads=config.NUM_JOBS,
+                        num_workers=config.NUM_JOBS,
+                        **run_opts,
+                    )
+                    config.update_configuration(
+                        {
+                            "USE_THREADING": True,
+                            # "USE_MP": False,
+                        }
+                    )
+                else:
+                    # Download models if needed
+                    _ = WhisperModel(
+                        self.architecture,
+                        download_root=os.path.join(
+                            config.TEMPORARY_DIRECTORY,
+                            "models",
+                            "Whisper",
+                        ),
+                        local_files_only=False,
+                    )
+                logger.info("Transcribing longer utterances (>30 seconds)...")
+                for u_id, transcript in run_kaldi_function(
+                    FasterWhisperFunction, arguments, total_count=num_utterances
+                ):
+                    update_mapping.append({"id": u_id, "transcription_text": transcript})
+                if update_mapping:
+                    bulk_update(session, Utterance, update_mapping)
+                    session.commit()
+            if self.evaluation_mode:
+                os.makedirs(self.working_log_directory, exist_ok=True)
+                self.evaluate_transcriptions()
+            with self.session() as session:
+                session.query(CorpusWorkflow).filter(CorpusWorkflow.id == workflow.id).update(
+                    {"done": True}
+                )
+                session.commit()
+        except Exception as e:
+            with self.session() as session:
+                session.query(CorpusWorkflow).filter(CorpusWorkflow.id == workflow.id).update(
+                    {"dirty": True}
+                )
+                session.commit()
+            if isinstance(e, KaldiProcessingError):
+                log_kaldi_errors(e.error_logs)
+                e.update_log_file()
+            raise
+        finally:
+            if self.cuda:
+                import torch
+
+                del self.model
+                gc.collect()
+                torch.cuda.empty_cache()
 
     # noinspection PyTypeChecker
     def setup(self) -> None:
@@ -1489,32 +1611,54 @@ class WhisperTranscriber(HuggingFaceTranscriber):
                 f"The language {self.language.name} not in {', '.join(sorted(ISO_LANGUAGE_MAPPING.keys()))}"
             )
         try:
+            from transformers import WhisperProcessor
+
+            model_path = config.TEMPORARY_DIRECTORY.joinpath(
+                "models", "whisper", self.architecture
+            )
+            if not model_path.exists():
+                subprocess.call(
+                    [
+                        "python",
+                        "-m",
+                        "transformers.models.whisper.convert_openai_to_hf",
+                        "--checkpoint_path",
+                        self.architecture,
+                        "--pytorch_dump_folder_path",
+                        str(model_path),
+                        "--convert_preprocessor",
+                        "True",
+                    ]
+                )
             if self.cuda:
-                run_opts = {"device": "cuda", "compute_type": "int8"}
-                self.model = WhisperModel(
-                    self.architecture,
-                    download_root=os.path.join(
-                        config.TEMPORARY_DIRECTORY,
-                        "models",
-                        "Whisper",
-                    ),
-                    local_files_only=False,
-                    cpu_threads=config.NUM_JOBS,
-                    num_workers=config.NUM_JOBS,
-                    **run_opts,
+                import torch
+                from transformers.utils import is_flash_attn_2_available
+
+                self.processor = WhisperProcessor.from_pretrained(model_path)
+                suppressed = get_suppressed_tokens(self.processor)
+                attn_implementation = (
+                    "flash_attention_2" if is_flash_attn_2_available() else "sdpa"
                 )
+                logger.debug(f"Using {attn_implementation} for attention")
+
+                self.model = WhisperForConditionalGeneration.from_pretrained(
+                    model_path,
+                    torch_dtype=torch.float16,
+                    low_cpu_mem_usage=True,
+                    attn_implementation=attn_implementation,
+                )
+                self.model.generation_config.suppress_tokens += suppressed
+                self.model.generation_config.suppress_tokens = list(
+                    set(self.model.generation_config.suppress_tokens)
+                )
+                self.model.generation_config.suppress_tokens.sort()
+                if self.language.iso_code is not None:
+                    self.model.generation_config.forced_decoder_ids = None
+                self.model.to("cuda")
             else:
-                # Download models if needed
-                _ = WhisperModel(
-                    self.architecture,
-                    download_root=os.path.join(
-                        config.TEMPORARY_DIRECTORY,
-                        "models",
-                        "Whisper",
-                    ),
-                    local_files_only=False,
-                )
+                _ = WhisperForConditionalGeneration.from_pretrained(model_path)
         except Exception:
+            raise
             raise ModelError(
                 f"Could not download whisper model with {self.architecture} and {self.language.name}"
             )

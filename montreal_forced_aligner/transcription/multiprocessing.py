@@ -14,6 +14,8 @@ import typing
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict
 
+import numpy as np
+import sqlalchemy
 from _kalpy.fstext import ConstFst, VectorFst
 from _kalpy.lat import CompactLatticeWriter
 from _kalpy.lm import ConstArpaLm
@@ -34,9 +36,8 @@ from montreal_forced_aligner.abc import KaldiFunction, MetaDict
 from montreal_forced_aligner.data import Language, MfaArguments, PhoneType
 from montreal_forced_aligner.db import File, Job, Phone, SoundFile, Utterance
 from montreal_forced_aligner.diarization.multiprocessing import UtteranceFileLoader
-from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
-from montreal_forced_aligner.utils import thread_logger
+from montreal_forced_aligner.utils import mfa_open, thread_logger
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
@@ -50,6 +51,15 @@ try:
 except ImportError:
     WhisperModel = None
     FOUND_WHISPER = False
+
+try:
+    from transformers import WhisperForConditionalGeneration, WhisperProcessor
+
+    FOUND_TRANSFORMERS = True
+except ImportError:
+    WhisperForConditionalGeneration = None
+    WhisperProcessor = None
+    FOUND_TRANSFORMERS = False
 
 try:
     import warnings
@@ -91,7 +101,7 @@ __all__ = [
     "CreateHclgFunction",
     "FOUND_SPEECHBRAIN",
     "FOUND_WHISPER",
-    "WhisperModel",
+    "WhisperForConditionalGeneration",
     "WhisperASR",
     "EncoderASR",
     "SpeechbrainAsrArguments",
@@ -203,7 +213,7 @@ class WhisperArguments(MfaArguments):
     """
 
     working_directory: Path
-    model_size: str
+    model_id: str
     language: Language
     decode_options: MetaDict
     tokenizer: typing.Optional[SimpleTokenizer]
@@ -212,6 +222,58 @@ class WhisperArguments(MfaArguments):
 
 @dataclass
 class WhisperCudaArguments(MfaArguments):
+    """
+    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
+    log_path: :class:`~pathlib.Path`
+        Path to save logging information during the run
+    working_directory: :class:`~pathlib.Path`
+        Current working directory
+    """
+
+    working_directory: Path
+    model_id: str
+    model: WhisperForConditionalGeneration
+    processor: WhisperProcessor
+    language: Language
+    decode_options: MetaDict
+    tokenizer: typing.Optional[SimpleTokenizer]
+    cuda: bool
+
+
+@dataclass
+class FasterWhisperArguments(MfaArguments):
+    """
+    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
+    log_path: :class:`~pathlib.Path`
+        Path to save logging information during the run
+    working_directory: :class:`~pathlib.Path`
+        Current working directory
+    """
+
+    working_directory: Path
+    model_size: str
+    language: Language
+    decode_options: MetaDict
+    tokenizer: typing.Optional[SimpleTokenizer]
+    cuda: bool
+
+
+@dataclass
+class FasterWhisperCudaArguments(MfaArguments):
     """
     Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`
 
@@ -706,31 +768,141 @@ class SpeechbrainAsrFunction(KaldiFunction):
             raise exception
 
 
-def get_suppressed_tokens(model: WhisperModel) -> typing.List[int]:
+class WhisperUtteranceLoader(threading.Thread):
+    """
+    Helper process for loading utterance waveforms in parallel with embedding extraction
+
+    Parameters
+    ----------
+    job_name: int
+        Job identifier
+    session: sqlalchemy.orm.scoped_session
+        Session
+    return_q: :class:`~queue.Queue`
+        Queue to put waveforms
+    stopped: :class:`~threading.Event`
+        Check for whether the process to exit gracefully
+    finished_adding: :class:`~threading.Event`
+        Check for whether the worker has processed all utterances
+    """
+
+    def __init__(
+        self,
+        job_name: int,
+        session: sqlalchemy.orm.scoped_session,
+        return_q: queue.Queue,
+        stopped: threading.Event,
+        finished_adding: threading.Event,
+        processor: WhisperProcessor,
+    ):
+        super().__init__()
+        self.job_name = job_name
+        self.session = session
+        self.return_q = return_q
+        self.stopped = stopped
+        self.finished_adding = finished_adding
+        self.processor = processor
+
+    def run(self) -> None:
+        """
+        Run the waveform loading job
+        """
+
+        batch_size = config.NUM_JOBS
+
+        with self.session() as session:
+            try:
+                utterances = (
+                    session.query(
+                        Utterance.id,
+                        SoundFile.sound_file_path,
+                        Utterance.begin,
+                        Utterance.end,
+                        Utterance.channel,
+                    )
+                    .join(Utterance.file)
+                    .join(File.sound_file)
+                    .filter(Utterance.duration <= 30)
+                    .order_by(Utterance.duration.desc())
+                )
+                if not utterances.count():
+                    self.finished_adding.set()
+                    return
+                raw_audio = []
+                utterance_ids = []
+                for u in utterances:
+                    if self.stopped.is_set():
+                        break
+                    utterance_ids.append(u[0])
+                    segment = Segment(u[1], u[2], u[3], u[4])
+                    audio = segment.load_audio().astype(np.float32)
+                    raw_audio.append(audio)
+                    if len(utterance_ids) >= batch_size:
+                        inputs = self.processor(
+                            raw_audio,
+                            return_tensors="pt",
+                            truncation=False,
+                            return_attention_mask=True,
+                            sampling_rate=16_000,
+                        )
+                        self.return_q.put((utterance_ids, inputs))
+                        raw_audio = []
+                        utterance_ids = []
+                if utterance_ids:
+                    inputs = self.processor(
+                        raw_audio,
+                        return_tensors="pt",
+                        truncation=False,
+                        return_attention_mask=True,
+                        sampling_rate=16_000,
+                    )
+                    self.return_q.put((utterance_ids, inputs))
+            except Exception as e:
+                self.return_q.put(e)
+            finally:
+                self.finished_adding.set()
+
+
+def get_suppressed_tokens(
+    whisper_processor: typing.Union[WhisperProcessor, WhisperModel]
+) -> typing.List[int]:
     suppressed = []
-    i = 32
-    roman_numeral_pattern = re.compile(r"x+(vi+|i{2,}|i+v|x+)", flags=re.IGNORECASE)
-    while True:
-        token = model.hf_tokenizer.id_to_token(i)
-        if token is None:
-            break
-        if not token.startswith("<|"):
-            if (
-                not token.isalpha()
-                or re.search(r"\d", token)
-                or roman_numeral_pattern.search(token)
-                or re.search(r"[IXV]{2,}", token)
-                or re.search(r"i{2,}$", token)
-                or re.search(r"^(Ġ)?x{2,}", token)
-                or re.search(r"^(Ġ)?vi{2,}", token)
-                or re.match(r"^(Ġ)?[XV]$", token)
-            ):
-                suppressed.append(i)
-        i += 1
+    roman_numeral_pattern = re.compile(r"(x+(vi+|i{2,}|i+v|x+))", flags=re.IGNORECASE)
+    case_roman_numeral_pattern = re.compile(r"([IXV]{2,}|i{2,}$|^.?x{2,}|^.?vi{2,}|\d)")
+    if isinstance(whisper_processor, WhisperProcessor):
+        for token_id, token in whisper_processor.tokenizer.decoder.items():
+            if token_id in whisper_processor.tokenizer.all_special_ids:
+                continue
+            if not token:
+                continue
+            if not token.startswith("<|"):
+                if (
+                    not token.isalpha()
+                    or roman_numeral_pattern.search(token)
+                    or case_roman_numeral_pattern.search(token)
+                    or re.match(r"^.?[XV]$", token)
+                ):
+                    suppressed.append(token_id)
+    else:
+        i = 0
+        while True:
+            token = whisper_processor.hf_tokenizer.id_to_token(i)
+            if token is None:
+                break
+            if not token.startswith("<|"):
+                if (
+                    not token.isalpha()
+                    or roman_numeral_pattern.search(token)
+                    or case_roman_numeral_pattern.search(token)
+                    or re.match(r"^.?[XV]$", token)
+                ):
+                    suppressed.append(i)
+            i += 1
+
     return suppressed
 
 
-class WhisperAsrFunction(KaldiFunction):
+class FasterWhisperFunction(KaldiFunction):
     """
     Multiprocessing function for performing decoding
 
@@ -749,14 +921,14 @@ class WhisperAsrFunction(KaldiFunction):
         Arguments for the function
     """
 
-    def __init__(self, args: typing.Union[WhisperArguments, WhisperCudaArguments]):
+    def __init__(self, args: typing.Union[FasterWhisperArguments, FasterWhisperCudaArguments]):
         super().__init__(args)
         self.working_directory = args.working_directory
         self.cuda = args.cuda
         self.model = None
         self.language = args.language
         self.decode_options = args.decode_options
-        if isinstance(args, WhisperCudaArguments):
+        if isinstance(args, FasterWhisperCudaArguments):
             self.model = args.model
         else:
             self.model = args.model_size
@@ -767,7 +939,7 @@ class WhisperAsrFunction(KaldiFunction):
         model = self.model
         if isinstance(model, str):
             if self.cuda:
-                run_opts = {"device": "cuda", "compute_type": "int8"}
+                run_opts = {"device": "cuda", "compute_type": "float16"}
             else:
                 run_opts = {"device": "cpu"}
             model = WhisperModel(
@@ -798,6 +970,7 @@ class WhisperAsrFunction(KaldiFunction):
                 .join(Utterance.file)
                 .join(File.sound_file)
                 .filter(Utterance.job_id == self.job_name)
+                .filter(Utterance.duration > 30)
             )
             for u in utterances:
                 segment = Segment(u[1], u[2], u[3], u[4])
@@ -823,6 +996,124 @@ class WhisperAsrFunction(KaldiFunction):
                 if current_index > 50:
                     torch.cuda.empty_cache()
                     current_index = 0
+
+
+class WhisperAsrFunction(KaldiFunction):
+    """
+    Multiprocessing function for performing decoding
+
+    See Also
+    --------
+    :meth:`.TranscriberMixin.transcribe_utterances`
+        Main function that calls this function in parallel
+    :meth:`.TranscriberMixin.decode_arguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`gmm-latgen-faster`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeArguments`
+        Arguments for the function
+    """
+
+    def __init__(self, args: typing.Union[WhisperArguments, WhisperCudaArguments]):
+        super().__init__(args)
+        self.working_directory = args.working_directory
+        self.cuda = args.cuda
+        self.model_id = args.model_id
+        self.model = None
+        self.processor = None
+        self.language = args.language
+        self.decode_options = args.decode_options
+        if isinstance(args, WhisperCudaArguments):
+            self.model = args.model
+            self.processor = args.processor
+        self.tokenizer = args.tokenizer
+
+    def _run(self) -> None:
+        """Run the function"""
+        processor = self.processor
+        if processor is None:
+            processor = WhisperProcessor.from_pretrained(self.model_id)
+        processor.tokenizer.add_prefix_space = False
+        language = None
+        if self.language is not Language.unknown:
+            language = self.language.iso_code
+        model = self.model
+        if model is None:
+            suppressed = get_suppressed_tokens(processor)
+            model = WhisperForConditionalGeneration.from_pretrained(self.model_id)
+            model.generation_config.suppress_tokens += suppressed
+            model.generation_config.suppress_tokens = list(
+                set(model.generation_config.suppress_tokens)
+            )
+            model.generation_config.suppress_tokens.sort()
+            if language is not None:
+                model.generation_config.forced_decoder_ids = None
+            if self.cuda:
+                model.to("cuda")
+        return_q = queue.Queue(2)
+        finished_adding = threading.Event()
+        stopped = threading.Event()
+        loader = WhisperUtteranceLoader(
+            self.job_name,
+            self.session,
+            return_q,
+            stopped,
+            finished_adding,
+            processor,
+        )
+        loader.start()
+        exception = None
+        current_index = 0
+        while True:
+            try:
+                batch = return_q.get(timeout=1)
+            except queue.Empty:
+                if finished_adding.is_set():
+                    break
+                continue
+            if stopped.is_set():
+                continue
+            if isinstance(batch, Exception):
+                exception = batch
+                stopped.set()
+                continue
+            utterance_ids, inputs = batch
+            if self.cuda:
+                inputs = inputs.to("cuda", torch.float16)
+            result = model.generate(
+                **inputs,
+                condition_on_prev_tokens=False,
+                temperature=(0.0, 0.2, 0.4, 0.6, 0.8, 1.0),
+                logprob_threshold=-1.0,
+                compression_ratio_threshold=1.35,
+                return_timestamps=False,
+                language=language,
+                pad_token_id=processor.tokenizer.eos_token_id,
+            )
+
+            decoded = processor.batch_decode(
+                result, skip_special_tokens=True, clean_up_tokenization_spaces=True
+            )
+            for i, u_id in enumerate(utterance_ids):
+                text = decoded[i]
+                if self.tokenizer is not None:
+                    text = self.tokenizer(text)[0]
+                self.callback((int(u_id), text))
+            del utterance_ids
+            del inputs
+            del result
+            del decoded
+            current_index += 1
+            if current_index > 10:
+                torch.cuda.empty_cache()
+                current_index = 0
+
+        loader.join()
+        if exception:
+            raise exception
 
 
 class LmRescoreFunction(KaldiFunction):

@@ -94,7 +94,7 @@ def test_transcribe_whisper(
     db_setup,
 ):
     if not FOUND_WHISPER:
-        pytest.skip("Faster-whisper not installed")
+        pytest.skip("transformers not installed")
     output_path = generated_dir.joinpath("transcribe_test_whisper")
     command = [
         "transcribe_whisper",
@@ -107,7 +107,7 @@ def test_transcribe_whisper(
         "--clean",
         "--no_debug",
         "--evaluate",
-        "--no_cuda",
+        "--cuda",
         "--use_postgres",
     ]
     command = [str(x) for x in command]

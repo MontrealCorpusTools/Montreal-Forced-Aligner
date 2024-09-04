@@ -51,6 +51,8 @@ dependencies:
   - sudachipy
   - sudachidict-core
   - spacy-pkuseg
+  - transformers
+  - tokenizers
   - pip:
       - build
       - twine

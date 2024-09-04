@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 
 import requests
 import rich_click as click
@@ -20,14 +19,8 @@ def anchor_cli(*args, **kwargs) -> None:  # pragma: no cover
     """
     Launch Anchor Annotator (if installed)
     """
-    try:
-        from anchor.command_line import main
-    except ImportError as e:
-        logger.error(f"Exception: {e}")
-        logger.error(
-            "Anchor annotator utility is not installed, please install it via `conda install -c conda-forge anchor-annotator`."
-        )
-        sys.exit(1)
+    from anchor.command_line import main  # noqa
+
     if config.VERBOSE:
         try:
             from anchor._version import version
