@@ -41,16 +41,121 @@ try:
         torch_logger = logging.getLogger("speechbrain.utils.train_logger")
         torch_logger.setLevel(logging.ERROR)
         import torch
+        import torchaudio
 
         try:
             from speechbrain.pretrained import VAD
         except ImportError:  # speechbrain 1.0
             from speechbrain.inference.VAD import VAD
 
+        class MfaVAD(VAD):
+            def energy_VAD(
+                self,
+                audio_file: typing.Union[str, Path, np.ndarray],
+                boundaries,
+                activation_th=0.5,
+                deactivation_th=0.0,
+                eps=1e-6,
+            ):
+                """Applies energy-based VAD within the detected speech segments.The neural
+                network VAD often creates longer segments and tends to merge segments that
+                are close with each other.
+
+                The energy VAD post-processes can be useful for having a fine-grained voice
+                activity detection.
+
+                The energy VAD computes the energy within the small chunks. The energy is
+                normalized within the segment to have mean 0.5 and +-0.5 of std.
+                This helps to set the energy threshold.
+
+                Arguments
+                ---------
+                audio_file: path
+                    Path of the audio file containing the recording. The file is read
+                    with torchaudio.
+                boundaries: torch.Tensor
+                    torch.Tensor containing the speech boundaries. It can be derived using the
+                    get_boundaries method.
+                activation_th: float
+                    A new speech segment is started it the energy is above activation_th.
+                deactivation_th: float
+                    The segment is considered ended when the energy is <= deactivation_th.
+                eps: float
+                    Small constant for numerical stability.
+
+                Returns
+                -------
+                new_boundaries
+                    The new boundaries that are post-processed by the energy VAD.
+                """
+                if not isinstance(audio_file, np.ndarray):
+                    # Getting the total size of the input file
+                    sample_rate, audio_len = self._get_audio_info(audio_file)
+
+                    if sample_rate != self.sample_rate:
+                        raise ValueError(
+                            "The detected sample rate is different from that set in the hparam file"
+                        )
+                else:
+                    sample_rate = self.sample_rate
+
+                # Computing the chunk length of the energy window
+                chunk_len = int(self.time_resolution * sample_rate)
+                new_boundaries = []
+
+                # Processing speech segments
+                for i in range(boundaries.shape[0]):
+                    begin_sample = int(boundaries[i, 0] * sample_rate)
+                    end_sample = int(boundaries[i, 1] * sample_rate)
+                    seg_len = end_sample - begin_sample
+
+                    if not isinstance(audio_file, np.ndarray):
+                        # Reading the speech segment
+                        segment, _ = torchaudio.load(
+                            audio_file, frame_offset=begin_sample, num_frames=seg_len
+                        )
+                    else:
+                        segment = audio_file[begin_sample : begin_sample + seg_len]
+
+                    # Create chunks
+                    segment_chunks = self.create_chunks(
+                        segment, chunk_size=chunk_len, chunk_stride=chunk_len
+                    )
+
+                    # Energy computation within each chunk
+                    energy_chunks = segment_chunks.abs().sum(-1) + eps
+                    energy_chunks = energy_chunks.log()
+
+                    # Energy normalization
+                    energy_chunks = (
+                        (energy_chunks - energy_chunks.mean()) / (2 * energy_chunks.std())
+                    ) + 0.5
+                    energy_chunks = energy_chunks.unsqueeze(0).unsqueeze(2)
+
+                    # Apply threshold based on the energy value
+                    energy_vad = self.apply_threshold(
+                        energy_chunks,
+                        activation_th=activation_th,
+                        deactivation_th=deactivation_th,
+                    )
+
+                    # Get the boundaries
+                    energy_boundaries = self.get_boundaries(energy_vad, output_value="seconds")
+
+                    # Get the final boundaries in the original signal
+                    for j in range(energy_boundaries.shape[0]):
+                        start_en = boundaries[i, 0] + energy_boundaries[j, 0]
+                        end_end = boundaries[i, 0] + energy_boundaries[j, 1]
+                        new_boundaries.append([start_en, end_end])
+
+                # Convert boundaries to tensor
+                new_boundaries = torch.FloatTensor(new_boundaries).to(boundaries.device)
+                return new_boundaries
+
     FOUND_SPEECHBRAIN = True
 except (ImportError, OSError):
     FOUND_SPEECHBRAIN = False
-    VAD = None
+    MfaVAD = None
 
 if TYPE_CHECKING:
     SpeakerCharacterType = Union[str, int]
@@ -95,8 +200,8 @@ class SegmentTranscriptArguments(MfaArguments):
 
 
 def segment_utterance(
-    utterance: KalpyUtterance,
-    vad_model: VAD,
+    segment: Segment,
+    vad_model: MfaVAD,
     segmentation_options: MetaDict,
     mfcc_options: MetaDict = None,
     vad_options: MetaDict = None,
@@ -107,9 +212,9 @@ def segment_utterance(
 
     Parameters
     ----------
-    utterance: :class:`~kalpy.utterance.Utterance`
-        Utterance to split
-    vad_model: :class:`~speechbrain.pretrained.VAD` or None
+    segment: :class:`~kalpy.data.Segment`
+        Segment to split
+    vad_model: :class:`~montreal_forced_aligner.vad.multiprocessing.VAD` or None
         VAD model from SpeechBrain, if None, then Kaldi's energy-based VAD is used
     segmentation_options: dict[str, Any]
         Segmentation options
@@ -120,19 +225,17 @@ def segment_utterance(
 
     Returns
     -------
-    list[:class:`~kalpy.utterance.Utterance`]
-        Split utterances
+    list[:class:`~kalpy.data.Segment`]
+        Split segments
     """
     if vad_model is None:
-        segments = segment_utterance_vad(
-            utterance, mfcc_options, vad_options, segmentation_options
-        )
+        segments = segment_utterance_vad(segment, mfcc_options, vad_options, segmentation_options)
     else:
         segments = segment_utterance_vad_speech_brain(
-            utterance, vad_model, segmentation_options, allow_empty=allow_empty
+            segment, vad_model, segmentation_options, allow_empty=allow_empty
         )
     if not segments:
-        return [utterance.segment]
+        return [segment]
     return segments
 
 
@@ -140,7 +243,7 @@ def segment_utterance_transcript(
     acoustic_model: AcousticModel,
     utterance: KalpyUtterance,
     lexicon_compiler: LexiconCompiler,
-    vad_model: VAD,
+    vad_model: MfaVAD,
     segmentation_options: MetaDict,
     cmvn: DoubleMatrix = None,
     fmllr_trans: FloatMatrix = None,
@@ -223,7 +326,7 @@ def segment_utterance_transcript(
         cmvn = cmvn_computer.compute_cmvn_from_features([utterance.mfccs])
     current_transcript = utterance.transcript
     segments = segment_utterance(
-        utterance, vad_model, segmentation_options, mfcc_options, vad_options
+        utterance.segment, vad_model, segmentation_options, mfcc_options, vad_options
     )
     if not segments:
         return [utterance]
@@ -436,7 +539,7 @@ def merge_segments(
 
 
 def segment_utterance_vad(
-    utterance: KalpyUtterance,
+    segment: Segment,
     mfcc_options: MetaDict,
     vad_options: MetaDict,
     segmentation_options: MetaDict,
@@ -448,15 +551,10 @@ def segment_utterance_vad(
     mfcc_options["dither"] = 0.0
     mfcc_options["energy_floor"] = 0.0
     mfcc_computer = MfccComputer(**mfcc_options)
-    feats = mfcc_computer.compute_mfccs_for_export(utterance.segment, compress=False)
+    feats = mfcc_computer.compute_mfccs_for_export(segment, compress=False)
     if adaptive:
         vad_options["energy_mean_scale"] = 0.0
         mfccs = feats.numpy()
-        print(mfccs[:, 0])
-        min_0, max_0 = mfccs[:, 0].min(), mfccs[:, 0].max()
-        range = max_0 - min_0
-        thresh = (range * 0.6) + min_0
-        print("THRESHOLD", thresh, min_0, max_0)
         vad_options["energy_threshold"] = mfccs[:, 0].mean()
     vad_computer = VadComputer(**vad_options)
     vad = vad_computer.compute_vad(feats).numpy()
@@ -470,38 +568,37 @@ def segment_utterance_vad(
     new_segments = []
     for s in segments:
         seg = Segment(
-            utterance.segment.file_path,
-            s.begin + utterance.segment.begin,
-            s.end + utterance.segment.begin,
-            utterance.segment.channel,
+            segment.file_path,
+            s.begin + segment.begin,
+            s.end + segment.begin,
+            segment.channel,
         )
         new_segments.append(seg)
     return new_segments
 
 
 def segment_utterance_vad_speech_brain(
-    utterance: KalpyUtterance,
-    vad_model: VAD,
+    segment: Segment,
+    vad_model: MfaVAD,
     segmentation_options: MetaDict,
     allow_empty: bool = True,
 ) -> typing.List[Segment]:
-    y = utterance.segment.wave
-    prob_chunks = vad_model.get_speech_prob_chunk(
-        torch.tensor(y[np.newaxis, :], device=vad_model.device)
-    ).cpu()
+    y = segment.wave
+    prob_chunks = vad_model.get_speech_prob_chunk(torch.tensor(y[np.newaxis, :])).float()
     prob_th = vad_model.apply_threshold(
         prob_chunks,
         activation_th=segmentation_options["activation_th"],
         deactivation_th=segmentation_options["deactivation_th"],
     ).float()
-    # Compute the boundaries of the speech segments
-    boundaries = vad_model.get_boundaries(prob_th, output_value="seconds")
-    boundaries += utterance.segment.begin
 
+    # Compute the boundaries of the speech segments
+    boundaries = vad_model.get_boundaries(prob_th, output_value="seconds").cpu()
+    if segment.begin is not None:
+        boundaries += segment.begin
     # Apply energy-based VAD on the detected speech segments
     if segmentation_options["apply_energy_VAD"]:
         vad_boundaries = vad_model.energy_VAD(
-            utterance.segment.file_path,
+            segment.file_path,
             boundaries,
             activation_th=segmentation_options["en_activation_th"],
             deactivation_th=segmentation_options["en_deactivation_th"],
@@ -524,22 +621,20 @@ def segment_utterance_vad_speech_brain(
     # Double check speech segments
     if segmentation_options["double_check"]:
         checked_boundaries = vad_model.double_check_speech_segments(
-            boundaries, utterance.segment.file_path, speech_th=segmentation_options["speech_th"]
+            boundaries, segment.file_path, speech_th=segmentation_options["speech_th"]
         )
         if checked_boundaries.size(0) != 0 or allow_empty:
             boundaries = checked_boundaries
-    print(boundaries)
     boundaries[:, 0] -= round(segmentation_options["close_th"] / 2, 3)
     boundaries[:, 1] += round(segmentation_options["close_th"] / 2, 3)
-    boundaries = boundaries.numpy()
     segments = []
-    for i in range(boundaries.shape[0]):
+    for i in range(boundaries.numpy().shape[0]):
         begin, end = boundaries[i]
-        begin = max(begin, 0)
-        end = min(end, utterance.segment.end)
-        seg = Segment(
-            utterance.segment.file_path, float(begin), float(end), utterance.segment.channel
-        )
+        if i == 0:
+            begin = max(begin, 0)
+        if i == boundaries.numpy().shape[0] - 1:
+            end = min(end, segment.end)
+        seg = Segment(segment.file_path, float(begin), float(end), segment.channel)
         segments.append(seg)
     return segments
 

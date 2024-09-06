@@ -38,19 +38,22 @@ from montreal_forced_aligner.db import File, Job, Phone, SoundFile, Utterance
 from montreal_forced_aligner.diarization.multiprocessing import UtteranceFileLoader
 from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
 from montreal_forced_aligner.utils import mfa_open, thread_logger
+from montreal_forced_aligner.vad.multiprocessing import segment_utterance_vad_speech_brain
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
+
+    from montreal_forced_aligner.vad.segmenter import SpeechbrainSegmenterMixin
 else:
     from dataclassy import dataclass
 
 try:
     from faster_whisper import WhisperModel
 
-    FOUND_WHISPER = True
+    FOUND_FASTER_WHISPER = True
 except ImportError:
     WhisperModel = None
-    FOUND_WHISPER = False
+    FOUND_FASTER_WHISPER = False
 
 try:
     from transformers import WhisperForConditionalGeneration, WhisperProcessor
@@ -100,7 +103,8 @@ __all__ = [
     "LmRescoreFunction",
     "CreateHclgFunction",
     "FOUND_SPEECHBRAIN",
-    "FOUND_WHISPER",
+    "FOUND_FASTER_WHISPER",
+    "FOUND_TRANSFORMERS",
     "WhisperForConditionalGeneration",
     "WhisperASR",
     "EncoderASR",
@@ -218,6 +222,7 @@ class WhisperArguments(MfaArguments):
     decode_options: MetaDict
     tokenizer: typing.Optional[SimpleTokenizer]
     cuda: bool
+    export_directory: typing.Optional[Path]
 
 
 @dataclass
@@ -241,10 +246,12 @@ class WhisperCudaArguments(MfaArguments):
     model_id: str
     model: WhisperForConditionalGeneration
     processor: WhisperProcessor
+    segmenter: SpeechbrainSegmenterMixin
     language: Language
     decode_options: MetaDict
     tokenizer: typing.Optional[SimpleTokenizer]
     cuda: bool
+    export_directory: typing.Optional[Path]
 
 
 @dataclass
@@ -270,6 +277,7 @@ class FasterWhisperArguments(MfaArguments):
     decode_options: MetaDict
     tokenizer: typing.Optional[SimpleTokenizer]
     cuda: bool
+    export_directory: typing.Optional[Path]
 
 
 @dataclass
@@ -295,6 +303,7 @@ class FasterWhisperCudaArguments(MfaArguments):
     decode_options: MetaDict
     tokenizer: typing.Optional[SimpleTokenizer]
     cuda: bool
+    export_directory: typing.Optional[Path]
 
 
 @dataclass
@@ -703,6 +712,9 @@ class SpeechbrainAsrFunction(KaldiFunction):
                             "EncoderASR",
                             model,
                         ),
+                        huggingface_cache_dir=os.path.join(
+                            config.TEMPORARY_DIRECTORY, "models", "hf_cache"
+                        ),
                         run_opts=run_opts,
                     )
                 else:
@@ -714,6 +726,9 @@ class SpeechbrainAsrFunction(KaldiFunction):
                             "models",
                             "WhisperASR",
                             model,
+                        ),
+                        huggingface_cache_dir=os.path.join(
+                            config.TEMPORARY_DIRECTORY, "models", "hf_cache"
                         ),
                         run_opts=run_opts,
                     )
@@ -794,6 +809,9 @@ class WhisperUtteranceLoader(threading.Thread):
         stopped: threading.Event,
         finished_adding: threading.Event,
         processor: WhisperProcessor,
+        segmenter: SpeechbrainSegmenterMixin = None,
+        export_directory: Path = None,
+        device: str = "cpu",
     ):
         super().__init__()
         self.job_name = job_name
@@ -802,6 +820,9 @@ class WhisperUtteranceLoader(threading.Thread):
         self.stopped = stopped
         self.finished_adding = finished_adding
         self.processor = processor
+        self.segmenter = segmenter
+        self.export_directory = export_directory
+        self.device = device
 
     def run(self) -> None:
         """
@@ -819,44 +840,87 @@ class WhisperUtteranceLoader(threading.Thread):
                         Utterance.begin,
                         Utterance.end,
                         Utterance.channel,
+                        File.relative_path,
+                        File.name,
                     )
                     .join(Utterance.file)
                     .join(File.sound_file)
-                    .filter(Utterance.duration <= 30)
-                    .order_by(Utterance.duration.desc())
                 )
+                if self.segmenter is None:
+                    utterances = utterances.filter(Utterance.duration <= 30)
+                    utterances = utterances.order_by(Utterance.duration.desc())
+                else:
+                    utterances = utterances.order_by(Utterance.speaker_id)
                 if not utterances.count():
                     self.finished_adding.set()
                     return
                 raw_audio = []
                 utterance_ids = []
+                export_paths = []
                 for u in utterances:
                     if self.stopped.is_set():
                         break
-                    utterance_ids.append(u[0])
                     segment = Segment(u[1], u[2], u[3], u[4])
-                    audio = segment.load_audio().astype(np.float32)
-                    raw_audio.append(audio)
-                    if len(utterance_ids) >= batch_size:
+                    export_path = None
+                    if self.export_directory is not None:
+                        export_path = self.export_directory.joinpath(u[5], u[6] + ".lab")
+                        if export_path.exists():
+                            continue
+                    utterance_ids.append(u[0])
+                    if self.segmenter is None:
+                        audio = segment.load_audio().astype(np.float32)
+                        raw_audio.append(audio)
+                        export_paths.append(export_path)
+                        if len(utterance_ids) >= batch_size:
+                            inputs = self.processor(
+                                raw_audio,
+                                return_tensors="pt",
+                                truncation=True,
+                                return_attention_mask=True,
+                                sampling_rate=16_000,
+                                device=self.device,
+                            )
+                            self.return_q.put((utterance_ids, inputs))
+                            raw_audio = []
+                            utterance_ids = []
+                            export_paths = []
+                    else:
+                        segments = segment_utterance_vad_speech_brain(
+                            segment,
+                            self.segmenter.vad_model,
+                            self.segmenter.segmentation_options,
+                            allow_empty=True,
+                        )
+                        if not segments:
+                            continue
+                        if len(segments) == 1:
+                            raw_audio.append(segment.wave.astype(np.float32))
+                        else:
+                            for s in segments:
+                                raw_audio.append(s.wave.astype(np.float32))
                         inputs = self.processor(
                             raw_audio,
                             return_tensors="pt",
-                            truncation=False,
+                            truncation=True,
                             return_attention_mask=True,
                             sampling_rate=16_000,
+                            device=self.device,
                         )
-                        self.return_q.put((utterance_ids, inputs))
+                        self.return_q.put((u[0], inputs, export_path))
                         raw_audio = []
                         utterance_ids = []
+                        export_paths = []
+
                 if utterance_ids:
                     inputs = self.processor(
                         raw_audio,
                         return_tensors="pt",
-                        truncation=False,
+                        truncation=True,
                         return_attention_mask=True,
                         sampling_rate=16_000,
+                        device=self.device,
                     )
-                    self.return_q.put((utterance_ids, inputs))
+                    self.return_q.put((utterance_ids, inputs, export_paths))
             except Exception as e:
                 self.return_q.put(e)
             finally:
@@ -867,38 +931,42 @@ def get_suppressed_tokens(
     whisper_processor: typing.Union[WhisperProcessor, WhisperModel]
 ) -> typing.List[int]:
     suppressed = []
-    roman_numeral_pattern = re.compile(r"(x+(vi+|i{2,}|i+v|x+))", flags=re.IGNORECASE)
-    case_roman_numeral_pattern = re.compile(r"([IXV]{2,}|i{2,}$|^.?x{2,}|^.?vi{2,}|\d)")
+    import unicodedata
+
+    alpha_pattern = re.compile(r"\w", flags=re.UNICODE)
+    roman_numeral_pattern = re.compile(r"^(x+(vi+|i+|i?v|x+))$", flags=re.IGNORECASE)
+    case_roman_numeral_pattern = re.compile(r"(^[IXV]{2,}$|^[xvi]+i$|^x{2,}$|\d)")
+
+    def _should_suppress(t):
+        if t.startswith("<|"):
+            return False
+        if any(unicodedata.category(c) in {"Mn", "Mc"} for c in t):
+            return False
+        if (
+            roman_numeral_pattern.search(t)
+            or case_roman_numeral_pattern.search(t)
+            or re.match(r"^[XV]$", t)
+            or not alpha_pattern.search(t)
+        ):
+            return True
+        return False
+
     if isinstance(whisper_processor, WhisperProcessor):
-        for token_id, token in whisper_processor.tokenizer.decoder.items():
-            if token_id in whisper_processor.tokenizer.all_special_ids:
-                continue
+        for token_id in range(whisper_processor.tokenizer.vocab_size):
+            token = whisper_processor.tokenizer.convert_tokens_to_string(
+                whisper_processor.tokenizer.convert_ids_to_tokens([token_id])
+            ).strip()
             if not token:
                 continue
-            if not token.startswith("<|"):
-                if (
-                    not token.isalpha()
-                    or roman_numeral_pattern.search(token)
-                    or case_roman_numeral_pattern.search(token)
-                    or re.match(r"^.?[XV]$", token)
-                ):
-                    suppressed.append(token_id)
+            if _should_suppress(token):
+                suppressed.append(token_id)
     else:
-        i = 0
-        while True:
-            token = whisper_processor.hf_tokenizer.id_to_token(i)
-            if token is None:
-                break
-            if not token.startswith("<|"):
-                if (
-                    not token.isalpha()
-                    or roman_numeral_pattern.search(token)
-                    or case_roman_numeral_pattern.search(token)
-                    or re.match(r"^.?[XV]$", token)
-                ):
-                    suppressed.append(i)
-            i += 1
-
+        for token_id in range(whisper_processor.hf_tokenizer.eot):
+            token = whisper_processor.hf_tokenizer.decode([token_id]).strip()
+            if not token:
+                continue
+            if _should_suppress(token):
+                suppressed.append(token_id)
     return suppressed
 
 
@@ -984,9 +1052,6 @@ class FasterWhisperFunction(KaldiFunction):
                     **transcribe_opts,
                 )
                 text = " ".join([x.text for x in segments])
-                del waveform
-                del segments
-                del info
                 if self.tokenizer is not None:
                     text = self.tokenizer(text)[0]
                 self.callback((u[0], text))
@@ -1020,15 +1085,19 @@ class WhisperAsrFunction(KaldiFunction):
     def __init__(self, args: typing.Union[WhisperArguments, WhisperCudaArguments]):
         super().__init__(args)
         self.working_directory = args.working_directory
+        self.working_directory = args.working_directory
         self.cuda = args.cuda
         self.model_id = args.model_id
         self.model = None
         self.processor = None
+        self.segmenter = None
         self.language = args.language
         self.decode_options = args.decode_options
+        self.export_directory = args.export_directory
         if isinstance(args, WhisperCudaArguments):
             self.model = args.model
             self.processor = args.processor
+            self.segmenter = args.segmenter
         self.tokenizer = args.tokenizer
 
     def _run(self) -> None:
@@ -1053,6 +1122,7 @@ class WhisperAsrFunction(KaldiFunction):
                 model.generation_config.forced_decoder_ids = None
             if self.cuda:
                 model.to("cuda")
+        special_ids = processor.tokenizer.all_special_ids
         return_q = queue.Queue(2)
         finished_adding = threading.Event()
         stopped = threading.Event()
@@ -1063,10 +1133,16 @@ class WhisperAsrFunction(KaldiFunction):
             stopped,
             finished_adding,
             processor,
+            segmenter=self.segmenter,
+            export_directory=self.export_directory,
+            device="cuda" if self.cuda else "cpu",
         )
         loader.start()
         exception = None
         current_index = 0
+        cache_threshold = 10
+        if self.segmenter is None:
+            cache_threshold = 100
         while True:
             try:
                 batch = return_q.get(timeout=1)
@@ -1080,34 +1156,47 @@ class WhisperAsrFunction(KaldiFunction):
                 exception = batch
                 stopped.set()
                 continue
-            utterance_ids, inputs = batch
-            if self.cuda:
-                inputs = inputs.to("cuda", torch.float16)
+            utterance_ids, inputs, export_paths = batch
+            inputs = inputs.to(model.device, model.dtype)
             result = model.generate(
                 **inputs,
                 condition_on_prev_tokens=False,
-                temperature=(0.0, 0.2, 0.4, 0.6, 0.8, 1.0),
+                temperature=(0.0, 0.2, 0.4, 0.6, 0.8, 1.0) if self.segmenter is None else 0.0,
                 logprob_threshold=-1.0,
                 compression_ratio_threshold=1.35,
                 return_timestamps=False,
                 language=language,
-                pad_token_id=processor.tokenizer.eos_token_id,
             )
 
-            decoded = processor.batch_decode(
-                result, skip_special_tokens=True, clean_up_tokenization_spaces=True
-            )
-            for i, u_id in enumerate(utterance_ids):
-                text = decoded[i]
+            decoded = []
+            for r in result:
+                r = [t for t in r if t not in special_ids]
+                tokens = processor.tokenizer.convert_tokens_to_string(
+                    processor.tokenizer.convert_ids_to_tokens(r)
+                ).strip()
+                decoded.append(tokens)
+            if isinstance(utterance_ids, list):
+                for i, u_id in enumerate(utterance_ids):
+                    text = decoded[i]
+                    if self.tokenizer is not None:
+                        text = self.tokenizer(text)[0]
+                    if export_paths[i] is not None:
+                        export_paths[i].parent.mkdir(parents=True, exist_ok=True)
+                        with mfa_open(export_paths[i], "w") as f:
+                            f.write(text)
+                    self.callback((int(u_id), text))
+            else:
+                text = " ".join(decoded)
                 if self.tokenizer is not None:
                     text = self.tokenizer(text)[0]
-                self.callback((int(u_id), text))
-            del utterance_ids
-            del inputs
-            del result
-            del decoded
+
+                if export_paths is not None:
+                    export_paths.parent.mkdir(parents=True, exist_ok=True)
+                    with mfa_open(export_paths, "w") as f:
+                        f.write(text)
+                self.callback((utterance_ids, text))
             current_index += 1
-            if current_index > 10:
+            if False and current_index > cache_threshold:
                 torch.cuda.empty_cache()
                 current_index = 0
 

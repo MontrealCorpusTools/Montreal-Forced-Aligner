@@ -283,7 +283,8 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
                     )
                 except Exception:
                     raise DatabaseError(
-                        f"There was an error connecting to the {config.CURRENT_PROFILE_NAME} MFA database server. "
+                        f"There was an error connecting to the {config.CURRENT_PROFILE_NAME} MFA database server "
+                        f"at {config.database_socket()}. "
                         "Please ensure the server is initialized (mfa server init) or running (mfa server start)"
                     )
                 exist_check = False
@@ -304,7 +305,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
                 conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS vector"))
                 conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
                 conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"))
-                conn.execute(sqlalchemy.text(f"select setseed({config.SEED/32768})"))
+                conn.execute(sqlalchemy.text(f"select setseed({config.SEED / 32768})"))
                 conn.commit()
 
         MfaSqlBase.metadata.create_all(self.db_engine)

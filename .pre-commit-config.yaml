@@ -1,10 +1,24 @@
 repos:
+  - repo: local
+    hooks:
+      - id: profile-check
+        name: no profiling
+        entry: '@profile'
+        language: pygrep
+        types: [ python ]
+      - id: print-check
+        name: no print statements
+        entry: '\bprint\('
+        language: pygrep
+        types: [ python ]
+        files: ^montreal_forced_aligner/
+        exclude: ^montreal_forced_aligner/command_line/transcribe.py
   - repo: https://github.com/psf/black
     rev: 23.9.1
     hooks:
       - id: black
   - repo: https://github.com/pycqa/flake8
-    rev: 6.0.0
+    rev: 7.0.0
     hooks:
       - id: flake8
         additional_dependencies:

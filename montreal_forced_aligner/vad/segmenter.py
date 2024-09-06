@@ -39,7 +39,7 @@ from montreal_forced_aligner.transcription.transcriber import TranscriberMixin
 from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
 from montreal_forced_aligner.vad.multiprocessing import (
     FOUND_SPEECHBRAIN,
-    VAD,
+    MfaVAD,
     SegmentTranscriptArguments,
     SegmentTranscriptFunction,
     SegmentVadArguments,
@@ -58,7 +58,7 @@ logger = logging.getLogger("mfa")
 class SpeechbrainSegmenterMixin:
     def __init__(
         self,
-        segment_padding: float = 0.01,
+        segment_padding: float = 0.1,
         large_chunk_size: float = 30,
         small_chunk_size: float = 0.05,
         overlap_small_chunk: bool = False,
@@ -72,10 +72,9 @@ class SpeechbrainSegmenterMixin:
         en_deactivation_th: float = 0.4,
         speech_th: float = 0.5,
         cuda: bool = False,
-        speechbrain: bool = False,
         **kwargs,
     ):
-        if speechbrain and not FOUND_SPEECHBRAIN:
+        if not FOUND_SPEECHBRAIN:
             logger.error(
                 "Could not import speechbrain, please ensure it is installed via `pip install speechbrain`"
             )
@@ -94,18 +93,17 @@ class SpeechbrainSegmenterMixin:
         self.en_deactivation_th = en_deactivation_th
         self.speech_th = speech_th
         self.cuda = cuda
-        self.speechbrain = speechbrain
+        self.speechbrain = True
         self.segment_padding = segment_padding
         self.vad_model = None
-        if self.speechbrain:
-            model_dir = os.path.join(config.TEMPORARY_DIRECTORY, "models", "VAD")
-            os.makedirs(model_dir, exist_ok=True)
-            run_opts = None
-            if self.cuda:
-                run_opts = {"device": "cuda"}
-            self.vad_model = VAD.from_hparams(
-                source="speechbrain/vad-crdnn-libriparty", savedir=model_dir, run_opts=run_opts
-            )
+        model_dir = os.path.join(config.TEMPORARY_DIRECTORY, "models", "VAD")
+        os.makedirs(model_dir, exist_ok=True)
+        run_opts = None
+        if self.cuda:
+            run_opts = {"device": "cuda"}
+        self.vad_model = MfaVAD.from_hparams(
+            source="speechbrain/vad-crdnn-libriparty", savedir=model_dir, run_opts=run_opts
+        )
 
     @property
     def segmentation_options(self) -> MetaDict:
@@ -290,10 +288,12 @@ class VadSegmenter(
                 for i in range(boundaries.shape[0]):
                     old_utts.add(u.id)
                     begin, end = boundaries[i, :]
-                    begin -= self.segment_padding
-                    end += self.segment_padding
-                    begin = max(0.0, begin)
-                    end = min(f.sound_file.duration, end)
+                    begin -= round(kwargs["close_th"] / 2, 3)
+                    end += round(kwargs["close_th"] / 2, 3)
+                    if i == 0:
+                        begin = max(0.0, begin)
+                    if i == boundaries.shape[0] - 1:
+                        end = min(f.sound_file.duration, end)
                     new_utts.append(
                         {
                             "id": utt_index,
@@ -450,7 +450,7 @@ class VadSegmenter(
             utterance = full_load_utterance(session, utterance_id)
 
             new_utterances = segment_utterance(
-                utterance.to_kalpy(),
+                utterance.to_kalpy().segment,
                 self.vad_model if self.speechbrain else None,
                 self.segmentation_options,
                 mfcc_options=self.mfcc_options if not self.speechbrain else None,
@@ -654,7 +654,6 @@ class TranscriptionSegmenter(
                         if not pronunciations:
                             pronunciations = [self.oov_phone]
                         lexicon_compiler.word_table.add_symbol(w)
-                        print(w, ps, pronunciations)
                         for p in pronunciations:
                             lexicon_compiler.pronunciations.append(
                                 KalpyPronunciation(

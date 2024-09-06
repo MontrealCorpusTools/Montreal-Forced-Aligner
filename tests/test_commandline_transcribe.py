@@ -4,7 +4,11 @@ import click.testing
 import pytest
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
-from montreal_forced_aligner.transcription.multiprocessing import FOUND_SPEECHBRAIN, FOUND_WHISPER
+from montreal_forced_aligner.transcription.multiprocessing import (
+    FOUND_FASTER_WHISPER,
+    FOUND_SPEECHBRAIN,
+    FOUND_TRANSFORMERS,
+)
 
 
 def test_transcribe(
@@ -93,8 +97,10 @@ def test_transcribe_whisper(
     temp_dir,
     db_setup,
 ):
-    if not FOUND_WHISPER:
+    if not FOUND_TRANSFORMERS:
         pytest.skip("transformers not installed")
+    if not FOUND_FASTER_WHISPER:
+        pytest.skip("faster-whisper not installed")
     output_path = generated_dir.joinpath("transcribe_test_whisper")
     command = [
         "transcribe_whisper",

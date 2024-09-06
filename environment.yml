@@ -51,17 +51,21 @@ dependencies:
   - sudachipy
   - sudachidict-core
   - spacy-pkuseg
+  # Whisper dependencies
   - transformers
   - tokenizers
+  - accelerate
+  - tiktoken
   - pip:
       - build
       - twine
-      - speechbrain
-      - kenlm
-      - pygtrie
       - faster-whisper
       - python-mecab-ko
       - jamo
       - pythainlp
       - hanziconv
       - dragonmapper
+      # Speechbrain dependencies
+      - speechbrain
+      - kenlm
+      - pygtrie

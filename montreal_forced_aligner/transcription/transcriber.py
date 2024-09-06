@@ -69,8 +69,9 @@ from montreal_forced_aligner.language_modeling.multiprocessing import (
 from montreal_forced_aligner.models import AcousticModel, LanguageModel
 from montreal_forced_aligner.textgrid import construct_output_path
 from montreal_forced_aligner.transcription.multiprocessing import (
+    FOUND_FASTER_WHISPER,
     FOUND_SPEECHBRAIN,
-    FOUND_WHISPER,
+    FOUND_TRANSFORMERS,
     CarpaLmRescoreArguments,
     CarpaLmRescoreFunction,
     CreateHclgArguments,
@@ -1427,14 +1428,43 @@ class HuggingFaceTranscriber(
         if self.evaluation_mode:
             self.save_transcription_evaluation(self.export_output_directory)
 
+    def cleanup(self) -> None:
+        if self.cuda:
+            import torch
+
+            gc.collect()
+            torch.cuda.empty_cache()
+        super().cleanup()
+
 
 class WhisperTranscriber(HuggingFaceTranscriber):
-    ARCHITECTURES = ["distil-large-v3", "medium", "large-v3", "base", "tiny", "small"]
+    ARCHITECTURES = ["large-v3", "distil-large-v3", "medium", "base", "tiny", "small"]
 
-    def __init__(self, architecture: str = "distil-large-v3", **kwargs):
-        if not FOUND_WHISPER:
+    def __init__(
+        self,
+        architecture: str = "distil-large-v3",
+        vad: bool = False,
+        export_directory: Path = None,
+        **kwargs,
+    ):
+        from montreal_forced_aligner.vad.segmenter import (
+            FOUND_SPEECHBRAIN,
+            SpeechbrainSegmenterMixin,
+        )
+
+        if not FOUND_TRANSFORMERS:
             logger.error(
                 "Could not import transformers, please ensure it is installed via `conda install transformers`"
+            )
+            sys.exit(1)
+        if not FOUND_FASTER_WHISPER:
+            logger.error(
+                "Could not import faster-whisper, please ensure it is installed via `pip install faster-whisper`"
+            )
+            sys.exit(1)
+        if vad and not FOUND_SPEECHBRAIN:
+            logger.error(
+                "Could not import speechbrain, please ensure it is installed via `pip install speechbrain`"
             )
             sys.exit(1)
         if architecture not in self.ARCHITECTURES:
@@ -1444,7 +1474,112 @@ class WhisperTranscriber(HuggingFaceTranscriber):
         super().__init__(**kwargs)
         self.architecture = architecture
         self.model = None
+        self.segmenter = None
+        if vad:
+            self.segmenter = SpeechbrainSegmenterMixin(cuda=self.cuda)
+            self.segmenter.apply_energy_vad = True
+            self.segmenter.double_check = False
+        self.processor = None
+        self.export_directory = export_directory
         self.transcription_function = WhisperAsrFunction
+
+    def setup(self) -> None:
+        """
+        Sets up the corpus and speaker classifier
+
+        Raises
+        ------
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
+            If there were any errors in running Kaldi binaries
+        """
+        if self.initialized:
+            return
+        self.setup_model()
+        super().setup()
+
+    def setup_model(self, online=False, faster_whisper=False) -> None:
+        iso_code = self.language.iso_code
+        if iso_code is None and self.language is not Language.unknown:
+            raise ModelError(
+                f"The language {self.language.name} not in {', '.join(sorted(ISO_LANGUAGE_MAPPING.keys()))}"
+            )
+        try:
+            if self.cuda:
+                config.update_configuration(
+                    {
+                        "USE_THREADING": True,
+                        # "USE_MP": False,
+                    }
+                )
+            if faster_whisper:
+                if self.cuda:
+                    run_opts = {"device": "cuda", "compute_type": "float16"}
+                    self.model = WhisperModel(
+                        self.architecture,
+                        download_root=os.path.join(
+                            config.TEMPORARY_DIRECTORY,
+                            "models",
+                            "Whisper",
+                        ),
+                        local_files_only=False,
+                        cpu_threads=config.NUM_JOBS,
+                        num_workers=config.NUM_JOBS,
+                        **run_opts,
+                    )
+                else:
+                    # Download models if needed
+                    m = WhisperModel(
+                        self.architecture,
+                        download_root=os.path.join(
+                            config.TEMPORARY_DIRECTORY,
+                            "models",
+                            "Whisper",
+                        ),
+                        local_files_only=False,
+                    )
+                    if online:
+                        self.model = m
+            else:
+                import torch
+                from transformers import WhisperProcessor, logging
+                from transformers.utils import is_flash_attn_2_available
+
+                if not config.VERBOSE:
+                    logging.set_verbosity_error()
+                if config.DEBUG:
+                    logging.set_verbosity_debug()
+                attn_implementation = (
+                    "flash_attention_2" if is_flash_attn_2_available() else "sdpa"
+                )
+                logger.debug(f"Using {attn_implementation} for attention")
+                if self.cuda:
+                    self.model = WhisperForConditionalGeneration.from_pretrained(
+                        f"openai/whisper-{self.architecture}",
+                        torch_dtype=torch.float16,
+                        low_cpu_mem_usage=True,
+                        attn_implementation=attn_implementation,
+                    )
+                    self.model.to("cuda")
+                else:
+                    m = WhisperForConditionalGeneration.from_pretrained(
+                        f"openai/whisper-{self.architecture}"
+                    )
+                    if online:
+                        self.model = m
+                if self.cuda or online:
+                    self.processor = WhisperProcessor.from_pretrained(
+                        f"openai/whisper-{self.architecture}"
+                    )
+                    suppressed = get_suppressed_tokens(self.processor)
+                    self.model.generation_config.suppress_tokens += suppressed
+                    self.model.generation_config.suppress_tokens = sorted(
+                        set(self.model.generation_config.suppress_tokens)
+                    )
+        except Exception:
+            raise
+            raise ModelError(
+                f"Could not download whisper model with {self.architecture} and {self.language.name}"
+            )
 
     def transcribe_arguments(self):
         if self.cuda:
@@ -1457,10 +1592,12 @@ class WhisperTranscriber(HuggingFaceTranscriber):
                     f"openai/whisper-{self.architecture}",
                     self.model,
                     self.processor,
+                    self.segmenter,
                     self.language,
                     {"beam_size": 5},
                     self.tokenizer if self.evaluation_mode else None,
                     self.cuda,
+                    self.export_directory,
                 )
             ]
         return [
@@ -1469,11 +1606,12 @@ class WhisperTranscriber(HuggingFaceTranscriber):
                 getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"whisper_asr.{j.id}.log"),
                 self.working_directory,
-                config.TEMPORARY_DIRECTORY.joinpath("models", "whisper", self.architecture),
+                f"openai/whisper-{self.architecture}",
                 self.language,
                 {"beam_size": 5},
                 self.tokenizer if self.evaluation_mode else None,
                 self.cuda,
+                self.export_directory,
             )
             for j in self.jobs
         ]
@@ -1491,6 +1629,7 @@ class WhisperTranscriber(HuggingFaceTranscriber):
                     {"beam_size": 5},
                     self.tokenizer if self.evaluation_mode else None,
                     self.cuda,
+                    self.export_directory,
                 )
             ]
         return [
@@ -1504,12 +1643,15 @@ class WhisperTranscriber(HuggingFaceTranscriber):
                 {"beam_size": 5},
                 self.tokenizer if self.evaluation_mode else None,
                 self.cuda,
+                self.export_directory,
             )
             for j in self.jobs
         ]
 
     def transcribe_utterances(self) -> None:
         super().transcribe_utterances()
+        if self.segmenter is not None:
+            return
         workflow = self.current_workflow
         iso_code = self.language.iso_code
         if iso_code is None:
@@ -1526,44 +1668,20 @@ class WhisperTranscriber(HuggingFaceTranscriber):
                 if self.cuda:
                     import torch
 
-                    run_opts = {"device": "cuda", "compute_type": "float16"}
                     del self.model
                     gc.collect()
                     torch.cuda.empty_cache()
-                    self.model = WhisperModel(
-                        self.architecture,
-                        download_root=os.path.join(
-                            config.TEMPORARY_DIRECTORY,
-                            "models",
-                            "Whisper",
-                        ),
-                        local_files_only=False,
-                        cpu_threads=config.NUM_JOBS,
-                        num_workers=config.NUM_JOBS,
-                        **run_opts,
-                    )
-                    config.update_configuration(
-                        {
-                            "USE_THREADING": True,
-                            # "USE_MP": False,
-                        }
-                    )
-                else:
-                    # Download models if needed
-                    _ = WhisperModel(
-                        self.architecture,
-                        download_root=os.path.join(
-                            config.TEMPORARY_DIRECTORY,
-                            "models",
-                            "Whisper",
-                        ),
-                        local_files_only=False,
-                    )
                 logger.info("Transcribing longer utterances (>30 seconds)...")
                 for u_id, transcript in run_kaldi_function(
                     FasterWhisperFunction, arguments, total_count=num_utterances
                 ):
                     update_mapping.append({"id": u_id, "transcription_text": transcript})
+                if self.cuda:
+                    import torch
+
+                    del self.model
+                    gc.collect()
+                    torch.cuda.empty_cache()
                 if update_mapping:
                     bulk_update(session, Utterance, update_mapping)
                     session.commit()
@@ -1585,84 +1703,13 @@ class WhisperTranscriber(HuggingFaceTranscriber):
                 log_kaldi_errors(e.error_logs)
                 e.update_log_file()
             raise
-        finally:
-            if self.cuda:
-                import torch
 
-                del self.model
-                gc.collect()
-                torch.cuda.empty_cache()
-
-    # noinspection PyTypeChecker
-    def setup(self) -> None:
-        """
-        Sets up the corpus and speaker classifier
-
-        Raises
-        ------
-        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
-            If there were any errors in running Kaldi binaries
-        """
-        if self.initialized:
-            return
-        iso_code = self.language.iso_code
-        if iso_code is None:
-            raise ModelError(
-                f"The language {self.language.name} not in {', '.join(sorted(ISO_LANGUAGE_MAPPING.keys()))}"
-            )
-        try:
-            from transformers import WhisperProcessor
-
-            model_path = config.TEMPORARY_DIRECTORY.joinpath(
-                "models", "whisper", self.architecture
-            )
-            if not model_path.exists():
-                subprocess.call(
-                    [
-                        "python",
-                        "-m",
-                        "transformers.models.whisper.convert_openai_to_hf",
-                        "--checkpoint_path",
-                        self.architecture,
-                        "--pytorch_dump_folder_path",
-                        str(model_path),
-                        "--convert_preprocessor",
-                        "True",
-                    ]
-                )
-            if self.cuda:
-                import torch
-                from transformers.utils import is_flash_attn_2_available
-
-                self.processor = WhisperProcessor.from_pretrained(model_path)
-                suppressed = get_suppressed_tokens(self.processor)
-                attn_implementation = (
-                    "flash_attention_2" if is_flash_attn_2_available() else "sdpa"
-                )
-                logger.debug(f"Using {attn_implementation} for attention")
-
-                self.model = WhisperForConditionalGeneration.from_pretrained(
-                    model_path,
-                    torch_dtype=torch.float16,
-                    low_cpu_mem_usage=True,
-                    attn_implementation=attn_implementation,
-                )
-                self.model.generation_config.suppress_tokens += suppressed
-                self.model.generation_config.suppress_tokens = list(
-                    set(self.model.generation_config.suppress_tokens)
-                )
-                self.model.generation_config.suppress_tokens.sort()
-                if self.language.iso_code is not None:
-                    self.model.generation_config.forced_decoder_ids = None
-                self.model.to("cuda")
-            else:
-                _ = WhisperForConditionalGeneration.from_pretrained(model_path)
-        except Exception:
-            raise
-            raise ModelError(
-                f"Could not download whisper model with {self.architecture} and {self.language.name}"
-            )
-        super().setup()
+    def cleanup(self) -> None:
+        if self.model is not None:
+            del self.model
+        if self.segmenter is not None:
+            del self.segmenter
+        super().cleanup()
 
 
 class SpeechbrainTranscriber(HuggingFaceTranscriber):
@@ -1736,6 +1783,9 @@ class SpeechbrainTranscriber(HuggingFaceTranscriber):
                         savedir=os.path.join(
                             config.TEMPORARY_DIRECTORY, "models", "EncoderASR", model_key
                         ),
+                        huggingface_cache_dir=os.path.join(
+                            config.TEMPORARY_DIRECTORY, "models", "hf_cache"
+                        ),
                     )
                 else:
                     # Download models if needed
@@ -1747,6 +1797,9 @@ class SpeechbrainTranscriber(HuggingFaceTranscriber):
                             "WhisperASR",
                             model_key,
                         ),
+                        huggingface_cache_dir=os.path.join(
+                            config.TEMPORARY_DIRECTORY, "models", "hf_cache"
+                        ),
                     )
                 if self.cuda:
                     self.model = m
@@ -1757,3 +1810,8 @@ class SpeechbrainTranscriber(HuggingFaceTranscriber):
                 f"Could not download a speechbrain model with {self.architecture} and {self.language.name} ({model_key})"
             )
         super().setup()
+
+    def cleanup(self) -> None:
+        if self.model is not None:
+            del self.model
+        super().cleanup()
