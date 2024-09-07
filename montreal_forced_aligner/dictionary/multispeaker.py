@@ -867,7 +867,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     .filter(Word.dictionary_id == d.id)
                     .filter(Word.included == True)  # noqa
                     .options(selectinload(Word.pronunciations))
-                )
+                ).all()
                 for w in words:
                     for p in w.pronunciations:
                         pron = p.pronunciation.split()

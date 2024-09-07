@@ -47,11 +47,13 @@ dependencies:
   - rich
   - rich-click
   - kalpy
+    # Tokenization dependencies
   - spacy
   - sudachipy
   - sudachidict-core
   - spacy-pkuseg
-  # Whisper dependencies
+  # WhisperX dependencies
+  - cudnn =8
   - transformers
   - tokenizers
   - accelerate
@@ -59,7 +61,7 @@ dependencies:
   - pip:
       - build
       - twine
-      - faster-whisper
+      # Tokenization dependencies
       - python-mecab-ko
       - jamo
       - pythainlp
@@ -69,3 +71,5 @@ dependencies:
       - speechbrain
       - kenlm
       - pygtrie
+      # WhisperX dependencies
+      - whisperx

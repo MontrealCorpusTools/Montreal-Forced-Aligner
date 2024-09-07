@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 import os
 import queue
-import re
 import threading
 import typing
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict
 
@@ -34,39 +34,19 @@ from sqlalchemy.orm import joinedload, subqueryload
 from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import KaldiFunction, MetaDict
 from montreal_forced_aligner.data import Language, MfaArguments, PhoneType
-from montreal_forced_aligner.db import File, Job, Phone, SoundFile, Utterance
+from montreal_forced_aligner.db import File, Job, Phone, SoundFile, Speaker, Utterance
 from montreal_forced_aligner.diarization.multiprocessing import UtteranceFileLoader
 from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
+from montreal_forced_aligner.transcription.models import MfaFasterWhisperPipeline, load_model
 from montreal_forced_aligner.utils import mfa_open, thread_logger
-from montreal_forced_aligner.vad.multiprocessing import segment_utterance_vad_speech_brain
+from montreal_forced_aligner.vad.models import MfaVAD
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
-
-    from montreal_forced_aligner.vad.segmenter import SpeechbrainSegmenterMixin
 else:
     from dataclassy import dataclass
 
 try:
-    from faster_whisper import WhisperModel
-
-    FOUND_FASTER_WHISPER = True
-except ImportError:
-    WhisperModel = None
-    FOUND_FASTER_WHISPER = False
-
-try:
-    from transformers import WhisperForConditionalGeneration, WhisperProcessor
-
-    FOUND_TRANSFORMERS = True
-except ImportError:
-    WhisperForConditionalGeneration = None
-    WhisperProcessor = None
-    FOUND_TRANSFORMERS = False
-
-try:
-    import warnings
-
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         torch_logger = logging.getLogger("speechbrain.utils.torch_audio_backend")
@@ -103,9 +83,6 @@ __all__ = [
     "LmRescoreFunction",
     "CreateHclgFunction",
     "FOUND_SPEECHBRAIN",
-    "FOUND_FASTER_WHISPER",
-    "FOUND_TRANSFORMERS",
-    "WhisperForConditionalGeneration",
     "WhisperASR",
     "EncoderASR",
     "SpeechbrainAsrArguments",
@@ -115,6 +92,8 @@ __all__ = [
     "SpeechbrainAsrFunction",
     "WhisperAsrFunction",
 ]
+
+logger = logging.getLogger("mfa")
 
 
 @dataclass
@@ -217,9 +196,8 @@ class WhisperArguments(MfaArguments):
     """
 
     working_directory: Path
-    model_id: str
+    architecture: str
     language: Language
-    decode_options: MetaDict
     tokenizer: typing.Optional[SimpleTokenizer]
     cuda: bool
     export_directory: typing.Optional[Path]
@@ -243,64 +221,7 @@ class WhisperCudaArguments(MfaArguments):
     """
 
     working_directory: Path
-    model_id: str
-    model: WhisperForConditionalGeneration
-    processor: WhisperProcessor
-    segmenter: SpeechbrainSegmenterMixin
-    language: Language
-    decode_options: MetaDict
-    tokenizer: typing.Optional[SimpleTokenizer]
-    cuda: bool
-    export_directory: typing.Optional[Path]
-
-
-@dataclass
-class FasterWhisperArguments(MfaArguments):
-    """
-    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`
-
-    Parameters
-    ----------
-    job_name: int
-        Integer ID of the job
-    session: :class:`sqlalchemy.orm.scoped_session` or str
-        SqlAlchemy scoped session or string for database connections
-    log_path: :class:`~pathlib.Path`
-        Path to save logging information during the run
-    working_directory: :class:`~pathlib.Path`
-        Current working directory
-    """
-
-    working_directory: Path
-    model_size: str
-    language: Language
-    decode_options: MetaDict
-    tokenizer: typing.Optional[SimpleTokenizer]
-    cuda: bool
-    export_directory: typing.Optional[Path]
-
-
-@dataclass
-class FasterWhisperCudaArguments(MfaArguments):
-    """
-    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`
-
-    Parameters
-    ----------
-    job_name: int
-        Integer ID of the job
-    session: :class:`sqlalchemy.orm.scoped_session` or str
-        SqlAlchemy scoped session or string for database connections
-    log_path: :class:`~pathlib.Path`
-        Path to save logging information during the run
-    working_directory: :class:`~pathlib.Path`
-        Current working directory
-    """
-
-    working_directory: Path
-    model: WhisperModel
-    language: Language
-    decode_options: MetaDict
+    model: MfaFasterWhisperPipeline
     tokenizer: typing.Optional[SimpleTokenizer]
     cuda: bool
     export_directory: typing.Optional[Path]
@@ -808,10 +729,8 @@ class WhisperUtteranceLoader(threading.Thread):
         return_q: queue.Queue,
         stopped: threading.Event,
         finished_adding: threading.Event,
-        processor: WhisperProcessor,
-        segmenter: SpeechbrainSegmenterMixin = None,
+        model: MfaFasterWhisperPipeline,
         export_directory: Path = None,
-        device: str = "cpu",
     ):
         super().__init__()
         self.job_name = job_name
@@ -819,17 +738,13 @@ class WhisperUtteranceLoader(threading.Thread):
         self.return_q = return_q
         self.stopped = stopped
         self.finished_adding = finished_adding
-        self.processor = processor
-        self.segmenter = segmenter
+        self.model = model
         self.export_directory = export_directory
-        self.device = device
 
     def run(self) -> None:
         """
         Run the waveform loading job
         """
-
-        batch_size = config.NUM_JOBS
 
         with self.session() as session:
             try:
@@ -842,225 +757,100 @@ class WhisperUtteranceLoader(threading.Thread):
                         Utterance.channel,
                         File.relative_path,
                         File.name,
+                        Speaker.name,
                     )
+                    .join(Utterance.speaker)
                     .join(Utterance.file)
                     .join(File.sound_file)
                 )
-                if self.segmenter is None:
-                    utterances = utterances.filter(Utterance.duration <= 30)
-                    utterances = utterances.order_by(Utterance.duration.desc())
-                else:
-                    utterances = utterances.order_by(Utterance.speaker_id)
+                utterances = utterances.order_by(Utterance.speaker_id)
                 if not utterances.count():
                     self.finished_adding.set()
                     return
-                raw_audio = []
-                utterance_ids = []
-                export_paths = []
                 for u in utterances:
                     if self.stopped.is_set():
                         break
                     segment = Segment(u[1], u[2], u[3], u[4])
                     export_path = None
                     if self.export_directory is not None:
-                        export_path = self.export_directory.joinpath(u[5], u[6] + ".lab")
-                        if export_path.exists():
+                        export_path = self.export_directory.joinpath(u[5], u[6])
+                        if any(export_path.with_suffix(x).exists() for x in [".lab", ".TextGrid"]):
                             continue
-                    utterance_ids.append(u[0])
-                    if self.segmenter is None:
-                        audio = segment.load_audio().astype(np.float32)
-                        raw_audio.append(audio)
-                        export_paths.append(export_path)
-                        if len(utterance_ids) >= batch_size:
-                            inputs = self.processor(
-                                raw_audio,
-                                return_tensors="pt",
-                                truncation=True,
-                                return_attention_mask=True,
-                                sampling_rate=16_000,
-                                device=self.device,
-                            )
-                            self.return_q.put((utterance_ids, inputs))
-                            raw_audio = []
-                            utterance_ids = []
-                            export_paths = []
-                    else:
-                        segments = segment_utterance_vad_speech_brain(
-                            segment,
-                            self.segmenter.vad_model,
-                            self.segmenter.segmentation_options,
-                            allow_empty=True,
-                        )
-                        if not segments:
-                            continue
-                        if len(segments) == 1:
-                            raw_audio.append(segment.wave.astype(np.float32))
-                        else:
-                            for s in segments:
-                                raw_audio.append(s.wave.astype(np.float32))
-                        inputs = self.processor(
-                            raw_audio,
-                            return_tensors="pt",
-                            truncation=True,
-                            return_attention_mask=True,
-                            sampling_rate=16_000,
-                            device=self.device,
-                        )
-                        self.return_q.put((u[0], inputs, export_path))
-                        raw_audio = []
-                        utterance_ids = []
-                        export_paths = []
-
-                if utterance_ids:
-                    inputs = self.processor(
-                        raw_audio,
-                        return_tensors="pt",
-                        truncation=True,
-                        return_attention_mask=True,
-                        sampling_rate=16_000,
-                        device=self.device,
+                    audio = segment.load_audio().astype(np.float32)
+                    segments = self.model.vad_model.segment_for_whisper(
+                        audio, **self.model._vad_params
                     )
-                    self.return_q.put((utterance_ids, inputs, export_paths))
+                    self.return_q.put((u[0], segments, export_path, u[7], u[2], u[3]))
             except Exception as e:
                 self.return_q.put(e)
             finally:
                 self.finished_adding.set()
 
 
-def get_suppressed_tokens(
-    whisper_processor: typing.Union[WhisperProcessor, WhisperModel]
-) -> typing.List[int]:
-    suppressed = []
-    import unicodedata
-
-    alpha_pattern = re.compile(r"\w", flags=re.UNICODE)
-    roman_numeral_pattern = re.compile(r"^(x+(vi+|i+|i?v|x+))$", flags=re.IGNORECASE)
-    case_roman_numeral_pattern = re.compile(r"(^[IXV]{2,}$|^[xvi]+i$|^x{2,}$|\d)")
-
-    def _should_suppress(t):
-        if t.startswith("<|"):
-            return False
-        if any(unicodedata.category(c) in {"Mn", "Mc"} for c in t):
-            return False
-        if (
-            roman_numeral_pattern.search(t)
-            or case_roman_numeral_pattern.search(t)
-            or re.match(r"^[XV]$", t)
-            or not alpha_pattern.search(t)
-        ):
-            return True
-        return False
-
-    if isinstance(whisper_processor, WhisperProcessor):
-        for token_id in range(whisper_processor.tokenizer.vocab_size):
-            token = whisper_processor.tokenizer.convert_tokens_to_string(
-                whisper_processor.tokenizer.convert_ids_to_tokens([token_id])
-            ).strip()
-            if not token:
-                continue
-            if _should_suppress(token):
-                suppressed.append(token_id)
-    else:
-        for token_id in range(whisper_processor.hf_tokenizer.eot):
-            token = whisper_processor.hf_tokenizer.decode([token_id]).strip()
-            if not token:
-                continue
-            if _should_suppress(token):
-                suppressed.append(token_id)
-    return suppressed
-
-
-class FasterWhisperFunction(KaldiFunction):
+class WhisperUtteranceVAD(threading.Thread):
     """
-    Multiprocessing function for performing decoding
-
-    See Also
-    --------
-    :meth:`.TranscriberMixin.transcribe_utterances`
-        Main function that calls this function in parallel
-    :meth:`.TranscriberMixin.decode_arguments`
-        Job method for generating arguments for this function
-    :kaldi_src:`gmm-latgen-faster`
-        Relevant Kaldi binary
+    Helper process for loading utterance waveforms in parallel with embedding extraction
 
     Parameters
     ----------
-    args: :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeArguments`
-        Arguments for the function
+    job_name: int
+        Job identifier
+    session: sqlalchemy.orm.scoped_session
+        Session
+    return_q: :class:`~queue.Queue`
+        Queue to put waveforms
+    stopped: :class:`~threading.Event`
+        Check for whether the process to exit gracefully
+    finished_adding: :class:`~threading.Event`
+        Check for whether the worker has processed all utterances
     """
 
-    def __init__(self, args: typing.Union[FasterWhisperArguments, FasterWhisperCudaArguments]):
-        super().__init__(args)
-        self.working_directory = args.working_directory
-        self.cuda = args.cuda
-        self.model = None
-        self.language = args.language
-        self.decode_options = args.decode_options
-        if isinstance(args, FasterWhisperCudaArguments):
-            self.model = args.model
-        else:
-            self.model = args.model_size
-        self.tokenizer = args.tokenizer
+    def __init__(
+        self,
+        job_name: int,
+        job_q: queue.Queue,
+        return_q: queue.Queue,
+        stopped: threading.Event,
+        finished_adding: threading.Event,
+        model: MfaFasterWhisperPipeline,
+        export_directory: Path = None,
+    ):
+        super().__init__()
+        self.job_name = job_name
+        self.job_q = job_q
+        self.return_q = return_q
+        self.stopped = stopped
+        self.finished_adding = finished_adding
+        self.model = model
+        self.export_directory = export_directory
 
-    def _run(self) -> None:
-        """Run the function"""
-        model = self.model
-        if isinstance(model, str):
-            if self.cuda:
-                run_opts = {"device": "cuda", "compute_type": "float16"}
-            else:
-                run_opts = {"device": "cpu"}
-            model = WhisperModel(
-                model,
-                download_root=os.path.join(
-                    config.TEMPORARY_DIRECTORY,
-                    "models",
-                    "Whisper",
-                ),
-                local_files_only=True,
-                **run_opts,
-            )
-        transcribe_opts = {"language": None, "beam_size": self.decode_options["beam_size"]}
-        if self.language is not Language.unknown:
-            transcribe_opts["language"] = self.language.iso_code
-        suppressed = get_suppressed_tokens(model)
-        current_index = 0
-        with self.session() as session, mfa_open(self.log_path, "w") as log_file:
-            log_file.write(f"Suppressed: {len(suppressed)}\n")
-            utterances = (
-                session.query(
-                    Utterance.id,
-                    SoundFile.sound_file_path,
-                    Utterance.begin,
-                    Utterance.end,
-                    Utterance.channel,
+    def run(self) -> None:
+        """
+        Run the waveform loading job
+        """
+
+        while True:
+            try:
+                batch = self.job_q.get(timeout=1)
+            except queue.Empty:
+                if self.finished_adding.is_set():
+                    break
+                continue
+            if self.stopped.is_set():
+                continue
+            if isinstance(batch, Exception):
+                exception = batch
+                self.return_q.put(exception)
+                self.stopped.set()
+                continue
+            try:
+                utterance_id, audio, export_path, speaker_name, begin, end = batch
+                segments = self.model.vad_model.segment_for_whisper(
+                    audio, **self.model._vad_params
                 )
-                .join(Utterance.file)
-                .join(File.sound_file)
-                .filter(Utterance.job_id == self.job_name)
-                .filter(Utterance.duration > 30)
-            )
-            for u in utterances:
-                segment = Segment(u[1], u[2], u[3], u[4])
-                waveform = segment.load_audio()
-                log_file.write(f"{u[0]}: {waveform.shape}\n")
-                segments, info = model.transcribe(
-                    waveform,
-                    condition_on_previous_text=False,
-                    suppress_tokens=suppressed,
-                    temperature=0.0,
-                    **transcribe_opts,
-                )
-                text = " ".join([x.text for x in segments])
-                if self.tokenizer is not None:
-                    text = self.tokenizer(text)[0]
-                self.callback((u[0], text))
-                log_file.write(f"{u[0]}: {text}\n")
-                log_file.flush()
-                current_index += 1
-                if current_index > 50:
-                    torch.cuda.empty_cache()
-                    current_index = 0
+                self.return_q.put((utterance_id, segments, export_path, speaker_name, begin, end))
+            except Exception as e:
+                self.return_q.put(e)
 
 
 class WhisperAsrFunction(KaldiFunction):
@@ -1087,43 +877,48 @@ class WhisperAsrFunction(KaldiFunction):
         self.working_directory = args.working_directory
         self.working_directory = args.working_directory
         self.cuda = args.cuda
-        self.model_id = args.model_id
+        self.architecture = None
         self.model = None
-        self.processor = None
-        self.segmenter = None
-        self.language = args.language
-        self.decode_options = args.decode_options
+        self.language = None
         self.export_directory = args.export_directory
         if isinstance(args, WhisperCudaArguments):
             self.model = args.model
-            self.processor = args.processor
-            self.segmenter = args.segmenter
+        else:
+            self.language = args.language
+            self.architecture = args.architecture
         self.tokenizer = args.tokenizer
 
     def _run(self) -> None:
         """Run the function"""
-        processor = self.processor
-        if processor is None:
-            processor = WhisperProcessor.from_pretrained(self.model_id)
-        processor.tokenizer.add_prefix_space = False
-        language = None
-        if self.language is not Language.unknown:
-            language = self.language.iso_code
         model = self.model
         if model is None:
-            suppressed = get_suppressed_tokens(processor)
-            model = WhisperForConditionalGeneration.from_pretrained(self.model_id)
-            model.generation_config.suppress_tokens += suppressed
-            model.generation_config.suppress_tokens = list(
-                set(model.generation_config.suppress_tokens)
+            language = None
+            if self.language is not Language.unknown:
+                language = self.language.iso_code
+            run_opts = None
+            if self.cuda:
+                run_opts = {"device": "cuda"}
+            vad_model = MfaVAD.from_hparams(
+                source="speechbrain/vad-crdnn-libriparty",
+                savedir=os.path.join(config.TEMPORARY_DIRECTORY, "models", "VAD"),
+                run_opts=run_opts,
             )
-            model.generation_config.suppress_tokens.sort()
-            if language is not None:
-                model.generation_config.forced_decoder_ids = None
+            model = load_model(
+                self.architecture,
+                device="cuda" if self.cuda else "cpu",
+                language=language,
+                vad_model=vad_model,
+                vad_options=None,
+                download_root=os.path.join(
+                    config.TEMPORARY_DIRECTORY,
+                    "models",
+                    "Whisper",
+                ),
+                threads=config.NUM_JOBS,
+            )
             if self.cuda:
                 model.to("cuda")
-        special_ids = processor.tokenizer.all_special_ids
-        return_q = queue.Queue(2)
+        return_q = queue.Queue(100)
         finished_adding = threading.Event()
         stopped = threading.Event()
         loader = WhisperUtteranceLoader(
@@ -1132,73 +927,75 @@ class WhisperAsrFunction(KaldiFunction):
             return_q,
             stopped,
             finished_adding,
-            processor,
-            segmenter=self.segmenter,
+            model,
             export_directory=self.export_directory,
-            device="cuda" if self.cuda else "cpu",
         )
         loader.start()
         exception = None
-        current_index = 0
-        cache_threshold = 10
-        if self.segmenter is None:
-            cache_threshold = 100
+
         while True:
             try:
-                batch = return_q.get(timeout=1)
+                vad_result = return_q.get(timeout=1)
             except queue.Empty:
                 if finished_adding.is_set():
                     break
                 continue
             if stopped.is_set():
                 continue
-            if isinstance(batch, Exception):
-                exception = batch
+            if isinstance(vad_result, Exception):
+                exception = vad_result
                 stopped.set()
                 continue
-            utterance_ids, inputs, export_paths = batch
-            inputs = inputs.to(model.device, model.dtype)
-            result = model.generate(
-                **inputs,
-                condition_on_prev_tokens=False,
-                temperature=(0.0, 0.2, 0.4, 0.6, 0.8, 1.0) if self.segmenter is None else 0.0,
-                logprob_threshold=-1.0,
-                compression_ratio_threshold=1.35,
-                return_timestamps=False,
-                language=language,
-            )
+            try:
+                utterance_id, segments, export_path, speaker_name, begin, end = vad_result
+                result = model.transcribe(
+                    segments, [utterance_id] * len(segments), batch_size=config.NUM_JOBS
+                )
+                for utterance_id, segments in result.items():
+                    texts = []
+                    for seg in segments:
+                        seg["text"] = seg["text"].strip()
+                        if self.tokenizer is not None:
+                            seg["text"] = self.tokenizer(seg["text"])[0]
+                        texts.append(seg["text"])
+                    text = " ".join(texts)
 
-            decoded = []
-            for r in result:
-                r = [t for t in r if t not in special_ids]
-                tokens = processor.tokenizer.convert_tokens_to_string(
-                    processor.tokenizer.convert_ids_to_tokens(r)
-                ).strip()
-                decoded.append(tokens)
-            if isinstance(utterance_ids, list):
-                for i, u_id in enumerate(utterance_ids):
-                    text = decoded[i]
-                    if self.tokenizer is not None:
-                        text = self.tokenizer(text)[0]
-                    if export_paths[i] is not None:
-                        export_paths[i].parent.mkdir(parents=True, exist_ok=True)
-                        with mfa_open(export_paths[i], "w") as f:
-                            f.write(text)
-                    self.callback((int(u_id), text))
-            else:
-                text = " ".join(decoded)
-                if self.tokenizer is not None:
-                    text = self.tokenizer(text)[0]
+                    if export_path is not None:
+                        export_path: Path
+                        export_path.parent.mkdir(parents=True, exist_ok=True)
+                        if len(segments) == 1:
+                            with mfa_open(export_path.with_suffix(".lab"), "w") as f:
+                                f.write(text)
+                        else:
+                            from praatio import textgrid
 
-                if export_paths is not None:
-                    export_paths.parent.mkdir(parents=True, exist_ok=True)
-                    with mfa_open(export_paths, "w") as f:
-                        f.write(text)
-                self.callback((utterance_ids, text))
-            current_index += 1
-            if False and current_index > cache_threshold:
-                torch.cuda.empty_cache()
-                current_index = 0
+                            tg = textgrid.Textgrid()
+                            tg.minTimestamp = begin
+                            tg.maxTimestamp = end
+                            tier = textgrid.IntervalTier(
+                                speaker_name,
+                                [
+                                    textgrid.constants.Interval(
+                                        round(begin + x["start"], 3),
+                                        round(begin + x["end"], 3),
+                                        x["text"],
+                                    )
+                                    for x in segments
+                                ],
+                                minT=begin,
+                                maxT=end,
+                            )
+
+                            tg.addTier(tier)
+                            tg.save(
+                                str(export_path.with_suffix(".TextGrid")),
+                                includeBlankSpaces=True,
+                                format="short_textgrid",
+                            )
+                    self.callback((utterance_id, text))
+            except Exception as e:
+                exception = e
+                stopped.set()
 
         loader.join()
         if exception:

@@ -714,6 +714,13 @@ def run_kaldi_function(
                         logger.debug("Received ctrl+c event")
                     stopped.set()
                     error_dict["main_thread"] = e
+                    import sys
+                    import traceback
+
+                    exc_type, exc_value, exc_traceback = sys.exc_info()
+                    logger.debug(
+                        "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+                    )
                     continue
 
         finally:
@@ -768,6 +775,15 @@ def run_kaldi_function(
                             logger.debug("Received ctrl+c event")
                         stopped.set()
                         error_dict["main_thread"] = e
+                        import sys
+                        import traceback
+
+                        exc_type, exc_value, exc_traceback = sys.exc_info()
+                        logger.debug(
+                            "\n".join(
+                                traceback.format_exception(exc_type, exc_value, exc_traceback)
+                            )
+                        )
                         continue
 
             finally:

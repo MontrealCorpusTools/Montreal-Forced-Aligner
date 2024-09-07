@@ -8,7 +8,6 @@ from __future__ import annotations
 import collections
 import logging
 import os
-import sys
 import typing
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -37,9 +36,8 @@ from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.tokenization.spacy import generate_language_tokenizer
 from montreal_forced_aligner.transcription.transcriber import TranscriberMixin
 from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
+from montreal_forced_aligner.vad.models import SpeechbrainSegmenterMixin
 from montreal_forced_aligner.vad.multiprocessing import (
-    FOUND_SPEECHBRAIN,
-    MfaVAD,
     SegmentTranscriptArguments,
     SegmentTranscriptFunction,
     SegmentVadArguments,
@@ -50,79 +48,9 @@ from montreal_forced_aligner.vad.multiprocessing import (
 
 SegmentationType = List[Dict[str, float]]
 
-__all__ = ["VadSegmenter", "SpeechbrainSegmenterMixin", "TranscriptionSegmenter"]
+__all__ = ["VadSegmenter", "TranscriptionSegmenter"]
 
 logger = logging.getLogger("mfa")
-
-
-class SpeechbrainSegmenterMixin:
-    def __init__(
-        self,
-        segment_padding: float = 0.1,
-        large_chunk_size: float = 30,
-        small_chunk_size: float = 0.05,
-        overlap_small_chunk: bool = False,
-        apply_energy_vad: bool = False,
-        double_check: bool = True,
-        close_th: float = 0.333,
-        len_th: float = 0.333,
-        activation_th: float = 0.5,
-        deactivation_th: float = 0.25,
-        en_activation_th: float = 0.5,
-        en_deactivation_th: float = 0.4,
-        speech_th: float = 0.5,
-        cuda: bool = False,
-        **kwargs,
-    ):
-        if not FOUND_SPEECHBRAIN:
-            logger.error(
-                "Could not import speechbrain, please ensure it is installed via `pip install speechbrain`"
-            )
-            sys.exit(1)
-        super().__init__(**kwargs)
-        self.large_chunk_size = large_chunk_size
-        self.small_chunk_size = small_chunk_size
-        self.overlap_small_chunk = overlap_small_chunk
-        self.apply_energy_vad = apply_energy_vad
-        self.double_check = double_check
-        self.close_th = close_th
-        self.len_th = len_th
-        self.activation_th = activation_th
-        self.deactivation_th = deactivation_th
-        self.en_activation_th = en_activation_th
-        self.en_deactivation_th = en_deactivation_th
-        self.speech_th = speech_th
-        self.cuda = cuda
-        self.speechbrain = True
-        self.segment_padding = segment_padding
-        self.vad_model = None
-        model_dir = os.path.join(config.TEMPORARY_DIRECTORY, "models", "VAD")
-        os.makedirs(model_dir, exist_ok=True)
-        run_opts = None
-        if self.cuda:
-            run_opts = {"device": "cuda"}
-        self.vad_model = MfaVAD.from_hparams(
-            source="speechbrain/vad-crdnn-libriparty", savedir=model_dir, run_opts=run_opts
-        )
-
-    @property
-    def segmentation_options(self) -> MetaDict:
-        """Options for segmentation"""
-        return {
-            "large_chunk_size": self.large_chunk_size,
-            "frame_shift": getattr(self, "export_frame_shift", 0.01),
-            "small_chunk_size": self.small_chunk_size,
-            "overlap_small_chunk": self.overlap_small_chunk,
-            "apply_energy_VAD": self.apply_energy_vad,
-            "double_check": self.double_check,
-            "activation_th": self.activation_th,
-            "deactivation_th": self.deactivation_th,
-            "en_activation_th": self.en_activation_th,
-            "en_deactivation_th": self.en_deactivation_th,
-            "speech_th": self.speech_th,
-            "close_th": self.close_th,
-            "len_th": self.len_th,
-        }
 
 
 class VadSegmenter(
@@ -242,13 +170,22 @@ class VadSegmenter(
         list[SegmentVadArguments]
             Arguments for processing
         """
+        options = self.segmentation_options
+        options.update(
+            {
+                "large_chunk_size": self.large_chunk_size,
+                "frame_shift": getattr(self, "export_frame_shift", 0.01),
+                "small_chunk_size": self.small_chunk_size,
+                "overlap_small_chunk": self.overlap_small_chunk,
+            }
+        )
         return [
             SegmentVadArguments(
                 j.id,
                 getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"segment_vad.{j.id}.log"),
                 j.construct_path(self.split_directory, "vad", "scp"),
-                self.segmentation_options,
+                options,
             )
             for j in self.jobs
         ]
@@ -268,7 +205,6 @@ class VadSegmenter(
         old_utts = set()
         new_utts = []
         kwargs = self.segmentation_options
-        kwargs.pop("frame_shift")
         with tqdm(
             total=self.num_utterances, disable=config.QUIET
         ) as pbar, self.session() as session:
@@ -288,8 +224,8 @@ class VadSegmenter(
                 for i in range(boundaries.shape[0]):
                     old_utts.add(u.id)
                     begin, end = boundaries[i, :]
-                    begin -= round(kwargs["close_th"] / 2, 3)
-                    end += round(kwargs["close_th"] / 2, 3)
+                    begin -= round(self.close_th / 2, 3)
+                    end += round(self.close_th / 2, 3)
                     if i == 0:
                         begin = max(0.0, begin)
                     if i == boundaries.shape[0] - 1:

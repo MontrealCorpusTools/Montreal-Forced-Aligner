@@ -15,10 +15,7 @@ from montreal_forced_aligner.command_line.utils import (
     validate_language_model,
 )
 from montreal_forced_aligner.data import Language
-from montreal_forced_aligner.online.transcription import (
-    transcribe_utterance_online_faster_whisper,
-    transcribe_utterance_online_whisper,
-)
+from montreal_forced_aligner.online.transcription import transcribe_utterance_online_whisper
 from montreal_forced_aligner.transcription.transcriber import (
     SpeechbrainTranscriber,
     Transcriber,
@@ -346,22 +343,12 @@ def transcribe_whisper_cli(context, **kwargs) -> None:
     try:
         if not input_path.is_dir():
             segment = Segment(input_path)
-            faster_whisper = segment.wave.shape[0] / 16_000 > 30
-            faster_whisper = False
-            transcriber.setup_model(online=True, faster_whisper=faster_whisper)
+            transcriber.setup_model(online=True)
 
-            if faster_whisper:
-                text = transcribe_utterance_online_faster_whisper(
-                    transcriber.model, segment, language=transcriber.language
-                )
-            else:
-                text = transcribe_utterance_online_whisper(
-                    transcriber.model,
-                    transcriber.processor,
-                    segment,
-                    language=transcriber.language,
-                    segmenter=transcriber.segmenter,
-                )
+            text = transcribe_utterance_online_whisper(
+                transcriber.model,
+                segment,
+            )
             if str(output_path) == "-":
                 print(text)  # noqa
                 sys.exit(0)
