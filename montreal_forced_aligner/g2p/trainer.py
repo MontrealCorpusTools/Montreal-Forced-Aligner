@@ -13,6 +13,7 @@ import subprocess
 import threading
 import time
 import typing
+import unicodedata
 from pathlib import Path
 from queue import Queue
 from typing import Any, List, NamedTuple, Set
@@ -204,12 +205,14 @@ class G2PTrainer(MfaWorker, TrainerMixin):
         validation_proportion: float = 0.1,
         num_pronunciations: int = 0,
         evaluation_mode: bool = False,
+        unicode_decomposition: bool = True,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.evaluation_mode = evaluation_mode
         self.validation_proportion = validation_proportion
         self.num_pronunciations = num_pronunciations
+        self.unicode_decomposition = unicode_decomposition
         self.g2p_training_dictionary = {}
         self.g2p_validation_dictionary = None
         self.g2p_training_graphemes = set()
@@ -482,7 +485,7 @@ class PyniniTrainerMixin:
             else:
                 com.append("--token_type=utf8")
             com.extend([input_path, self.input_far_path])
-            print(" ".join(map(str, com)), file=log_file)
+            log_file.write(f'{" ".join(map(str, com))}\n')
             subprocess.check_call(com, env=os.environ, stderr=log_file, stdout=log_file)
             com = [
                 thirdparty_binary("farcompilestrings"),
@@ -492,12 +495,12 @@ class PyniniTrainerMixin:
                 output_path,
                 self.output_far_path,
             ]
-            print(" ".join(map(str, com)), file=log_file)
+            log_file.write(f'{" ".join(map(str, com))}\n')
             subprocess.check_call(com, env=os.environ, stderr=log_file, stdout=log_file)
             ilabels = _get_far_labels(self.input_far_path)
-            print(ilabels, file=log_file)
+            log_file.write(f"{ilabels}\n")
             olabels = _get_far_labels(self.output_far_path)
-            print(olabels, file=log_file)
+            log_file.write(f"{olabels}\n")
             cg = pywrapfst.VectorFst()
             state = cg.add_state()
             cg.set_start(state)
@@ -719,6 +722,7 @@ class PyniniTrainer(
             "train_date": str(datetime.now()),
             "phones": sorted(self.non_silence_phones),
             "graphemes": self.g2p_training_graphemes,
+            "unicode_decomposition": self.unicode_decomposition,
             "evaluation": {},
             "training": {
                 "num_words": len(self.g2p_training_dictionary),
@@ -776,15 +780,18 @@ class PyniniTrainer(
                 for word, pronunciations in self.g2p_training_dictionary.items():
                     if re.match(r"\W", word) is not None:
                         continue
+                    if self.unicode_decomposition:
+                        word = unicodedata.normalize("NFKD", word)
                     self.g2p_training_graphemes.update(word)
                     for p in pronunciations:
                         self.g2p_training_phones.update(p.split())
-                        print(word, file=inf)
-                        print(p, file=outf)
+                        inf.write(f"{word}\n")
+                        outf.write(f"{p}\n")
             logger.debug(f"Graphemes in training data: {sorted(self.g2p_training_graphemes)}")
             logger.debug(f"Phones in training data: {sorted(self.g2p_training_phones)}")
             if self.evaluation_mode:
                 for word, pronunciations in self.g2p_validation_dictionary.items():
+                    word = unicodedata.normalize("NFKD", word)
                     self.g2p_validation_graphemes.update(word)
                     for p in pronunciations:
                         self.g2p_validation_phones.update(p.split())

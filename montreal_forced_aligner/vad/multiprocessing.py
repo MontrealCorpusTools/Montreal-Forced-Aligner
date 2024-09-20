@@ -3,9 +3,8 @@ from __future__ import annotations
 
 import typing
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Union
+from typing import TYPE_CHECKING, Union
 
-import numpy
 import pynini
 import pywrapfst
 from _kalpy.decoder import LatticeFasterDecoder, LatticeFasterDecoderConfig
@@ -24,11 +23,11 @@ from kalpy.utterance import Utterance as KalpyUtterance
 from sqlalchemy.orm import joinedload, subqueryload
 
 from montreal_forced_aligner.abc import KaldiFunction
-from montreal_forced_aligner.data import CtmInterval, MfaArguments
+from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.db import File, Job, Speaker, Utterance
 from montreal_forced_aligner.exceptions import SegmenterError
 from montreal_forced_aligner.models import AcousticModel, G2PModel
-from montreal_forced_aligner.vad.models import MfaVAD
+from montreal_forced_aligner.vad.models import MfaVAD, get_initial_segmentation, merge_segments
 
 if TYPE_CHECKING:
     SpeakerCharacterType = Union[str, int]
@@ -43,8 +42,6 @@ __all__ = [
     "SegmentVadArguments",
     "SegmentTranscriptFunction",
     "SegmentVadFunction",
-    "get_initial_segmentation",
-    "merge_segments",
     "segment_utterance_transcript",
     "segment_utterance_vad",
 ]
@@ -322,92 +319,6 @@ def align_interjection_words(
         pynini.compose(a, g).project("output").string(lexicon_compiler.word_table)
     )
     return " ".join(original_transcript.split()[len(interjections_removed.split()) :])
-
-
-def get_initial_segmentation(frames: numpy.ndarray, frame_shift: float) -> List[CtmInterval]:
-    """
-    Compute initial segmentation over voice activity
-
-    Parameters
-    ----------
-    frames: list[Union[int, str]]
-        List of frames with VAD output
-    frame_shift: float
-        Frame shift of features in seconds
-
-    Returns
-    -------
-    List[CtmInterval]
-        Initial segmentation
-    """
-    segments = []
-    cur_segment = None
-    silent_frames = 0
-    non_silent_frames = 0
-    for i in range(frames.shape[0]):
-        f = frames[i]
-        if int(f) > 0:
-            non_silent_frames += 1
-            if cur_segment is None:
-                cur_segment = CtmInterval(begin=i * frame_shift, end=0, label="speech")
-        else:
-            silent_frames += 1
-            if cur_segment is not None:
-                cur_segment.end = (i - 1) * frame_shift
-                segments.append(cur_segment)
-                cur_segment = None
-    if cur_segment is not None:
-        cur_segment.end = len(frames) * frame_shift
-        segments.append(cur_segment)
-    return segments
-
-
-def merge_segments(
-    segments: List[CtmInterval],
-    min_pause_duration: float,
-    max_segment_length: float,
-    min_segment_length: float,
-) -> List[CtmInterval]:
-    """
-    Merge segments together
-
-    Parameters
-    ----------
-    segments: SegmentationType
-        Initial segments
-    min_pause_duration: float
-        Minimum amount of silence time to mark an utterance boundary
-    max_segment_length: float
-        Maximum length of segments before they're broken up
-    min_segment_length: float
-        Minimum length of segments returned
-
-    Returns
-    -------
-    List[CtmInterval]
-        Merged segments
-    """
-    merged_segments = []
-    snap_boundary_threshold = min_pause_duration / 2
-    for s in segments:
-        if (
-            not merged_segments
-            or s.begin > merged_segments[-1].end + min_pause_duration
-            or s.end - merged_segments[-1].begin > max_segment_length
-        ):
-            if merged_segments and snap_boundary_threshold:
-                boundary_gap = s.begin - merged_segments[-1].end
-                if boundary_gap < snap_boundary_threshold:
-                    half_boundary = boundary_gap / 2
-                else:
-                    half_boundary = snap_boundary_threshold / 2
-                merged_segments[-1].end += half_boundary
-                s.begin -= half_boundary
-
-            merged_segments.append(s)
-        else:
-            merged_segments[-1].end = s.end
-    return [x for x in merged_segments if x.end - x.begin > min_segment_length]
 
 
 def segment_utterance_vad(

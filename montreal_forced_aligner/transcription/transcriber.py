@@ -1611,17 +1611,43 @@ class SpeechbrainTranscriber(HuggingFaceTranscriber):
         model_key = f"speechbrain/asr-{self.architecture}-commonvoice-14-{common_voice_code}"
         try:
             with warnings.catch_warnings():
+                from speechbrain.utils.fetching import fetch
+
                 warnings.simplefilter("ignore")
                 if self.architecture == "wav2vec2":
-                    # Download models if needed
+                    hparam_path = os.path.join(
+                        config.TEMPORARY_DIRECTORY,
+                        "models",
+                        "EncoderASR",
+                        model_key,
+                        "hyperparams.yaml",
+                    )
+                    hf_cache_path = os.path.join(config.TEMPORARY_DIRECTORY, "models", "hf_cache")
+                    if not os.path.exists(hparam_path):
+                        hparams_local_path = fetch(
+                            filename="hyperparams.yaml",
+                            source=model_key,
+                            savedir=os.path.join(
+                                config.TEMPORARY_DIRECTORY, "models", "EncoderASR", model_key
+                            ),
+                            overwrite=False,
+                            huggingface_cache_dir=hf_cache_path,
+                        )
+                        with mfa_open(hparams_local_path, "r") as f:
+                            data = f.read()
+                        data = data.replace(
+                            "save_path: wav2vec2_checkpoint",
+                            f"save_path: {os.path.join(hf_cache_path, 'wav2vec2_checkpoint')}",
+                        )
+                        data = data.replace("kenlm_model_path:", "# kenlm_model_path:")
+                        with mfa_open(hparams_local_path, "w") as f:
+                            f.write(data)
                     m = EncoderASR.from_hparams(
                         source=model_key,
                         savedir=os.path.join(
                             config.TEMPORARY_DIRECTORY, "models", "EncoderASR", model_key
                         ),
-                        huggingface_cache_dir=os.path.join(
-                            config.TEMPORARY_DIRECTORY, "models", "hf_cache"
-                        ),
+                        huggingface_cache_dir=hf_cache_path,
                     )
                 else:
                     # Download models if needed
@@ -1642,6 +1668,7 @@ class SpeechbrainTranscriber(HuggingFaceTranscriber):
         except ImportError:
             raise
         except Exception:
+            raise
             raise ModelError(
                 f"Could not download a speechbrain model with {self.architecture} and {self.language.name} ({model_key})"
             )

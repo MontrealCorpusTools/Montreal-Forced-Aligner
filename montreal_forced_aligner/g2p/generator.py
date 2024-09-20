@@ -11,6 +11,7 @@ import queue
 import statistics
 import time
 import typing
+import unicodedata
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
@@ -176,11 +177,13 @@ class Rewriter:
         threshold: float = 1,
         graphemes: Set[str] = None,
         strict: bool = False,
+        unicode_decomposition: bool = False,
     ):
         self.graphemes = graphemes
         self.grapheme_symbol_table = grapheme_symbol_table
         self.phone_symbol_table = phone_symbol_table
         self.strict = strict
+        self.unicode_decomposition = unicode_decomposition
         if num_pronunciations > 0:
             self.rewrite = functools.partial(
                 scored_top_rewrites,
@@ -198,7 +201,7 @@ class Rewriter:
                 output_token_type=self.phone_symbol_table,
             )
 
-    def create_word_fst(self, word: str) -> pynini.Fst:
+    def create_word_fst(self, word: str) -> typing.Optional[pynini.Fst]:
         if self.graphemes is not None:
             if self.strict and any(x not in self.graphemes for x in word):
                 return None
@@ -208,6 +211,8 @@ class Rewriter:
 
     def __call__(self, graphemes: str) -> List[str]:  # pragma: no cover
         """Call the rewrite function"""
+        if self.unicode_decomposition:
+            graphemes = unicodedata.normalize("NFKD", graphemes)
         if " " in graphemes:
             words = graphemes.split()
             hypotheses = []
@@ -264,13 +269,20 @@ class PhonetisaurusRewriter(Rewriter):
         sequence_separator: str = "|",
         graphemes: Set[str] = None,
         strict: bool = False,
+        unicode_decomposition: bool = False,
     ):
         super().__init__(
-            fst, grapheme_symbol_table, phone_symbol_table, num_pronunciations, threshold, strict
+            fst,
+            grapheme_symbol_table,
+            phone_symbol_table,
+            num_pronunciations,
+            threshold,
+            graphemes,
+            strict,
+            unicode_decomposition,
         )
         self.sequence_separator = sequence_separator
         self.grapheme_order = grapheme_order
-        self.graphemes = graphemes
 
     def create_word_fst(self, word: str) -> typing.Optional[pynini.Fst]:
         if self.graphemes is not None:
@@ -798,8 +810,8 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
             hyp_pron_count += len(hyp)
             gold_pron_count += len(gold_pronunciations)
         logger.debug(
-            f"Generated an average of {hyp_pron_count /len(hypothesis_values)} variants "
-            f"The gold set had an average of {gold_pron_count/len(hypothesis_values)} variants."
+            f"Generated an average of {hyp_pron_count / len(hypothesis_values)} variants "
+            f"The gold set had an average of {gold_pron_count / len(hypothesis_values)} variants."
         )
         with ThreadPool(config.NUM_JOBS) as pool:
             gen = pool.starmap(score_g2p, to_comp)

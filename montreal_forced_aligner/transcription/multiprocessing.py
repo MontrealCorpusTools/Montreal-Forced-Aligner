@@ -59,8 +59,6 @@ try:
             "speechbrain.lobes.models.huggingface_transformers.huggingface"
         )
         transformers_logger.setLevel(logging.ERROR)
-        transformers_logger = logging.getLogger("kenlm")
-        transformers_logger.setLevel(logging.ERROR)
         import torch
 
         try:
@@ -653,7 +651,6 @@ class SpeechbrainAsrFunction(KaldiFunction):
                         ),
                         run_opts=run_opts,
                     )
-
         return_q = queue.Queue(2)
         finished_adding = threading.Event()
         stopped = threading.Event()

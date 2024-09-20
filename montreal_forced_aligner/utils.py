@@ -17,6 +17,7 @@ import subprocess
 import threading
 import time
 import typing
+import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List
@@ -191,6 +192,7 @@ def parse_dictionary_file(
                     f'Error parsing line {i} of {path}: "{line}" did not have a pronunciation'
                 )
             word = line.pop(0)
+            word = unicodedata.normalize("NFKC", word)
             prob = None
             silence_after_prob = None
             silence_before_correct = None

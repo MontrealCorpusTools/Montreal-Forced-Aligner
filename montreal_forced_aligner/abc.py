@@ -618,6 +618,8 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         dict[str, Any]
             Dictionary of specified configuration parameters
         """
+        from montreal_forced_aligner.data import Language
+
         param_types = cls.get_configuration_parameters()
         params = {}
         unknown_dict = {}
@@ -640,7 +642,10 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
             ):
                 continue
             if args is not None and name in args and args[name] is not None:
-                params[name] = param_type(args[name])
+                if param_type == Language:
+                    params[name] = param_type[args[name]]
+                else:
+                    params[name] = param_type(args[name])
             elif name in unknown_dict:
                 params[name] = param_type(unknown_dict[name])
                 if param_type == bool and not isinstance(unknown_dict[name], bool):

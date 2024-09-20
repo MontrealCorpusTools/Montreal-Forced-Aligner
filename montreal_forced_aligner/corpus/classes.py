@@ -5,6 +5,7 @@ import os
 import sys
 import traceback
 import typing
+import unicodedata
 from typing import TYPE_CHECKING, Optional, Union
 
 from praatio import textgrid
@@ -135,6 +136,7 @@ class FileData:
         if self.text_type == TextFileType.LAB:
             try:
                 text = load_text(self.text_path)
+                text = unicodedata.normalize("NFKC", text)
             except UnicodeDecodeError:
                 raise TextParseError(self.text_path)
             if self.wav_info is None:
@@ -190,6 +192,7 @@ class FileData:
                     text = text.strip()
                     if not text:
                         continue
+                    text = unicodedata.normalize("NFKC", text)
                     begin, end = round(begin, 4), round(end, 4)
                     if begin >= duration:
                         continue

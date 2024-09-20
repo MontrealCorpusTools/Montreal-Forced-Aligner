@@ -134,7 +134,6 @@ def test_transcribe_arpa(
     transcribe_config_path,
     db_setup,
 ):
-    temp_dir = os.path.join(temp_dir, "arpa_test_temp")
     output_path = generated_dir.joinpath("transcribe_test_arpa")
     command = [
         "transcribe",

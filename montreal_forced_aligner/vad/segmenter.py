@@ -218,23 +218,15 @@ class VadSegmenter(
                 .join(Utterance.file)
             )
             for f, u in files:
-                boundaries = self.vad_model.get_speech_segments(
-                    str(f.sound_file.sound_file_path), **kwargs
-                ).numpy()
-                for i in range(boundaries.shape[0]):
+                audio = f.sound_file.load_audio()
+                segments = self.vad_model.segment_utterance(audio, **kwargs)
+                for seg in segments:
                     old_utts.add(u.id)
-                    begin, end = boundaries[i, :]
-                    begin -= round(self.close_th / 2, 3)
-                    end += round(self.close_th / 2, 3)
-                    if i == 0:
-                        begin = max(0.0, begin)
-                    if i == boundaries.shape[0] - 1:
-                        end = min(f.sound_file.duration, end)
                     new_utts.append(
                         {
                             "id": utt_index,
-                            "begin": begin,
-                            "end": end,
+                            "begin": seg.begin,
+                            "end": seg.end,
                             "text": "speech",
                             "speaker_id": u.speaker_id,
                             "file_id": u.file_id,

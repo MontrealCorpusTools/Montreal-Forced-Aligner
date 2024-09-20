@@ -672,8 +672,6 @@ def test_swedish_cv(
         swedish_cv_dictionary,
         swedish_cv_acoustic_model,
         output_dir,
-        "--language",
-        "swedish",
         "--config_path",
         basic_align_config_path,
         "-q",
@@ -713,18 +711,18 @@ def test_swedish_cv(
 def test_swedish_mfa(
     swedish_dir,
     generated_dir,
-    swedish_cv_dictionary,
+    swedish_mfa_dictionary,
     temp_dir,
     basic_align_config_path,
-    swedish_cv_acoustic_model,
+    swedish_mfa_acoustic_model,
     db_setup,
 ):
     output_dir = generated_dir.joinpath("swedish_mfa_output")
     command = [
         "align",
         swedish_dir,
-        swedish_cv_dictionary,
-        swedish_cv_acoustic_model,
+        swedish_mfa_dictionary,
+        swedish_mfa_acoustic_model,
         output_dir,
         "--config_path",
         basic_align_config_path,

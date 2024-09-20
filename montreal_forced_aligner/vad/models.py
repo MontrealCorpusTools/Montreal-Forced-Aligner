@@ -12,6 +12,7 @@ import numpy as np
 from kalpy.data import Segment
 
 from montreal_forced_aligner import config
+from montreal_forced_aligner.data import CtmInterval
 
 if typing.TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
@@ -40,11 +41,100 @@ except (ImportError, OSError):
 logger = logging.getLogger("mfa")
 
 
+def get_initial_segmentation(frames: np.ndarray, frame_shift: float) -> typing.List[CtmInterval]:
+    """
+    Compute initial segmentation over voice activity
+
+    Parameters
+    ----------
+    frames: list[Union[int, str]]
+        List of frames with VAD output
+    frame_shift: float
+        Frame shift of features in seconds
+
+    Returns
+    -------
+    List[CtmInterval]
+        Initial segmentation
+    """
+    segments = []
+    cur_segment = None
+    silent_frames = 0
+    non_silent_frames = 0
+    for i in range(frames.shape[0]):
+        f = frames[i]
+        if int(f) > 0:
+            non_silent_frames += 1
+            if cur_segment is None:
+                cur_segment = CtmInterval(begin=i * frame_shift, end=0, label="speech")
+        else:
+            silent_frames += 1
+            if cur_segment is not None:
+                cur_segment.end = (i - 1) * frame_shift
+                segments.append(cur_segment)
+                cur_segment = None
+    if cur_segment is not None:
+        cur_segment.end = len(frames) * frame_shift
+        segments.append(cur_segment)
+    return segments
+
+
+def merge_segments(
+    segments: typing.List[CtmInterval],
+    min_pause_duration: float,
+    max_segment_length: float,
+    min_segment_length: float,
+    snap_boundaries: bool = True,
+) -> typing.List[CtmInterval]:
+    """
+    Merge segments together
+
+    Parameters
+    ----------
+    segments: SegmentationType
+        Initial segments
+    min_pause_duration: float
+        Minimum amount of silence time to mark an utterance boundary
+    max_segment_length: float
+        Maximum length of segments before they're broken up
+    min_segment_length: float
+        Minimum length of segments returned
+
+    Returns
+    -------
+    List[CtmInterval]
+        Merged segments
+    """
+    merged_segments = []
+    snap_boundary_threshold = 0
+    if snap_boundaries:
+        snap_boundary_threshold = min_pause_duration / 2
+    for s in segments:
+        if (
+            not merged_segments
+            or s.begin > merged_segments[-1].end + min_pause_duration
+            or s.end - merged_segments[-1].begin > max_segment_length
+        ):
+            if merged_segments and snap_boundary_threshold:
+                boundary_gap = s.begin - merged_segments[-1].end
+                if boundary_gap < snap_boundary_threshold:
+                    half_boundary = boundary_gap / 2
+                else:
+                    half_boundary = snap_boundary_threshold / 2
+                merged_segments[-1].end += half_boundary
+                s.begin -= half_boundary
+
+            merged_segments.append(s)
+        else:
+            merged_segments[-1].end = s.end
+    return [x for x in merged_segments if x.end - x.begin > min_segment_length]
+
+
 class MfaVAD(VAD):
     def energy_VAD(
         self,
         audio_file: typing.Union[str, Path, np.ndarray, torch.Tensor],
-        boundaries,
+        segments,
         activation_th=0.5,
         deactivation_th=0.0,
         eps=1e-6,
@@ -65,7 +155,7 @@ class MfaVAD(VAD):
         audio_file: path
             Path of the audio file containing the recording. The file is read
             with torchaudio.
-        boundaries: torch.Tensor
+        segments: list[CtmInterval]
             torch.Tensor containing the speech boundaries. It can be derived using the
             get_boundaries method.
         activation_th: float
@@ -93,26 +183,26 @@ class MfaVAD(VAD):
 
         # Computing the chunk length of the energy window
         chunk_len = int(self.time_resolution * sample_rate)
-        new_boundaries = []
+        new_segments = []
 
         # Processing speech segments
-        for i in range(boundaries.shape[0]):
-            begin_sample = int(boundaries[i, 0] * sample_rate)
-            end_sample = int(boundaries[i, 1] * sample_rate)
+        for segment in segments:
+            begin_sample = int(segment.begin * sample_rate)
+            end_sample = int(segment.end * sample_rate)
             seg_len = end_sample - begin_sample
             if seg_len < chunk_len:
                 continue
             if not isinstance(audio_file, torch.Tensor):
                 # Reading the speech segment
-                segment, _ = torchaudio.load(
+                audio, _ = torchaudio.load(
                     audio_file, frame_offset=begin_sample, num_frames=seg_len
                 )
             else:
-                segment = audio_file[:, begin_sample : begin_sample + seg_len]
+                audio = audio_file[:, begin_sample : begin_sample + seg_len]
 
             # Create chunks
             segment_chunks = self.create_chunks(
-                segment, chunk_size=chunk_len, chunk_stride=chunk_len
+                audio, chunk_size=chunk_len, chunk_stride=chunk_len
             )
 
             # Energy computation within each chunk
@@ -123,27 +213,19 @@ class MfaVAD(VAD):
             energy_chunks = (
                 (energy_chunks - energy_chunks.mean()) / (2 * energy_chunks.std())
             ) + 0.5
-            energy_chunks = energy_chunks.unsqueeze(0).unsqueeze(2)
+            energy_chunks = energy_chunks
 
             # Apply threshold based on the energy value
-            energy_vad = self.apply_threshold(
-                energy_chunks,
-                activation_th=activation_th,
-                deactivation_th=deactivation_th,
+            new_segments.extend(
+                self.generate_segments(
+                    energy_chunks,
+                    activation_th=activation_th,
+                    deactivation_th=deactivation_th,
+                    begin=segment.begin,
+                    end=segment.end,
+                )
             )
-
-            # Get the boundaries
-            energy_boundaries = self.get_boundaries(energy_vad, output_value="seconds")
-
-            # Get the final boundaries in the original signal
-            for j in range(energy_boundaries.shape[0]):
-                start_en = boundaries[i, 0] + energy_boundaries[j, 0]
-                end_end = boundaries[i, 0] + energy_boundaries[j, 1]
-                new_boundaries.append([start_en, end_end])
-
-        # Convert boundaries to tensor
-        new_boundaries = torch.FloatTensor(new_boundaries).to(boundaries.device)
-        return new_boundaries
+        return new_segments
 
     def double_check_speech_segments(self, boundaries, audio_file, speech_th=0.5):
         """Takes in input the boundaries of the detected speech segments and
@@ -204,15 +286,13 @@ class MfaVAD(VAD):
         self,
         segment: typing.Union[Segment, np.ndarray],
         apply_energy_VAD: bool = False,
-        double_check: bool = False,
         close_th: float = 0.333,
         len_th: float = 0.333,
         activation_th: float = 0.5,
         deactivation_th: float = 0.25,
         en_activation_th: float = 0.5,
         en_deactivation_th: float = 0.4,
-        speech_th: float = 0.5,
-        allow_empty: bool = True,
+        **kwargs,
     ) -> typing.List[Segment]:
         if isinstance(segment, Segment):
             y = torch.tensor(segment.wave[np.newaxis, :])
@@ -223,70 +303,159 @@ class MfaVAD(VAD):
                 y = torch.tensor(segment)
             else:
                 y = segment
-        prob_chunks = self.get_speech_prob_chunk(y).float()
-        prob_th = self.apply_threshold(
+        prob_chunks = self.get_speech_prob_chunk(y).float().cpu().numpy()[0, ...]
+        # Compute the boundaries of the speech segments
+        segments = self.generate_segments(
             prob_chunks,
             activation_th=activation_th,
             deactivation_th=deactivation_th,
-        ).float()
+            begin=segment.begin
+            if isinstance(segment, Segment) and segment.begin is not None
+            else None,
+            end=segment.end if isinstance(segment, Segment) and segment.end is not None else None,
+        )
 
-        # Compute the boundaries of the speech segments
-        boundaries = self.get_boundaries(prob_th, output_value="seconds").cpu()
-        if isinstance(segment, Segment) and segment.begin is not None:
-            boundaries += segment.begin
         # Apply energy-based VAD on the detected speech segments
         if apply_energy_VAD:
-            vad_boundaries = self.energy_VAD(
+            segments = self.energy_VAD(
                 y,
-                boundaries,
+                segments,
                 activation_th=en_activation_th,
                 deactivation_th=en_deactivation_th,
             )
-            if vad_boundaries.size(0) != 0 or allow_empty:
-                boundaries = vad_boundaries
 
         # Merge short segments
-        boundaries = self.merge_close_segments(boundaries, close_th=close_th)
+        segments = merge_segments(
+            segments,
+            min_pause_duration=close_th,
+            max_segment_length=30,
+            min_segment_length=len_th,
+            snap_boundaries=False,
+        )
 
-        # Remove short segments
-        filtered_boundaries = self.remove_short_segments(boundaries, len_th=len_th)
-        if filtered_boundaries.size(0) != 0 or allow_empty:
-            boundaries = filtered_boundaries
-
-        # Double check speech segments
-        if double_check:
-            checked_boundaries = self.double_check_speech_segments(
-                boundaries, y, speech_th=speech_th
-            )
-            if checked_boundaries.size(0) != 0 or allow_empty:
-                boundaries = checked_boundaries
-        boundaries[:, 0] -= round(close_th / 2, 3)
-        boundaries[:, 1] += round(close_th / 2, 3)
-        segments = []
-        for i in range(boundaries.numpy().shape[0]):
-            begin, end = boundaries[i]
+        # Padding
+        for i, s in enumerate(segments):
+            begin, end = s.begin, s.end
+            begin -= close_th / 2
+            end += close_th / 2
             if i == 0:
                 begin = max(begin, 0)
-            if i == boundaries.numpy().shape[0] - 1:
+            if i == len(segments) - 1:
                 end = min(
                     end,
-                    segment.end
-                    if isinstance(segment, Segment)
-                    else segment.shape[0] / self.sample_rate,
+                    segment.shape[0] / self.sample_rate
+                    if not isinstance(segment, Segment)
+                    else segment.end,
                 )
-            seg = Segment(
-                segment.file_path if isinstance(segment, Segment) else "",
-                float(begin),
-                float(end),
-                segment.channel if isinstance(segment, Segment) else 0,
-            )
-            segments.append(seg)
+            s.begin = begin
+            s.end = end
+            if isinstance(segment, Segment):
+                segments[i] = Segment(segment.file_path, s.begin, s.end, segment.channel)
         return segments
+
+    def generate_segments(
+        self, vad_prob, activation_th=0.5, deactivation_th=0.25, begin=None, end=None
+    ):
+        """Scans the frame-level speech probabilities and applies a threshold
+        on them. Speech starts when a value larger than activation_th is
+        detected, while it ends when observing a value lower than
+        the deactivation_th.
+
+        Arguments
+        ---------
+        vad_prob: numpy.ndarray
+            Frame-level speech probabilities.
+        activation_th:  float
+            Threshold for starting a speech segment.
+        deactivation_th: float
+            Threshold for ending a speech segment.
+
+        Returns
+        -------
+        vad_th: torch.Tensor
+            torch.Tensor containing 1 for speech regions and 0 for non-speech regions.
+        """
+        if begin is None:
+            begin = 0
+        # Loop over batches and time steps
+        is_active = vad_prob[0] > activation_th
+        start = 0
+        boundaries = []
+        for time_step in range(1, vad_prob.shape[0] - 1):
+            y = vad_prob[time_step]
+            if is_active:
+                if y < deactivation_th:
+                    e = self.time_resolution * (time_step - 1)
+                    boundaries.append(
+                        CtmInterval(begin=start + begin, end=e + begin, label="speech")
+                    )
+                    is_active = False
+            elif y > activation_th:
+                is_active = True
+                start = self.time_resolution * time_step
+        if is_active:
+            if end is not None:
+                e = end
+            else:
+                e = self.time_resolution * vad_prob.shape[0]
+                e += begin
+            boundaries.append(CtmInterval(begin=start + begin, end=e, label="speech"))
+        return boundaries
+
+    def get_speech_prob_chunk(self, wavs, wav_lens=None):
+        """Outputs the frame-level posterior probability for the input audio chunks
+        Outputs close to zero refers to time steps with a low probability of speech
+        activity, while outputs closer to one likely contain speech.
+
+        Arguments
+        ---------
+        wavs : torch.Tensor
+            Batch of waveforms [batch, time, channels] or [batch, time]
+            depending on the model. Make sure the sample rate is fs=16000 Hz.
+        wav_lens : torch.Tensor
+            Lengths of the waveforms relative to the longest one in the
+            batch, tensor of shape [batch]. The longest one should have
+            relative length 1.0 and others len(waveform) / max_length.
+            Used for ignoring padding.
+
+        Returns
+        -------
+        torch.Tensor
+            The encoded batch
+        """
+        # Manage single waveforms in input
+        if len(wavs.shape) == 1:
+            wavs = wavs.unsqueeze(0)
+
+        # Assign full length if wav_lens is not assigned
+        if wav_lens is None:
+            wav_lens = torch.ones(wavs.shape[0], device=self.device)
+
+        # Storing waveform in the specified device
+        wavs, wav_lens = wavs.to(self.device), wav_lens.to(self.device)
+        wavs = wavs.float()
+
+        # Computing features and embeddings
+        feats = self.mods.compute_features(wavs)
+        feats = self.mods.mean_var_norm(feats, wav_lens)
+        outputs = self.mods.cnn(feats)
+
+        outputs = outputs.reshape(
+            outputs.shape[0],
+            outputs.shape[1],
+            outputs.shape[2] * outputs.shape[3],
+        )
+
+        outputs, h = self.mods.rnn(outputs)
+        outputs = self.mods.dnn(outputs)
+        output_prob = torch.sigmoid(outputs)
+
+        return output_prob
 
     def segment_for_whisper(
         self,
         segment: typing.Union[torch.Tensor, np.ndarray],
-        apply_energy_VAD: bool = False,
+        apply_energy_VAD: bool = True,
         close_th: float = 0.333,
         len_th: float = 0.333,
         activation_th: float = 0.5,
@@ -295,60 +464,42 @@ class MfaVAD(VAD):
         en_deactivation_th: float = 0.4,
         **kwargs,
     ) -> typing.List[typing.Dict[str, float]]:
-        if len(segment.shape) == 1:
-            y = torch.tensor(segment[np.newaxis, :])
-        elif not torch.is_tensor(segment):
-            y = torch.tensor(segment)
+        if isinstance(segment, Segment):
+            y = torch.tensor(segment.wave[np.newaxis, :])
         else:
-            y = segment
-        prob_chunks = self.get_speech_prob_chunk(y).float()
-        prob_th = self.apply_threshold(
-            prob_chunks,
+            if len(segment.shape) == 1:
+                y = torch.tensor(segment[np.newaxis, :])
+            elif not torch.is_tensor(segment):
+                y = torch.tensor(segment)
+            else:
+                y = segment
+        segments = self.segment_utterance(
+            segment,
+            apply_energy_VAD=apply_energy_VAD,
+            close_th=close_th,
+            len_th=len_th,
             activation_th=activation_th,
             deactivation_th=deactivation_th,
-        ).float()
+            en_deactivation_th=en_deactivation_th,
+            **kwargs,
+        )
 
-        # Compute the boundaries of the speech segments
-        boundaries = self.get_boundaries(prob_th, output_value="seconds").cpu()
-        del prob_chunks
-        del prob_th
-
-        # Apply energy-based VAD on the detected speech segments
-        if apply_energy_VAD:
-            vad_boundaries = self.energy_VAD(
-                y,
-                boundaries,
-                activation_th=en_activation_th,
-                deactivation_th=en_deactivation_th,
+        # Padding
+        segments_for_whisper = []
+        for i, s in enumerate(segments):
+            begin, end = s.begin, s.end
+            f1 = int(round(begin, 3) * self.sample_rate)
+            f2 = int(round(end, 3) * self.sample_rate)
+            segments_for_whisper.append(
+                {"start": float(begin), "end": float(end), "inputs": y[0, f1:f2]}
             )
-            boundaries = vad_boundaries
-
-        # Merge short segments
-        boundaries = self.merge_close_segments(boundaries, close_th=close_th)
-
-        # Remove short segments
-        filtered_boundaries = self.remove_short_segments(boundaries, len_th=len_th)
-        if filtered_boundaries.size(0) != 0:
-            boundaries = filtered_boundaries
-        boundaries[:, 0] -= round(close_th / 2, 3)
-        boundaries[:, 1] += round(close_th / 2, 3)
-        segments = []
-        for i in range(boundaries.numpy().shape[0]):
-            begin, end = boundaries[i]
-            if i == 0:
-                begin = max(begin, 0)
-            if i == boundaries.numpy().shape[0] - 1:
-                end = min(end, segment.shape[0] / self.sample_rate)
-            f1 = int(float(begin) * self.sample_rate)
-            f2 = int(float(end) * self.sample_rate)
-            segments.append({"start": float(begin), "end": float(end), "inputs": y[0, f1:f2]})
-        return segments
+        return segments_for_whisper
 
 
 class SpeechbrainSegmenterMixin:
     def __init__(
         self,
-        apply_energy_vad: bool = False,
+        apply_energy_vad: bool = True,
         double_check: bool = False,
         close_th: float = 0.333,
         len_th: float = 0.333,

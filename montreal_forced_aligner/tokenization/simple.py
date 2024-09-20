@@ -277,8 +277,7 @@ class SplitWordsFunction:
                 yield word
                 break
         else:
-            characters = list(item)
-            for c in characters:
+            for c in item:
                 if self.grapheme_set is not None and c in self.grapheme_set:
                     yield c
                 else:

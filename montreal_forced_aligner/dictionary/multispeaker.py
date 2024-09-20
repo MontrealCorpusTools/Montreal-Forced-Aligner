@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import typing
+import unicodedata
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -576,8 +577,11 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             word = clitic_cleanup_regex.sub(self.clitic_marker, word)
                         if word in self.specials_set:
                             continue
-                        characters = list(word)
                         if word not in special_words:
+                            if getattr(self, "unicode_decomposition", False):
+                                characters = unicodedata.normalize("NFKD", word)
+                            else:
+                                characters = word
                             graphemes.update(characters)
                         if pretrained:
                             difference = set(pron) - self.non_silence_phones - self.silence_phones
@@ -861,6 +865,8 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             dictionaries = session.query(Dictionary)
             update_pron_objs = []
             for d in dictionaries:
+                if d.name == "default":
+                    continue
                 subsequences = set()
                 words = (
                     session.query(Word)
@@ -871,7 +877,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 for w in words:
                     for p in w.pronunciations:
                         pron = p.pronunciation.split()
-                        while pron:
+                        while len(pron) > 0:
                             subsequences.add(tuple(pron))
                             pron = pron[:-1]
                 last_used = collections.defaultdict(int)

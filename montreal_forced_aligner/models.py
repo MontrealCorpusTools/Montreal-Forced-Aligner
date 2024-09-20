@@ -981,12 +981,18 @@ class G2PModel(Archive):
                 graphemes=self.meta["graphemes"],
                 sequence_separator=self.meta["sequence_separator"],
                 strict=True,
+                unicode_decomposition=self.meta["unicode_decomposition"],
             )
         else:
             from montreal_forced_aligner.g2p.generator import Rewriter
 
             rewriter = Rewriter(
-                self.fst, self.grapheme_table, self.phone_table, num_pronunciations=1, strict=True
+                self.fst,
+                self.grapheme_table,
+                self.phone_table,
+                num_pronunciations=1,
+                strict=True,
+                unicode_decomposition=self.meta["unicode_decomposition"],
             )
         return rewriter
 
@@ -1024,6 +1030,7 @@ class G2PModel(Archive):
             self._meta["graphemes"] = set(self._meta.get("graphemes", []))
             self._meta["evaluation"] = self._meta.get("evaluation", [])
             self._meta["training"] = self._meta.get("training", [])
+            self._meta["unicode_decomposition"] = self._meta.get("unicode_decomposition", False)
         return self._meta
 
     @property

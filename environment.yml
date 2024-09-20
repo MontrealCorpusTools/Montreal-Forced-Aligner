@@ -29,8 +29,6 @@ dependencies:
   - postgresql
   - psycopg2
   - click
-  - pytorch
-  - torchaudio
   - setuptools_scm
   - pytest
   - pytest-mypy
@@ -52,12 +50,11 @@ dependencies:
   - sudachipy
   - sudachidict-core
   - spacy-pkuseg
+  - pytorch
+  - torchaudio
   # WhisperX dependencies
   - cudnn =8
   - transformers
-  - tokenizers
-  - accelerate
-  - tiktoken
   - pip:
       - build
       - twine
@@ -69,7 +66,6 @@ dependencies:
       - dragonmapper
       # Speechbrain dependencies
       - speechbrain
-      - kenlm
       - pygtrie
       # WhisperX dependencies
       - whisperx

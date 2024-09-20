@@ -5,6 +5,13 @@
 3.0 Changelog
 *************
 
+3.2.0
+-----
+
+- Add support for transcription via whisperx and speechbrain models
+- Update text normalization to normalize to decomposed forms
+- Compatibility with Kalpy 0.6.7
+
 3.1.4
 -----
 

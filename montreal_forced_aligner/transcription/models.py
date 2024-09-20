@@ -7,6 +7,8 @@ import warnings
 
 import numpy as np
 
+from montreal_forced_aligner.data import Language
+
 try:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -38,6 +40,8 @@ class MfaFasterWhisperPipeline(FasterWhisperPipeline):
         suppress_numerals: bool = False,
         **kwargs,
     ):
+        self.preset_language = None
+        self.tokenizer = None
         super().__init__(
             model,
             vad,
@@ -52,7 +56,17 @@ class MfaFasterWhisperPipeline(FasterWhisperPipeline):
         )
         self.base_suppress_tokens = self.options.suppress_tokens
         if self.preset_language is not None:
-            self.load_tokenizer(task="transcribe", language=self.preset_language)
+            self.load_tokenizer(language=self.preset_language)
+
+    def set_language(self, language: typing.Union[str, Language]):
+        if isinstance(language, str):
+            language = Language[language]
+        language = language.value
+        if self.preset_language != language:
+            self.preset_language = language
+            self.tokenizer = None
+            if self.preset_language is not None:
+                self.load_tokenizer(language=self.preset_language)
 
     def get_suppressed_tokens(
         self,
@@ -62,7 +76,10 @@ class MfaFasterWhisperPipeline(FasterWhisperPipeline):
 
         alpha_pattern = re.compile(r"\w", flags=re.UNICODE)
         roman_numeral_pattern = re.compile(r"^(x+(vi+|i+|i?v|x+))$", flags=re.IGNORECASE)
-        case_roman_numeral_pattern = re.compile(r"(^[IXV]{2,}$|^[xvi]+i$|^x{2,}$|\d)")
+        case_roman_numeral_pattern = re.compile(r"(^[IXV]{2,}$|^[xv]+i{2,}$|^x{2,}iv$|\d)")
+        abbreviations_pattern = re.compile(
+            r"^(sr|sra|mr|dr|mrs|vds|vd|etc)\.?$", flags=re.IGNORECASE
+        )
 
         def _should_suppress(t):
             if t.startswith("<|"):
@@ -72,6 +89,7 @@ class MfaFasterWhisperPipeline(FasterWhisperPipeline):
             if (
                 roman_numeral_pattern.search(t)
                 or case_roman_numeral_pattern.search(t)
+                or abbreviations_pattern.match(t)
                 or re.match(r"^[XV]$", t)
                 or not alpha_pattern.search(t)
             ):
@@ -86,9 +104,12 @@ class MfaFasterWhisperPipeline(FasterWhisperPipeline):
                 suppressed.append(token_id)
         return suppressed
 
-    def load_tokenizer(self, task, language):
+    def load_tokenizer(self, language):
         self.tokenizer = faster_whisper.tokenizer.Tokenizer(
-            self.model.hf_tokenizer, self.model.model.is_multilingual, task=task, language=language
+            self.model.hf_tokenizer,
+            self.model.model.is_multilingual,
+            task="transcribe",
+            language=language,
         )
         if self.suppress_numerals:
             numeral_symbol_tokens = self.get_suppressed_tokens()
@@ -102,8 +123,17 @@ class MfaFasterWhisperPipeline(FasterWhisperPipeline):
         utterance_ids,
         batch_size=None,
         num_workers=0,
-        vad_segments=None,
     ):
+        if self.preset_language is None:
+            max_len = 0
+            audio = None
+            for a in audio_batch:
+                if a["inputs"].shape[-1] > max_len:
+                    max_len = a["inputs"].shape[-1]
+                    audio = a["inputs"]
+            language = self.detect_language(audio)
+            self.load_tokenizer(language=language)
+
         utterances = {}
         batch_size = batch_size or self._batch_size
         for idx, out in enumerate(
@@ -122,7 +152,8 @@ class MfaFasterWhisperPipeline(FasterWhisperPipeline):
                     "end": round(audio_batch[idx]["end"], 3),
                 }
             )
-
+        if self.preset_language is None:
+            self.tokenizer = None
         return utterances
 
 
