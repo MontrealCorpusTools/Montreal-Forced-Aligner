@@ -18,7 +18,7 @@ try:
 
     FOUND_WHISPERX = True
 
-except ImportError:
+except (ImportError, OSError):
     FasterWhisperPipeline = object
     FOUND_WHISPERX = False
 
