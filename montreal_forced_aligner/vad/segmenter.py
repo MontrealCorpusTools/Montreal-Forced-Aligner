@@ -36,7 +36,7 @@ from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.tokenization.spacy import generate_language_tokenizer
 from montreal_forced_aligner.transcription.transcriber import TranscriberMixin
 from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
-from montreal_forced_aligner.vad.models import SpeechbrainSegmenterMixin
+from montreal_forced_aligner.vad.models import SegmenterMixin, SpeechbrainSegmenterMixin
 from montreal_forced_aligner.vad.multiprocessing import (
     SegmentTranscriptArguments,
     SegmentTranscriptFunction,
@@ -57,7 +57,7 @@ class VadSegmenter(
     VadConfigMixin,
     AcousticCorpusMixin,
     FileExporterMixin,
-    SpeechbrainSegmenterMixin,
+    SegmenterMixin,
     TopLevelMfaWorker,
 ):
     """
@@ -173,10 +173,10 @@ class VadSegmenter(
         options = self.segmentation_options
         options.update(
             {
-                "large_chunk_size": self.large_chunk_size,
+                "large_chunk_size": self.max_segment_length,
                 "frame_shift": getattr(self, "export_frame_shift", 0.01),
-                "small_chunk_size": self.small_chunk_size,
-                "overlap_small_chunk": self.overlap_small_chunk,
+                "small_chunk_size": self.min_segment_length,
+                "overlap_small_chunk": self.min_pause_duration,
             }
         )
         return [
@@ -190,63 +190,7 @@ class VadSegmenter(
             for j in self.jobs
         ]
 
-    def segment_vad_speechbrain(self) -> None:
-        """
-        Run segmentation based off of VAD.
-
-        See Also
-        --------
-        :class:`~montreal_forced_aligner.segmenter.SegmentVadFunction`
-            Multiprocessing helper function for each job
-        segment_vad_arguments
-            Job method for generating arguments for helper function
-        """
-
-        old_utts = set()
-        new_utts = []
-        kwargs = self.segmentation_options
-        with tqdm(
-            total=self.num_utterances, disable=config.QUIET
-        ) as pbar, self.session() as session:
-            utt_index = session.query(sqlalchemy.func.max(Utterance.id)).scalar()
-            if not utt_index:
-                utt_index = 0
-            utt_index += 1
-            files: List[File] = (
-                session.query(File, Utterance)
-                .options(joinedload(File.sound_file))
-                .join(Utterance.file)
-            )
-            for f, u in files:
-                audio = f.sound_file.load_audio()
-                segments = self.vad_model.segment_utterance(audio, **kwargs)
-                for seg in segments:
-                    old_utts.add(u.id)
-                    new_utts.append(
-                        {
-                            "id": utt_index,
-                            "begin": seg.begin,
-                            "end": seg.end,
-                            "text": "speech",
-                            "speaker_id": u.speaker_id,
-                            "file_id": u.file_id,
-                            "oovs": "",
-                            "normalized_text": "",
-                            "features": "",
-                            "in_subset": False,
-                            "ignored": False,
-                            "channel": u.channel,
-                        }
-                    )
-                    utt_index += 1
-                pbar.update(1)
-            session.query(Utterance).filter(Utterance.id.in_(old_utts)).delete()
-            session.bulk_insert_mappings(
-                Utterance, new_utts, return_defaults=False, render_nulls=True
-            )
-            session.commit()
-
-    def segment_vad_mfa(self) -> None:
+    def segment_vad(self) -> None:
         """
         Run segmentation based off of VAD.
 
@@ -303,11 +247,7 @@ class VadSegmenter(
         log_dir = self.working_directory.joinpath("log")
         os.makedirs(log_dir, exist_ok=True)
         try:
-            if self.speechbrain:
-                self.initialize_database()
-                self._load_corpus()
-            else:
-                self.load_corpus()
+            self.load_corpus()
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs)
@@ -330,11 +270,8 @@ class VadSegmenter(
             logger.info("Segmentation already done, skipping.")
             return
         try:
-            if not self.speechbrain:
-                self.compute_vad()
-                self.segment_vad_mfa()
-            else:
-                self.segment_vad_speechbrain()
+            self.compute_vad()
+            self.segment_vad()
             with self.session() as session:
                 session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update(
                     {"done": True}
@@ -379,10 +316,257 @@ class VadSegmenter(
 
             new_utterances = segment_utterance(
                 utterance.to_kalpy().segment,
-                self.vad_model if self.speechbrain else None,
+                None,
                 self.segmentation_options,
-                mfcc_options=self.mfcc_options if not self.speechbrain else None,
-                vad_options=self.vad_options if not self.speechbrain else None,
+                mfcc_options=self.mfcc_options,
+                vad_options=self.vad_options,
+                allow_empty=allow_empty,
+            )
+        return new_utterances
+
+
+class SpeechbrainVadSegmenter(
+    VadConfigMixin,
+    AcousticCorpusMixin,
+    FileExporterMixin,
+    SpeechbrainSegmenterMixin,
+    TopLevelMfaWorker,
+):
+    """
+    Class for performing speaker classification, parameters are passed to
+    `speechbrain.pretrained.interfaces.VAD.get_speech_segments
+    <https://speechbrain.readthedocs.io/en/latest/API/speechbrain.pretrained.interfaces.html#speechbrain.pretrained.interfaces.VAD.get_speech_segments>`_
+
+    Parameters
+    ----------
+    segment_padding: float
+        Size of padding on both ends of a segment
+    large_chunk_size: float
+        Size (in seconds) of the large chunks that are read sequentially
+        from the input audio file.
+    small_chunk_size: float
+        Size (in seconds) of the small chunks extracted from the large ones.
+        The audio signal is processed in parallel within the small chunks.
+        Note that large_chunk_size/small_chunk_size must be an integer.
+    overlap_small_chunk: bool
+        If True, it creates overlapped small chunks (with 50% overal).
+        The probabilities of the overlapped chunks are combined using
+        hamming windows.
+    apply_energy_VAD: bool
+        If True, a energy-based VAD is used on the detected speech segments.
+        The neural network VAD often creates longer segments and tends to
+        merge close segments together. The energy VAD post-processes can be
+        useful for having a fine-grained voice activity detection.
+        The energy thresholds is  managed by activation_th and
+        deactivation_th (see below).
+    double_check: bool
+        If True, double checks (using the neural VAD) that the candidate
+        speech segments actually contain speech. A threshold on the mean
+        posterior probabilities provided by the neural network is applied
+        based on the speech_th parameter (see below).
+    activation_th:  float
+        Threshold of the neural posteriors above which starting a speech segment.
+    deactivation_th: float
+        Threshold of the neural posteriors below which ending a speech segment.
+    en_activation_th: float
+        A new speech segment is started it the energy is above activation_th.
+        This is active only if apply_energy_VAD is True.
+    en_deactivation_th: float
+        The segment is considered ended when the energy is <= deactivation_th.
+        This is active only if apply_energy_VAD is True.
+    speech_th: float
+        Threshold on the mean posterior probability within the candidate
+        speech segment. Below that threshold, the segment is re-assigned to
+        a non-speech region. This is active only if double_check is True.
+    close_th: float
+        If the distance between boundaries is smaller than close_th, the
+        segments will be merged.
+    len_th: float
+        If the length of the segment is smaller than len_th, the segments
+        will be merged.
+    """
+
+    def __init__(
+        self,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.transcriptions_required = False
+
+    @classmethod
+    def parse_parameters(
+        cls,
+        config_path: Optional[Path] = None,
+        args: Optional[Dict[str, typing.Any]] = None,
+        unknown_args: Optional[typing.Iterable[str]] = None,
+    ) -> MetaDict:
+        """
+        Parse parameters for segmentation from a config path or command-line arguments
+
+        Parameters
+        ----------
+        config_path: :class:`~pathlib.Path`
+            Config path
+        args: dict[str, Any]
+            Parsed arguments
+        unknown_args: list[str]
+            Optional list of arguments that were not parsed
+
+        Returns
+        -------
+        dict[str, Any]
+            Configuration parameters
+        """
+        global_params = {}
+        if config_path and os.path.exists(config_path):
+            data = load_configuration(config_path)
+            for k, v in data.items():
+                if k == "features":
+                    if "type" in v:
+                        v["feature_type"] = v["type"]
+                        del v["type"]
+                    global_params.update(v)
+                else:
+                    if v is None and k in cls.nullable_fields:
+                        v = []
+                    global_params[k] = v
+        global_params.update(cls.parse_args(args, unknown_args))
+        return global_params
+
+    def segment_vad(self) -> None:
+        """
+        Run segmentation based off of VAD.
+
+        See Also
+        --------
+        :class:`~montreal_forced_aligner.segmenter.SegmentVadFunction`
+            Multiprocessing helper function for each job
+        segment_vad_arguments
+            Job method for generating arguments for helper function
+        """
+
+        old_utts = set()
+        new_utts = []
+        kwargs = self.segmentation_options
+        with tqdm(
+            total=self.num_utterances, disable=config.QUIET
+        ) as pbar, self.session() as session:
+            utt_index = session.query(sqlalchemy.func.max(Utterance.id)).scalar()
+            if not utt_index:
+                utt_index = 0
+            utt_index += 1
+            files: List[File] = (
+                session.query(File, Utterance)
+                .options(joinedload(File.sound_file))
+                .join(Utterance.file)
+            )
+            for f, u in files:
+                audio = f.sound_file.load_audio()
+                segments = self.vad_model.segment_utterance(audio, **kwargs)
+                for seg in segments:
+                    old_utts.add(u.id)
+                    new_utts.append(
+                        {
+                            "id": utt_index,
+                            "begin": seg.begin,
+                            "end": seg.end,
+                            "text": "speech",
+                            "speaker_id": u.speaker_id,
+                            "file_id": u.file_id,
+                            "oovs": "",
+                            "normalized_text": "",
+                            "features": "",
+                            "in_subset": False,
+                            "ignored": False,
+                            "channel": u.channel,
+                        }
+                    )
+                    utt_index += 1
+                pbar.update(1)
+            session.query(Utterance).filter(Utterance.id.in_(old_utts)).delete()
+            session.bulk_insert_mappings(
+                Utterance, new_utts, return_defaults=False, render_nulls=True
+            )
+            session.commit()
+
+    def setup(self) -> None:
+        """Setup segmentation"""
+        super().setup()
+        self.create_new_current_workflow(WorkflowType.segmentation)
+        log_dir = self.working_directory.joinpath("log")
+        os.makedirs(log_dir, exist_ok=True)
+        try:
+            self.initialize_database()
+            self._load_corpus()
+        except Exception as e:
+            if isinstance(e, KaldiProcessingError):
+                log_kaldi_errors(e.error_logs)
+                e.update_log_file()
+            raise
+
+    def segment(self) -> None:
+        """
+        Performs VAD and segmentation into utterances
+
+        Raises
+        ------
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
+            If there were any errors in running Kaldi binaries
+        """
+        self.setup()
+        self.create_new_current_workflow(WorkflowType.segmentation)
+        wf = self.current_workflow
+        if wf.done:
+            logger.info("Segmentation already done, skipping.")
+            return
+        try:
+            self.segment_vad()
+            with self.session() as session:
+                session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update(
+                    {"done": True}
+                )
+                session.commit()
+        except Exception as e:
+            with self.session() as session:
+                session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update(
+                    {"dirty": True}
+                )
+                session.commit()
+            if isinstance(e, KaldiProcessingError):
+                log_kaldi_errors(e.error_logs)
+                e.update_log_file()
+            raise
+
+    def export_files(self, output_directory: str, output_format: Optional[str] = None) -> None:
+        """
+        Export the results of segmentation as TextGrids
+
+        Parameters
+        ----------
+        output_directory: str
+            Directory to save segmentation TextGrids
+        output_format: str, optional
+            Format to force output files into
+        """
+        if output_format is None:
+            output_format = TextFileType.TEXTGRID.value
+        os.makedirs(output_directory, exist_ok=True)
+        with self.session() as session:
+            for f in session.query(File).options(
+                selectinload(File.utterances).joinedload(Utterance.speaker, innerjoin=True),
+                joinedload(File.sound_file, innerjoin=True),
+                joinedload(File.text_file),
+            ):
+                f.save(output_directory, output_format=output_format)
+
+    def segment_utterance(self, utterance_id: int, allow_empty: bool = True):
+        with self.session() as session:
+            utterance = full_load_utterance(session, utterance_id)
+
+            new_utterances = segment_utterance(
+                utterance.to_kalpy().segment,
+                self.vad_model,
+                self.segmentation_options,
                 allow_empty=allow_empty,
             )
         return new_utterances
@@ -400,18 +584,12 @@ class TranscriptionSegmenter(
 
     def setup(self) -> None:
         TopLevelMfaWorker.setup(self)
-
         self.create_new_current_workflow(WorkflowType.segmentation)
         self.setup_acoustic_model()
-
         self.dictionary_setup()
-
         self._load_corpus()
-
         self.initialize_jobs()
-
         self.normalize_text()
-
         self.write_lexicon_information(write_disambiguation=False)
 
     def setup_acoustic_model(self):

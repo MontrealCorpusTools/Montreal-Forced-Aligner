@@ -135,8 +135,8 @@ class MfaVAD(VAD):
         self,
         audio_file: typing.Union[str, Path, np.ndarray, torch.Tensor],
         segments,
-        activation_th=0.5,
-        deactivation_th=0.0,
+        activation_threshold=0.5,
+        deactivation_threshold=0.0,
         eps=1e-6,
     ):
         """Applies energy-based VAD within the detected speech segments.The neural
@@ -158,9 +158,9 @@ class MfaVAD(VAD):
         segments: list[CtmInterval]
             torch.Tensor containing the speech boundaries. It can be derived using the
             get_boundaries method.
-        activation_th: float
+        activation_threshold: float
             A new speech segment is started it the energy is above activation_th.
-        deactivation_th: float
+        deactivation_threshold: float
             The segment is considered ended when the energy is <= deactivation_th.
         eps: float
             Small constant for numerical stability.
@@ -219,8 +219,8 @@ class MfaVAD(VAD):
             new_segments.extend(
                 self.generate_segments(
                     energy_chunks,
-                    activation_th=activation_th,
-                    deactivation_th=deactivation_th,
+                    activation_threshold=activation_threshold,
+                    deactivation_threshold=deactivation_threshold,
                     begin=segment.begin,
                     end=segment.end,
                 )
@@ -285,13 +285,14 @@ class MfaVAD(VAD):
     def segment_utterance(
         self,
         segment: typing.Union[Segment, np.ndarray],
-        apply_energy_VAD: bool = False,
-        close_th: float = 0.333,
-        len_th: float = 0.333,
-        activation_th: float = 0.5,
-        deactivation_th: float = 0.25,
-        en_activation_th: float = 0.5,
-        en_deactivation_th: float = 0.4,
+        apply_energy_vad: bool = False,
+        min_pause_duration: float = 0.333,
+        max_segment_length: float = 30,
+        min_segment_length: float = 0.333,
+        activation_threshold: float = 0.5,
+        deactivation_threshold: float = 0.25,
+        energy_activation_threshold: float = 0.5,
+        energy_deactivation_threshold: float = 0.4,
         **kwargs,
     ) -> typing.List[Segment]:
         if isinstance(segment, Segment):
@@ -307,8 +308,8 @@ class MfaVAD(VAD):
         # Compute the boundaries of the speech segments
         segments = self.generate_segments(
             prob_chunks,
-            activation_th=activation_th,
-            deactivation_th=deactivation_th,
+            activation_threshold=activation_threshold,
+            deactivation_threshold=deactivation_threshold,
             begin=segment.begin
             if isinstance(segment, Segment) and segment.begin is not None
             else None,
@@ -316,28 +317,28 @@ class MfaVAD(VAD):
         )
 
         # Apply energy-based VAD on the detected speech segments
-        if apply_energy_VAD:
+        if apply_energy_vad:
             segments = self.energy_VAD(
                 y,
                 segments,
-                activation_th=en_activation_th,
-                deactivation_th=en_deactivation_th,
+                activation_threshold=energy_activation_threshold,
+                deactivation_threshold=energy_deactivation_threshold,
             )
 
         # Merge short segments
         segments = merge_segments(
             segments,
-            min_pause_duration=close_th,
-            max_segment_length=30,
-            min_segment_length=len_th,
+            min_pause_duration=min_pause_duration,
+            max_segment_length=max_segment_length,
+            min_segment_length=min_segment_length,
             snap_boundaries=False,
         )
 
         # Padding
         for i, s in enumerate(segments):
             begin, end = s.begin, s.end
-            begin -= close_th / 2
-            end += close_th / 2
+            begin -= min_pause_duration / 2
+            end += min_pause_duration / 2
             if i == 0:
                 begin = max(begin, 0)
             if i == len(segments) - 1:
@@ -354,7 +355,7 @@ class MfaVAD(VAD):
         return segments
 
     def generate_segments(
-        self, vad_prob, activation_th=0.5, deactivation_th=0.25, begin=None, end=None
+        self, vad_prob, activation_threshold=0.5, deactivation_threshold=0.25, begin=None, end=None
     ):
         """Scans the frame-level speech probabilities and applies a threshold
         on them. Speech starts when a value larger than activation_th is
@@ -365,9 +366,9 @@ class MfaVAD(VAD):
         ---------
         vad_prob: numpy.ndarray
             Frame-level speech probabilities.
-        activation_th:  float
+        activation_threshold:  float
             Threshold for starting a speech segment.
-        deactivation_th: float
+        deactivation_threshold: float
             Threshold for ending a speech segment.
 
         Returns
@@ -378,19 +379,19 @@ class MfaVAD(VAD):
         if begin is None:
             begin = 0
         # Loop over batches and time steps
-        is_active = vad_prob[0] > activation_th
+        is_active = vad_prob[0] > activation_threshold
         start = 0
         boundaries = []
         for time_step in range(1, vad_prob.shape[0] - 1):
             y = vad_prob[time_step]
             if is_active:
-                if y < deactivation_th:
+                if y < deactivation_threshold:
                     e = self.time_resolution * (time_step - 1)
                     boundaries.append(
                         CtmInterval(begin=start + begin, end=e + begin, label="speech")
                     )
                     is_active = False
-            elif y > activation_th:
+            elif y > activation_threshold:
                 is_active = True
                 start = self.time_resolution * time_step
         if is_active:
@@ -455,13 +456,14 @@ class MfaVAD(VAD):
     def segment_for_whisper(
         self,
         segment: typing.Union[torch.Tensor, np.ndarray],
-        apply_energy_VAD: bool = True,
-        close_th: float = 0.333,
-        len_th: float = 0.333,
-        activation_th: float = 0.5,
-        deactivation_th: float = 0.25,
-        en_activation_th: float = 0.5,
-        en_deactivation_th: float = 0.4,
+        apply_energy_vad: bool = True,
+        max_segment_length: float = 30,
+        min_segment_length: float = 0.333,
+        min_pause_duration: float = 0.333,
+        activation_threshold: float = 0.5,
+        deactivation_threshold: float = 0.25,
+        en_activation_threshold: float = 0.5,
+        en_deactivation_threshold: float = 0.4,
         **kwargs,
     ) -> typing.List[typing.Dict[str, float]]:
         if isinstance(segment, Segment):
@@ -475,12 +477,14 @@ class MfaVAD(VAD):
                 y = segment
         segments = self.segment_utterance(
             segment,
-            apply_energy_VAD=apply_energy_VAD,
-            close_th=close_th,
-            len_th=len_th,
-            activation_th=activation_th,
-            deactivation_th=deactivation_th,
-            en_deactivation_th=en_deactivation_th,
+            apply_energy_vad=apply_energy_vad,
+            max_segment_length=max_segment_length,
+            min_segment_length=min_segment_length,
+            min_pause_duration=min_pause_duration,
+            activation_threshold=activation_threshold,
+            deactivation_threshold=deactivation_threshold,
+            en_activation_threshold=en_activation_threshold,
+            en_deactivation_threshold=en_deactivation_threshold,
             **kwargs,
         )
 
@@ -496,18 +500,47 @@ class MfaVAD(VAD):
         return segments_for_whisper
 
 
-class SpeechbrainSegmenterMixin:
+class SegmenterMixin:
+    def __init__(
+        self,
+        max_segment_length: float = 30,
+        min_segment_length: float = 0.333,
+        min_pause_duration: float = 0.333,
+        activation_threshold: float = 0.5,
+        deactivation_threshold: float = 0.25,
+        energy_activation_threshold: float = 0.5,
+        energy_deactivation_threshold: float = 0.4,
+        **kwargs,
+    ):
+        self.max_segment_length = max_segment_length
+        self.min_segment_length = min_segment_length
+        self.min_pause_duration = min_pause_duration
+        self.activation_threshold = activation_threshold
+        self.deactivation_threshold = deactivation_threshold
+        self.energy_activation_threshold = energy_activation_threshold
+        self.energy_deactivation_threshold = energy_deactivation_threshold
+        super().__init__(**kwargs)
+
+    @property
+    def segmentation_options(self) -> MetaDict:
+        """Options for segmentation"""
+        return {
+            "max_segment_length": self.max_segment_length,
+            "min_segment_length": self.min_segment_length,
+            "activation_threshold": self.activation_threshold,
+            "deactivation_threshold": self.deactivation_threshold,
+            "energy_activation_threshold": self.energy_activation_threshold,
+            "energy_deactivation_threshold": self.energy_deactivation_threshold,
+            "min_pause_duration": self.min_pause_duration,
+        }
+
+
+class SpeechbrainSegmenterMixin(SegmenterMixin):
     def __init__(
         self,
         apply_energy_vad: bool = True,
         double_check: bool = False,
-        close_th: float = 0.333,
-        len_th: float = 0.333,
-        activation_th: float = 0.5,
-        deactivation_th: float = 0.25,
-        en_activation_th: float = 0.5,
-        en_deactivation_th: float = 0.4,
-        speech_th: float = 0.5,
+        speech_threshold: float = 0.5,
         cuda: bool = False,
         **kwargs,
     ):
@@ -519,13 +552,7 @@ class SpeechbrainSegmenterMixin:
         super().__init__(**kwargs)
         self.apply_energy_vad = apply_energy_vad
         self.double_check = double_check
-        self.close_th = close_th
-        self.len_th = len_th
-        self.activation_th = activation_th
-        self.deactivation_th = deactivation_th
-        self.en_activation_th = en_activation_th
-        self.en_deactivation_th = en_deactivation_th
-        self.speech_th = speech_th
+        self.speech_threshold = speech_threshold
         self.cuda = cuda
         self.speechbrain = True
         self.vad_model = None
@@ -541,14 +568,12 @@ class SpeechbrainSegmenterMixin:
     @property
     def segmentation_options(self) -> MetaDict:
         """Options for segmentation"""
-        return {
-            "apply_energy_VAD": self.apply_energy_vad,
-            "double_check": self.double_check,
-            "activation_th": self.activation_th,
-            "deactivation_th": self.deactivation_th,
-            "en_activation_th": self.en_activation_th,
-            "en_deactivation_th": self.en_deactivation_th,
-            "speech_th": self.speech_th,
-            "close_th": self.close_th,
-            "len_th": self.len_th,
-        }
+        options = super().segmentation_options
+        options.update(
+            {
+                "apply_energy_vad": self.apply_energy_vad,
+                "double_check": self.double_check,
+                "speech_threshold": self.speech_threshold,
+            }
+        )
+        return options

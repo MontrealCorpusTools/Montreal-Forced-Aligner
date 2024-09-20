@@ -70,7 +70,7 @@ class SegmentTranscriptArguments(MfaArguments):
 
 def segment_utterance(
     segment: Segment,
-    vad_model: MfaVAD,
+    vad_model: typing.Optional[MfaVAD],
     segmentation_options: MetaDict,
     mfcc_options: MetaDict = None,
     vad_options: MetaDict = None,
@@ -344,9 +344,9 @@ def segment_utterance_vad(
     segments = get_initial_segmentation(vad, mfcc_computer.frame_shift)
     segments = merge_segments(
         segments,
-        segmentation_options["close_th"],
-        segmentation_options["large_chunk_size"],
-        segmentation_options["len_th"] if allow_empty else 0.02,
+        segmentation_options["min_pause_duration"],
+        segmentation_options["max_segment_length"],
+        segmentation_options["min_segment_length"] if allow_empty else 0.02,
     )
     new_segments = []
     for s in segments:
@@ -397,9 +397,9 @@ class SegmentVadFunction(KaldiFunction):
 
             merged = merge_segments(
                 initial_segments,
-                self.segmentation_options["close_th"],
-                self.segmentation_options["large_chunk_size"],
-                self.segmentation_options["len_th"],
+                self.segmentation_options["min_pause_duration"],
+                self.segmentation_options["max_segment_length"],
+                self.segmentation_options["min_segment_length"],
             )
             self.callback((int(utt_id.split("-")[-1]), merged))
             reader.Next()
