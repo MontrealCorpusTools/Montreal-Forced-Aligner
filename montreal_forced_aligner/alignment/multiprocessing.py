@@ -459,9 +459,9 @@ class CompileTrainGraphsFunction(KaldiFunction):
                     self.tree_path,
                     lexicon,
                     use_g2p=self.use_g2p,
-                    batch_size=1000
+                    batch_size=500
                     if workflow.workflow_type is not WorkflowType.transcript_verification
-                    else 500,
+                    else 250,
                 )
                 graph_logger.debug(f"Set up took {time.time() - begin} seconds")
                 query = (
@@ -484,7 +484,7 @@ class CompileTrainGraphsFunction(KaldiFunction):
                 )
                 graph_logger.debug(f"Total compilation time: {time.time() - begin} seconds")
                 del compiler
-        del self.lexicon_compilers
+                del lexicon
 
 
 class AccStatsFunction(KaldiFunction):
@@ -1560,6 +1560,7 @@ class AlignmentExtractionFunction(KaldiFunction):
                                 pass
                         alignment_archive.close()
                         extraction_logger.debug("Finished ali first pass")
+                del lexicon_compiler
             extraction_logger.debug("Finished extraction")
 
 

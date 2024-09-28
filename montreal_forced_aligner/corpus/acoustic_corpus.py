@@ -39,7 +39,7 @@ from montreal_forced_aligner.corpus.multiprocessing import (
     AcousticDirectoryParser,
     CorpusProcessWorker,
 )
-from montreal_forced_aligner.data import DatabaseImportData, PhoneType, WorkflowType
+from montreal_forced_aligner.data import DatabaseImportData, PhoneType, WordType, WorkflowType
 from montreal_forced_aligner.db import (
     Corpus,
     CorpusWorkflow,
@@ -50,6 +50,7 @@ from montreal_forced_aligner.db import (
     Speaker,
     TextFile,
     Utterance,
+    Word,
     bulk_update,
 )
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
@@ -1128,6 +1129,42 @@ class AcousticCorpusPronunciationMixin(
         logger.debug(f"Generated features in {time.time() - begin:.3f} seconds")
 
         logger.debug(f"Setting up corpus took {time.time() - all_begin:.3f} seconds")
+
+    def subset_lexicon(self) -> None:
+        included_words = set()
+        with self.session() as session:
+            corpus = session.query(Corpus).first()
+            if corpus.current_subset > 0:
+                subset_utterances = (
+                    session.query(Utterance.normalized_text)
+                    .filter(Utterance.in_subset == True)  # noqa
+                    .filter(Utterance.ignored == False)  # noqa
+                )
+                for (u_text,) in subset_utterances:
+                    included_words.update(u_text.split())
+                session.execute(
+                    sqlalchemy.update(Word)
+                    .where(Word.word_type == WordType.speech)
+                    .values(included=False)
+                )
+                session.flush()
+                session.execute(
+                    sqlalchemy.update(Word)
+                    .where(Word.word_type == WordType.speech)
+                    .where(Word.count > self.oov_count_threshold)
+                    .where(Word.word.in_(included_words))
+                    .values(included=True)
+                )
+            else:
+                session.execute(
+                    sqlalchemy.update(Word)
+                    .where(Word.word_type == WordType.speech)
+                    .where(Word.count > self.oov_count_threshold)
+                    .values(included=True)
+                )
+
+            session.commit()
+        self.write_lexicon_information()
 
 
 class AcousticCorpus(AcousticCorpusMixin, DictionaryMixin, MfaWorker):

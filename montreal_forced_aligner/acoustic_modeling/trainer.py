@@ -153,6 +153,8 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         training_configuration: List[Tuple[str, Dict[str, Any]]] = None,
         phone_set_type: str = None,
         model_version: str = None,
+        subset_word_count: int = 3,
+        minimum_utterance_length: int = 2,
         **kwargs,
     ):
         self.param_dict = {
@@ -164,6 +166,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         }
         self.final_identifier = None
         self.current_subset: int = 0
+        self.subset_word_count = subset_word_count
         self.current_aligner: Optional[AcousticModelTrainingMixin] = None
         self.current_trainer: Optional[AcousticModelTrainingMixin] = None
         self.current_acoustic_model: Optional[AcousticModel] = None
@@ -184,6 +187,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         self.final_alignment = True
         self.model_version = model_version
         self.boost_silence = 1.5
+        self.minimum_utterance_length = minimum_utterance_length
 
     @classmethod
     def default_training_configurations(cls) -> List[Tuple[str, Dict[str, Any]]]:
@@ -335,6 +339,12 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                         update_mapping.append({"id": u_id, "ignored": True})
                         continue
                     words = text.split()
+                    if (
+                        self.minimum_utterance_length > 1
+                        and len(words) < self.minimum_utterance_length
+                    ):
+                        update_mapping.append({"id": u_id, "ignored": True})
+                        continue
                     if any(x in word_mapping for x in words):
                         continue
                     update_mapping.append({"id": u_id, "ignored": True})
@@ -629,7 +639,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         new_phone_lm_path = os.path.join(previous.working_directory, "phone_lm.fst")
         if not os.path.exists(new_phone_lm_path) and os.path.exists(phone_lm_path):
             shutil.copyfile(phone_lm_path, new_phone_lm_path)
-        logger.info(f"Completed training in {time.time()-begin} seconds!")
+        logger.info(f"Completed training in {time.time() - begin} seconds!")
 
     def transition_acc_arguments(self) -> List[TransitionAccArguments]:
         """

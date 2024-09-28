@@ -791,7 +791,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     import traceback
 
                     exc_type, exc_value, exc_traceback = sys.exc_info()
-                    print(
+                    logger.debug(
                         "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
                     )
                     raise
@@ -1200,7 +1200,8 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             cutoff_pattern = "<(cutoff|hes)"
 
         def add_filters(query):
-            multiword_pattern = r"\s\S+\s"
+            subset_word_count = getattr(self, "subset_word_count", 3)
+            multiword_pattern = rf"(\s\S+){{{subset_word_count},}}"
             filtered = (
                 query.filter(
                     Utterance.normalized_text.op("~")(multiword_pattern)
@@ -1488,7 +1489,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             log_dir = subset_directory.joinpath("log")
             os.makedirs(log_dir, exist_ok=True)
 
-            logger.debug(f"Setting subset flags took {time.time()-begin} seconds")
+            logger.debug(f"Setting subset flags took {time.time() - begin} seconds")
             with self.session() as session:
                 jobs = (
                     session.query(Job)
@@ -1507,7 +1508,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     )
                     for j in self._jobs
                 ]
-
             for _ in run_kaldi_function(ExportKaldiFilesFunction, arguments, total_count=subset):
                 pass
 
@@ -1559,10 +1559,14 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 c.current_subset = subset
             session.commit()
         if subset is None or subset >= self.num_utterances or subset <= 0:
+            if hasattr(self, "subset_lexicon"):
+                self.subset_lexicon()
             return self.split_directory
         directory = self.corpus_output_directory.joinpath(f"subset_{subset}")
         if not os.path.exists(directory):
             self.create_subset(subset)
+            if hasattr(self, "subset_lexicon"):
+                self.subset_lexicon()
         return directory
 
     def get_latest_workflow_run(self, workflow: WorkflowType, session: Session) -> CorpusWorkflow:
