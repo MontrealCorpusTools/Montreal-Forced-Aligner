@@ -4,7 +4,6 @@ from __future__ import annotations
 import typing
 
 import numpy as np
-import torch
 from _kalpy.fstext import ConstFst
 from _kalpy.matrix import DoubleMatrix, FloatMatrix
 from kalpy.data import Segment
@@ -129,6 +128,8 @@ def transcribe_utterance_online_speechbrain(
         raise Exception(
             "Could not import speechbrain, please ensure it is installed via `pip install speechbrain`"
         )
+    import torch
+
     segment = utterance.segment
     waveform = segment.load_audio()
     waveform = model.audio_normalizer(waveform, 16000).unsqueeze(0)
