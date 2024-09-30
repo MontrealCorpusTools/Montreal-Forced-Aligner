@@ -1130,10 +1130,16 @@ class AcousticCorpusPronunciationMixin(
 
         logger.debug(f"Setting up corpus took {time.time() - all_begin:.3f} seconds")
 
-    def subset_lexicon(self) -> None:
+    def subset_lexicon(self, write_disambiguation: Optional[bool] = False) -> None:
         included_words = set()
         with self.session() as session:
             corpus = session.query(Corpus).first()
+            session.execute(
+                sqlalchemy.update(Word)
+                .where(Word.word_type == WordType.speech)
+                .values(included=False)
+            )
+            session.flush()
             if corpus.current_subset > 0:
                 subset_utterances = (
                     session.query(Utterance.normalized_text)
@@ -1142,12 +1148,6 @@ class AcousticCorpusPronunciationMixin(
                 )
                 for (u_text,) in subset_utterances:
                     included_words.update(u_text.split())
-                session.execute(
-                    sqlalchemy.update(Word)
-                    .where(Word.word_type == WordType.speech)
-                    .values(included=False)
-                )
-                session.flush()
                 session.execute(
                     sqlalchemy.update(Word)
                     .where(Word.word_type == WordType.speech)
@@ -1162,9 +1162,8 @@ class AcousticCorpusPronunciationMixin(
                     .where(Word.count > self.oov_count_threshold)
                     .values(included=True)
                 )
-
             session.commit()
-        self.write_lexicon_information()
+        self.write_lexicon_information(write_disambiguation=write_disambiguation)
 
 
 class AcousticCorpus(AcousticCorpusMixin, DictionaryMixin, MfaWorker):

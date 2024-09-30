@@ -371,6 +371,7 @@ class ValidationMixin:
             output_directory = self.output_directory
         os.makedirs(output_directory, exist_ok=True)
         try:
+            self.subset_lexicon(write_disambiguation=True)
             self.train_speaker_lms()
 
             self.transcribe(WorkflowType.per_speaker_transcription)
@@ -378,25 +379,25 @@ class ValidationMixin:
             logger.info("Test transcriptions")
             ser, wer, cer = self.compute_wer()
             if ser < 0.3:
-                logger.info(f"{ser*100:.2f}% sentence error rate")
+                logger.info(f"{ser * 100:.2f}% sentence error rate")
             elif ser < 0.8:
-                logger.warning(f"{ser*100:.2f}% sentence error rate")
+                logger.warning(f"{ser * 100:.2f}% sentence error rate")
             else:
-                logger.error(f"{ser*100:.2f}% sentence error rate")
+                logger.error(f"{ser * 100:.2f}% sentence error rate")
 
             if wer < 0.25:
-                logger.info(f"{wer*100:.2f}% word error rate")
+                logger.info(f"{wer * 100:.2f}% word error rate")
             elif wer < 0.75:
-                logger.warning(f"{wer*100:.2f}% word error rate")
+                logger.warning(f"{wer * 100:.2f}% word error rate")
             else:
-                logger.error(f"{wer*100:.2f}% word error rate")
+                logger.error(f"{wer * 100:.2f}% word error rate")
 
             if cer < 0.25:
-                logger.info(f"{cer*100:.2f}% character error rate")
+                logger.info(f"{cer * 100:.2f}% character error rate")
             elif cer < 0.75:
-                logger.warning(f"{cer*100:.2f}% character error rate")
+                logger.warning(f"{cer * 100:.2f}% character error rate")
             else:
-                logger.error(f"{cer*100:.2f}% character error rate")
+                logger.error(f"{cer * 100:.2f}% character error rate")
 
             self.save_transcription_evaluation(output_directory)
             out_path = os.path.join(output_directory, "transcription_evaluation.csv")
