@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import time
 from abc import abstractmethod
 from pathlib import Path
@@ -131,9 +130,7 @@ class AcousticModelTrainingMixin(
                 AccStatsArguments(
                     j.id,
                     self.session if config.USE_THREADING else self.db_string,
-                    os.path.join(
-                        self.working_directory, "log", f"acc.{self.iteration}.{j.id}.log"
-                    ),
+                    self.working_log_directory.joinpath(f"acc.{self.iteration}.{j.id}.log"),
                     self.working_directory,
                     self.model_path,
                 )
@@ -213,7 +210,7 @@ class AcousticModelTrainingMixin(
             )
             self.subset = 0
             self.worker.current_subset = 0
-        os.makedirs(self.working_log_directory, exist_ok=True)
+        self.working_log_directory.mkdir(parents=True, exist_ok=True)
         self._trainer_initialization()
         self.iteration = 1
         self.worker.current_trainer = self
@@ -321,23 +318,23 @@ class AcousticModelTrainingMixin(
             train_logger.debug(f"Power: {self.power}")
             objf_impr, count = transition_model.mle_update(transition_accs)
             train_logger.debug(
-                f"Transition model update: Overall {objf_impr/count} "
+                f"Transition model update: Overall {objf_impr / count} "
                 f"log-like improvement per frame over {count} frames."
             )
             objf_impr, count = acoustic_model.mle_update(
                 gmm_accs, mixup=self.current_gaussians, power=self.power
             )
             train_logger.debug(
-                f"GMM update: Overall {objf_impr/count} "
+                f"GMM update: Overall {objf_impr / count} "
                 f"objective function improvement per frame over {count} frames."
             )
             tot_like = gmm_accs.TotLogLike()
             tot_t = gmm_accs.TotCount()
             train_logger.debug(
-                f"Average Likelihood per frame for iteration {self.iteration} = {tot_like/tot_t} "
+                f"Average Likelihood per frame for iteration {self.iteration} = {tot_like / tot_t} "
                 f"over {tot_t} frames."
             )
-            logger.debug(f"Log likelihood for iteration {self.iteration}: {tot_like/tot_t}")
+            logger.debug(f"Log likelihood for iteration {self.iteration}: {tot_like / tot_t}")
             write_gmm_model(str(self.next_model_path), transition_model, acoustic_model)
 
     def align_iteration(self) -> None:
@@ -345,20 +342,20 @@ class AcousticModelTrainingMixin(
         begin = time.time()
         self.align_utterances(training=True)
         logger.debug(
-            f"Generating alignments for iteration {self.iteration} took {time.time()-begin} seconds"
+            f"Generating alignments for iteration {self.iteration} took {time.time() - begin} seconds"
         )
 
     @property
     def initialized(self) -> bool:
         return (
-            os.path.exists(self.working_directory.joinpath("1.mdl"))
-            or os.path.exists(self.working_directory.joinpath("final.mdl"))
-            or os.path.exists(self.working_directory.joinpath("done"))
+            self.working_directory.joinpath("1.mdl").exists()
+            or self.working_directory.joinpath("final.mdl").exists()
+            or self.working_directory.joinpath("done").exists()
         )
 
     def train_iteration(self) -> None:
         """Perform an iteration of training"""
-        if os.path.exists(self.next_model_path):
+        if self.next_model_path.exists():
             self.iteration += 1
             if self.iteration <= self.final_gaussian_iteration:
                 self.increment_gaussians()
@@ -381,7 +378,7 @@ class AcousticModelTrainingMixin(
         :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
-        os.makedirs(self.working_log_directory, exist_ok=True)
+        self.working_log_directory.mkdir(parents=True, exist_ok=True)
         wf = self.worker.current_workflow
         if wf.done:
             return
@@ -419,27 +416,23 @@ class AcousticModelTrainingMixin(
         the model to be used in the next round alignment
 
         """
-        os.rename(
-            self.working_directory.joinpath(f"{self.num_iterations+1}.mdl"),
-            self.working_directory.joinpath("final.mdl"),
+        self.working_directory.joinpath(f"{self.num_iterations + 1}.mdl").rename(
+            self.working_directory.joinpath("final.mdl")
         )
-        ali_model_path = self.working_directory.joinpath(f"{self.num_iterations+1}.alimdl")
-        if os.path.exists(ali_model_path):
-            os.rename(
-                ali_model_path,
-                self.working_directory.joinpath("final.alimdl"),
-            )
+        ali_model_path = self.working_directory.joinpath(f"{self.num_iterations + 1}.alimdl")
+        if ali_model_path.exists():
+            ali_model_path.rename(self.working_directory.joinpath("final.alimdl"))
         self.export_model(self.exported_model_path)
         if not config.DEBUG:
             for i in range(1, self.num_iterations + 1):
                 model_path = self.working_directory.joinpath(f"{i}.mdl")
                 try:
-                    os.remove(model_path)
+                    model_path.unlink(missing_ok=True)
                 except FileNotFoundError:
                     pass
-            for file in os.listdir(self.working_directory):
-                if any(file.startswith(x) for x in ["fsts.", "trans.", "ali."]):
-                    os.remove(self.working_directory.joinpath(file))
+            for file in self.working_directory.iterdir():
+                if any(file.name.startswith(x) for x in ["fsts.", "trans.", "ali."]):
+                    file.unlink(missing_ok=True)
         wf = self.worker.current_workflow
         with self.session() as session:
             session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update({"done": True})
@@ -574,6 +567,5 @@ class AcousticModelTrainingMixin(
             self.working_directory, self.worker.dictionary_base_names.values()
         )
         if directory:
-            os.makedirs(directory, exist_ok=True)
-        basename, _ = os.path.splitext(output_model_path)
+            directory.mkdir(parents=True, exist_ok=True)
         acoustic_model.dump(output_model_path)
