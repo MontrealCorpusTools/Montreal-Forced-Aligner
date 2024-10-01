@@ -406,10 +406,13 @@ class Dictionary(MfaSqlBase):
             session = sqlalchemy.orm.Session.object_session(self)
             query = (
                 session.query(Word.word, Word.mapping_id)
-                .filter(Word.dictionary_id == self.id)
                 .filter(Word.included == True)  # noqa
                 .order_by(Word.mapping_id)
             )
+            if self.name != "default":
+                query = query.filter(Word.dictionary_id == self.id)
+            else:
+                query = query.group_by(Word.word, Word.mapping_id)
             self._word_mapping = {}
             for w, mapping_id in query:
                 self._word_mapping[w] = mapping_id
@@ -425,10 +428,15 @@ class Dictionary(MfaSqlBase):
             session = sqlalchemy.orm.Session.object_session(self)
             query = (
                 session.query(Word.word, Word.mapping_id)
-                .filter(Word.dictionary_id == self.id)
                 .filter(Word.included == True)  # noqa
                 .order_by(Word.mapping_id)
             )
+            if self.name != "default":
+                query = query.filter(
+                    sqlalchemy.or_(Word.dictionary_id == self.id, Word.word.in_(self.special_set))
+                )
+            else:
+                query = query.group_by(Word.word, Word.mapping_id)
             self._word_table = pywrapfst.SymbolTable()
             for w, mapping_id in query:
                 self._word_table.add_symbol(w, mapping_id)
@@ -462,11 +470,14 @@ class Dictionary(MfaSqlBase):
             query = (
                 session.query(Word.word, Pronunciation.pronunciation)
                 .join(Pronunciation.word)
-                .filter(Word.dictionary_id == self.id)
                 .filter(Word.included == True)  # noqa
                 .filter(Pronunciation.pronunciation != self.oov_phone)
                 .order_by(Word.mapping_id)
             )
+            if self.name != "default":
+                query = query.filter(Word.dictionary_id == self.id)
+            else:
+                query = query.group_by(Word.word, Pronunciation.pronunciation)
             self._word_pronunciations = {}
             for w, pronunciation in query:
                 if w not in self._word_pronunciations:
@@ -1191,6 +1202,8 @@ class File(MfaSqlBase):
                         )
                     )
                 else:
+                    if utterance.end < utterance.begin:
+                        utterance.begin, utterance.end = utterance.end, utterance.begin
                     if tiers[utterance.speaker.name].entries:
                         if tiers[utterance.speaker.name].entries[-1].end > utterance.begin:
                             utterance.begin = tiers[utterance.speaker.name].entries[-1].end
@@ -1306,6 +1319,34 @@ class SoundFile(MfaSqlBase):
         y[np.isnan(y)] = 0
         x = np.linspace(start=begin, stop=end, num=num_steps)
         return x, y
+
+    def load_audio(
+        self, begin: float = 0, end: typing.Optional[float] = None
+    ) -> typing.Tuple[np.array, np.array]:
+        """
+        Load a normalized waveform for acoustic processing/visualization
+
+        Parameters
+        ----------
+        begin: float, optional
+            Starting time point to return, defaults to 0
+        end: float, optional
+            Ending time point to return, defaults to the end of the file
+
+        Returns
+        -------
+        numpy.array
+            Time points
+        numpy.array
+            Sample values
+        """
+        if end is None or end > self.duration:
+            end = self.duration
+
+        y, _ = librosa.load(
+            self.sound_file_path, sr=16000, mono=False, offset=begin, duration=end - begin
+        )
+        return y
 
 
 class TextFile(MfaSqlBase):

@@ -1,8 +1,11 @@
 import os
 
 import click.testing
+import pytest
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
+from montreal_forced_aligner.transcription.models import FOUND_WHISPERX
+from montreal_forced_aligner.transcription.multiprocessing import FOUND_SPEECHBRAIN
 
 
 def test_transcribe(
@@ -46,6 +49,81 @@ def test_transcribe(
     assert os.path.exists(os.path.join(output_path, "michael", "acoustic_corpus.lab"))
 
 
+def test_transcribe_speechbrain(
+    combined_corpus_dir,
+    generated_dir,
+    transcription_acoustic_model,
+    transcription_language_model,
+    temp_dir,
+    db_setup,
+):
+    if not FOUND_SPEECHBRAIN:
+        pytest.skip("SpeechBrain not installed")
+    output_path = generated_dir.joinpath("transcribe_test_sb")
+    command = [
+        "transcribe_speechbrain",
+        combined_corpus_dir,
+        "english",
+        output_path,
+        "--architecture",
+        "wav2vec2",
+        "--clean",
+        "--no_debug",
+        "--evaluate",
+        "--no_cuda",
+        "--use_postgres",
+    ]
+    command = [str(x) for x in command]
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+    assert os.path.exists(output_path)
+
+
+def test_transcribe_whisper(
+    combined_corpus_dir,
+    generated_dir,
+    transcription_acoustic_model,
+    transcription_language_model,
+    temp_dir,
+    db_setup,
+):
+    if not FOUND_WHISPERX:
+        pytest.skip("whisperx not installed")
+    output_path = generated_dir.joinpath("transcribe_test_whisper")
+    command = [
+        "transcribe_whisper",
+        combined_corpus_dir,
+        output_path,
+        "--language",
+        "english",
+        "--architecture",
+        "tiny",
+        "--clean",
+        "--no_debug",
+        "--evaluate",
+        "--cuda",
+        "--use_postgres",
+    ]
+    command = [str(x) for x in command]
+    result = click.testing.CliRunner(mix_stderr=False).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+    assert os.path.exists(output_path)
+
+
 def test_transcribe_arpa(
     basic_corpus_dir,
     english_dictionary,
@@ -56,7 +134,6 @@ def test_transcribe_arpa(
     transcribe_config_path,
     db_setup,
 ):
-    temp_dir = os.path.join(temp_dir, "arpa_test_temp")
     output_path = generated_dir.joinpath("transcribe_test_arpa")
     command = [
         "transcribe",

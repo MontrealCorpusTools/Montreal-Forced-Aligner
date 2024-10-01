@@ -99,8 +99,7 @@ class IvectorModelTrainingMixin(AcousticModelTrainingMixin):
         ivector_extractor.add_model(self.working_directory)
         if directory:
             os.makedirs(directory, exist_ok=True)
-        basename, _ = os.path.splitext(output_model_path)
-        ivector_extractor.dump(basename)
+        ivector_extractor.dump(output_model_path)
 
 
 class DubmTrainer(IvectorModelTrainingMixin):
@@ -363,7 +362,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
         """Finalize DUBM training"""
         final_dubm_path = self.working_directory.joinpath("final.dubm")
         shutil.copy(
-            self.working_directory.joinpath(f"{self.num_iterations+1}.dubm"),
+            self.working_directory.joinpath(f"{self.num_iterations + 1}.dubm"),
             final_dubm_path,
         )
         # Update VAD with dubm likelihoods
@@ -793,7 +792,7 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
             self.set_current_workflow(trainer.identifier)
             trainer.train()
             previous = trainer
-        logger.info(f"Completed training in {time.time()-begin} seconds!")
+        logger.info(f"Completed training in {time.time() - begin} seconds!")
 
     def export_model(self, output_model_path: Path) -> None:
         """

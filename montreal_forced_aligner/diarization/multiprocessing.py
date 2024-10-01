@@ -9,7 +9,6 @@ import threading
 import time
 import typing
 from pathlib import Path
-from queue import Queue
 
 import dataclassy
 
@@ -56,11 +55,13 @@ try:
         except ImportError:  # speechbrain 1.0
             from speechbrain.inference.classifiers import EncoderClassifier
             from speechbrain.inference.speaker import SpeakerRecognition
+        from speechbrain.utils.metric_stats import EER
     FOUND_SPEECHBRAIN = True
 except (ImportError, OSError):
     FOUND_SPEECHBRAIN = False
     EncoderClassifier = None
     SpeakerRecognition = None
+    EER = None
 
 __all__ = [
     "PldaClassificationArguments",
@@ -700,7 +701,7 @@ class SpeechbrainEmbeddingFunction(KaldiFunction):
             run_opts=run_opts,
         )
 
-        return_q = Queue(2)
+        return_q = queue.Queue(2)
         finished_adding = threading.Event()
         stopped = threading.Event()
         loader = UtteranceFileLoader(
@@ -756,7 +757,7 @@ class UtteranceFileLoader(threading.Thread):
         Job identifier
     session: sqlalchemy.orm.scoped_session
         Session
-    return_q: multiprocessing.Queue
+    return_q: :class:`~queue.Queue`
         Queue to put waveforms
     stopped: :class:`~threading.Event`
         Check for whether the process to exit gracefully
@@ -768,9 +769,11 @@ class UtteranceFileLoader(threading.Thread):
         self,
         job_name: int,
         session: sqlalchemy.orm.scoped_session,
-        return_q: Queue,
+        return_q: queue.Queue,
         stopped: threading.Event,
         finished_adding: threading.Event,
+        model=None,
+        for_xvector=True,
     ):
         super().__init__()
         self.job_name = job_name
@@ -778,6 +781,8 @@ class UtteranceFileLoader(threading.Thread):
         self.return_q = return_q
         self.stopped = stopped
         self.finished_adding = finished_adding
+        self.model = model
+        self.for_xvector = for_xvector
 
     def run(self) -> None:
         """
@@ -790,7 +795,10 @@ class UtteranceFileLoader(threading.Thread):
         @speechbrain.utils.data_pipeline.takes("segment")
         @speechbrain.utils.data_pipeline.provides("signal")
         def audio_pipeline(segment):
-            return segment.load_audio()
+            signal = torch.tensor(segment.load_audio())
+            if self.model is not None:
+                signal = self.model.audio_normalizer(signal, 16000)
+            return signal
 
         with self.session() as session:
             try:
@@ -804,9 +812,12 @@ class UtteranceFileLoader(threading.Thread):
                     )
                     .join(Utterance.file)
                     .join(File.sound_file)
-                    .filter(Utterance.xvector == None)  # noqa
                     .order_by(Utterance.duration.desc())
                 )
+                if self.for_xvector:
+                    utterances = utterances.filter(Utterance.xvector == None)  # noqa
+                else:
+                    utterances = utterances.filter(Utterance.job_id == self.job_name)
                 if not utterances.count():
                     self.finished_adding.set()
                     return

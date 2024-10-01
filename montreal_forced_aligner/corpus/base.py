@@ -654,6 +654,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     tokenizers,
                     getattr(self, "g2p_model", None),
                     getattr(self, "ignore_case", True),
+                    getattr(self, "use_cutoff_model", False),
                 )
                 for j in jobs
             ]
@@ -675,7 +676,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         pronunciation_insert_mappings = []
         word_indexes = {}
         word_mapping_ids = {}
-        max_mapping_ids = {}
+        max_mapping_id = 0
         log_directory.mkdir(parents=True, exist_ok=True)
         update_mapping = []
         word_key = self.get_next_primary_key(Word)
@@ -709,14 +710,15 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     "dictionary_id": 1,
                 }
                 word_key += 1
-                max_mapping_ids[1] = word_key - 1
+                max_mapping_id = word_key - 1
             for w_id, m_id, d_id, w, wt in words:
                 if wt is WordType.oov and w not in self.specials_set:
                     existing_oovs[(d_id, w)] = {"id": w_id, "count": 0, "included": False}
                     continue
                 word_indexes[(d_id, w)] = w_id
-                word_mapping_ids[(d_id, w)] = m_id
-                max_mapping_ids[d_id] = m_id
+                word_mapping_ids[w] = m_id
+                if m_id > max_mapping_id:
+                    max_mapping_id = m_id
             to_g2p = set()
             word_to_g2p_mapping = {x: collections.defaultdict(set) for x in dictionaries.keys()}
             word_counts = collections.defaultdict(int)
@@ -789,7 +791,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     import traceback
 
                     exc_type, exc_value, exc_traceback = sys.exc_info()
-                    print(
+                    logger.debug(
                         "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
                     )
                     raise
@@ -832,7 +834,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             log_file.write(f"For dictionary {dict_id}:\n")
                             for w, ps in mapping.items():
                                 log_file.write(f"  - {w} ({', '.join(sorted(ps))})\n")
-                                max_mapping_ids[dict_id] += 1
+                                max_mapping_id += 1
                                 included = False
                                 if hasattr(self, "brackets") and any(
                                     w.startswith(b) for b, _ in self.brackets
@@ -859,7 +861,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
 
                                 word_insert_mappings[(dict_id, w)] = {
                                     "id": word_key,
-                                    "mapping_id": max_mapping_ids[d_id],
+                                    "mapping_id": max_mapping_id,
                                     "word": w,
                                     "count": word_counts[(dict_id, w)],
                                     "dictionary_id": dict_id,
@@ -1198,7 +1200,8 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             cutoff_pattern = "<(cutoff|hes)"
 
         def add_filters(query):
-            multiword_pattern = r"\s\S+\s"
+            subset_word_count = getattr(self, "subset_word_count", 3)
+            multiword_pattern = rf"(\s\S+){{{subset_word_count},}}"
             filtered = (
                 query.filter(
                     Utterance.normalized_text.op("~")(multiword_pattern)
@@ -1486,7 +1489,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             log_dir = subset_directory.joinpath("log")
             os.makedirs(log_dir, exist_ok=True)
 
-            logger.debug(f"Setting subset flags took {time.time()-begin} seconds")
+            logger.debug(f"Setting subset flags took {time.time() - begin} seconds")
             with self.session() as session:
                 jobs = (
                     session.query(Job)
@@ -1505,7 +1508,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     )
                     for j in self._jobs
                 ]
-
             for _ in run_kaldi_function(ExportKaldiFilesFunction, arguments, total_count=subset):
                 pass
 
@@ -1557,10 +1559,14 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 c.current_subset = subset
             session.commit()
         if subset is None or subset >= self.num_utterances or subset <= 0:
+            if hasattr(self, "subset_lexicon"):
+                self.subset_lexicon()
             return self.split_directory
         directory = self.corpus_output_directory.joinpath(f"subset_{subset}")
         if not os.path.exists(directory):
             self.create_subset(subset)
+            if hasattr(self, "subset_lexicon"):
+                self.subset_lexicon()
         return directory
 
     def get_latest_workflow_run(self, workflow: WorkflowType, session: Session) -> CorpusWorkflow:

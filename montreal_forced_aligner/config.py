@@ -152,6 +152,7 @@ DATABASE_LIMITED_MODE = False
 AUTO_SERVER = True
 TEMPORARY_DIRECTORY = get_temporary_directory()
 GITHUB_TOKEN = None
+HF_TOKEN = None
 BLAS_NUM_THREADS = 1
 BYTES_LIMIT = 100e6
 CURRENT_PROFILE_NAME = os.getenv(MFA_PROFILE_VARIABLE, "global")
@@ -187,6 +188,7 @@ class MfaProfile:
     auto_server: bool = True
     temporary_directory: pathlib.Path = get_temporary_directory()
     github_token: typing.Optional[str] = None
+    hf_token: typing.Optional[str] = None
 
     def __getitem__(self, item):
         """Get key from profile"""

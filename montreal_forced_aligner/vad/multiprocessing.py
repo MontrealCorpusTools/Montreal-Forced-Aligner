@@ -1,13 +1,10 @@
 """Multiprocessing functionality for VAD"""
 from __future__ import annotations
 
-import logging
 import typing
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Union
+from typing import TYPE_CHECKING, Union
 
-import numpy
-import numpy as np
 import pynini
 import pywrapfst
 from _kalpy.decoder import LatticeFasterDecoder, LatticeFasterDecoderConfig
@@ -26,31 +23,11 @@ from kalpy.utterance import Utterance as KalpyUtterance
 from sqlalchemy.orm import joinedload, subqueryload
 
 from montreal_forced_aligner.abc import KaldiFunction
-from montreal_forced_aligner.data import CtmInterval, MfaArguments
+from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.db import File, Job, Speaker, Utterance
 from montreal_forced_aligner.exceptions import SegmenterError
 from montreal_forced_aligner.models import AcousticModel, G2PModel
-
-try:
-    import warnings
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        torch_logger = logging.getLogger("speechbrain.utils.torch_audio_backend")
-        torch_logger.setLevel(logging.ERROR)
-        torch_logger = logging.getLogger("speechbrain.utils.train_logger")
-        torch_logger.setLevel(logging.ERROR)
-        import torch
-
-        try:
-            from speechbrain.pretrained import VAD
-        except ImportError:  # speechbrain 1.0
-            from speechbrain.inference.VAD import VAD
-
-    FOUND_SPEECHBRAIN = True
-except (ImportError, OSError):
-    FOUND_SPEECHBRAIN = False
-    VAD = None
+from montreal_forced_aligner.vad.models import MfaVAD, get_initial_segmentation, merge_segments
 
 if TYPE_CHECKING:
     SpeakerCharacterType = Union[str, int]
@@ -65,11 +42,8 @@ __all__ = [
     "SegmentVadArguments",
     "SegmentTranscriptFunction",
     "SegmentVadFunction",
-    "get_initial_segmentation",
-    "merge_segments",
     "segment_utterance_transcript",
     "segment_utterance_vad",
-    "segment_utterance_vad_speech_brain",
 ]
 
 
@@ -86,7 +60,7 @@ class SegmentTranscriptArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.segmenter.SegmentTranscriptFunction`"""
 
     acoustic_model: AcousticModel
-    vad_model: typing.Optional[VAD]
+    vad_model: typing.Optional[MfaVAD]
     lexicon_compilers: typing.Dict[int, LexiconCompiler]
     mfcc_options: MetaDict
     vad_options: MetaDict
@@ -94,11 +68,51 @@ class SegmentTranscriptArguments(MfaArguments):
     decode_options: MetaDict
 
 
+def segment_utterance(
+    segment: Segment,
+    vad_model: typing.Optional[MfaVAD],
+    segmentation_options: MetaDict,
+    mfcc_options: MetaDict = None,
+    vad_options: MetaDict = None,
+    allow_empty: bool = True,
+) -> typing.List[Segment]:
+    """
+    Split an utterance and its transcript into multiple transcribed utterances
+
+    Parameters
+    ----------
+    segment: :class:`~kalpy.data.Segment`
+        Segment to split
+    vad_model: :class:`~montreal_forced_aligner.vad.multiprocessing.VAD` or None
+        VAD model from SpeechBrain, if None, then Kaldi's energy-based VAD is used
+    segmentation_options: dict[str, Any]
+        Segmentation options
+    mfcc_options: dict[str, Any], optional
+        MFCC options for energy based VAD
+    vad_options: dict[str, Any], optional
+        Options for energy based VAD
+
+    Returns
+    -------
+    list[:class:`~kalpy.data.Segment`]
+        Split segments
+    """
+    if vad_model is None:
+        segments = segment_utterance_vad(segment, mfcc_options, vad_options, segmentation_options)
+    else:
+        segments = vad_model.segment_utterance(
+            segment, **segmentation_options, allow_empty=allow_empty
+        )
+    if not segments:
+        return [segment]
+    return segments
+
+
 def segment_utterance_transcript(
     acoustic_model: AcousticModel,
     utterance: KalpyUtterance,
     lexicon_compiler: LexiconCompiler,
-    vad_model: VAD,
+    vad_model: MfaVAD,
     segmentation_options: MetaDict,
     cmvn: DoubleMatrix = None,
     fmllr_trans: FloatMatrix = None,
@@ -180,12 +194,9 @@ def segment_utterance_transcript(
         cmvn_computer = CmvnComputer()
         cmvn = cmvn_computer.compute_cmvn_from_features([utterance.mfccs])
     current_transcript = utterance.transcript
-    if vad_model is None:
-        segments = segment_utterance_vad(
-            utterance, mfcc_options, vad_options, segmentation_options
-        )
-    else:
-        segments = segment_utterance_vad_speech_brain(utterance, vad_model, segmentation_options)
+    segments = segment_utterance(
+        utterance.segment, vad_model, segmentation_options, mfcc_options, vad_options
+    )
     if not segments:
         return [utterance]
     config = LatticeFasterDecoderConfig()
@@ -310,173 +321,43 @@ def align_interjection_words(
     return " ".join(original_transcript.split()[len(interjections_removed.split()) :])
 
 
-def get_initial_segmentation(frames: numpy.ndarray, frame_shift: float) -> List[CtmInterval]:
-    """
-    Compute initial segmentation over voice activity
-
-    Parameters
-    ----------
-    frames: list[Union[int, str]]
-        List of frames with VAD output
-    frame_shift: float
-        Frame shift of features in seconds
-
-    Returns
-    -------
-    List[CtmInterval]
-        Initial segmentation
-    """
-    segments = []
-    cur_segment = None
-    silent_frames = 0
-    non_silent_frames = 0
-    for i in range(frames.shape[0]):
-        f = frames[i]
-        if int(f) > 0:
-            non_silent_frames += 1
-            if cur_segment is None:
-                cur_segment = CtmInterval(begin=i * frame_shift, end=0, label="speech")
-        else:
-            silent_frames += 1
-            if cur_segment is not None:
-                cur_segment.end = (i - 1) * frame_shift
-                segments.append(cur_segment)
-                cur_segment = None
-    if cur_segment is not None:
-        cur_segment.end = len(frames) * frame_shift
-        segments.append(cur_segment)
-    return segments
-
-
-def merge_segments(
-    segments: List[CtmInterval],
-    min_pause_duration: float,
-    max_segment_length: float,
-    min_segment_length: float,
-) -> List[CtmInterval]:
-    """
-    Merge segments together
-
-    Parameters
-    ----------
-    segments: SegmentationType
-        Initial segments
-    min_pause_duration: float
-        Minimum amount of silence time to mark an utterance boundary
-    max_segment_length: float
-        Maximum length of segments before they're broken up
-    min_segment_length: float
-        Minimum length of segments returned
-
-    Returns
-    -------
-    List[CtmInterval]
-        Merged segments
-    """
-    merged_segments = []
-    snap_boundary_threshold = min_pause_duration / 2
-    for s in segments:
-        if (
-            not merged_segments
-            or s.begin > merged_segments[-1].end + min_pause_duration
-            or s.end - merged_segments[-1].begin > max_segment_length
-        ):
-            if s.end - s.begin > min_pause_duration:
-                if merged_segments and snap_boundary_threshold:
-                    boundary_gap = s.begin - merged_segments[-1].end
-                    if boundary_gap < snap_boundary_threshold:
-                        half_boundary = boundary_gap / 2
-                    else:
-                        half_boundary = snap_boundary_threshold / 2
-                    merged_segments[-1].end += half_boundary
-                    s.begin -= half_boundary
-
-                merged_segments.append(s)
-        else:
-            merged_segments[-1].end = s.end
-    return [x for x in merged_segments if x.end - x.begin > min_segment_length]
-
-
 def segment_utterance_vad(
-    utterance: KalpyUtterance,
+    segment: Segment,
     mfcc_options: MetaDict,
     vad_options: MetaDict,
     segmentation_options: MetaDict,
+    adaptive: bool = True,
+    allow_empty: bool = True,
 ) -> typing.List[Segment]:
+    mfcc_options["use_energy"] = True
+    mfcc_options["raw_energy"] = False
+    mfcc_options["dither"] = 0.0
+    mfcc_options["energy_floor"] = 0.0
     mfcc_computer = MfccComputer(**mfcc_options)
+    feats = mfcc_computer.compute_mfccs_for_export(segment, compress=False)
+    if adaptive:
+        vad_options["energy_mean_scale"] = 0.0
+        mfccs = feats.numpy()
+        vad_options["energy_threshold"] = mfccs[:, 0].mean()
     vad_computer = VadComputer(**vad_options)
-    feats = mfcc_computer.compute_mfccs_for_export(utterance.segment, compress=False)
     vad = vad_computer.compute_vad(feats).numpy()
     segments = get_initial_segmentation(vad, mfcc_computer.frame_shift)
     segments = merge_segments(
         segments,
-        segmentation_options["close_th"],
-        segmentation_options["large_chunk_size"],
-        segmentation_options["len_th"],
+        segmentation_options["min_pause_duration"],
+        segmentation_options["max_segment_length"],
+        segmentation_options["min_segment_length"] if allow_empty else 0.02,
     )
     new_segments = []
     for s in segments:
         seg = Segment(
-            utterance.segment.file_path,
-            s.begin + utterance.segment.begin,
-            s.end + utterance.segment.begin,
-            utterance.segment.channel,
+            segment.file_path,
+            s.begin + segment.begin,
+            s.end + segment.begin,
+            segment.channel,
         )
         new_segments.append(seg)
     return new_segments
-
-
-def segment_utterance_vad_speech_brain(
-    utterance: KalpyUtterance, vad_model: VAD, segmentation_options: MetaDict
-) -> typing.List[Segment]:
-    y = utterance.segment.wave
-    prob_chunks = vad_model.get_speech_prob_chunk(
-        torch.tensor(y[np.newaxis, :], device=vad_model.device)
-    ).cpu()
-    prob_th = vad_model.apply_threshold(
-        prob_chunks,
-        activation_th=segmentation_options["activation_th"],
-        deactivation_th=segmentation_options["deactivation_th"],
-    ).float()
-    # Compute the boundaries of the speech segments
-    boundaries = vad_model.get_boundaries(prob_th, output_value="seconds")
-    boundaries += utterance.segment.begin
-
-    # Apply energy-based VAD on the detected speech segments
-    if segmentation_options["apply_energy_VAD"]:
-        boundaries = vad_model.energy_VAD(
-            utterance.segment.file_path,
-            boundaries,
-            activation_th=segmentation_options["en_activation_th"],
-            deactivation_th=segmentation_options["en_deactivation_th"],
-        )
-
-    # Merge short segments
-    boundaries = vad_model.merge_close_segments(
-        boundaries, close_th=segmentation_options["close_th"]
-    )
-
-    # Remove short segments
-    boundaries = vad_model.remove_short_segments(boundaries, len_th=segmentation_options["len_th"])
-
-    # Double check speech segments
-    if segmentation_options["double_check"]:
-        boundaries = vad_model.double_check_speech_segments(
-            boundaries, utterance.segment.file_path, speech_th=segmentation_options["speech_th"]
-        )
-    boundaries[:, 0] -= round(segmentation_options["close_th"] / 2, 3)
-    boundaries[:, 1] += round(segmentation_options["close_th"] / 2, 3)
-    boundaries = boundaries.numpy()
-    segments = []
-    for i in range(boundaries.shape[0]):
-        begin, end = boundaries[i]
-        begin = max(begin, 0)
-        end = min(end, utterance.segment.end)
-        seg = Segment(
-            utterance.segment.file_path, float(begin), float(end), utterance.segment.channel
-        )
-        segments.append(seg)
-    return segments
 
 
 class SegmentVadFunction(KaldiFunction):
@@ -516,9 +397,9 @@ class SegmentVadFunction(KaldiFunction):
 
             merged = merge_segments(
                 initial_segments,
-                self.segmentation_options["close_th"],
-                self.segmentation_options["large_chunk_size"],
-                self.segmentation_options["len_th"],
+                self.segmentation_options["min_pause_duration"],
+                self.segmentation_options["max_segment_length"],
+                self.segmentation_options["min_segment_length"],
             )
             self.callback((int(utt_id.split("-")[-1]), merged))
             reader.Next()

@@ -35,6 +35,11 @@ __all__ = ["validate_corpus_cli", "validate_dictionary_cli"]
 )
 @click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
 @click.option(
+    "--output_directory",
+    help="Directory to save validation output files.",
+    type=click.Path(exists=False, file_okay=False, dir_okay=True, path_type=Path),
+)
+@click.option(
     "--acoustic_model_path",
     help="Acoustic model to use in testing alignments.",
     type=click.UNPROCESSED,
@@ -108,6 +113,7 @@ def validate_corpus_cli(context, **kwargs) -> None:
     config.update_configuration(kwargs)
     kwargs["USE_THREADING"] = False
 
+    output_directory = kwargs.get("output_directory", None)
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"].absolute()
     dictionary_path = kwargs["dictionary_path"]
@@ -135,7 +141,7 @@ def validate_corpus_cli(context, **kwargs) -> None:
             **TrainingValidator.parse_parameters(config_path, context.params, context.args),
         )
     try:
-        validator.validate()
+        validator.validate(output_directory=output_directory)
     except Exception:
         validator.dirty = True
         raise

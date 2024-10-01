@@ -355,6 +355,7 @@ class DictionaryMixin:
             self.oov_word,
             self.bracketed_word,
             self.laughter_word,
+            self.cutoff_word,
             "<s>",
             "</s>",
         }
@@ -729,7 +730,7 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
             for i in range(num_states):
                 if i == 0:  # Initial non_silence state
                     if min_states == max_states:
-                        transition_string = f"<Transition> {i} 0.5 <Transition> {i+1} 0.5"
+                        transition_string = f"<Transition> {i} 0.5 <Transition> {i + 1} 0.5"
                     else:
                         transition_probability = 1 / max_states
                         transition_string = " ".join(
@@ -741,11 +742,11 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
                     )
                 elif i == num_states - 1:
                     non_silence_lines.append(
-                        f"<State> {i} <PdfClass> {i} <Transition> {i+1} 1.0 </State>"
+                        f"<State> {i} <PdfClass> {i} <Transition> {i + 1} 1.0 </State>"
                     )
                 else:
                     non_silence_lines.append(
-                        f"<State> {i} <PdfClass> {i} <Transition> {i} 0.5 <Transition> {i+1} 0.5 </State>"
+                        f"<State> {i} <PdfClass> {i} <Transition> {i} 0.5 <Transition> {i + 1} 0.5 </State>"
                     )
             non_silence_lines.append(f"<State> {num_states} </State>")
             non_silence_lines.append("</TopologyEntry>")

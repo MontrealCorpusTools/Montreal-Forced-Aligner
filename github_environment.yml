@@ -1,8 +1,5 @@
 channels:
   - conda-forge
-  - pytorch
-  - nvidia
-  - anaconda
 dependencies:
   - python>=3.8
   - numpy
@@ -41,21 +38,6 @@ dependencies:
   - kneed
   - matplotlib
   - seaborn
-  - pip
   - rich
   - rich-click
   - kalpy
-    # Tokenization dependencies
-  - spacy
-  - sudachipy
-  - sudachidict-core
-  - spacy-pkuseg
-  - pip:
-      - build
-      - twine
-      # Tokenization dependencies
-      - python-mecab-ko
-      - jamo
-      - pythainlp
-      - hanziconv
-      - dragonmapper

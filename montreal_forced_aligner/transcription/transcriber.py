@@ -7,17 +7,20 @@ from __future__ import annotations
 
 import collections
 import csv
+import gc
 import logging
 import os
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import typing
+import warnings
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from queue import Empty, Queue
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 import pywrapfst
 from _kalpy.fstext import VectorFst
@@ -28,10 +31,13 @@ from sqlalchemy.orm import joinedload, selectinload
 from tqdm.rich import tqdm
 
 from montreal_forced_aligner import config
-from montreal_forced_aligner.abc import TopLevelMfaWorker
+from montreal_forced_aligner.abc import FileExporterMixin, TopLevelMfaWorker
 from montreal_forced_aligner.alignment.base import CorpusAligner
+from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
 from montreal_forced_aligner.data import (
+    ISO_LANGUAGE_MAPPING,
     ArpaNgramModel,
+    Language,
     TextFileType,
     TextgridFormats,
     WorkflowType,
@@ -46,7 +52,8 @@ from montreal_forced_aligner.db import (
     Utterance,
     bulk_update,
 )
-from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
+from montreal_forced_aligner.exceptions import KaldiProcessingError, ModelError
 from montreal_forced_aligner.helper import (
     load_configuration,
     mfa_open,
@@ -61,7 +68,9 @@ from montreal_forced_aligner.language_modeling.multiprocessing import (
 )
 from montreal_forced_aligner.models import AcousticModel, LanguageModel
 from montreal_forced_aligner.textgrid import construct_output_path
+from montreal_forced_aligner.transcription.models import FOUND_WHISPERX, load_model
 from montreal_forced_aligner.transcription.multiprocessing import (
+    FOUND_SPEECHBRAIN,
     CarpaLmRescoreArguments,
     CarpaLmRescoreFunction,
     CreateHclgArguments,
@@ -70,6 +79,7 @@ from montreal_forced_aligner.transcription.multiprocessing import (
     DecodeFunction,
     DecodePhoneArguments,
     DecodePhoneFunction,
+    EncoderASR,
     FinalFmllrArguments,
     FinalFmllrFunction,
     FmllrRescoreArguments,
@@ -80,6 +90,13 @@ from montreal_forced_aligner.transcription.multiprocessing import (
     LmRescoreFunction,
     PerSpeakerDecodeArguments,
     PerSpeakerDecodeFunction,
+    SpeechbrainAsrArguments,
+    SpeechbrainAsrCudaArguments,
+    SpeechbrainAsrFunction,
+    WhisperArguments,
+    WhisperASR,
+    WhisperAsrFunction,
+    WhisperCudaArguments,
 )
 from montreal_forced_aligner.utils import (
     KaldiProcessWorker,
@@ -87,16 +104,251 @@ from montreal_forced_aligner.utils import (
     run_kaldi_function,
     thirdparty_binary,
 )
+from montreal_forced_aligner.vad.models import SpeechbrainSegmenterMixin
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
 
-__all__ = ["Transcriber", "TranscriberMixin"]
+__all__ = ["Transcriber", "TranscriberMixin", "WhisperTranscriber", "SpeechbrainTranscriber"]
 
 logger = logging.getLogger("mfa")
 
 
-class TranscriberMixin(CorpusAligner):
+class TranscriptionEvaluationMixin:
+    def __init__(
+        self,
+        evaluation_mode: bool = False,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.evaluation_mode = evaluation_mode
+        self.export_output_directory = None
+
+    def evaluate_transcriptions(self) -> None:
+        """
+        Evaluates the transcripts if there are reference transcripts
+
+        Returns
+        -------
+        float, float
+            Sentence error rate and word error rate
+
+        Raises
+        ------
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
+            If there were any errors in running Kaldi binaries
+        """
+        logger.info("Evaluating transcripts...")
+        ser, wer, cer = self.compute_wer()
+        logger.info(f"SER: {100 * ser: .2f}%, WER: {100 * wer: .2f}%, CER: {100 * cer: .2f}%")
+
+    def save_transcription_evaluation(self, output_directory: Path) -> None:
+        """
+        Save transcription evaluation to an output directory
+
+        Parameters
+        ----------
+        output_directory: str
+            Directory to save evaluation
+        """
+        output_path = output_directory.joinpath("transcription_evaluation.csv")
+        with mfa_open(output_path, "w") as f, self.session() as session:
+            writer = csv.writer(f)
+            writer.writerow(
+                [
+                    "file",
+                    "speaker",
+                    "begin",
+                    "end",
+                    "duration",
+                    "word_count",
+                    "oov_count",
+                    "gold_transcript",
+                    "hypothesis",
+                    "WER",
+                    "CER",
+                ]
+            )
+            utterances = (
+                session.query(
+                    Speaker.name,
+                    File.name,
+                    Utterance.begin,
+                    Utterance.end,
+                    Utterance.duration,
+                    Utterance.normalized_text,
+                    Utterance.transcription_text,
+                    Utterance.oovs,
+                    Utterance.word_error_rate,
+                    Utterance.character_error_rate,
+                )
+                .join(Utterance.speaker)
+                .join(Utterance.file)
+                .filter(Utterance.normalized_text != None)  # noqa
+                .filter(Utterance.normalized_text != "")
+            )
+
+            for (
+                speaker,
+                file,
+                begin,
+                end,
+                duration,
+                text,
+                transcription_text,
+                oovs,
+                word_error_rate,
+                character_error_rate,
+            ) in utterances:
+                word_count = text.count(" ") + 1
+                oov_count = oovs.count(" ") + 1
+                writer.writerow(
+                    [
+                        file,
+                        speaker,
+                        begin,
+                        end,
+                        duration,
+                        word_count,
+                        oov_count,
+                        text,
+                        transcription_text,
+                        word_error_rate,
+                        character_error_rate,
+                    ]
+                )
+
+    def compute_wer(self) -> typing.Tuple[float, float, float]:
+        """
+        Evaluates the transcripts if there are reference transcripts
+
+        Raises
+        ------
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
+            If there were any errors in running Kaldi binaries
+        """
+        if not hasattr(self, "db_engine"):
+            raise Exception("Must be used as part of a class with a database engine")
+        # Sentence-level measures
+        incorrect = 0
+        total_count = 0
+        # Word-level measures
+        total_word_edits = 0
+        total_word_length = 0
+
+        # Character-level measures
+        total_character_edits = 0
+        total_character_length = 0
+
+        indices = []
+        to_comp = []
+
+        update_mappings = []
+        with self.session() as session:
+            utterances = session.query(Utterance)
+            utterances = utterances.filter(Utterance.normalized_text != None)  # noqa
+            utterances = utterances.filter(Utterance.normalized_text != "")
+            for utt in utterances:
+                g = utt.normalized_text.split()
+                total_count += 1
+                total_word_length += len(g)
+                character_length = len("".join(g))
+                total_character_length += character_length
+
+                if not utt.transcription_text:
+                    incorrect += 1
+                    total_word_edits += len(g)
+                    total_character_edits += character_length
+                    update_mappings.append(
+                        {"id": utt.id, "word_error_rate": 1.0, "character_error_rate": 1.0}
+                    )
+                    continue
+
+                h = utt.transcription_text.split()
+                if g != h:
+                    indices.append(utt.id)
+                    to_comp.append((g, h))
+                    incorrect += 1
+                else:
+                    update_mappings.append(
+                        {"id": utt.id, "word_error_rate": 0.0, "character_error_rate": 0.0}
+                    )
+
+            with ThreadPool(config.NUM_JOBS) as pool:
+                gen = pool.starmap(score_wer, to_comp)
+                for i, (word_edits, word_length, character_edits, character_length) in enumerate(
+                    gen
+                ):
+                    utt_id = indices[i]
+                    update_mappings.append(
+                        {
+                            "id": utt_id,
+                            "word_error_rate": word_edits / word_length,
+                            "character_error_rate": character_edits / character_length,
+                        }
+                    )
+                    total_word_edits += word_edits
+                    total_character_edits += character_edits
+
+            bulk_update(session, Utterance, update_mappings)
+            session.commit()
+        ser = incorrect / total_count
+        wer = total_word_edits / total_word_length
+        cer = total_character_edits / total_character_length
+        return ser, wer, cer
+
+    def export_transcriptions(self) -> None:
+        """Export transcriptions"""
+        with self.session() as session:
+            files = session.query(File).options(
+                selectinload(File.utterances),
+                selectinload(File.speakers),
+                joinedload(File.sound_file, innerjoin=True).load_only(SoundFile.duration),
+            )
+            for file in files:
+                utterance_count = len(file.utterances)
+                duration = file.sound_file.duration
+
+                if utterance_count == 0:
+                    logger.debug(f"Could not find any utterances for {file.name}")
+                elif (
+                    utterance_count == 1
+                    and file.utterances[0].begin == 0
+                    and file.utterances[0].end == duration
+                ):
+                    output_format = "lab"
+                else:
+                    output_format = TextgridFormats.SHORT_TEXTGRID
+                output_path = construct_output_path(
+                    file.name,
+                    file.relative_path,
+                    self.export_output_directory,
+                    output_format=output_format,
+                )
+                data = file.construct_transcription_tiers()
+                if output_format == "lab":
+                    for intervals in data.values():
+                        with mfa_open(output_path, "w") as f:
+                            f.write(intervals["transcription"][0].label)
+                else:
+                    tg = textgrid.Textgrid()
+                    tg.minTimestamp = 0
+                    tg.maxTimestamp = round(duration, 5)
+                    for speaker in file.speakers:
+                        speaker = speaker.name
+                        intervals = data[speaker]["transcription"]
+                        tier = textgrid.IntervalTier(
+                            speaker,
+                            [x.to_tg_interval() for x in intervals],
+                            minT=0,
+                            maxT=round(duration, 5),
+                        )
+
+                        tg.addTier(tier)
+                    tg.save(output_path, includeBlankSpaces=True, format=output_format)
+
+
+class TranscriberMixin(CorpusAligner, TranscriptionEvaluationMixin):
     """Abstract class for MFA transcribers
 
     Parameters
@@ -136,7 +388,6 @@ class TranscriberMixin(CorpusAligner):
         first_max_active: int = 2000,
         language_model_weight: int = 10,
         word_insertion_penalty: float = 0.5,
-        evaluation_mode: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -150,7 +401,6 @@ class TranscriberMixin(CorpusAligner):
         self.first_max_active = first_max_active
         self.language_model_weight = language_model_weight
         self.word_insertion_penalty = word_insertion_penalty
-        self.evaluation_mode = evaluation_mode
         self.alignment_mode = False
 
     def train_speaker_lm_arguments(
@@ -194,7 +444,7 @@ class TranscriberMixin(CorpusAligner):
             TrainSpeakerLmFunction, arguments, total_count=self.num_speakers
         ):
             pass
-        logger.debug(f"Compiling speaker language models took {time.time() - begin:.3f} seconds")
+        logger.debug(f"Compiling speaker language models took {time.time() - begin: .3f} seconds")
 
     @property
     def model_directory(self) -> Path:
@@ -477,180 +727,6 @@ class TranscriberMixin(CorpusAligner):
                 log_kaldi_errors(e.error_logs)
                 e.update_log_file()
             raise
-
-    def evaluate_transcriptions(self) -> Tuple[float, float]:
-        """
-        Evaluates the transcripts if there are reference transcripts
-
-        Returns
-        -------
-        float, float
-            Sentence error rate and word error rate
-
-        Raises
-        ------
-        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
-            If there were any errors in running Kaldi binaries
-        """
-        logger.info("Evaluating transcripts...")
-        ser, wer, cer = self.compute_wer()
-        logger.info(f"SER: {100 * ser:.2f}%, WER: {100 * wer:.2f}%, CER: {100 * cer:.2f}%")
-
-    def save_transcription_evaluation(self, output_directory: Path) -> None:
-        """
-        Save transcription evaluation to an output directory
-
-        Parameters
-        ----------
-        output_directory: str
-            Directory to save evaluation
-        """
-        output_path = output_directory.joinpath("transcription_evaluation.csv")
-        with mfa_open(output_path, "w") as f, self.session() as session:
-            writer = csv.writer(f)
-            writer.writerow(
-                [
-                    "file",
-                    "speaker",
-                    "begin",
-                    "end",
-                    "duration",
-                    "word_count",
-                    "oov_count",
-                    "gold_transcript",
-                    "hypothesis",
-                    "WER",
-                    "CER",
-                ]
-            )
-            utterances = (
-                session.query(
-                    Speaker.name,
-                    File.name,
-                    Utterance.begin,
-                    Utterance.end,
-                    Utterance.duration,
-                    Utterance.normalized_text,
-                    Utterance.transcription_text,
-                    Utterance.oovs,
-                    Utterance.word_error_rate,
-                    Utterance.character_error_rate,
-                )
-                .join(Utterance.speaker)
-                .join(Utterance.file)
-                .filter(Utterance.normalized_text != None)  # noqa
-                .filter(Utterance.normalized_text != "")
-            )
-
-            for (
-                speaker,
-                file,
-                begin,
-                end,
-                duration,
-                text,
-                transcription_text,
-                oovs,
-                word_error_rate,
-                character_error_rate,
-            ) in utterances:
-                word_count = text.count(" ") + 1
-                oov_count = oovs.count(" ") + 1
-                writer.writerow(
-                    [
-                        file,
-                        speaker,
-                        begin,
-                        end,
-                        duration,
-                        word_count,
-                        oov_count,
-                        text,
-                        transcription_text,
-                        word_error_rate,
-                        character_error_rate,
-                    ]
-                )
-
-    def compute_wer(self) -> typing.Tuple[float, float, float]:
-        """
-        Evaluates the transcripts if there are reference transcripts
-
-        Raises
-        ------
-        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
-            If there were any errors in running Kaldi binaries
-        """
-        if not hasattr(self, "db_engine"):
-            raise Exception("Must be used as part of a class with a database engine")
-        logger.info("Evaluating transcripts...")
-        # Sentence-level measures
-        incorrect = 0
-        total_count = 0
-        # Word-level measures
-        total_word_edits = 0
-        total_word_length = 0
-
-        # Character-level measures
-        total_character_edits = 0
-        total_character_length = 0
-
-        indices = []
-        to_comp = []
-
-        update_mappings = []
-        with self.session() as session:
-            utterances = session.query(Utterance)
-            utterances = utterances.filter(Utterance.normalized_text != None)  # noqa
-            utterances = utterances.filter(Utterance.normalized_text != "")
-            for utt in utterances:
-                g = utt.normalized_text.split()
-                total_count += 1
-                total_word_length += len(g)
-                character_length = len("".join(g))
-                total_character_length += character_length
-
-                if not utt.transcription_text:
-                    incorrect += 1
-                    total_word_edits += len(g)
-                    total_character_edits += character_length
-                    update_mappings.append(
-                        {"id": utt.id, "word_error_rate": 1.0, "character_error_rate": 1.0}
-                    )
-                    continue
-
-                h = utt.transcription_text.split()
-                if g != h:
-                    indices.append(utt.id)
-                    to_comp.append((g, h))
-                    incorrect += 1
-                else:
-                    update_mappings.append(
-                        {"id": utt.id, "word_error_rate": 0.0, "character_error_rate": 0.0}
-                    )
-
-            with ThreadPool(config.NUM_JOBS) as pool:
-                gen = pool.starmap(score_wer, to_comp)
-                for i, (word_edits, word_length, character_edits, character_length) in enumerate(
-                    gen
-                ):
-                    utt_id = indices[i]
-                    update_mappings.append(
-                        {
-                            "id": utt_id,
-                            "word_error_rate": word_edits / word_length,
-                            "character_error_rate": character_edits / character_length,
-                        }
-                    )
-                    total_word_edits += word_edits
-                    total_character_edits += character_edits
-
-            bulk_update(session, Utterance, update_mappings)
-            session.commit()
-        ser = incorrect / total_count
-        wer = total_word_edits / total_word_length
-        cer = total_character_edits / total_character_length
-        return ser, wer, cer
 
     @property
     def transcribe_fmllr_options(self) -> MetaDict:
@@ -965,7 +1041,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
     acoustic_model_path : str
         Path to acoustic model
     language_model_path : str
-        Path to language model model
+        Path to language model
     evaluation_mode: bool
         Flag for evaluating generated transcripts against the actual transcripts, defaults to False
 
@@ -1197,59 +1273,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
         self.setup_acoustic_model()
         self.create_decoding_graph()
         self.initialized = True
-        logger.debug(f"Setup for transcription in {time.time() - begin:.3f} seconds")
-
-    def export_transcriptions(self) -> None:
-        """Export transcriptions"""
-        with self.session() as session:
-            files = session.query(File).options(
-                selectinload(File.utterances),
-                selectinload(File.speakers),
-                joinedload(File.sound_file, innerjoin=True).load_only(SoundFile.duration),
-            )
-            for file in files:
-                utterance_count = len(file.utterances)
-                duration = file.sound_file.duration
-
-                if utterance_count == 0:
-                    logger.debug(f"Could not find any utterances for {file.name}")
-                elif (
-                    utterance_count == 1
-                    and file.utterances[0].begin == 0
-                    and file.utterances[0].end == duration
-                ):
-                    output_format = "lab"
-                else:
-                    output_format = TextgridFormats.SHORT_TEXTGRID
-                output_path = construct_output_path(
-                    file.name,
-                    file.relative_path,
-                    self.export_output_directory,
-                    output_format=output_format,
-                )
-                data = file.construct_transcription_tiers()
-                if output_format == "lab":
-                    for intervals in data.values():
-                        with mfa_open(output_path, "w") as f:
-                            f.write(intervals["transcription"][0].label)
-                else:
-                    tg = textgrid.Textgrid()
-                    tg.minTimestamp = 0
-                    tg.maxTimestamp = round(duration, 5)
-                    for speaker in file.speakers:
-                        speaker = speaker.name
-                        intervals = data[speaker]["transcription"]
-                        tier = textgrid.IntervalTier(
-                            speaker,
-                            [x.to_tg_interval() for x in intervals],
-                            minT=0,
-                            maxT=round(duration, 5),
-                        )
-
-                        tg.addTier(tier)
-                    tg.save(output_path, includeBlankSpaces=True, format=output_format)
-        if self.evaluation_mode:
-            self.save_transcription_evaluation(self.export_output_directory)
+        logger.debug(f"Setup for transcription in {time.time() - begin: .3f} seconds")
 
     def export_files(
         self,
@@ -1275,3 +1299,382 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
             self.export_transcriptions()
         else:
             self.export_textgrids(output_format, include_original_text)
+        if self.evaluation_mode:
+            self.save_transcription_evaluation(self.export_output_directory)
+
+
+class HuggingFaceTranscriber(
+    AcousticCorpusMixin,
+    TranscriptionEvaluationMixin,
+    FileExporterMixin,
+    TopLevelMfaWorker,
+    DictionaryMixin,
+):
+    def __init__(
+        self,
+        language: typing.Union[str, Language] = Language.unknown,
+        cuda: bool = False,
+        evaluation_mode: bool = False,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.cuda = cuda
+        self.evaluation_mode = evaluation_mode
+        if not isinstance(language, Language):
+            language = Language[language]
+        self.language = language
+        self.transcription_function = None
+
+    def get_tokenizers(self):
+        return self.tokenizer
+
+    def setup(self) -> None:
+        self.initialize_database()
+        self._load_corpus()
+        self.initialize_jobs()
+        if self.evaluation_mode:
+            self._create_dummy_dictionary()
+            self.normalize_text()
+        self.create_new_current_workflow(WorkflowType.transcription)
+        wf = self.current_workflow
+        if wf.done:
+            logger.info("Transcription already done, skipping initialization.")
+            return
+        log_dir = self.working_directory.joinpath("log")
+        os.makedirs(log_dir, exist_ok=True)
+
+    def transcribe_arguments(self) -> typing.List:
+        return []
+
+    def transcribe(self):
+        self.setup()
+        self.transcribe_utterances()
+
+    def transcribe_utterances(self) -> None:
+        """
+        Transcribe the corpus
+
+        Raises
+        ------
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
+            If there were any errors in running Kaldi binaries
+        """
+        logger.info("Beginning transcription...")
+        workflow = self.current_workflow
+        if workflow.done:
+            logger.info("Transcription already done, skipping!")
+            return
+        try:
+            if workflow.workflow_type is WorkflowType.transcription:
+                self.uses_speaker_adaptation = False
+
+            arguments = self.transcribe_arguments()
+            if self.cuda:
+                config.update_configuration(
+                    {
+                        "USE_THREADING": True,
+                        # "USE_MP": False,
+                    }
+                )
+            update_mapping = []
+            with self.session() as session:
+                for u_id, transcript in run_kaldi_function(
+                    self.transcription_function, arguments, total_count=self.num_utterances
+                ):
+                    update_mapping.append({"id": u_id, "transcription_text": transcript})
+                if update_mapping:
+                    bulk_update(session, Utterance, update_mapping)
+                    session.commit()
+            if self.evaluation_mode:
+                os.makedirs(self.working_log_directory, exist_ok=True)
+                self.evaluate_transcriptions()
+            with self.session() as session:
+                session.query(CorpusWorkflow).filter(CorpusWorkflow.id == workflow.id).update(
+                    {"done": True}
+                )
+                session.commit()
+        except Exception as e:
+            with self.session() as session:
+                session.query(CorpusWorkflow).filter(CorpusWorkflow.id == workflow.id).update(
+                    {"dirty": True}
+                )
+                session.commit()
+            if isinstance(e, KaldiProcessingError):
+                log_kaldi_errors(e.error_logs)
+                e.update_log_file()
+            raise
+
+    def export_files(
+        self,
+        output_directory: Path,
+    ) -> None:
+        """
+        Export transcriptions
+
+        Parameters
+        ----------
+        output_directory: str
+            Directory to save transcriptions
+        """
+        self.export_output_directory = output_directory
+        os.makedirs(self.export_output_directory, exist_ok=True)
+        self.export_transcriptions()
+        if self.evaluation_mode:
+            self.save_transcription_evaluation(self.export_output_directory)
+
+    def cleanup(self) -> None:
+        if self.cuda:
+            import torch
+
+            gc.collect()
+            torch.cuda.empty_cache()
+        super().cleanup()
+
+
+class WhisperTranscriber(HuggingFaceTranscriber, SpeechbrainSegmenterMixin):
+    ARCHITECTURES = ["large-v3", "distil-large-v3", "medium", "base", "tiny", "small"]
+
+    def __init__(
+        self,
+        architecture: str = "large-v3",
+        export_directory: Path = None,
+        **kwargs,
+    ):
+        if not FOUND_WHISPERX:
+            raise Exception(
+                "Could not import whisperx, please ensure it is installed via `pip install whisperx`"
+            )
+        if architecture not in self.ARCHITECTURES:
+            raise ModelError(
+                f"The architecture {architecture} is not in: {', '.join(self.ARCHITECTURES)}"
+            )
+        super().__init__(**kwargs)
+        self.architecture = architecture
+        self.model = None
+        self.segmenter = None
+        self.processor = None
+        self.export_directory = export_directory
+        self.transcription_function = WhisperAsrFunction
+
+    def setup(self) -> None:
+        """
+        Sets up the corpus and speaker classifier
+
+        Raises
+        ------
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
+            If there were any errors in running Kaldi binaries
+        """
+        if self.initialized:
+            return
+        self.setup_model()
+        super().setup()
+
+    def setup_model(self, online=False) -> None:
+        iso_code = self.language.iso_code
+        if iso_code is None and self.language is not Language.unknown:
+            raise ModelError(
+                f"The language {self.language.name} not in {', '.join(sorted(ISO_LANGUAGE_MAPPING.keys()))}"
+            )
+        try:
+            vad_model = None
+            if self.cuda:
+                config.update_configuration(
+                    {
+                        "USE_THREADING": True,
+                    }
+                )
+                vad_model = self.vad_model
+            m = load_model(
+                self.architecture,
+                device="cuda" if self.cuda else "cpu",
+                language=iso_code,
+                vad_model=vad_model,
+                vad_options=self.segmentation_options,
+                download_root=os.path.join(
+                    config.TEMPORARY_DIRECTORY,
+                    "models",
+                    "Whisper",
+                ),
+                threads=config.NUM_JOBS,
+            )
+            if self.cuda or online:
+                self.model = m
+        except Exception:
+            raise
+            raise ModelError(
+                f"Could not download whisper model with {self.architecture} and {self.language.name}"
+            )
+
+    def transcribe_arguments(self):
+        if self.cuda:
+            return [
+                WhisperCudaArguments(
+                    1,
+                    getattr(self, "session", ""),
+                    self.working_log_directory.joinpath("whisper_asr.log"),
+                    self.working_directory,
+                    self.model,
+                    self.tokenizer if self.evaluation_mode else None,
+                    self.cuda,
+                    self.export_directory,
+                )
+            ]
+        return [
+            WhisperArguments(
+                j.id,
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
+                self.working_log_directory.joinpath(f"whisper_asr.{j.id}.log"),
+                self.working_directory,
+                self.architecture,
+                self.language,
+                self.tokenizer if self.evaluation_mode else None,
+                self.cuda,
+                self.export_directory,
+            )
+            for j in self.jobs
+        ]
+
+    def cleanup(self) -> None:
+        if self.model is not None:
+            del self.model
+        if self.vad_model is not None:
+            del self.vad_model
+        if self.cuda:
+            import torch
+
+            gc.collect()
+            torch.cuda.empty_cache()
+        super().cleanup()
+
+
+class SpeechbrainTranscriber(HuggingFaceTranscriber):
+    ARCHITECTURES = ["whisper-medium", "wav2vec2", "whisper-large-v2"]
+
+    def __init__(self, architecture: str = "whisper-medium", **kwargs):
+        if not FOUND_SPEECHBRAIN:
+            logger.error(
+                "Could not import speechbrain, please ensure it is installed via `pip install speechbrain`"
+            )
+            sys.exit(1)
+        if architecture not in self.ARCHITECTURES:
+            raise ModelError(
+                f"The architecture {architecture} is not in: {', '.join(self.ARCHITECTURES)}"
+            )
+        self.architecture = architecture
+        super().__init__(**kwargs)
+        self.model = None
+        self.transcription_function = SpeechbrainAsrFunction
+
+    def transcribe_arguments(self):
+        if self.cuda:
+            return [
+                SpeechbrainAsrCudaArguments(
+                    j.id,
+                    getattr(self, "session", ""),
+                    self.working_log_directory.joinpath(f"speechbrain_asr.{j.id}.log"),
+                    self.working_directory,
+                    self.model,
+                    self.tokenizer if self.evaluation_mode else None,
+                )
+                for j in self.jobs
+            ]
+        return [
+            SpeechbrainAsrArguments(
+                j.id,
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
+                self.working_log_directory.joinpath(f"speechbrain_asr.{j.id}.log"),
+                self.working_directory,
+                self.architecture,
+                self.language,
+                self.tokenizer if self.evaluation_mode else None,
+            )
+            for j in self.jobs
+        ]
+
+    def setup(self) -> None:
+        """
+        Sets up the corpus and speaker classifier
+
+        Raises
+        ------
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
+            If there were any errors in running Kaldi binaries
+        """
+        if self.initialized:
+            return
+        common_voice_code = self.language.iso_code
+        if common_voice_code is None:
+            raise ModelError(
+                f"The language {self.language.name} not in {', '.join(sorted(ISO_LANGUAGE_MAPPING.keys()))}"
+            )
+        model_key = f"speechbrain/asr-{self.architecture}-commonvoice-14-{common_voice_code}"
+        try:
+            with warnings.catch_warnings():
+                from speechbrain.utils.fetching import fetch
+
+                warnings.simplefilter("ignore")
+                if self.architecture == "wav2vec2":
+                    hparam_path = os.path.join(
+                        config.TEMPORARY_DIRECTORY,
+                        "models",
+                        "EncoderASR",
+                        model_key,
+                        "hyperparams.yaml",
+                    )
+                    hf_cache_path = os.path.join(config.TEMPORARY_DIRECTORY, "models", "hf_cache")
+                    if not os.path.exists(hparam_path):
+                        hparams_local_path = fetch(
+                            filename="hyperparams.yaml",
+                            source=model_key,
+                            savedir=os.path.join(
+                                config.TEMPORARY_DIRECTORY, "models", "EncoderASR", model_key
+                            ),
+                            overwrite=False,
+                            huggingface_cache_dir=hf_cache_path,
+                        )
+                        with mfa_open(hparams_local_path, "r") as f:
+                            data = f.read()
+                        data = data.replace(
+                            "save_path: wav2vec2_checkpoint",
+                            f"save_path: {os.path.join(hf_cache_path, 'wav2vec2_checkpoint')}",
+                        )
+                        data = data.replace("kenlm_model_path:", "# kenlm_model_path:")
+                        with mfa_open(hparams_local_path, "w") as f:
+                            f.write(data)
+                    m = EncoderASR.from_hparams(
+                        source=model_key,
+                        savedir=os.path.join(
+                            config.TEMPORARY_DIRECTORY, "models", "EncoderASR", model_key
+                        ),
+                        huggingface_cache_dir=hf_cache_path,
+                    )
+                else:
+                    # Download models if needed
+                    m = WhisperASR.from_hparams(
+                        source=model_key,
+                        savedir=os.path.join(
+                            config.TEMPORARY_DIRECTORY,
+                            "models",
+                            "WhisperASR",
+                            model_key,
+                        ),
+                        huggingface_cache_dir=os.path.join(
+                            config.TEMPORARY_DIRECTORY, "models", "hf_cache"
+                        ),
+                    )
+                if self.cuda:
+                    self.model = m
+        except ImportError:
+            raise
+        except Exception:
+            raise
+            raise ModelError(
+                f"Could not download a speechbrain model with {self.architecture} and {self.language.name} ({model_key})"
+            )
+        super().setup()
+
+    def cleanup(self) -> None:
+        if self.model is not None:
+            del self.model
+        super().cleanup()

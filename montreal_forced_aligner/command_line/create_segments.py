@@ -120,11 +120,6 @@ def create_segments_vad_cli(context, **kwargs) -> None:
     type=click.Choice(["long_textgrid", "short_textgrid", "json", "csv"]),
 )
 @click.option(
-    "--speechbrain/--no_speechbrain",
-    "speechbrain",
-    help="Flag for using SpeechBrain's pretrained VAD model",
-)
-@click.option(
     "--cuda/--no_cuda",
     "cuda",
     help="Flag for using CUDA for SpeechBrain's model",

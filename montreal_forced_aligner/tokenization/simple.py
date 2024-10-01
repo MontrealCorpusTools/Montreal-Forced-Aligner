@@ -45,6 +45,7 @@ class SanitizeFunction:
         word_break_regex: typing.Optional[re.Pattern],
         bracket_regex: typing.Optional[re.Pattern],
         bracket_sanitize_regex: typing.Optional[re.Pattern],
+        cutoff_regex: typing.Optional[re.Pattern],
         ignore_case: bool = True,
     ):
         self.word_table = word_table
@@ -53,6 +54,7 @@ class SanitizeFunction:
         self.clitic_quote_regex = clitic_quote_regex
         self.punctuation_regex = punctuation_regex
         self.word_break_regex = word_break_regex
+        self.cutoff_regex = cutoff_regex
         self.bracket_regex = bracket_regex
         self.bracket_sanitize_regex = bracket_sanitize_regex
 
@@ -78,6 +80,8 @@ class SanitizeFunction:
         if self.bracket_regex:
             for word_object in self.bracket_regex.finditer(text):
                 word = word_object.group(0)
+                if self.cutoff_regex is not None and self.cutoff_regex.match(word):
+                    continue
                 if self.word_table and self.word_table.member(word):
                     continue
                 new_word = self.bracket_sanitize_regex.sub("_", word)
@@ -175,9 +179,9 @@ class SplitWordsFunction:
             return self.oov_word
         if self.word_table and self.word_table.member(normalized_text):
             return normalized_text
+        if self.cutoff_regex is not None and self.cutoff_regex.match(normalized_text):
+            return normalized_text
         for word, regex in self.non_speech_regexes.items():
-            if self.cutoff_regex.match(normalized_text):
-                return normalized_text
             if regex.match(normalized_text):
                 return word
         return normalized_text
@@ -273,8 +277,7 @@ class SplitWordsFunction:
                 yield word
                 break
         else:
-            characters = list(item)
-            for c in characters:
+            for c in item:
                 if self.grapheme_set is not None and c in self.grapheme_set:
                     yield c
                 else:
@@ -300,8 +303,8 @@ class SplitWordsFunction:
         """
         if self.word_table and self.word_table.member(item):
             return [item]
-        if self.cutoff_regex.match(item):
-            return item
+        if self.cutoff_regex is not None and self.cutoff_regex.match(item):
+            return [item]
         for regex in self.non_speech_regexes.values():
             if regex.match(item):
                 return [item]
@@ -377,6 +380,7 @@ class SimpleTokenizer:
             self.word_break_regex,
             self.bracket_regex,
             self.bracket_sanitize_regex,
+            self.cutoff_regex,
             self.ignore_case,
         )
         self.split_function = SplitWordsFunction(

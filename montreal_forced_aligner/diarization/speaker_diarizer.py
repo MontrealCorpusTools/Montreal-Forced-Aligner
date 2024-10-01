@@ -55,10 +55,14 @@ from montreal_forced_aligner.db import (
     bulk_update,
 )
 from montreal_forced_aligner.diarization.multiprocessing import (
+    EER,
+    FOUND_SPEECHBRAIN,
     ComputeEerArguments,
     ComputeEerFunction,
+    EncoderClassifier,
     PldaClassificationArguments,
     PldaClassificationFunction,
+    SpeakerRecognition,
     SpeechbrainArguments,
     SpeechbrainClassificationFunction,
     SpeechbrainEmbeddingFunction,
@@ -70,29 +74,6 @@ from montreal_forced_aligner.helper import load_configuration, mfa_open
 from montreal_forced_aligner.models import IvectorExtractorModel
 from montreal_forced_aligner.textgrid import construct_output_path, export_textgrid
 from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function, thirdparty_binary
-
-try:
-    import warnings
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        torch_logger = logging.getLogger("speechbrain.utils.torch_audio_backend")
-        torch_logger.setLevel(logging.ERROR)
-        torch_logger = logging.getLogger("speechbrain.utils.train_logger")
-        torch_logger.setLevel(logging.ERROR)
-        import torch
-
-        try:
-            from speechbrain.pretrained import EncoderClassifier, SpeakerRecognition
-        except ImportError:  # speechbrain 1.0
-            from speechbrain.inference.classifiers import EncoderClassifier
-            from speechbrain.inference.speaker import SpeakerRecognition
-        from speechbrain.utils.metric_stats import EER
-
-    FOUND_SPEECHBRAIN = True
-except (ImportError, OSError):
-    FOUND_SPEECHBRAIN = False
-    EncoderClassifier = None
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
@@ -1272,6 +1253,8 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         if not FOUND_SPEECHBRAIN:
             logger.info("No speechbrain found, skipping EER calculation.")
             return 0.0, 0.0
+        import torch
+
         logger.info("Calculating EER using ground truth speakers...")
         limit_per_speaker = 5
         limit_within_speaker = 30
@@ -1440,6 +1423,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                     s_ivectors.append(u_ivector)
                 if not s_ivectors:
                     continue
+                print(s_ivectors)
                 mean_ivector = np.mean(np.array(s_ivectors), axis=0)
                 speaker_mean = DoubleVector()
                 speaker_mean.from_numpy(mean_ivector)

@@ -5,16 +5,22 @@ Transcription functions
 """
 from __future__ import annotations
 
+import logging
 import os
+import queue
+import threading
 import typing
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict
 
+import numpy as np
+import sqlalchemy
 from _kalpy.fstext import ConstFst, VectorFst
 from _kalpy.lat import CompactLatticeWriter
 from _kalpy.lm import ConstArpaLm
 from _kalpy.util import BaseFloatMatrixWriter, Int32VectorWriter, ReadKaldiObject
-from kalpy.data import KaldiMapping, MatrixArchive
+from kalpy.data import KaldiMapping, MatrixArchive, Segment
 from kalpy.decoder.decode_graph import DecodeGraphCompiler
 from kalpy.feat.data import FeatureArchive
 from kalpy.feat.fmllr import FmllrComputer
@@ -25,15 +31,45 @@ from kalpy.lm.rescore import LmRescorer
 from kalpy.utils import generate_write_specifier
 from sqlalchemy.orm import joinedload, subqueryload
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import KaldiFunction, MetaDict
-from montreal_forced_aligner.data import MfaArguments, PhoneType
-from montreal_forced_aligner.db import Job, Phone, Utterance
-from montreal_forced_aligner.utils import thread_logger
+from montreal_forced_aligner.data import Language, MfaArguments, PhoneType
+from montreal_forced_aligner.db import File, Job, Phone, SoundFile, Speaker, Utterance
+from montreal_forced_aligner.diarization.multiprocessing import UtteranceFileLoader
+from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
+from montreal_forced_aligner.transcription.models import MfaFasterWhisperPipeline, load_model
+from montreal_forced_aligner.utils import mfa_open, thread_logger
+from montreal_forced_aligner.vad.models import MfaVAD
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
 else:
     from dataclassy import dataclass
+
+try:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        torch_logger = logging.getLogger("speechbrain.utils.torch_audio_backend")
+        torch_logger.setLevel(logging.ERROR)
+        torch_logger = logging.getLogger("speechbrain.utils.train_logger")
+        torch_logger.setLevel(logging.ERROR)
+        transformers_logger = logging.getLogger("transformers.modeling_utils")
+        transformers_logger.setLevel(logging.ERROR)
+        transformers_logger = logging.getLogger(
+            "speechbrain.lobes.models.huggingface_transformers.huggingface"
+        )
+        transformers_logger.setLevel(logging.ERROR)
+        import torch
+
+        try:
+            from speechbrain.pretrained import EncoderASR, WhisperASR
+        except ImportError:  # speechbrain 1.0
+            from speechbrain.inference.ASR import EncoderASR, WhisperASR
+    FOUND_SPEECHBRAIN = True
+except (ImportError, OSError):
+    FOUND_SPEECHBRAIN = False
+    WhisperASR = None
+    EncoderASR = None
 
 
 __all__ = [
@@ -44,7 +80,18 @@ __all__ = [
     "DecodeFunction",
     "LmRescoreFunction",
     "CreateHclgFunction",
+    "FOUND_SPEECHBRAIN",
+    "WhisperASR",
+    "EncoderASR",
+    "SpeechbrainAsrArguments",
+    "SpeechbrainAsrCudaArguments",
+    "WhisperArguments",
+    "WhisperCudaArguments",
+    "SpeechbrainAsrFunction",
+    "WhisperAsrFunction",
 ]
+
+logger = logging.getLogger("mfa")
 
 
 @dataclass
@@ -56,16 +103,12 @@ class CreateHclgArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     working_directory: :class:`~pathlib.Path`
         Current working directory
-    words_path: :class:`~pathlib.Path`
-        Path to words symbol table
-    carpa_path: :class:`~pathlib.Path`
-        Path to .carpa file
     small_arpa_path: :class:`~pathlib.Path`
         Path to small ARPA file
     medium_arpa_path: :class:`~pathlib.Path`
@@ -74,14 +117,8 @@ class CreateHclgArguments(MfaArguments):
         Path to big ARPA file
     model_path: :class:`~pathlib.Path`
         Acoustic model path
-    disambig_L_path: :class:`~pathlib.Path`
-        Path to disambiguated lexicon file
-    disambig_int_path: :class:`~pathlib.Path`
-        Path to disambiguation symbol integer file
     hclg_options: dict[str, Any]
         HCLG options
-    words_mapping: dict[str, int]
-        Words mapping
     """
 
     lexicon_compiler: LexiconCompiler
@@ -95,6 +132,100 @@ class CreateHclgArguments(MfaArguments):
 
 
 @dataclass
+class SpeechbrainAsrArguments(MfaArguments):
+    """
+    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
+    log_path: :class:`~pathlib.Path`
+        Path to save logging information during the run
+    working_directory: :class:`~pathlib.Path`
+        Current working directory
+    """
+
+    working_directory: Path
+    architecture: str
+    language: Language
+    tokenizer: typing.Optional[SimpleTokenizer]
+
+
+@dataclass
+class SpeechbrainAsrCudaArguments(MfaArguments):
+    """
+    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
+    log_path: :class:`~pathlib.Path`
+        Path to save logging information during the run
+    working_directory: :class:`~pathlib.Path`
+        Current working directory
+    """
+
+    working_directory: Path
+    model: typing.Union[EncoderASR, WhisperASR]
+    tokenizer: typing.Optional[SimpleTokenizer]
+
+
+@dataclass
+class WhisperArguments(MfaArguments):
+    """
+    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
+    log_path: :class:`~pathlib.Path`
+        Path to save logging information during the run
+    working_directory: :class:`~pathlib.Path`
+        Current working directory
+    """
+
+    working_directory: Path
+    architecture: str
+    language: Language
+    tokenizer: typing.Optional[SimpleTokenizer]
+    cuda: bool
+    export_directory: typing.Optional[Path]
+
+
+@dataclass
+class WhisperCudaArguments(MfaArguments):
+    """
+    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
+    log_path: :class:`~pathlib.Path`
+        Path to save logging information during the run
+    working_directory: :class:`~pathlib.Path`
+        Current working directory
+    """
+
+    working_directory: Path
+    model: MfaFasterWhisperPipeline
+    tokenizer: typing.Optional[SimpleTokenizer]
+    cuda: bool
+    export_directory: typing.Optional[Path]
+
+
+@dataclass
 class DecodeArguments(MfaArguments):
     """
     Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeFunction`
@@ -103,22 +234,16 @@ class DecodeArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
-    dictionaries: list[int]
-        List of dictionary ids
-    feature_strings: dict[int, str]
-        Mapping of dictionaries to feature generation strings
-    decode_options: dict[str, Any]
-        Decoding options
+    working_directory: :class:`~pathlib.Path`
+        Working directory
     model_path: :class:`~pathlib.Path`
         Path to model file
-    lat_paths: dict[int, Path]
-        Per dictionary lattice paths
-    word_symbol_paths: dict[int, Path]
-        Per dictionary word symbol table paths
+    decode_options: dict[str, Any]
+        Decoding options
     hclg_paths: dict[int, Path]
         Per dictionary HCLG.fst paths
     """
@@ -138,10 +263,12 @@ class DecodePhoneArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
+    working_directory: :class:`~pathlib.Path`
+        Working directory
     dictionaries: list[int]
         List of dictionary ids
     feature_strings: dict[int, str]
@@ -173,10 +300,12 @@ class LmRescoreArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
+    working_directory: :class:`~pathlib.Path`
+        Working directory
     dictionaries: list[int]
         List of dictionary ids
     lm_rescore_options: dict[str, Any]
@@ -206,10 +335,12 @@ class CarpaLmRescoreArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
+    working_directory: :class:`~pathlib.Path`
+        Working directory
     dictionaries: list[int]
         List of dictionary ids
     lat_paths: dict[int, Path]
@@ -237,10 +368,12 @@ class InitialFmllrArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
+    working_directory: :class:`~pathlib.Path`
+        Working directory
     dictionaries: list[int]
         List of dictionary ids
     feature_strings: dict[int, str]
@@ -272,8 +405,8 @@ class FinalFmllrArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     working_directory: :class:`~pathlib.Path`
@@ -299,22 +432,15 @@ class FmllrRescoreArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
-    dictionaries: list[int]
-        List of dictionary ids
-    feature_strings: dict[int, str]
-        Mapping of dictionaries to feature generation strings
-    model_path: :class:`~pathlib.Path`
+    working_directory: :class:`~pathlib.Path`
+        Working directory
         Path to model file
-    fmllr_options: dict[str, Any]
-        fMLLR options
-    tmp_lat_paths: dict[int, Path]
-        Per dictionary temporary lattice paths
-    final_lat_paths: dict[int, Path]
-        Per dictionary lattice paths
+    rescore_options: dict[str, Any]
+        Rescoring options
     """
 
     working_directory: Path
@@ -452,6 +578,425 @@ class DecodeFunction(KaldiFunction):
                     alignment_file_name=alignment_file_name,
                     callback=self.callback,
                 )
+
+
+class SpeechbrainAsrFunction(KaldiFunction):
+    """
+    Multiprocessing function for performing decoding
+
+    See Also
+    --------
+    :meth:`.TranscriberMixin.transcribe_utterances`
+        Main function that calls this function in parallel
+    :meth:`.TranscriberMixin.decode_arguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`gmm-latgen-faster`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeArguments`
+        Arguments for the function
+    """
+
+    def __init__(self, args: typing.Union[SpeechbrainAsrArguments, SpeechbrainAsrCudaArguments]):
+        super().__init__(args)
+        self.working_directory = args.working_directory
+        self.cuda = isinstance(args, SpeechbrainAsrCudaArguments)
+        self.model = None
+        self.tokenizer = args.tokenizer
+        if self.cuda:
+            self.model = args.model
+        else:
+            self.model = (
+                f"speechbrain/asr-{args.architecture}-commonvoice-14-{args.language.iso_code}"
+            )
+
+    def _run(self) -> None:
+        """Run the function"""
+        run_opts = None
+        if self.cuda:
+            run_opts = {"device": "cuda"}
+        model = self.model
+        if isinstance(model, str):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                if "wav2vec2" in model:
+                    # Download models if needed
+                    model = EncoderASR.from_hparams(
+                        source=model,
+                        savedir=os.path.join(
+                            config.TEMPORARY_DIRECTORY,
+                            "models",
+                            "EncoderASR",
+                            model,
+                        ),
+                        huggingface_cache_dir=os.path.join(
+                            config.TEMPORARY_DIRECTORY, "models", "hf_cache"
+                        ),
+                        run_opts=run_opts,
+                    )
+                else:
+                    # Download models if needed
+                    model = WhisperASR.from_hparams(
+                        source=model,
+                        savedir=os.path.join(
+                            config.TEMPORARY_DIRECTORY,
+                            "models",
+                            "WhisperASR",
+                            model,
+                        ),
+                        huggingface_cache_dir=os.path.join(
+                            config.TEMPORARY_DIRECTORY, "models", "hf_cache"
+                        ),
+                        run_opts=run_opts,
+                    )
+        return_q = queue.Queue(2)
+        finished_adding = threading.Event()
+        stopped = threading.Event()
+        loader = UtteranceFileLoader(
+            self.job_name,
+            self.session,
+            return_q,
+            stopped,
+            finished_adding,
+            model=model,
+            for_xvector=False,
+        )
+        loader.start()
+        exception = None
+        current_index = 0
+        while True:
+            try:
+                batch = return_q.get(timeout=1)
+            except queue.Empty:
+                if finished_adding.is_set():
+                    break
+                continue
+            if stopped.is_set():
+                continue
+            if isinstance(batch, Exception):
+                exception = batch
+                stopped.set()
+                continue
+
+            audio, lens = batch.signal
+            predicted_words, predicted_tokens = model.transcribe_batch(audio, lens)
+            for i, u_id in enumerate(batch.utterance_id):
+                text = predicted_words[i]
+                if self.tokenizer is not None:
+                    text = self.tokenizer(text)[0]
+                self.callback((int(u_id), text))
+            del predicted_words
+            del predicted_tokens
+            del audio
+            del lens
+            current_index += 1
+            if current_index > 10:
+                torch.cuda.empty_cache()
+                current_index = 0
+
+        loader.join()
+        if exception:
+            raise exception
+
+
+class WhisperUtteranceLoader(threading.Thread):
+    """
+    Helper process for loading utterance waveforms in parallel with embedding extraction
+
+    Parameters
+    ----------
+    job_name: int
+        Job identifier
+    session: sqlalchemy.orm.scoped_session
+        Session
+    return_q: :class:`~queue.Queue`
+        Queue to put waveforms
+    stopped: :class:`~threading.Event`
+        Check for whether the process to exit gracefully
+    finished_adding: :class:`~threading.Event`
+        Check for whether the worker has processed all utterances
+    """
+
+    def __init__(
+        self,
+        job_name: int,
+        session: sqlalchemy.orm.scoped_session,
+        return_q: queue.Queue,
+        stopped: threading.Event,
+        finished_adding: threading.Event,
+        model: MfaFasterWhisperPipeline,
+        export_directory: Path = None,
+    ):
+        super().__init__()
+        self.job_name = job_name
+        self.session = session
+        self.return_q = return_q
+        self.stopped = stopped
+        self.finished_adding = finished_adding
+        self.model = model
+        self.export_directory = export_directory
+
+    def run(self) -> None:
+        """
+        Run the waveform loading job
+        """
+
+        with self.session() as session:
+            try:
+                utterances = (
+                    session.query(
+                        Utterance.id,
+                        SoundFile.sound_file_path,
+                        Utterance.begin,
+                        Utterance.end,
+                        Utterance.channel,
+                        File.relative_path,
+                        File.name,
+                        Speaker.name,
+                    )
+                    .join(Utterance.speaker)
+                    .join(Utterance.file)
+                    .join(File.sound_file)
+                )
+                utterances = utterances.order_by(Utterance.speaker_id)
+                if not utterances.count():
+                    self.finished_adding.set()
+                    return
+                for u in utterances:
+                    if self.stopped.is_set():
+                        break
+                    segment = Segment(u[1], u[2], u[3], u[4])
+                    export_path = None
+                    if self.export_directory is not None:
+                        export_path = self.export_directory.joinpath(u[5], u[6])
+                        if any(export_path.with_suffix(x).exists() for x in [".lab", ".TextGrid"]):
+                            continue
+                    audio = segment.load_audio().astype(np.float32)
+                    segments = self.model.vad_model.segment_for_whisper(
+                        audio, **self.model._vad_params
+                    )
+                    self.return_q.put((u[0], segments, export_path, u[7], u[2], u[3]))
+            except Exception as e:
+                self.return_q.put(e)
+            finally:
+                self.finished_adding.set()
+
+
+class WhisperUtteranceVAD(threading.Thread):
+    """
+    Helper process for loading utterance waveforms in parallel with embedding extraction
+
+    Parameters
+    ----------
+    job_name: int
+        Job identifier
+    session: sqlalchemy.orm.scoped_session
+        Session
+    return_q: :class:`~queue.Queue`
+        Queue to put waveforms
+    stopped: :class:`~threading.Event`
+        Check for whether the process to exit gracefully
+    finished_adding: :class:`~threading.Event`
+        Check for whether the worker has processed all utterances
+    """
+
+    def __init__(
+        self,
+        job_name: int,
+        job_q: queue.Queue,
+        return_q: queue.Queue,
+        stopped: threading.Event,
+        finished_adding: threading.Event,
+        model: MfaFasterWhisperPipeline,
+        export_directory: Path = None,
+    ):
+        super().__init__()
+        self.job_name = job_name
+        self.job_q = job_q
+        self.return_q = return_q
+        self.stopped = stopped
+        self.finished_adding = finished_adding
+        self.model = model
+        self.export_directory = export_directory
+
+    def run(self) -> None:
+        """
+        Run the waveform loading job
+        """
+
+        while True:
+            try:
+                batch = self.job_q.get(timeout=1)
+            except queue.Empty:
+                if self.finished_adding.is_set():
+                    break
+                continue
+            if self.stopped.is_set():
+                continue
+            if isinstance(batch, Exception):
+                exception = batch
+                self.return_q.put(exception)
+                self.stopped.set()
+                continue
+            try:
+                utterance_id, audio, export_path, speaker_name, begin, end = batch
+                segments = self.model.vad_model.segment_for_whisper(
+                    audio, **self.model._vad_params
+                )
+                self.return_q.put((utterance_id, segments, export_path, speaker_name, begin, end))
+            except Exception as e:
+                self.return_q.put(e)
+
+
+class WhisperAsrFunction(KaldiFunction):
+    """
+    Multiprocessing function for performing decoding
+
+    See Also
+    --------
+    :meth:`.TranscriberMixin.transcribe_utterances`
+        Main function that calls this function in parallel
+    :meth:`.TranscriberMixin.decode_arguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`gmm-latgen-faster`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeArguments`
+        Arguments for the function
+    """
+
+    def __init__(self, args: typing.Union[WhisperArguments, WhisperCudaArguments]):
+        super().__init__(args)
+        self.working_directory = args.working_directory
+        self.working_directory = args.working_directory
+        self.cuda = args.cuda
+        self.architecture = None
+        self.model = None
+        self.language = None
+        self.export_directory = args.export_directory
+        if isinstance(args, WhisperCudaArguments):
+            self.model = args.model
+        else:
+            self.language = args.language
+            self.architecture = args.architecture
+        self.tokenizer = args.tokenizer
+
+    def _run(self) -> None:
+        """Run the function"""
+        model = self.model
+        if model is None:
+            language = None
+            if self.language is not Language.unknown:
+                language = self.language.iso_code
+            run_opts = None
+            if self.cuda:
+                run_opts = {"device": "cuda"}
+            vad_model = MfaVAD.from_hparams(
+                source="speechbrain/vad-crdnn-libriparty",
+                savedir=os.path.join(config.TEMPORARY_DIRECTORY, "models", "VAD"),
+                run_opts=run_opts,
+            )
+            model = load_model(
+                self.architecture,
+                device="cuda" if self.cuda else "cpu",
+                language=language,
+                vad_model=vad_model,
+                vad_options=None,
+                download_root=os.path.join(
+                    config.TEMPORARY_DIRECTORY,
+                    "models",
+                    "Whisper",
+                ),
+                threads=config.NUM_JOBS,
+            )
+            if self.cuda:
+                model.to("cuda")
+        return_q = queue.Queue(100)
+        finished_adding = threading.Event()
+        stopped = threading.Event()
+        loader = WhisperUtteranceLoader(
+            self.job_name,
+            self.session,
+            return_q,
+            stopped,
+            finished_adding,
+            model,
+            export_directory=self.export_directory,
+        )
+        loader.start()
+        exception = None
+
+        while True:
+            try:
+                vad_result = return_q.get(timeout=1)
+            except queue.Empty:
+                if finished_adding.is_set():
+                    break
+                continue
+            if stopped.is_set():
+                continue
+            if isinstance(vad_result, Exception):
+                exception = vad_result
+                stopped.set()
+                continue
+            try:
+                utterance_id, segments, export_path, speaker_name, begin, end = vad_result
+                result = model.transcribe(
+                    segments, [utterance_id] * len(segments), batch_size=config.NUM_JOBS
+                )
+                for utterance_id, segments in result.items():
+                    texts = []
+                    for seg in segments:
+                        seg["text"] = seg["text"].strip()
+                        if self.tokenizer is not None:
+                            seg["text"] = self.tokenizer(seg["text"])[0]
+                        texts.append(seg["text"])
+                    text = " ".join(texts)
+
+                    if export_path is not None:
+                        export_path: Path
+                        export_path.parent.mkdir(parents=True, exist_ok=True)
+                        if len(segments) == 1:
+                            with mfa_open(export_path.with_suffix(".lab"), "w") as f:
+                                f.write(text)
+                        else:
+                            from praatio import textgrid
+
+                            tg = textgrid.Textgrid()
+                            tg.minTimestamp = begin
+                            tg.maxTimestamp = end
+                            tier = textgrid.IntervalTier(
+                                speaker_name,
+                                [
+                                    textgrid.constants.Interval(
+                                        round(begin + x["start"], 3),
+                                        round(begin + x["end"], 3),
+                                        x["text"],
+                                    )
+                                    for x in segments
+                                ],
+                                minT=begin,
+                                maxT=end,
+                            )
+
+                            tg.addTier(tier)
+                            tg.save(
+                                str(export_path.with_suffix(".TextGrid")),
+                                includeBlankSpaces=True,
+                                format="short_textgrid",
+                            )
+                    self.callback((utterance_id, text))
+            except Exception as e:
+                exception = e
+                stopped.set()
+
+        loader.join()
+        if exception:
+            raise exception
 
 
 class LmRescoreFunction(KaldiFunction):

@@ -8,6 +8,7 @@ import queue
 import subprocess
 import threading
 import time
+import unicodedata
 from pathlib import Path
 from queue import Queue
 
@@ -1382,8 +1383,8 @@ class PhonetisaurusTrainerMixin:
                     thirdparty_binary("ngramsymbols"),
                     "--OOV_symbol=<unk>",
                     "--epsilon_symbol=<eps>",
-                    input_path,
-                    input_symbols_path,
+                    str(input_path),
+                    str(input_symbols_path),
                 ],
                 encoding="utf8",
                 stderr=log_file,
@@ -1623,6 +1624,7 @@ class PhonetisaurusTrainer(
             "grapheme_order": self.grapheme_order,
             "phone_order": self.phone_order,
             "sequence_separator": self.sequence_separator,
+            "unicode_decomposition": self.unicode_decomposition,
             "evaluation": {},
             "training": {
                 "num_words": self.g2p_num_training_words,
@@ -1663,15 +1665,17 @@ class PhonetisaurusTrainer(
             num_pronunciations=self.num_pronunciations,
         )
         output = gen.generate_pronunciations()
+        hypotheses = {}
         with mfa_open(temp_dir.joinpath("validation_output.txt"), "w") as f:
-            for orthography, pronunciations in output.items():
+            for orthography, pronunciations in output:
+                hypotheses[orthography] = [x[0] for x in pronunciations]
                 if not pronunciations:
                     continue
-                for p in pronunciations:
+                for p, score in pronunciations:
                     if not p:
                         continue
-                    f.write(f"{orthography}\t{p}\n")
-        gen.compute_validation_errors(validation_set, output)
+                    f.write(f"{orthography}\t{p}\t{score}\n")
+        gen.compute_validation_errors(validation_set, hypotheses)
 
     def initialize_training(self) -> None:
         """Initialize training G2P model"""
@@ -1738,7 +1742,8 @@ class PhonetisaurusTrainer(
                     .filter(Word2Job.training == True)  # noqa
                 )
                 for pronunciation, word in query:
-                    word = list(word)
+                    if self.unicode_decomposition:
+                        word = unicodedata.normalize("NFKD", word)
                     self.g2p_training_graphemes.update(word)
                     self.g2p_training_phones.update(pronunciation.split())
 
@@ -1807,7 +1812,8 @@ class PhonetisaurusTrainer(
                 self.working_directory.joinpath("output.txt"), "w"
             ) as phone_f:
                 for pronunciation, word in query:
-                    word = list(word)
+                    if self.unicode_decomposition:
+                        word = unicodedata.normalize("NFKD", word)
                     grapheme_count += len(word)
                     self.g2p_training_graphemes.update(word)
                     self.g2p_num_training_pronunciations += 1

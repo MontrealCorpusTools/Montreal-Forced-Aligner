@@ -283,7 +283,8 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
                     )
                 except Exception:
                     raise DatabaseError(
-                        f"There was an error connecting to the {config.CURRENT_PROFILE_NAME} MFA database server. "
+                        f"There was an error connecting to the {config.CURRENT_PROFILE_NAME} MFA database server "
+                        f"at {config.database_socket()}. "
                         "Please ensure the server is initialized (mfa server init) or running (mfa server start)"
                     )
                 exist_check = False
@@ -304,7 +305,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
                 conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS vector"))
                 conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
                 conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"))
-                conn.execute(sqlalchemy.text(f"select setseed({config.SEED/32768})"))
+                conn.execute(sqlalchemy.text(f"select setseed({config.SEED / 32768})"))
                 conn.commit()
 
         MfaSqlBase.metadata.create_all(self.db_engine)
@@ -617,6 +618,8 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         dict[str, Any]
             Dictionary of specified configuration parameters
         """
+        from montreal_forced_aligner.data import Language
+
         param_types = cls.get_configuration_parameters()
         params = {}
         unknown_dict = {}
@@ -639,7 +642,10 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
             ):
                 continue
             if args is not None and name in args and args[name] is not None:
-                params[name] = param_type(args[name])
+                if param_type == Language:
+                    params[name] = param_type[args[name]]
+                else:
+                    params[name] = param_type(args[name])
             elif name in unknown_dict:
                 params[name] = param_type(unknown_dict[name])
                 if param_type == bool and not isinstance(unknown_dict[name], bool):
@@ -818,7 +824,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
                         f"You are currently running an older version of MFA ({current_version}) than the latest available ({latest_version}). "
                         f"To update, please run mfa_update."
                     )
-            except KeyError:
+            except Exception:
                 pass
         if re.search(r"\d+\.\d+\.\d+a", current_version) is not None:
             logger.debug(

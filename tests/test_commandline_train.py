@@ -115,6 +115,7 @@ def test_train_and_align_basic_speaker_dict(
         english_mfa_rules_path,
         "--topology_path",
         english_mfa_topology_path,
+        "--use_postgres",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner(mix_stderr=False).invoke(

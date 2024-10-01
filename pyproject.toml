@@ -10,6 +10,11 @@ write_to = "montreal_forced_aligner/_version.py"
 [tool.black]
 line-length = 99
 
+[tool.flake8]
+max-line-length = 99
+extend-ignore = ["D203", "E203", "E251", "E266", "E302", "E305", "E401", "E402", "E501", "F401", "F403", "W503"]
+exclude = [".git", "__pycache__", "dist", "build"]
+
 [tool.isort]
 line_length = 99
 profile = "black"

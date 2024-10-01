@@ -236,6 +236,7 @@ class NormalizeTextArguments(MfaArguments):
     tokenizers: typing.Union[typing.Dict[int, SimpleTokenizer], Language]
     g2p_model: typing.Optional[G2PModel]
     ignore_case: bool
+    use_cutoff_model: bool
 
 
 @dataclass
@@ -265,6 +266,7 @@ class NormalizeTextFunction(KaldiFunction):
         self.tokenizers = args.tokenizers
         self.g2p_model = args.g2p_model
         self.ignore_case = args.ignore_case
+        self.use_cutoff_model = args.use_cutoff_model
 
     def _run(self):
         """Run the function"""
@@ -300,6 +302,18 @@ class NormalizeTextFunction(KaldiFunction):
                     for u_id, u_text in utterances:
                         if simple_tokenization:
                             normalized_text, normalized_character_text, oovs = tokenizer(u_text)
+                            if self.use_cutoff_model:
+                                new_text = []
+                                text = normalized_text.split()
+                                for i, w in enumerate(text):
+                                    if w == d.cutoff_word and i != len(text) - 1:
+                                        next_w = text[i + 1]
+                                        if tokenizer.word_table.member(
+                                            next_w
+                                        ) and not tokenizer.bracket_regex.match(next_w):
+                                            w = f"{d.cutoff_word[:-1]}-{next_w}{d.cutoff_word[-1]}"
+                                    new_text.append(w)
+                                normalized_text = " ".join(new_text)
                             self.callback(
                                 (
                                     {
@@ -335,6 +349,14 @@ class NormalizeTextFunction(KaldiFunction):
                             )
             else:
                 tokenizer = self.tokenizers
+                if isinstance(tokenizer, Language):
+                    from montreal_forced_aligner.tokenization.spacy import (
+                        generate_language_tokenizer,
+                    )
+
+                    tokenizer = generate_language_tokenizer(
+                        tokenizer, ignore_case=self.ignore_case
+                    )
                 utterances = (
                     session.query(Utterance.id, Utterance.text)
                     .filter(Utterance.text != "")
@@ -342,17 +364,23 @@ class NormalizeTextFunction(KaldiFunction):
                 )
                 for u_id, u_text in utterances:
                     if tokenizer is None:
-                        normalized_text, normalized_character_text = u_text, u_text
-                        oovs = []
+                        normalized_text, pronunciation_form = u_text, u_text
                     else:
-                        normalized_text, normalized_character_text, oovs = tokenizer(u_text)
+                        tokenized = tokenizer(u_text)
+                        if isinstance(tokenized, tuple):
+                            normalized_text, pronunciation_form = tokenized[:2]
+                        else:
+                            if not isinstance(tokenized, str):
+                                tokenized = " ".join([x.text for x in tokenized])
+                            if self.ignore_case:
+                                tokenized = tokenized.lower()
+                            normalized_text, pronunciation_form = tokenized, tokenized.lower()
                     self.callback(
                         (
                             {
                                 "id": u_id,
-                                "oovs": " ".join(sorted(oovs)),
                                 "normalized_text": normalized_text,
-                                "normalized_character_text": normalized_character_text,
+                                "normalized_character_text": pronunciation_form,
                             },
                             None,
                         )

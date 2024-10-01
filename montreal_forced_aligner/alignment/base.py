@@ -623,9 +623,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     {
                         "id": d_id,
                         "silence_probability": silence_probability,
-                        "initial_silence_probability": initial_silence_probability,
-                        "final_silence_correction": final_silence_correction,
-                        "final_non_silence_correction": final_non_silence_correction,
+                        # "initial_silence_probability": initial_silence_probability,
+                        # "final_silence_correction": final_silence_correction,
+                        # "final_non_silence_correction": final_non_silence_correction,
                     }
                 )
 
@@ -1328,8 +1328,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             Format to save alignments, one of 'long_textgrids' (the default), 'short_textgrids', or 'json', passed to praatio
         include_original_text: bool
             Flag for including the original text of the corpus files as a tier
-        workflow: :class:`~montreal_forced_aligner.data.WorkflowType`
-            Workflow to use when exporting files
         """
         if isinstance(output_directory, str):
             output_directory = Path(output_directory)

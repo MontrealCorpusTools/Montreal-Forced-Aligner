@@ -1,16 +1,28 @@
 """Classes for calculating alignments online"""
 from __future__ import annotations
 
+import typing
+
+import numpy as np
 from _kalpy.fstext import ConstFst
 from _kalpy.matrix import DoubleMatrix, FloatMatrix
+from kalpy.data import Segment
 from kalpy.feat.cmvn import CmvnComputer
 from kalpy.fstext.lexicon import LexiconCompiler
 from kalpy.gmm.data import HierarchicalCtm
 from kalpy.gmm.decode import GmmDecoder
 from kalpy.utterance import Utterance as KalpyUtterance
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.exceptions import AlignerError
 from montreal_forced_aligner.models import AcousticModel
+from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
+from montreal_forced_aligner.transcription.models import FOUND_WHISPERX, MfaFasterWhisperPipeline
+from montreal_forced_aligner.transcription.multiprocessing import (
+    FOUND_SPEECHBRAIN,
+    EncoderASR,
+    WhisperASR,
+)
 
 
 def transcribe_utterance_online(
@@ -82,3 +94,48 @@ def transcribe_utterance_online(
     ctm.likelihood = alignment.likelihood
     ctm.update_utterance_boundaries(utterance.segment.begin, utterance.segment.end)
     return ctm
+
+
+def transcribe_utterance_online_whisper(
+    model: MfaFasterWhisperPipeline,
+    segment: Segment,
+    tokenizer: SimpleTokenizer = None,
+) -> str:
+    if not FOUND_WHISPERX:
+        raise Exception(
+            "Could not import transformers, please ensure it is installed via `conda install transformers`"
+        )
+    audio = segment.wave.astype(np.float32)
+    vad_segments = model.vad_model.segment_for_whisper(audio, **model._vad_params)
+    result = model.transcribe(
+        vad_segments, [0 for _ in range(len(vad_segments))], batch_size=config.NUM_JOBS
+    )
+    texts = []
+    for seg in result[0]:
+        texts.append(seg["text"].strip())
+    text = " ".join(texts)
+    if tokenizer is not None:
+        text = tokenizer(text)[0]
+    return text.strip()
+
+
+def transcribe_utterance_online_speechbrain(
+    model: typing.Union[WhisperASR, EncoderASR],
+    utterance: KalpyUtterance,
+    tokenizer: SimpleTokenizer = None,
+) -> str:
+    if not FOUND_SPEECHBRAIN:
+        raise Exception(
+            "Could not import speechbrain, please ensure it is installed via `pip install speechbrain`"
+        )
+    import torch
+
+    segment = utterance.segment
+    waveform = segment.load_audio()
+    waveform = model.audio_normalizer(waveform, 16000).unsqueeze(0)
+    lens = torch.tensor([1.0])
+    predicted_words, predicted_tokens = model.transcribe_batch(waveform, lens)
+    text = predicted_words[0]
+    if tokenizer is not None:
+        text = tokenizer(text)[0]
+    return text

@@ -981,12 +981,18 @@ class G2PModel(Archive):
                 graphemes=self.meta["graphemes"],
                 sequence_separator=self.meta["sequence_separator"],
                 strict=True,
+                unicode_decomposition=self.meta["unicode_decomposition"],
             )
         else:
             from montreal_forced_aligner.g2p.generator import Rewriter
 
             rewriter = Rewriter(
-                self.fst, self.grapheme_table, self.phone_table, num_pronunciations=1, strict=True
+                self.fst,
+                self.grapheme_table,
+                self.phone_table,
+                num_pronunciations=1,
+                strict=True,
+                unicode_decomposition=self.meta["unicode_decomposition"],
             )
         return rewriter
 
@@ -1024,6 +1030,7 @@ class G2PModel(Archive):
             self._meta["graphemes"] = set(self._meta.get("graphemes", []))
             self._meta["evaluation"] = self._meta.get("evaluation", [])
             self._meta["training"] = self._meta.get("training", [])
+            self._meta["unicode_decomposition"] = self._meta.get("unicode_decomposition", False)
         return self._meta
 
     @property
@@ -1652,13 +1659,20 @@ class ModelManager:
     ----------
         token: str, optional
             GitHub authentication token to use to increase release limits
+        hf_token: str, optional
+            HuggingFace authentication token to use to increase release limits
         ignore_cache: bool
             Flag to ignore previously downloaded files
     """
 
     base_url = "https://api.github.com/repos/MontrealCorpusTools/mfa-models/releases"
 
-    def __init__(self, token: typing.Optional[str] = None, ignore_cache: bool = False):
+    def __init__(
+        self,
+        token: typing.Optional[str] = None,
+        hf_token: typing.Optional[str] = None,
+        ignore_cache: bool = False,
+    ):
         from montreal_forced_aligner.config import get_temporary_directory
 
         pretrained_dir = get_temporary_directory().joinpath("pretrained_models")
@@ -1671,6 +1685,10 @@ class ModelManager:
         environment_token = os.environ.get("GITHUB_TOKEN", None)
         if self.token is None:
             self.token = environment_token
+        self.hf_token = hf_token
+        environment_token = os.environ.get("HF_TOKEN", None)
+        if self.hf_token is None:
+            self.hf_token = environment_token
         self.synced_remote = False
         self.ignore_cache = ignore_cache
         self._cache_info = {}

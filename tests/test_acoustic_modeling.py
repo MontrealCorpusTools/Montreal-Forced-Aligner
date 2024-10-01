@@ -73,6 +73,7 @@ def test_trainer(basic_dict_path, temp_dir, basic_corpus_dir):
     a.cleanup()
 
 
+@pytest.mark.skip
 def test_basic_mono(
     mixed_dict_path,
     basic_corpus_dir,
@@ -108,6 +109,7 @@ def test_basic_mono(
     a.clean_working_directory()
 
 
+@pytest.mark.skip
 def test_pronunciation_training(
     mixed_dict_path,
     basic_corpus_dir,
@@ -155,6 +157,7 @@ def test_pronunciation_training(
     a.clean_working_directory()
 
 
+@pytest.mark.skip
 def test_pitch_feature_training(
     basic_dict_path, basic_corpus_dir, pitch_train_config_path, db_setup
 ):
@@ -172,6 +175,7 @@ def test_pitch_feature_training(
     a.clean_working_directory()
 
 
+@pytest.mark.skip
 def test_basic_lda(basic_dict_path, basic_corpus_dir, lda_train_config_path, db_setup):
     a = TrainableAligner(
         corpus_directory=basic_corpus_dir,

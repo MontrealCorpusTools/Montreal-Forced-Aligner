@@ -7,6 +7,7 @@ from __future__ import annotations
 import collections
 import json
 import logging
+import math
 import multiprocessing as mp
 import os
 import shutil
@@ -115,16 +116,14 @@ class GeneratePronunciationsArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
-    text_int_paths: dict[int, Path]
-        Per dictionary text SCP paths
-    ali_paths: dict[int, Path]
-        Per dictionary alignment paths
-    model_path: :class:`~pathlib.Path`
-        Acoustic model path
+    aligner: :class:`kalpy.gmm.align.GmmAligner`
+        GmmAligner to use
+    lexicon_compilers: dict[int, :class:`kalpy.fstext.lexicon.LexiconCompiler`]
+        Lexicon compilers for each pronunciation dictionary
     for_g2p: bool
         Flag for training a G2P model with acoustic information
     """
@@ -143,12 +142,16 @@ class AlignmentExtractionArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
-    model_path: :class:`~pathlib.Path`
-        Acoustic model path
+    working_directory: :class:`~pathlib.Path`
+        Working directory
+    lexicon_compilers: dict[int, :class:`kalpy.fstext.lexicon.LexiconCompiler`]
+        Lexicon compilers for each pronunciation dictionary
+    aligner: :class:`kalpy.gmm.align.GmmAligner`
+        GmmAligner to use
     frame_shift: float
         Frame shift in seconds
     ali_paths: dict[int, Path]
@@ -180,8 +183,8 @@ class ExportTextGridArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     export_frame_shift: float
@@ -215,10 +218,12 @@ class CompileTrainGraphsArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
+    working_directory: :class:`~pathlib.Path`
+        Working directory
     tree_path: :class:`~pathlib.Path`
         Path to tree file
     model_path: :class:`~pathlib.Path`
@@ -243,10 +248,12 @@ class AlignArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
+    working_directory: :class:`~pathlib.Path`
+        Working directory
     model_path: :class:`~pathlib.Path`
         Path to model file
     align_options: dict[str, Any]
@@ -271,8 +278,8 @@ class AnalyzeAlignmentsArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     model_path: :class:`~pathlib.Path`
@@ -294,8 +301,8 @@ class FineTuneArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     tree_path: :class:`~pathlib.Path`
@@ -335,10 +342,12 @@ class PhoneConfidenceArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
+    working_directory: :class:`~pathlib.Path`
+        Working directory
     model_path: :class:`~pathlib.Path`
         Path to model file
     phone_pdf_counts_path: :class:`~pathlib.Path`
@@ -359,8 +368,8 @@ class AccStatsArguments(MfaArguments):
     ----------
     job_name: int
         Integer ID of the job
-    db_string: str
-        String for database connections
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
     working_directory: :class:`~pathlib.Path`
@@ -424,9 +433,12 @@ class CompileTrainGraphsFunction(KaldiFunction):
                     session.query(Word).filter(Word.word_type == WordType.interjection).all()
                 )
                 if interjection_words:
-                    max_count = max(x.count for x in interjection_words)
+                    max_count = max(math.log(x.count) for x in interjection_words)
                     for w in interjection_words:
-                        cost = max_count / w.count
+                        count = math.log(w.count)
+                        if count == 0:
+                            count = 0.01
+                        cost = max_count / count
                         interjection_costs[w.word] = cost
             if self.use_g2p:
                 text_column = Utterance.normalized_character_text
@@ -447,9 +459,9 @@ class CompileTrainGraphsFunction(KaldiFunction):
                     self.tree_path,
                     lexicon,
                     use_g2p=self.use_g2p,
-                    batch_size=1000
+                    batch_size=500
                     if workflow.workflow_type is not WorkflowType.transcript_verification
-                    else 500,
+                    else 250,
                 )
                 graph_logger.debug(f"Set up took {time.time() - begin} seconds")
                 query = (
@@ -472,7 +484,7 @@ class CompileTrainGraphsFunction(KaldiFunction):
                 )
                 graph_logger.debug(f"Total compilation time: {time.time() - begin} seconds")
                 del compiler
-        del self.lexicon_compilers
+                del lexicon
 
 
 class AccStatsFunction(KaldiFunction):
@@ -1366,15 +1378,15 @@ class AlignmentExtractionFunction(KaldiFunction):
                         intervals = transcription.generate_ctm(
                             self.transition_model, lexicon_compiler.phone_table, self.frame_shift
                         )
-                        utterance = int(transcription.utterance_id.split("-")[-1])
+                        utterance_id = int(transcription.utterance_id.split("-")[-1])
                         try:
                             ctm = lexicon_compiler.phones_to_pronunciations(
                                 transcription.words,
                                 intervals,
                                 transcription=True,
-                                text=utterance_texts.get(utterance, None),
+                                text=utterance_texts.get(utterance_id, None),
                             )
-                            ctm.update_utterance_boundaries(*utterance_times[utterance])
+                            ctm.update_utterance_boundaries(*utterance_times[utterance_id])
                         except Exception:
                             exc_type, exc_value, exc_traceback = sys.exc_info()
                             utterance, sound_file_path, text_file_path = (
@@ -1384,10 +1396,12 @@ class AlignmentExtractionFunction(KaldiFunction):
                                 .join(Utterance.file)
                                 .join(File.sound_file)
                                 .join(File.text_file)
-                                .filter(Utterance.id == utterance)
+                                .filter(Utterance.id == utterance_id)
                                 .first()
                             )
-                            extraction_logger.debug(f"Error processing {utterance}:")
+                            extraction_logger.debug(
+                                f"Error processing {utterance} ({utterance_id}):"
+                            )
                             extraction_logger.debug(
                                 f"Utterance information: {sound_file_path}, {text_file_path}, {utterance.begin} - {utterance.end}"
                             )
@@ -1403,7 +1417,7 @@ class AlignmentExtractionFunction(KaldiFunction):
                                 traceback_lines,
                                 self.log_path,
                             )
-                        self.callback((utterance, d.id, ctm))
+                        self.callback((utterance_id, d.id, ctm))
                 else:
                     ali_path = job.construct_path(workflow.working_directory, "ali", "ark", d.id)
                     if not ali_path.exists():
@@ -1546,6 +1560,7 @@ class AlignmentExtractionFunction(KaldiFunction):
                                 pass
                         alignment_archive.close()
                         extraction_logger.debug("Finished ali first pass")
+                del lexicon_compiler
             extraction_logger.debug("Finished extraction")
 
 
