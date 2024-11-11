@@ -125,7 +125,6 @@ xref_links = {
         "https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/issues",
     ),
     "memcauliffe.com": ("Michael McAuliffe's blog", "https://memcauliffe.com"),
-    "@wavable": ("@wavable", "https://twitter.com/wavable"),
     "@mmcauliffe.bsky.social": (
         "@mmcauliffe.bsky.social",
         "https://bsky.app/profile/mmcauliffe.bsky.social",
