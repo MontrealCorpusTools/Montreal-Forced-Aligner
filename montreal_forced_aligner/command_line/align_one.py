@@ -153,7 +153,7 @@ def align_one_cli(context, **kwargs) -> None:
             ignore_case=c.get("ignore_case", True),
         )
     else:
-        tokenizer = generate_language_tokenizer(acoustic_model.meta["language"])
+        tokenizer = generate_language_tokenizer(acoustic_model.language)
     file_name = sound_file_path.stem
     file = FileData.parse_file(file_name, sound_file_path, text_file_path, "", 0)
     file_ctm = HierarchicalCtm([])
