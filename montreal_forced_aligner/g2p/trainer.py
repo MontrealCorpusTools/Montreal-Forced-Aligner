@@ -205,7 +205,7 @@ class G2PTrainer(MfaWorker, TrainerMixin):
         validation_proportion: float = 0.1,
         num_pronunciations: int = 0,
         evaluation_mode: bool = False,
-        unicode_decomposition: bool = True,
+        unicode_decomposition: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -782,6 +782,8 @@ class PyniniTrainer(
                         continue
                     if self.unicode_decomposition:
                         word = unicodedata.normalize("NFKD", word)
+                    else:
+                        word = unicodedata.normalize("NFKC", word)
                     self.g2p_training_graphemes.update(word)
                     for p in pronunciations:
                         self.g2p_training_phones.update(p.split())

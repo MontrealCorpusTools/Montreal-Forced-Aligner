@@ -5,6 +5,11 @@
 3.2 Changelog
 *************
 
+3.2.1
+-----
+
+- Changed unicode normalization to default to composed forms unless overridden by :code:`--unicode_decomposition true`
+
 3.2.0
 -----
 

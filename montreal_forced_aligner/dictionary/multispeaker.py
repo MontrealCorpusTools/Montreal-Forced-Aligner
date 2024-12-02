@@ -581,7 +581,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             if getattr(self, "unicode_decomposition", False):
                                 characters = unicodedata.normalize("NFKD", word)
                             else:
-                                characters = word
+                                characters = unicodedata.normalize("NFKC", word)
                             graphemes.update(characters)
                         if pretrained:
                             difference = set(pron) - self.non_silence_phones - self.silence_phones

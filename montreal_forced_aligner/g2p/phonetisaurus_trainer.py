@@ -1744,6 +1744,8 @@ class PhonetisaurusTrainer(
                 for pronunciation, word in query:
                     if self.unicode_decomposition:
                         word = unicodedata.normalize("NFKD", word)
+                    else:
+                        word = unicodedata.normalize("NFKC", word)
                     self.g2p_training_graphemes.update(word)
                     self.g2p_training_phones.update(pronunciation.split())
 
@@ -1814,6 +1816,8 @@ class PhonetisaurusTrainer(
                 for pronunciation, word in query:
                     if self.unicode_decomposition:
                         word = unicodedata.normalize("NFKD", word)
+                    else:
+                        word = unicodedata.normalize("NFKC", word)
                     grapheme_count += len(word)
                     self.g2p_training_graphemes.update(word)
                     self.g2p_num_training_pronunciations += 1
