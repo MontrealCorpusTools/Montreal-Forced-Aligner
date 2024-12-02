@@ -4,7 +4,7 @@ pyyaml
 librosa
 numpy
 scipy
-scikit-learn<1.3
+scikit-learn
 requests
 biopython==1.79
 dataclassy
