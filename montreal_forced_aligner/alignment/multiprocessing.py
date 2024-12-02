@@ -1144,7 +1144,7 @@ class PhoneConfidenceFunction(KaldiFunction):
                                 actual_score = phone_likes[i, phones[pi.phone.phone]]
                                 scores.append(phone_likes[i, top_phone_ind] - actual_score)
                         average_score = statistics.mean(scores)
-                        interval_mappings.append({"id": pi.id, "phone_goodness": average_score})
+                        interval_mappings.append({"id": pi.id, "phone_goodness": float(average_score)})
                     self.callback(interval_mappings)
                     interval_mappings = []
 
