@@ -158,7 +158,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             AnalyzeAlignmentsArguments(
                 j.id,
                 getattr(self, "session" if config.USE_THREADING else "db_string", ""),
-                self.working_log_directory.joinpath(f"calculate_speech_post.{j.id}.log"),
+                self.working_log_directory.joinpath(f"alignment_analysis.{j.id}.log"),
                 self.model_path,
                 self.align_options,
             )
@@ -190,7 +190,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
             arguments = self.analyze_alignments_arguments()
             update_mappings = []
-            for utt_id, speech_log_likelihood, duration_deviation in run_kaldi_function(
+            for utt_id, speech_log_likelihood, duration_deviation, snr in run_kaldi_function(
                 AnalyzeAlignmentsFunction, arguments, total_count=self.num_current_utterances
             ):
                 update_mappings.append(
@@ -198,6 +198,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         "id": utt_id,
                         "speech_log_likelihood": speech_log_likelihood,
                         "duration_deviation": duration_deviation,
+                        "snr": snr,
                     }
                 )
 
@@ -216,6 +217,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         "overall_log_likelihood",
                         "speech_log_likelihood",
                         "phone_duration_deviation",
+                        "snr",
                     ]
                 )
                 utterances = (
@@ -227,6 +229,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         Utterance.alignment_log_likelihood,
                         Utterance.speech_log_likelihood,
                         Utterance.duration_deviation,
+                        Utterance.snr,
                     )
                     .join(Utterance.file)
                     .join(Utterance.speaker)
@@ -443,7 +446,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 import traceback
 
                 exc_type, exc_value, exc_traceback = sys.exc_info()
-                print("\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback)))
+                logger.debug(
+                    "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+                )
                 raise
         initial_key = ("<s>", "")
         final_key = ("</s>", "")
@@ -464,6 +469,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             for d in dictionaries:
                 d_id = d.id
                 if d_id not in dictionary_counters:
+                    continue
+                if d.name in ["default", "nonnative"]:
                     continue
                 counter = dictionary_counters[d_id]
                 log_file.write(f"For {d.name}:\n")
@@ -1306,7 +1313,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             output_textgrid_writing_errors(self.export_output_directory, error_dict)
             if config.DEBUG:
                 for k, v in error_dict.items():
-                    print(k)
                     raise v
         logger.info(f"Finished exporting TextGrids to {self.export_output_directory}!")
         logger.debug(f"Exported TextGrids in a total of {time.time() - begin:.3f} seconds")
@@ -1582,6 +1588,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             f.write("reference,hypothesis,count\n")
             for k, v in sorted(phone_confusions.items(), key=lambda x: -x[1]):
                 f.write(f"{k[0]},{k[1]},{v}\n")
-        logger.info(f"Average overlap score: {score_sum/score_count}")
-        logger.info(f"Average phone error rate: {phone_edit_sum/phone_length_sum}")
-        logger.debug(f"Alignment evaluation took {time.time()-all_begin} seconds")
+        logger.info(f"Average overlap score: {score_sum / score_count}")
+        logger.info(f"Average phone error rate: {phone_edit_sum / phone_length_sum}")
+        logger.debug(f"Alignment evaluation took {time.time() - all_begin} seconds")

@@ -283,23 +283,31 @@ class AlignMixin(DictionaryMixin):
         update_mappings = []
         num_errors = 0
         num_successful = 0
+        e = None
         for utterance, log_likelihood in run_kaldi_function(
             AlignFunction, self.align_arguments(), total_count=self.num_current_utterances
         ):
-            if log_likelihood:
-                num_successful += 1
+            if e:
+                continue
+            try:
                 if log_likelihood:
-                    log_like_sum += log_likelihood
-                    log_like_count += 1
-            else:
-                num_errors += 1
-            if not training:
-                update_mappings.append(
-                    {
-                        "id": int(utterance.split("-")[-1]),
-                        "alignment_log_likelihood": log_likelihood,
-                    }
-                )
+                    num_successful += 1
+                    if log_likelihood:
+                        log_like_sum += log_likelihood
+                        log_like_count += 1
+                else:
+                    num_errors += 1
+                if not training:
+                    update_mappings.append(
+                        {
+                            "id": int(utterance.split("-")[-1]),
+                            "alignment_log_likelihood": log_likelihood,
+                        }
+                    )
+            except Exception:
+                continue
+        if e is not None:
+            raise e
         if not training:
             if len(update_mappings) == 0 or num_successful == 0:
                 raise NoAlignmentsError(self.num_current_utterances, self.beam, self.retry_beam)

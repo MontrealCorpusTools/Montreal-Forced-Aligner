@@ -1295,7 +1295,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         logger.debug(
             f"Mismatching scores: {np.min(mismatch_scores):.3f}-{np.max(mismatch_scores):.3f} (mean = {mismatch_scores.mean():.3f}, n = {mismatch_scores.shape[0]})"
         )
-        logger.info(f"EER: {eer*100:.2f}%")
+        logger.info(f"EER: {eer * 100:.2f}%")
         logger.info(f"Threshold: {thresh:.4f}")
         logger.debug(f"Calculating EER took {time.time() - begin:.3f} seconds")
         return eer, thresh
@@ -1313,6 +1313,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 config.update_configuration(
                     {
                         "USE_MP": False,
+                        "USE_THREADING": True,
                     }
                 )
             batch_size = 100000
@@ -1423,7 +1424,6 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                     s_ivectors.append(u_ivector)
                 if not s_ivectors:
                     continue
-                print(s_ivectors)
                 mean_ivector = np.mean(np.array(s_ivectors), axis=0)
                 speaker_mean = DoubleVector()
                 speaker_mean.from_numpy(mean_ivector)

@@ -27,7 +27,11 @@ from _kalpy import transform as kalpy_transform
 from _kalpy.gmm import gmm_compute_likes
 from _kalpy.hmm import TransitionModel
 from _kalpy.matrix import FloatMatrix, FloatSubMatrix
-from _kalpy.util import RandomAccessBaseDoubleMatrixReader, RandomAccessBaseFloatMatrixReader
+from _kalpy.util import (
+    KaldiFatalError,
+    RandomAccessBaseDoubleMatrixReader,
+    RandomAccessBaseFloatMatrixReader,
+)
 from kalpy.data import Segment
 from kalpy.decoder.data import FstArchive
 from kalpy.decoder.training_graphs import TrainingGraphCompiler
@@ -610,6 +614,7 @@ class AlignFunction(KaldiFunction):
                 feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
 
                 align_logger.debug("Feature Archive information:")
+                align_logger.debug(f"Archive: {feature_archive.file_name}")
                 align_logger.debug(f"CMVN: {feature_archive.cmvn_read_specifier}")
                 align_logger.debug(f"Deltas: {feature_archive.use_deltas}")
                 align_logger.debug(f"Splices: {feature_archive.use_splices}")
@@ -655,7 +660,8 @@ class AlignFunction(KaldiFunction):
                         job.construct_path(
                             self.working_directory, "likelihoods", "ark", dict_id
                         ).symlink_to(likes_path)
-                    except OSError:
+                    except OSError as e:
+                        logger.debug(str(e))
                         shutil.copyfile(
                             ali_path,
                             job.construct_path(self.working_directory, "ali", "ark", dict_id),
@@ -701,7 +707,9 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
     def _run(self):
         """Run the function"""
 
-        with self.session() as session:
+        with self.session() as session, thread_logger(
+            "kalpy.align", self.log_path, job_name=self.job_name
+        ) as extraction_logger:
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
@@ -723,36 +731,93 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
                     Phone.sd_duration != 0,
                 )
             }
-            query = session.query(Utterance).filter(
-                Utterance.job_id == job.id, Utterance.alignment_log_likelihood != None  # noqa
-            )
-            for utterance in query:
-                phone_intervals = (
-                    session.query(PhoneInterval)
-                    .join(PhoneInterval.phone)
+            mfcc_computer = MfccComputer(use_energy=True, raw_energy=True, num_coefficients=1)
+            for d in job.training_dictionaries:
+                query = (
+                    session.query(Utterance)
+                    .join(Utterance.speaker)
                     .filter(
-                        PhoneInterval.utterance_id == utterance.id,
-                        PhoneInterval.workflow_id == workflow.id,
-                        Phone.id.in_(list(phones.keys())),
+                        Utterance.job_id == job.id,
+                        Speaker.dictionary_id == d.id,
+                        Utterance.alignment_log_likelihood != None,  # noqa
                     )
-                    .all()
+                    .options(
+                        joinedload(Utterance.speaker, innerjoin=True),
+                        joinedload(Utterance.file, innerjoin=True).joinedload(
+                            File.sound_file, innerjoin=True
+                        ),
+                    )
                 )
-                if not phone_intervals:
-                    continue
-                interval_count = len(phone_intervals)
-                log_like_sum = 0
-                duration_zscore_max = 0
-                for pi in phone_intervals:
-                    log_like_sum += pi.phone_goodness
-                    m, sd = phones[pi.phone_id]
-                    duration_zscore = abs((pi.duration - m) / sd)
-                    if duration_zscore > duration_zscore_max:
-                        duration_zscore_max = duration_zscore
-                utterance_speech_log_likelihood = log_like_sum / interval_count
-                utterance_duration_deviation = duration_zscore_max
-                self.callback(
-                    (utterance.id, utterance_speech_log_likelihood, utterance_duration_deviation)
+                silence_phone_id = (
+                    session.query(Phone.id)
+                    .filter(Phone.phone == d.optional_silence_phone)
+                    .first()[0]
                 )
+                for utterance in query:
+                    phone_intervals = (
+                        session.query(PhoneInterval)
+                        .join(PhoneInterval.phone)
+                        .filter(
+                            PhoneInterval.utterance_id == utterance.id,
+                            PhoneInterval.workflow_id == workflow.id,
+                        )
+                        .all()
+                    )
+                    if not phone_intervals:
+                        continue
+                    kalpy_utterance = utterance.to_kalpy()
+                    kalpy_utterance.generate_mfccs(mfcc_computer)
+                    energy = kalpy_utterance.mfccs.numpy()[:, 0]
+                    interval_count = 0
+                    log_like_sum = 0
+                    duration_zscore_max = 0
+                    silence_energy_sum = 0
+                    silence_frame_count = 0
+                    nonsilence_energy_sum = 0
+                    nonsilence_frame_count = 0
+                    for pi in phone_intervals:
+                        begin_index = int(pi.begin / 0.01)
+                        end_index = int(pi.end / 0.01)
+                        if pi.phone_id == silence_phone_id:
+                            silence_frame_count += end_index - begin_index
+                            silence_energy_sum += energy[begin_index:end_index].sum()
+                        else:
+                            nonsilence_frame_count += end_index - begin_index
+                            nonsilence_energy_sum += energy[begin_index:end_index].sum()
+                        if pi.phone_id not in phones:
+                            continue
+                        interval_count += 1
+                        log_like_sum += pi.phone_goodness
+                        m, sd = phones[pi.phone_id]
+                        duration_zscore = abs((pi.duration - m) / sd)
+                        if duration_zscore > duration_zscore_max:
+                            duration_zscore_max = duration_zscore
+                    try:
+                        utterance_speech_log_likelihood = log_like_sum / interval_count
+                        utterance_duration_deviation = duration_zscore_max
+                    except ZeroDivisionError:
+                        utterance_speech_log_likelihood = None
+                        utterance_duration_deviation = None
+                    try:
+                        silence_energy = silence_energy_sum / silence_frame_count
+                    except ZeroDivisionError:
+                        silence_energy = energy.min()
+                    try:
+                        nonsilence_energy = nonsilence_energy_sum / nonsilence_frame_count
+                    except ZeroDivisionError:
+                        nonsilence_energy = energy.max()
+                    snr = nonsilence_energy - silence_energy
+                    extraction_logger.debug(
+                        f"{utterance.id}: Energy shape: {energy.shape}, Nonsilence energy: {nonsilence_energy}, Silence energy: {silence_energy}, SNR: {snr}"
+                    )
+                    self.callback(
+                        (
+                            utterance.id,
+                            utterance_speech_log_likelihood,
+                            utterance_duration_deviation,
+                            snr,
+                        )
+                    )
 
 
 class AnalyzeTranscriptsFunction(KaldiFunction):
@@ -1505,6 +1570,10 @@ class AlignmentExtractionFunction(KaldiFunction):
                             .filter(Utterance.ignored == False)  # noqa
                             .filter(~Utterance.id.in_(found_utterances))
                         )
+                        if job.corpus.current_subset > 0:
+                            missing_utterances = missing_utterances.filter(
+                                Utterance.in_subset == True  # noqa
+                            )
                         for (utt_id,) in missing_utterances:
                             extraction_logger.debug(f"Processing {utt_id}")
                             try:
@@ -1555,7 +1624,7 @@ class AlignmentExtractionFunction(KaldiFunction):
                                     )
                                 self.callback((utterance, d.id, ctm))
                                 extraction_logger.debug(f"Processed {utt_id}")
-                            except (KeyError, RuntimeError):
+                            except (KeyError, KaldiFatalError):
                                 extraction_logger.debug(f"Did not find {utt_id}")
                                 pass
                         alignment_archive.close()

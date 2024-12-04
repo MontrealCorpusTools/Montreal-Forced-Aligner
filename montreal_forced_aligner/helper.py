@@ -465,7 +465,7 @@ def score_g2p(gold: List[str], hypo: List[str]) -> Tuple[int, int]:
     return edits, best_length
 
 
-def score_wer(gold: List[str], hypo: List[str]) -> Tuple[int, int, int, int]:
+def score_wer(gold: List[str], hypo: List[str], filter_brackets=True) -> Tuple[int, int, int, int]:
     """
     Computes word error rate and character error rate for a transcription
 
@@ -475,6 +475,8 @@ def score_wer(gold: List[str], hypo: List[str]) -> Tuple[int, int, int, int]:
         The reference words
     hypo: list[str]
         The hypothesized words
+    filter_brackets : bool
+        Flag for whether to ignore bracketed words
 
     Returns
     -------
@@ -487,6 +489,9 @@ def score_wer(gold: List[str], hypo: List[str]) -> Tuple[int, int, int, int]:
     int
         Length of the gold characters
     """
+    if filter_brackets:
+        gold = [x for x in gold if not any(x.startswith(y) for y in "[<{")]
+        hypo = [x for x in hypo if not any(x.startswith(y) for y in "[<{")]
     word_edits = edit_distance(gold, hypo)
     character_gold = list("".join(gold))
     character_hypo = list("".join(hypo))

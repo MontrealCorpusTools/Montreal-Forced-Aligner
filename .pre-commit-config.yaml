@@ -21,6 +21,7 @@ repos:
     rev: 7.0.0
     hooks:
       - id: flake8
+        entry: pflake8
         additional_dependencies:
           - pyproject-flake8
   - repo: https://github.com/pre-commit/mirrors-isort

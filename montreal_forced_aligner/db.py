@@ -1460,6 +1460,7 @@ class Utterance(MfaSqlBase):
     alignment_log_likelihood = Column(Float)
     speech_log_likelihood = Column(Float)
     duration_deviation = Column(Float)
+    snr = Column(Float)
     phone_error_rate = Column(Float)
     alignment_score = Column(Float)
     word_error_rate = Column(Float)
@@ -1686,17 +1687,30 @@ class Utterance(MfaSqlBase):
             set(self.oovs.split()),
         )
 
+    @property
+    def segment(self) -> Segment:
+        """
+        Construct an UtteranceData object that can be used in multiprocessing
+
+        Returns
+        -------
+        :class:`~kalpy.data.Segment`
+            Segment for the utterance
+        """
+        return Segment(self.file.sound_file.sound_file_path, self.begin, self.end, self.channel)
+
     def to_kalpy(self) -> KalpyUtterance:
         """
         Construct an UtteranceData object that can be used in multiprocessing
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.corpus.classes.UtteranceData`
-            Data for the utterance
+        :class:`~kalpy.utterance.Utterance`
+            Kalpy utterance
         """
-        seg = Segment(self.file.sound_file.sound_file_path, self.begin, self.end, self.channel)
-        return KalpyUtterance(seg, self.normalized_text, self.speaker.cmvn, self.speaker.fmllr)
+        return KalpyUtterance(
+            self.segment, self.normalized_text, self.speaker.cmvn, self.speaker.fmllr
+        )
 
     @classmethod
     def from_data(cls, data: UtteranceData, file: File, speaker: int, frame_shift: int = None):
@@ -2087,7 +2101,7 @@ class Job(MfaSqlBase):
         return len(self.dictionaries) > 0
 
     @property
-    def training_dictionaries(self) -> typing.List[int]:
+    def training_dictionaries(self) -> typing.List[Dictionary]:
         if self.corpus.current_subset == 0:
             return self.dictionaries
         if self.corpus.current_subset <= 25000:

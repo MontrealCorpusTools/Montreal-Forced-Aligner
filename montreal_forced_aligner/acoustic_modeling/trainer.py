@@ -11,6 +11,7 @@ import typing
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+import sqlalchemy
 from _kalpy.hmm import AlignmentToPosterior
 from _kalpy.matrix import DoubleVector
 from kalpy.gmm.data import AlignmentArchive
@@ -154,7 +155,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         phone_set_type: str = None,
         model_version: str = None,
         subset_word_count: int = 3,
-        minimum_utterance_length: int = 2,
+        minimum_utterance_length: int = 1,
         **kwargs,
     ):
         self.param_dict = {
@@ -522,7 +523,8 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             utterance_ids = set(
                 x[0]
                 for x in session.query(Utterance.id)
-                .filter(Utterance.in_subset == True, Utterance.duration_deviation > 10)  # noqa
+                .filter(Utterance.in_subset == True)  # noqa
+                .filter(sqlalchemy.or_(Utterance.duration_deviation > 10))
                 .all()
             )
             logger.debug(

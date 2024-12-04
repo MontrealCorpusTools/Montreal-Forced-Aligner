@@ -294,7 +294,7 @@ class MfaVAD(VAD):
         energy_activation_threshold: float = 0.5,
         energy_deactivation_threshold: float = 0.4,
         **kwargs,
-    ) -> typing.List[Segment]:
+    ) -> typing.List[typing.Union[Segment, CtmInterval]]:
         if isinstance(segment, Segment):
             y = torch.tensor(segment.wave[np.newaxis, :])
         else:
@@ -373,8 +373,8 @@ class MfaVAD(VAD):
 
         Returns
         -------
-        vad_th: torch.Tensor
-            torch.Tensor containing 1 for speech regions and 0 for non-speech regions.
+        segments: list[CtmInterval]
+            Segments generated from VAD
         """
         if begin is None:
             begin = 0

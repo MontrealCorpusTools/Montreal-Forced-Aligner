@@ -534,22 +534,22 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             }
                         )
                         self._words_mappings[self.silence_word] = current_mapping_id
+
+                        pron_objs.append(
+                            {
+                                "id": pronunciation_primary_key,
+                                "pronunciation": self.optional_silence_phone,
+                                "probability": 1.0,
+                                "disambiguation": None,
+                                "silence_after_probability": None,
+                                "silence_before_correction": None,
+                                "non_silence_before_correction": None,
+                                "word_id": word_primary_key,
+                            }
+                        )
+                        pronunciation_primary_key += 1
                         current_mapping_id += 1
                         word_primary_key += 1
-
-                    pron_objs.append(
-                        {
-                            "id": pronunciation_primary_key,
-                            "pronunciation": self.optional_silence_phone,
-                            "probability": 1.0,
-                            "disambiguation": None,
-                            "silence_after_probability": None,
-                            "silence_before_correction": None,
-                            "non_silence_before_correction": None,
-                            "word_id": word_primary_key,
-                        }
-                    )
-                    pronunciation_primary_key += 1
 
                     special_words = {
                         self.oov_word: WordType.oov,

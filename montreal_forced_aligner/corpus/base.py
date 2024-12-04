@@ -754,28 +754,33 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         result["oovs"] = " ".join(sorted(oovs))
                     else:
                         for w in result["normalized_text"].split():
+                            if dictionaries[dict_id].name in ["default", "nonnative"]:
+                                continue
                             if (dict_id, w) in existing_oovs:
                                 existing_oovs[(dict_id, w)]["count"] += 1
                             elif (dict_id, w) not in word_indexes:
                                 if (dict_id, w) not in word_insert_mappings:
+                                    included = False
+                                    if not has_words:
+                                        if hasattr(self, "brackets") and any(
+                                            w.startswith(b) for b, _ in self.brackets
+                                        ):
+                                            word_type = WordType.bracketed
+                                        else:
+                                            word_type = WordType.speech
+                                            included = True
+                                    else:
+                                        word_type = WordType.oov
                                     word_insert_mappings[(dict_id, w)] = {
                                         "id": word_key,
                                         "word": w,
-                                        "word_type": WordType.oov,
+                                        "word_type": word_type,
                                         "mapping_id": word_key - 1,
                                         "count": 0,
                                         "dictionary_id": dict_id,
-                                        "included": False,
+                                        "included": included,
                                     }
-                                    pronunciation_insert_mappings.append(
-                                        {
-                                            "id": pronunciation_key,
-                                            "word_id": word_key,
-                                            "pronunciation": getattr(self, "oov_phone", "spn"),
-                                        }
-                                    )
                                     word_key += 1
-                                    pronunciation_key += 1
                                 word_insert_mappings[(dict_id, w)]["count"] += 1
                             elif (dict_id, w) not in word_update_mappings:
                                 word_update_mappings[(dict_id, w)] = {
@@ -894,15 +899,16 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                     "included": False,
                                     "dictionary_id": dict_id,
                                 }
-                                pronunciation_insert_mappings.append(
-                                    {
-                                        "id": pronunciation_key,
-                                        "word_id": word_key,
-                                        "pronunciation": getattr(self, "oov_phone", "spn"),
-                                    }
-                                )
+                                if has_words:
+                                    pronunciation_insert_mappings.append(
+                                        {
+                                            "id": pronunciation_key,
+                                            "word_id": word_key,
+                                            "pronunciation": getattr(self, "oov_phone", "spn"),
+                                        }
+                                    )
+                                    pronunciation_key += 1
                                 word_key += 1
-                                pronunciation_key += 1
                             word_insert_mappings[(dict_id, word)]["count"] += 1
                 log_file.write("Found the following OOVs:\n")
                 log_file.write(f"{existing_oovs}\n")
@@ -1215,6 +1221,12 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         Utterance.duration_deviation < 10,
                     )
                 )
+                .filter(
+                    sqlalchemy.or_(
+                        Utterance.snr == None,  # noqa
+                        Utterance.snr > 0,
+                    )
+                )
             )
             if subset <= 25000:
                 filtered = filtered.filter(
@@ -1303,6 +1315,8 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                 sq.c.utt_count >= utt_count_cutoff
                             )
                         ).first()[0]
+                        if not total_speaker_utterances:
+                            continue
                         if total_speaker_utterances >= subset_per_dictionary:
                             speaker_ids = [
                                 x
@@ -1311,6 +1325,8 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                 )
                             ]
                             break
+                    else:
+                        continue
                     if num_utts > larger_subset_num:
                         larger_subset_query = (
                             session.query(Utterance.id)

@@ -307,8 +307,10 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
         small_mod_path = self.mod_path.with_stem(self.mod_path.stem + "_small")
         med_mod_path = self.mod_path.with_stem(self.mod_path.stem + "_med")
         with self.session() as session, mfa_open(log_path, "w") as log_file:
-            word_query = session.query(Word.word).filter(
-                Word.word_type.in_(WordType.speech_types())
+            word_query = (
+                session.query(Word.word)
+                .filter(Word.word_type.in_(WordType.speech_types()))
+                .filter(Word.included == True)  # noqa
             )
             included_words = set(x[0] for x in word_query)
             utterance_query = session.query(Utterance.normalized_text, Utterance.text)
@@ -331,10 +333,14 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
                 for normalized_text, text in utterance_query:
                     if not normalized_text:
                         normalized_text = text
-                    text = " ".join(
-                        x if x in included_words else self.oov_word
-                        for x in normalized_text.split()
-                    )
+                    words = normalized_text.split()
+                    words = [
+                        x
+                        if not x.startswith("<cutoff-")
+                        else x.replace("<cutoff-", "").replace(">", "")
+                        for x in words
+                    ]
+                    text = " ".join(x if x in included_words else self.oov_word for x in words)
                     farcompile_proc.stdin.write(f"{text}\n".encode("utf8"))
                     farcompile_proc.stdin.flush()
                 farcompile_proc.stdin.close()
