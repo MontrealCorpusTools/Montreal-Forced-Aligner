@@ -19,10 +19,13 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
 import dataclassy
 import numpy
 import yaml
-from Bio import pairwise2
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.theme import Theme
+
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    from Bio import pairwise2
 
 if TYPE_CHECKING:
     from kalpy.fstext.lexicon import LexiconCompiler
