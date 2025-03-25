@@ -21,7 +21,7 @@ dependencies:
   - baumwelch
   - ngram
   - praatio=6.0.0
-  - biopython=1.79
+  - biopython
   - sqlalchemy>=2.0
   - pgvector
   - pgvector-python

@@ -17,7 +17,7 @@ dependencies:
   - scikit-learn
   - hdbscan
   - psycopg2
-  - biopython=1.79
+  - biopython
   - click
   - setuptools_scm
   - importlib_metadata
