@@ -15,7 +15,7 @@ import typing
 import warnings
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING
 
 import dataclassy
 import numpy
@@ -75,7 +75,12 @@ console = Console(
 
 
 @contextmanager
-def mfa_open(path, mode="r", encoding="utf8", newline=""):
+def mfa_open(
+    path: typing.Union[Path, str],
+    mode: str = "r",
+    encoding: str = "utf8",
+    newline: typing.Optional[str] = "",
+):
     if "r" in mode:
         if "b" in mode:
             file = open(path, mode)
@@ -92,7 +97,7 @@ def mfa_open(path, mode="r", encoding="utf8", newline=""):
         file.close()
 
 
-def load_configuration(config_path: typing.Union[str, Path]) -> Dict[str, Any]:
+def load_configuration(config_path: typing.Union[str, Path]) -> typing.Dict[str, typing.Any]:
     """
     Load a configuration file
 
@@ -119,7 +124,7 @@ def load_configuration(config_path: typing.Union[str, Path]) -> Dict[str, Any]:
     return data
 
 
-def split_phone_position(phone_label: str) -> List[str]:
+def split_phone_position(phone_label: str) -> typing.List[str]:
     """
     Splits a phone label into its original phone and it's positional label
 
@@ -180,7 +185,7 @@ def parse_old_features(config: MetaDict) -> MetaDict:
     return config
 
 
-def configure_logger(identifier: str, log_file: Optional[Path] = None) -> None:
+def configure_logger(identifier: str, log_file: typing.Optional[Path] = None) -> None:
     """
     Configure logging for the given identifier
 
@@ -214,7 +219,7 @@ def configure_logger(identifier: str, log_file: Optional[Path] = None) -> None:
         logger.addHandler(handler)
 
 
-def comma_join(sequence: List[Any]) -> str:
+def comma_join(sequence: typing.List[typing.Any]) -> str:
     """
     Helper function to combine a list into a human-readable expression with commas and a
     final "and" separator
@@ -235,7 +240,7 @@ def comma_join(sequence: List[Any]) -> str:
 
 
 def make_re_character_set_safe(
-    characters: typing.Collection[str], extra_strings: Optional[List[str]] = None
+    characters: typing.Collection[str], extra_strings: typing.Optional[typing.List[str]] = None
 ) -> str:
     """
     Construct a character set string for use in regex, escaping necessary characters and
@@ -263,7 +268,7 @@ def make_re_character_set_safe(
     return f"[{extra}{re.escape(''.join(characters))}]"
 
 
-def make_safe(element: Any) -> str:
+def make_safe(element: typing.Any) -> str:
     """
     Helper function to make an element a string
 
@@ -318,7 +323,9 @@ def load_scp_safe(string: str) -> str:
     return string.replace("_MFASPACE_", " ")
 
 
-def output_mapping(mapping: Dict[str, Any], path: Path, skip_safe: bool = False) -> None:
+def output_mapping(
+    mapping: typing.Dict[str, typing.Any], path: Path, skip_safe: bool = False
+) -> None:
     """
     Helper function to save mapping information (i.e., utt2spk) in Kaldi scp format
 
@@ -346,7 +353,9 @@ def output_mapping(mapping: Dict[str, Any], path: Path, skip_safe: bool = False)
             f.write(f"{make_scp_safe(k)} {v}\n")
 
 
-def load_scp(path: Path, data_type: Optional[Type] = str) -> Dict[str, Any]:
+def load_scp(
+    path: Path, data_type: typing.Optional[typing.Type] = str
+) -> typing.Dict[str, typing.Any]:
     """
     Load a Kaldi script file (.scp)
 
@@ -393,7 +402,7 @@ def load_scp(path: Path, data_type: Optional[Type] = str) -> Dict[str, Any]:
     return scp
 
 
-def edit_distance(x: List[str], y: List[str]) -> int:
+def edit_distance(x: typing.List[str], y: typing.List[str]) -> int:
     """
     Compute edit distance between two sets of labels
 
@@ -431,7 +440,7 @@ def edit_distance(x: List[str], y: List[str]) -> int:
     return int(table[-1][-1])
 
 
-def score_g2p(gold: List[str], hypo: List[str]) -> Tuple[int, int]:
+def score_g2p(gold: typing.List[str], hypo: typing.List[str]) -> typing.Tuple[int, int]:
     """
     Computes sufficient statistics for LER calculation.
 
@@ -465,7 +474,9 @@ def score_g2p(gold: List[str], hypo: List[str]) -> Tuple[int, int]:
     return edits, best_length
 
 
-def score_wer(gold: List[str], hypo: List[str], filter_brackets=True) -> Tuple[int, int, int, int]:
+def score_wer(
+    gold: typing.List[str], hypo: typing.List[str], filter_brackets=True
+) -> typing.Tuple[int, int, int, int]:
     """
     Computes word error rate and character error rate for a transcription
 
@@ -500,7 +511,7 @@ def score_wer(gold: List[str], hypo: List[str], filter_brackets=True) -> Tuple[i
 
 
 def compare_labels(
-    ref: str, test: str, silence_phone: str, mapping: Optional[Dict[str, str]] = None
+    ref: str, test: str, silence_phone: str, mapping: typing.Optional[typing.Dict[str, str]] = None
 ) -> int:
     """
 
@@ -536,7 +547,7 @@ def overlap_scoring(
     first_element: CtmInterval,
     second_element: CtmInterval,
     silence_phone: str,
-    mapping: Optional[Dict[str, str]] = None,
+    mapping: typing.Optional[typing.Dict[str, str]] = None,
 ) -> float:
     r"""
     Method to calculate overlap scoring
@@ -577,7 +588,7 @@ def overlap_scoring(
 class EnhancedJSONEncoder(json.JSONEncoder):
     """JSON serialization"""
 
-    def default(self, o: Any) -> Any:
+    def default(self, o: typing.Any) -> typing.Any:
         """Get the dictionary of a dataclass"""
         if dataclassy.functions.is_dataclass_instance(o):
             return dataclassy.asdict(o)
@@ -678,13 +689,13 @@ def fix_many_to_one_alignments(alignments, custom_mapping):
 
 
 def align_phones(
-    ref: List[CtmInterval],
-    test: List[CtmInterval],
+    ref: typing.List[CtmInterval],
+    test: typing.List[CtmInterval],
     silence_phone: str,
     ignored_phones: typing.Set[str] = None,
-    custom_mapping: Optional[Dict[str, str]] = None,
+    custom_mapping: typing.Optional[typing.Dict[str, str]] = None,
     debug: bool = False,
-) -> Tuple[float, float, Dict[Tuple[str, str], int]]:
+) -> typing.Tuple[float, float, typing.Dict[typing.Tuple[str, str], int]]:
     """
     Align phones based on how much they overlap and their phone label, with the ability to specify a custom mapping for
     different phone labels to be scored as if they're the same phone
@@ -779,10 +790,10 @@ def align_phones(
 
 
 def fix_unk_words(
-    ref: List[str],
-    test: List[CtmInterval],
+    ref: typing.List[str],
+    test: typing.List[CtmInterval],
     lexicon_compiler: LexiconCompiler,
-) -> Tuple[float, float, Dict[Tuple[str, str], int]]:
+) -> typing.Tuple[float, float, typing.Dict[typing.Tuple[str, str], int]]:
     """
     Align phones based on how much they overlap and their phone label, with the ability to specify a custom mapping for
     different phone labels to be scored as if they're the same phone
@@ -845,12 +856,12 @@ def fix_unk_words(
 
 
 def align_words(
-    ref: List[str],
-    test: List[CtmInterval],
+    ref: typing.List[str],
+    test: typing.List[CtmInterval],
     silence_word: str,
     ignored_words: typing.Set[str] = None,
     debug: bool = False,
-) -> Tuple[float, float, Dict[Tuple[str, str], int]]:
+) -> typing.Tuple[float, float, typing.Dict[typing.Tuple[str, str], int]]:
     """
     Align phones based on how much they overlap and their phone label, with the ability to specify a custom mapping for
     different phone labels to be scored as if they're the same phone

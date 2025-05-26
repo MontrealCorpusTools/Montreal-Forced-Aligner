@@ -632,6 +632,26 @@ class PronunciationAcousticMismatchError(AlignerError):
         self.message_lines.append(comma_join(missing_phones))
 
 
+class RemapAcousticMismatchError(AlignerError):
+    """
+    Exception class for when an acoustic model and phone remapping file have different phone sets
+
+    Parameters
+    ----------
+    missing_phones: Collection[str]
+        Phones that are not in the acoustic model
+    phone_mapping_path: Path
+        Phone remapping path with bad phones
+    """
+
+    def __init__(self, missing_phones: Collection[str], phone_mapping_path: Path):
+        super().__init__(
+            f"There were phones in {phone_mapping_path} that are not in the acoustic model: "
+        )
+        missing_phones = [f"{x}" for x in sorted(missing_phones)]
+        self.message_lines.append(comma_join(missing_phones))
+
+
 # Command line exceptions
 
 

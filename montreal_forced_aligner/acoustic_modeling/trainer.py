@@ -30,10 +30,8 @@ from montreal_forced_aligner.db import (
     CorpusWorkflow,
     Dictionary,
     Job,
-    PhoneInterval,
     Speaker,
     Utterance,
-    WordInterval,
     bulk_update,
 )
 from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
@@ -99,8 +97,8 @@ class TransitionAccFunction(KaldiFunction):
                 .first()
             )
             transition_model, acoustic_model = read_gmm_model(self.model_path)
-            for dict_id in job.dictionary_ids:
-                ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+            for d in job.dictionaries:
+                ali_path = job.construct_path(self.working_directory, "ali", "ark", d.name)
                 if not ali_path.exists():
                     continue
                 transition_accs = DoubleVector(transition_model.NumTransitionIds() + 1)
@@ -471,7 +469,9 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                 self.training_configs[self.final_identifier].working_directory
             )
             with self.session() as session:
-                for d in session.query(Dictionary):
+                for d in session.query(Dictionary).filter(
+                    ~Dictionary.name.in_(["default", "nonnative"])
+                ):
                     base_name = self.dictionary_base_names[d.id]
                     if d.use_g2p:
                         shutil.copyfile(
@@ -524,6 +524,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                 x[0]
                 for x in session.query(Utterance.id)
                 .filter(Utterance.in_subset == True)  # noqa
+                .filter(Utterance.manual_alignments == False)  # noqa
                 .filter(sqlalchemy.or_(Utterance.duration_deviation > 10))
                 .all()
             )
@@ -586,7 +587,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             else:
                 self.current_subset = None
                 trainer.subset = 0
-            self.subset_directory(self.current_subset)
+            self.subset_directory(self.current_subset, subset_folders=trainer.subset_folders)
             if previous is not None:
                 self.set_current_workflow(f"{previous.identifier}_ali")
                 self.current_aligner = previous
@@ -599,12 +600,10 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                     or not self.current_workflow.working_directory.exists()
                 ):
                     self.align()
-                    with self.session() as session:
-                        session.query(WordInterval).delete()
-                        session.query(PhoneInterval).delete()
-                        session.commit()
+                    self.cleanup_alignments()
                     self.collect_alignments()
                     self.analyze_alignments()
+
                     if self.current_subset != 0:
                         self.quality_check_subset()
                 else:
@@ -612,10 +611,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
 
             self.set_current_workflow(trainer.identifier)
             if trainer.identifier.startswith("pronunciation_probabilities"):
-                with self.session() as session:
-                    session.query(WordInterval).delete()
-                    session.query(PhoneInterval).delete()
-                    session.commit()
+                self.cleanup_alignments()
                 trainer.train_pronunciation_probabilities()
             else:
                 trainer.train()
@@ -698,10 +694,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         logger.info("Finished accumulating transition stats!")
 
     def finalize_training(self):
-        with self.session() as session:
-            session.query(WordInterval).delete()
-            session.query(PhoneInterval).delete()
-            session.commit()
+        self.cleanup_alignments()
         self.compute_phone_pdf_counts()
         self.collect_alignments()
         self.analyze_alignments()

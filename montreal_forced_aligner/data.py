@@ -83,6 +83,8 @@ class DatabaseImportData:
         List of dictionaries with :class:`~montreal_forced_aligner.db.SpeakerOrdering` properties
     utterance_objects: list[dict[str, Any]]
         List of dictionaries with :class:`~montreal_forced_aligner.db.Utterance` properties
+    phone_interval_objects: list[dict[str, Any]]
+        List of dictionaries with :class:`~montreal_forced_aligner.db.PhoneInterval` properties
     """
 
     speaker_objects: typing.List[typing.Dict[str, typing.Any]] = dataclassy.factory(list)
@@ -91,6 +93,7 @@ class DatabaseImportData:
     sound_file_objects: typing.List[typing.Dict[str, typing.Any]] = dataclassy.factory(list)
     speaker_ordering_objects: typing.List[typing.Dict[str, typing.Any]] = dataclassy.factory(list)
     utterance_objects: typing.List[typing.Dict[str, typing.Any]] = dataclassy.factory(list)
+    phone_interval_objects: typing.List[typing.Dict[str, typing.Any]] = dataclassy.factory(list)
 
     def add_objects(self, other_import: DatabaseImportData) -> None:
         """
@@ -107,6 +110,7 @@ class DatabaseImportData:
         self.sound_file_objects.extend(other_import.sound_file_objects)
         self.speaker_ordering_objects.extend(other_import.speaker_ordering_objects)
         self.utterance_objects.extend(other_import.utterance_objects)
+        self.phone_interval_objects.extend(other_import.phone_interval_objects)
 
 
 # noinspection PyUnresolvedReferences

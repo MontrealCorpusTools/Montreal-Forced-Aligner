@@ -266,6 +266,11 @@ def configure_pg(directory):
         "#unix_socket_directories.*": f"unix_socket_directories = '{config.database_socket()}'",
         "#listen_addresses = 'localhost'": "listen_addresses = ''",
         "max_connections = 100": "max_connections = 1000",
+        "#wal_level = replica": "wal_level = minimal",
+        "#fsync = on": "fsync = off",
+        "#synchronous_commit = on": "synchronous_commit = off",
+        "#full_page_writes = on": "full_page_writes = off",
+        "#max_wal_senders = 10": "max_wal_senders = 0",
     }
     if not config.DATABASE_LIMITED_MODE:
         configuration_updates.update(
@@ -273,16 +278,6 @@ def configure_pg(directory):
                 "#maintenance_work_mem = 64MB": "maintenance_work_mem = 1GB",
                 "#work_mem = 4MB": "work_mem = 128MB",
                 "shared_buffers = 128MB": "shared_buffers = 256MB",
-            }
-        )
-    else:
-        configuration_updates.update(
-            {
-                "#wal_level = replica": "wal_level = minimal",
-                "#fsync = on": "fsync = off",
-                "#synchronous_commit = on": "synchronous_commit = off",
-                "#full_page_writes = on": "full_page_writes = off",
-                "#max_wal_senders = 10": "max_wal_senders = 0",
             }
         )
     with mfa_open(directory.joinpath("postgresql.conf"), "r") as f:
@@ -464,7 +459,7 @@ def stop_server(mode: str = "smart") -> None:
     Parameters
     ----------
     mode: str, optional
-        Mode to to be passed to `pg_ctl`, defaults to "smart"
+        Mode to be passed to `pg_ctl`, defaults to "smart"
     """
     logger = logging.getLogger("mfa")
 

@@ -5,6 +5,7 @@ Transcription functions
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 import queue
@@ -38,7 +39,7 @@ from montreal_forced_aligner.db import File, Job, Phone, SoundFile, Speaker, Utt
 from montreal_forced_aligner.diarization.multiprocessing import UtteranceFileLoader
 from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
 from montreal_forced_aligner.transcription.models import MfaFasterWhisperPipeline, load_model
-from montreal_forced_aligner.utils import mfa_open, thread_logger
+from montreal_forced_aligner.utils import thread_logger
 from montreal_forced_aligner.vad.models import MfaVAD
 
 if TYPE_CHECKING:
@@ -557,16 +558,15 @@ class DecodeFunction(KaldiFunction):
             for d in job.dictionaries:
                 decode_logger.debug(f"Decoding for dictionary {d.name} ({d.id})")
                 decode_logger.debug(f"Decoding with model: {self.model_path}")
-                dict_id = d.id
 
-                feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
+                feature_archive = job.construct_feature_archive(self.working_directory, d.name)
 
-                lat_path = job.construct_path(self.working_directory, "lat", "ark", dict_id)
+                lat_path = job.construct_path(self.working_directory, "lat", "ark", d.name)
                 alignment_file_name = job.construct_path(
-                    self.working_directory, "ali", "ark", dict_id
+                    self.working_directory, "ali", "ark", d.name
                 )
-                words_path = job.construct_path(self.working_directory, "words", "ark", dict_id)
-                hclg_fst = ConstFst.Read(str(self.hclg_paths[dict_id]))
+                words_path = job.construct_path(self.working_directory, "words", "ark", d.name)
+                hclg_fst = ConstFst.Read(str(self.hclg_paths[d.name]))
                 boost_silence = self.decode_options.pop("boost_silence", 1.0)
                 decoder = GmmDecoder(self.model_path, hclg_fst, **self.decode_options)
                 if boost_silence != 1.0:
@@ -701,6 +701,18 @@ class SpeechbrainAsrFunction(KaldiFunction):
             raise exception
 
 
+@dataclasses.dataclass
+class WhisperSegmentationData:
+    utterance_id: int
+    segments: typing.List[typing.Dict[str, float]]
+    export_path: Path
+    speaker_name: str
+    utterance_begin: float
+    utterance_end: float
+    file_id: float
+    file_duration: float
+
+
 class WhisperUtteranceLoader(threading.Thread):
     """
     Helper process for loading utterance waveforms in parallel with embedding extraction
@@ -755,12 +767,14 @@ class WhisperUtteranceLoader(threading.Thread):
                         File.relative_path,
                         File.name,
                         Speaker.name,
+                        File.id,
+                        SoundFile.duration,
                     )
                     .join(Utterance.speaker)
                     .join(Utterance.file)
                     .join(File.sound_file)
                 )
-                utterances = utterances.order_by(Utterance.speaker_id)
+                utterances = utterances.order_by(Utterance.file_id, Utterance.begin)
                 if not utterances.count():
                     self.finished_adding.set()
                     return
@@ -777,7 +791,10 @@ class WhisperUtteranceLoader(threading.Thread):
                     segments = self.model.vad_model.segment_for_whisper(
                         audio, **self.model._vad_params
                     )
-                    self.return_q.put((u[0], segments, export_path, u[7], u[2], u[3]))
+                    return_data = WhisperSegmentationData(
+                        u[0], segments, export_path, u[7], u[2], u[3], u[-2], u[-1]
+                    )
+                    self.return_q.put(return_data)
             except Exception as e:
                 self.return_q.put(e)
             finally:
@@ -887,6 +904,8 @@ class WhisperAsrFunction(KaldiFunction):
 
     def _run(self) -> None:
         """Run the function"""
+        from praatio import textgrid
+
         model = self.model
         if model is None:
             language = None
@@ -929,10 +948,12 @@ class WhisperAsrFunction(KaldiFunction):
         )
         loader.start()
         exception = None
-
+        current_file_id = None
+        current_data = None
+        export_data = {}
         while True:
             try:
-                vad_result = return_q.get(timeout=1)
+                vad_result: WhisperSegmentationData = return_q.get(timeout=1)
             except queue.Empty:
                 if finished_adding.is_set():
                     break
@@ -944,10 +965,39 @@ class WhisperAsrFunction(KaldiFunction):
                 stopped.set()
                 continue
             try:
-                utterance_id, segments, export_path, speaker_name, begin, end = vad_result
                 result = model.transcribe(
-                    segments, [utterance_id] * len(segments), batch_size=config.NUM_JOBS
+                    vad_result.segments,
+                    [vad_result.utterance_id] * len(vad_result.segments),
+                    batch_size=config.NUM_JOBS,
                 )
+                if current_file_id is None:
+                    current_file_id = vad_result.file_id
+                    current_data = vad_result
+
+                if current_data.export_path is not None and current_file_id != vad_result.file_id:
+                    current_data.export_path.parent.mkdir(parents=True, exist_ok=True)
+                    tg = textgrid.Textgrid()
+                    tg.minTimestamp = 0
+                    tg.maxTimestamp = current_data.file_duration
+                    for speaker_name, intervals in export_data.items():
+                        tier = textgrid.IntervalTier(
+                            speaker_name,
+                            intervals,
+                            minT=0,
+                            maxT=current_data.file_duration,
+                        )
+
+                        tg.addTier(tier)
+                    tg.save(
+                        str(current_data.export_path.with_suffix(".TextGrid")),
+                        includeBlankSpaces=True,
+                        format="short_textgrid",
+                    )
+                    export_data = {}
+                    current_file_id = vad_result.file_id
+                    current_data = vad_result
+                if vad_result.speaker_name not in export_data:
+                    export_data[vad_result.speaker_name] = []
                 for utterance_id, segments in result.items():
                     texts = []
                     for seg in segments:
@@ -955,40 +1005,21 @@ class WhisperAsrFunction(KaldiFunction):
                         if self.tokenizer is not None:
                             seg["text"] = self.tokenizer(seg["text"])[0]
                         texts.append(seg["text"])
+                        b = round(vad_result.utterance_begin + seg["start"], 3)
+                        e = round(vad_result.utterance_begin + seg["end"], 3)
+                        if (
+                            export_data[vad_result.speaker_name]
+                            and b < export_data[vad_result.speaker_name][-1].end
+                        ):
+                            b = export_data[vad_result.speaker_name][-1].end
+                        export_data[vad_result.speaker_name].append(
+                            textgrid.constants.Interval(
+                                b,
+                                e,
+                                seg["text"],
+                            )
+                        )
                     text = " ".join(texts)
-
-                    if export_path is not None:
-                        export_path: Path
-                        export_path.parent.mkdir(parents=True, exist_ok=True)
-                        if len(segments) == 1:
-                            with mfa_open(export_path.with_suffix(".lab"), "w") as f:
-                                f.write(text)
-                        else:
-                            from praatio import textgrid
-
-                            tg = textgrid.Textgrid()
-                            tg.minTimestamp = begin
-                            tg.maxTimestamp = end
-                            tier = textgrid.IntervalTier(
-                                speaker_name,
-                                [
-                                    textgrid.constants.Interval(
-                                        round(begin + x["start"], 3),
-                                        round(begin + x["end"], 3),
-                                        x["text"],
-                                    )
-                                    for x in segments
-                                ],
-                                minT=begin,
-                                maxT=end,
-                            )
-
-                            tg.addTier(tier)
-                            tg.save(
-                                str(export_path.with_suffix(".TextGrid")),
-                                includeBlankSpaces=True,
-                                format="short_textgrid",
-                            )
                     self.callback((utterance_id, text))
             except Exception as e:
                 exception = e
@@ -1039,14 +1070,11 @@ class LmRescoreFunction(KaldiFunction):
                 .first()
             )
             for d in job.dictionaries:
-                dict_id = d.id
-                lat_path = job.construct_path(self.working_directory, "lat", "ark", dict_id)
-                tmp_lat_path = job.construct_path(
-                    self.working_directory, "lat.tmp", "ark", dict_id
-                )
+                lat_path = job.construct_path(self.working_directory, "lat", "ark", d.name)
+                tmp_lat_path = job.construct_path(self.working_directory, "lat.tmp", "ark", d.name)
                 os.rename(lat_path, tmp_lat_path)
-                old_g_path = self.old_g_paths[dict_id]
-                new_g_path = self.new_g_paths[dict_id]
+                old_g_path = self.old_g_paths[d.name]
+                new_g_path = self.new_g_paths[d.name]
                 olg_g = VectorFst.Read(str(old_g_path))
                 new_lm = VectorFst.Read(str(new_g_path))
                 rescorer = LmRescorer(olg_g, **self.lm_rescore_options)
@@ -1098,14 +1126,11 @@ class CarpaLmRescoreFunction(KaldiFunction):
                 .first()
             )
             for d in job.dictionaries:
-                dict_id = d.id
-                lat_path = job.construct_path(self.working_directory, "lat", "ark", dict_id)
-                tmp_lat_path = job.construct_path(
-                    self.working_directory, "lat.tmp", "ark", dict_id
-                )
+                lat_path = job.construct_path(self.working_directory, "lat", "ark", d.name)
+                tmp_lat_path = job.construct_path(self.working_directory, "lat.tmp", "ark", d.name)
                 os.rename(lat_path, tmp_lat_path)
-                old_g_path = self.old_g_paths[dict_id]
-                new_g_path = self.new_g_paths[dict_id]
+                old_g_path = self.old_g_paths[d.name]
+                new_g_path = self.new_g_paths[d.name]
                 olg_g = VectorFst.Read(str(old_g_path))
                 new_lm = ConstArpaLm()
                 ReadKaldiObject(str(new_g_path), new_lm)
@@ -1160,15 +1185,15 @@ class InitialFmllrFunction(KaldiFunction):
             lda_mat_path = self.working_directory.joinpath("lda.mat")
             if not lda_mat_path.exists():
                 lda_mat_path = None
-            for dict_id in job.dictionary_ids:
+            for d in job.dictionaries:
                 feat_path = job.construct_path(
-                    job.corpus.current_subset_directory, "feats", "scp", dictionary_id=dict_id
+                    job.corpus.current_subset_directory, "feats", "scp", dictionary_id=d.name
                 )
                 utt2spk_path = job.construct_path(
-                    job.corpus.current_subset_directory, "utt2spk", "scp", dictionary_id=dict_id
+                    job.corpus.current_subset_directory, "utt2spk", "scp", dictionary_id=d.name
                 )
                 spk2utt_path = job.construct_path(
-                    job.corpus.current_subset_directory, "spk2utt", "scp", dictionary_id=dict_id
+                    job.corpus.current_subset_directory, "spk2utt", "scp", dictionary_id=d.name
                 )
                 utt2spk = KaldiMapping()
                 utt2spk.load(utt2spk_path)
@@ -1193,11 +1218,11 @@ class InitialFmllrFunction(KaldiFunction):
                     spk2utt=spk2utt,
                     **self.fmllr_options,
                 )
-                lat_path = job.construct_path(self.working_directory, "lat", "ark", dict_id)
+                lat_path = job.construct_path(self.working_directory, "lat", "ark", d.name)
                 fmllr_logger.debug(f"Processing {lat_path} with features from {feat_path}")
                 lattice_archive = LatticeArchive(lat_path, determinized=False)
                 temp_trans_path = job.construct_path(
-                    self.working_directory, "trans", "ark", dict_id
+                    self.working_directory, "trans", "ark", d.name
                 )
                 computer.export_transforms(
                     temp_trans_path,
@@ -1213,7 +1238,7 @@ class InitialFmllrFunction(KaldiFunction):
                 trans_archive = MatrixArchive(temp_trans_path)
                 write_specifier = generate_write_specifier(
                     job.construct_path(
-                        job.corpus.current_subset_directory, "trans", "ark", dictionary_id=dict_id
+                        job.corpus.current_subset_directory, "trans", "ark", dictionary_id=d.name
                     ),
                     write_scp=True,
                 )
@@ -1273,12 +1298,12 @@ class FinalFmllrFunction(KaldiFunction):
             lda_mat_path = self.working_directory.joinpath("lda.mat")
             if not lda_mat_path.exists():
                 lda_mat_path = None
-            for dict_id in job.dictionary_ids:
+            for d in job.dictionaries:
                 feat_path = job.construct_path(
-                    job.corpus.current_subset_directory, "feats", "scp", dictionary_id=dict_id
+                    job.corpus.current_subset_directory, "feats", "scp", dictionary_id=d.name
                 )
                 fmllr_trans_path = job.construct_path(
-                    job.corpus.current_subset_directory, "trans", "scp", dictionary_id=dict_id
+                    job.corpus.current_subset_directory, "trans", "scp", dictionary_id=d.name
                 )
                 previous_transform_archive = None
                 if not fmllr_trans_path.exists():
@@ -1288,10 +1313,10 @@ class FinalFmllrFunction(KaldiFunction):
                     fmllr_logger.debug(f"Updating previous transforms {fmllr_trans_path}")
                     previous_transform_archive = MatrixArchive(fmllr_trans_path)
                 utt2spk_path = job.construct_path(
-                    job.corpus.current_subset_directory, "utt2spk", "scp", dictionary_id=dict_id
+                    job.corpus.current_subset_directory, "utt2spk", "scp", dictionary_id=d.name
                 )
                 spk2utt_path = job.construct_path(
-                    job.corpus.current_subset_directory, "spk2utt", "scp", dictionary_id=dict_id
+                    job.corpus.current_subset_directory, "spk2utt", "scp", dictionary_id=d.name
                 )
                 utt2spk = KaldiMapping()
                 utt2spk.load(utt2spk_path)
@@ -1317,11 +1342,11 @@ class FinalFmllrFunction(KaldiFunction):
                     spk2utt=spk2utt,
                     **self.fmllr_options,
                 )
-                lat_path = job.construct_path(self.working_directory, "lat", "ark", dict_id)
+                lat_path = job.construct_path(self.working_directory, "lat", "ark", d.name)
                 fmllr_logger.debug(f"Processing {lat_path} with features from {feat_path}")
                 lattice_archive = LatticeArchive(lat_path, determinized=False)
                 temp_trans_path = job.construct_path(
-                    self.working_directory, "trans", "ark", dict_id
+                    self.working_directory, "trans", "ark", d.name
                 )
                 computer.export_transforms(
                     temp_trans_path,
@@ -1341,7 +1366,7 @@ class FinalFmllrFunction(KaldiFunction):
                 trans_archive = MatrixArchive(temp_trans_path)
                 write_specifier = generate_write_specifier(
                     job.construct_path(
-                        job.corpus.current_subset_directory, "trans", "ark", dictionary_id=dict_id
+                        job.corpus.current_subset_directory, "trans", "ark", dictionary_id=d.name
                     ),
                     write_scp=True,
                 )
@@ -1395,12 +1420,11 @@ class FmllrRescoreFunction(KaldiFunction):
             for d in job.dictionaries:
                 decode_logger.debug(f"Aligning for dictionary {d.name} ({d.id})")
                 decode_logger.debug(f"Aligning with model: {self.model_path}")
-                dict_id = d.id
-                fst_path = job.construct_path(self.working_directory, "fsts", "ark", dict_id)
+                fst_path = job.construct_path(self.working_directory, "fsts", "ark", d.name)
                 decode_logger.debug(f"Training graph archive: {fst_path}")
 
                 fmllr_path = job.construct_path(
-                    job.corpus.current_subset_directory, "trans", "scp", dict_id
+                    job.corpus.current_subset_directory, "trans", "scp", d.name
                 )
                 if not fmllr_path.exists():
                     fmllr_path = None
@@ -1408,10 +1432,10 @@ class FmllrRescoreFunction(KaldiFunction):
                 if not lda_mat_path.exists():
                     lda_mat_path = None
                 feat_path = job.construct_path(
-                    job.corpus.current_subset_directory, "feats", "scp", dictionary_id=dict_id
+                    job.corpus.current_subset_directory, "feats", "scp", dictionary_id=d.name
                 )
                 utt2spk_path = job.construct_path(
-                    job.corpus.current_subset_directory, "utt2spk", "scp", dict_id
+                    job.corpus.current_subset_directory, "utt2spk", "scp", d.name
                 )
                 utt2spk = KaldiMapping()
                 utt2spk.load(utt2spk_path)
@@ -1426,10 +1450,8 @@ class FmllrRescoreFunction(KaldiFunction):
                     transform_file_name=fmllr_path,
                     deltas=True,
                 )
-                lat_path = job.construct_path(self.working_directory, "lat", "ark", dict_id)
-                tmp_lat_path = job.construct_path(
-                    self.working_directory, "lat.tmp", "ark", dict_id
-                )
+                lat_path = job.construct_path(self.working_directory, "lat", "ark", d.name)
+                tmp_lat_path = job.construct_path(self.working_directory, "lat.tmp", "ark", d.name)
                 os.rename(lat_path, tmp_lat_path)
                 lattice_archive = LatticeArchive(tmp_lat_path, determinized=True)
                 rescorer.export_lattices(
@@ -1509,10 +1531,9 @@ class PerSpeakerDecodeFunction(KaldiFunction):
             for d in job.dictionaries:
                 decode_logger.debug(f"Decoding for dictionary {d.name} ({d.id})")
                 decode_logger.debug(f"Decoding with model: {self.model_path}")
-                dict_id = d.id
 
                 fmllr_path = job.construct_path(
-                    job.corpus.current_subset_directory, "trans", "scp", dict_id
+                    job.corpus.current_subset_directory, "trans", "scp", d.name
                 )
                 if not fmllr_path.exists():
                     fmllr_path = None
@@ -1520,10 +1541,10 @@ class PerSpeakerDecodeFunction(KaldiFunction):
                 if not lda_mat_path.exists():
                     lda_mat_path = None
                 feat_path = job.construct_path(
-                    job.corpus.current_subset_directory, "feats", "scp", dictionary_id=dict_id
+                    job.corpus.current_subset_directory, "feats", "scp", dictionary_id=d.name
                 )
                 utt2spk_path = job.construct_path(
-                    job.corpus.current_subset_directory, "utt2spk", "scp", dict_id
+                    job.corpus.current_subset_directory, "utt2spk", "scp", d.name
                 )
                 utt2spk = KaldiMapping()
                 utt2spk.load(utt2spk_path)
@@ -1539,11 +1560,11 @@ class PerSpeakerDecodeFunction(KaldiFunction):
                     deltas=True,
                 )
 
-                lat_path = job.construct_path(self.working_directory, "lat", "ark", dict_id)
+                lat_path = job.construct_path(self.working_directory, "lat", "ark", d.name)
                 alignment_file_name = job.construct_path(
-                    self.working_directory, "ali", "ark", dict_id
+                    self.working_directory, "ali", "ark", d.name
                 )
-                words_path = job.construct_path(self.working_directory, "words", "ark", dict_id)
+                words_path = job.construct_path(self.working_directory, "words", "ark", d.name)
                 boost_silence = self.decode_options.pop("boost_silence", 1.0)
 
                 current_speaker = None
@@ -1640,13 +1661,12 @@ class DecodePhoneFunction(KaldiFunction):
             for d in job.dictionaries:
                 decode_logger.debug(f"Decoding for dictionary {d.name} ({d.id})")
                 decode_logger.debug(f"Decoding with model: {self.model_path}")
-                dict_id = d.id
-                feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
-                lat_path = job.construct_path(self.working_directory, "lat", "ark", dict_id)
+                feature_archive = job.construct_feature_archive(self.working_directory, d.name)
+                lat_path = job.construct_path(self.working_directory, "lat", "ark", d.name)
                 alignment_file_name = job.construct_path(
-                    self.working_directory, "ali", "ark", dict_id
+                    self.working_directory, "ali", "ark", d.name
                 )
-                words_path = job.construct_path(self.working_directory, "words", "ark", dict_id)
+                words_path = job.construct_path(self.working_directory, "words", "ark", d.name)
 
                 boost_silence = self.decode_options.pop("boost_silence", 1.0)
                 decoder = GmmDecoder(self.model_path, hclg_fst, **self.decode_options)

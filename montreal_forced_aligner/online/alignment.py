@@ -127,7 +127,6 @@ def align_utterance_online(
 def update_utterance_intervals(
     session: sqlalchemy.orm.Session,
     utterance: typing.Union[int, Utterance],
-    workflow_id: int,
     ctm: HierarchicalCtm,
 ):
     if isinstance(utterance, int):
@@ -195,7 +194,6 @@ def update_utterance_intervals(
                 "word_id": word_id,
                 "pronunciation_id": pronunciation_id,
                 "utterance_id": utterance.id,
-                "workflow_id": workflow_id,
             }
         )
         for interval in word_interval.phones:
@@ -207,7 +205,6 @@ def update_utterance_intervals(
                     "end": interval.end,
                     "phone_id": phone_to_phone_id[interval.symbol],
                     "utterance_id": utterance.id,
-                    "workflow_id": workflow_id,
                     "word_interval_id": max_word_interval_id,
                     "phone_goodness": interval.confidence if interval.confidence else 0.0,
                 }
@@ -215,13 +212,13 @@ def update_utterance_intervals(
     session.query(Utterance).filter(Utterance.id == utterance.id).update(
         {Utterance.alignment_log_likelihood: ctm.likelihood}
     )
-    session.query(PhoneInterval).filter(PhoneInterval.utterance_id == utterance.id).filter(
-        PhoneInterval.workflow_id == workflow_id
-    ).delete(synchronize_session=False)
+    session.query(PhoneInterval).filter(PhoneInterval.utterance_id == utterance.id).delete(
+        synchronize_session=False
+    )
     session.flush()
-    session.query(WordInterval).filter(WordInterval.utterance_id == utterance.id).filter(
-        WordInterval.workflow_id == workflow_id
-    ).delete(synchronize_session=False)
+    session.query(WordInterval).filter(WordInterval.utterance_id == utterance.id).delete(
+        synchronize_session=False
+    )
     session.flush()
     if new_words:
         session.bulk_insert_mappings(Word, new_words, return_defaults=False, render_nulls=True)

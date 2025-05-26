@@ -321,7 +321,7 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
             fmllr_trans=fmllr_trans,
             **self.align_options,
         )
-        update_utterance_intervals(session, utterance, workflow.id, ctm)
+        update_utterance_intervals(session, utterance, ctm)
 
     def verify_transcripts(self, workflow_name=None) -> None:
         self.initialize_database()

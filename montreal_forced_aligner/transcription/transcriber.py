@@ -494,7 +494,7 @@ class TranscriberMixin(CorpusAligner, TranscriptionEvaluationMixin):
 
     def train_phone_lm(self):
         """Train a phone-based language model (i.e., not using words)."""
-        if not self.has_alignments(self.current_workflow.id):
+        if not self.has_alignments():
             logger.error("Cannot train phone LM without alignments")
             return
         if self.use_g2p:

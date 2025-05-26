@@ -20,6 +20,7 @@ from pathlib import Path
 from queue import Empty
 from typing import TYPE_CHECKING
 
+import librosa.feature
 import numpy as np
 import sqlalchemy
 from _kalpy import feat as kalpy_feat
@@ -28,9 +29,9 @@ from _kalpy.gmm import gmm_compute_likes
 from _kalpy.hmm import TransitionModel
 from _kalpy.matrix import FloatMatrix, FloatSubMatrix
 from _kalpy.util import (
-    KaldiFatalError,
     RandomAccessBaseDoubleMatrixReader,
     RandomAccessBaseFloatMatrixReader,
+    RandomAccessInt32VectorReader,
 )
 from kalpy.data import Segment
 from kalpy.decoder.data import FstArchive
@@ -61,6 +62,7 @@ from montreal_forced_aligner.db import (
     Job,
     Phone,
     PhoneInterval,
+    ReferencePhoneInterval,
     SoundFile,
     Speaker,
     TextFile,
@@ -478,7 +480,9 @@ class CompileTrainGraphsFunction(KaldiFunction):
                 if job.corpus.current_subset > 0:
                     query = query.filter(Utterance.in_subset == True)  # noqa
                 graph_logger.info(f"Compiling graphs for {d.name}")
-                fst_ark_path = job.construct_path(workflow.working_directory, "fsts", "ark", d.id)
+                fst_ark_path = job.construct_path(
+                    workflow.working_directory, "fsts", "ark", d.name
+                )
                 compiler.export_graphs(
                     fst_ark_path,
                     query,
@@ -529,11 +533,10 @@ class AccStatsFunction(KaldiFunction):
             for d in job.training_dictionaries:
                 train_logger.debug(f"Accumulating stats for dictionary {d.name} ({d.id})")
                 train_logger.debug(f"Accumulating stats for model: {self.model_path}")
-                dict_id = d.id
                 accumulator = GmmStatsAccumulator(self.model_path)
 
-                feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
-                ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                feature_archive = job.construct_feature_archive(self.working_directory, d.name)
+                ali_path = job.construct_path(self.working_directory, "ali", "ark", d.name)
                 if not ali_path.exists():
                     continue
                 alignment_archive = AlignmentArchive(ali_path)
@@ -608,10 +611,9 @@ class AlignFunction(KaldiFunction):
             for d in job.training_dictionaries:
                 align_logger.debug(f"Aligning for dictionary {d.name} ({d.id})")
                 align_logger.debug(f"Aligning with model: {aligner.acoustic_model_path}")
-                dict_id = d.id
-                fst_path = job.construct_path(self.working_directory, "fsts", "ark", dict_id)
+                fst_path = job.construct_path(self.working_directory, "fsts", "ark", d.name)
                 align_logger.debug(f"Training graph archive: {fst_path}")
-                feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
+                feature_archive = job.construct_feature_archive(self.working_directory, d.name)
 
                 align_logger.debug("Feature Archive information:")
                 align_logger.debug(f"Archive: {feature_archive.file_name}")
@@ -622,58 +624,80 @@ class AlignFunction(KaldiFunction):
                 align_logger.debug(f"fMLLR: {feature_archive.transform_read_specifier}")
 
                 training_graph_archive = FstArchive(fst_path)
-                ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                ali_path = job.construct_path(self.working_directory, "ali", "ark", d.name)
 
-                words_path = job.construct_path(self.working_directory, "words", "ark", dict_id)
+                words_path = job.construct_path(self.working_directory, "words", "ark", d.name)
                 likes_path = job.construct_path(
-                    self.working_directory, "likelihoods", "ark", dict_id
+                    self.working_directory, "likelihoods", "ark", d.name
                 )
                 ali_path.unlink(missing_ok=True)
                 words_path.unlink(missing_ok=True)
                 likes_path.unlink(missing_ok=True)
+                reference_phones_path = job.construct_path(
+                    job.corpus.current_subset_directory, "ref_phones", "ark", d.name
+                )
+                if reference_phones_path.exists():
+                    align_logger.debug(f"Reference phones: {reference_phones_path}")
+                    reference_phone_archive = RandomAccessInt32VectorReader(
+                        generate_read_specifier(reference_phones_path)
+                    )
+                else:
+                    reference_phone_archive = None
                 if aligner.acoustic_model_path.endswith(".alimdl"):
                     ali_path = job.construct_path(
-                        self.working_directory, "ali_first_pass", "ark", dict_id
+                        self.working_directory, "ali_first_pass", "ark", d.name
                     )
                     words_path = job.construct_path(
-                        self.working_directory, "words_first_pass", "ark", dict_id
+                        self.working_directory, "words_first_pass", "ark", d.name
                     )
                     likes_path = job.construct_path(
-                        self.working_directory, "likelihoods_first_pass", "ark", dict_id
+                        self.working_directory, "likelihoods_first_pass", "ark", d.name
                     )
-                aligner.export_alignments(
-                    ali_path,
-                    training_graph_archive,
-                    feature_archive,
-                    word_file_name=words_path,
-                    likelihood_file_name=likes_path,
-                    callback=self.callback,
-                )
+                try:
+                    aligner.export_alignments(
+                        ali_path,
+                        training_graph_archive,
+                        feature_archive,
+                        reference_phone_archive=reference_phone_archive,
+                        word_file_name=words_path,
+                        likelihood_file_name=likes_path,
+                        callback=self.callback,
+                    )
+                except Exception:
+                    exc_type, exc_value, exc_traceback = sys.exc_info()
+                    error_text = "\n".join(
+                        traceback.format_exception(exc_type, exc_value, exc_traceback)
+                    )
+                    align_logger.debug(error_text)
+                    raise
+                finally:
+                    if reference_phone_archive is not None:
+                        reference_phone_archive.Close()
                 if aligner.acoustic_model_path.endswith(".alimdl"):
                     try:
                         job.construct_path(
-                            self.working_directory, "ali", "ark", dict_id
+                            self.working_directory, "ali", "ark", d.name
                         ).symlink_to(ali_path)
                         job.construct_path(
-                            self.working_directory, "words", "ark", dict_id
+                            self.working_directory, "words", "ark", d.name
                         ).symlink_to(words_path)
                         job.construct_path(
-                            self.working_directory, "likelihoods", "ark", dict_id
+                            self.working_directory, "likelihoods", "ark", d.name
                         ).symlink_to(likes_path)
                     except OSError as e:
                         logger.debug(str(e))
                         shutil.copyfile(
                             ali_path,
-                            job.construct_path(self.working_directory, "ali", "ark", dict_id),
+                            job.construct_path(self.working_directory, "ali", "ark", d.name),
                         )
                         shutil.copyfile(
                             words_path,
-                            job.construct_path(self.working_directory, "words", "ark", dict_id),
+                            job.construct_path(self.working_directory, "words", "ark", d.name),
                         )
                         shutil.copyfile(
                             likes_path,
                             job.construct_path(
-                                self.working_directory, "likelihoods", "ark", dict_id
+                                self.working_directory, "likelihoods", "ark", d.name
                             ),
                         )
 
@@ -716,11 +740,6 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
                 .filter(Job.id == self.job_name)
                 .first()
             )
-            workflow = (
-                session.query(CorpusWorkflow)
-                .filter(CorpusWorkflow.current == True)  # noqa
-                .first()
-            )
             phones = {
                 k: (m, sd)
                 for k, m, sd in session.query(
@@ -731,7 +750,6 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
                     Phone.sd_duration != 0,
                 )
             }
-            mfcc_computer = MfccComputer(use_energy=True, raw_energy=True, num_coefficients=1)
             for d in job.training_dictionaries:
                 query = (
                     session.query(Utterance)
@@ -759,15 +777,16 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
                         .join(PhoneInterval.phone)
                         .filter(
                             PhoneInterval.utterance_id == utterance.id,
-                            PhoneInterval.workflow_id == workflow.id,
                         )
                         .all()
                     )
                     if not phone_intervals:
                         continue
-                    kalpy_utterance = utterance.to_kalpy()
-                    kalpy_utterance.generate_mfccs(mfcc_computer)
-                    energy = kalpy_utterance.mfccs.numpy()[:, 0]
+                    audio = utterance.segment.load_audio()
+                    sr = 16_000
+                    rms = librosa.feature.rms(
+                        y=audio, frame_length=int(0.025 * sr), hop_length=int(0.01 * sr)
+                    )
                     interval_count = 0
                     log_like_sum = 0
                     duration_zscore_max = 0
@@ -780,10 +799,10 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
                         end_index = int(pi.end / 0.01)
                         if pi.phone_id == silence_phone_id:
                             silence_frame_count += end_index - begin_index
-                            silence_energy_sum += energy[begin_index:end_index].sum()
+                            silence_energy_sum += rms[begin_index:end_index].sum()
                         else:
                             nonsilence_frame_count += end_index - begin_index
-                            nonsilence_energy_sum += energy[begin_index:end_index].sum()
+                            nonsilence_energy_sum += rms[begin_index:end_index].sum()
                         if pi.phone_id not in phones:
                             continue
                         interval_count += 1
@@ -801,14 +820,14 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
                     try:
                         silence_energy = silence_energy_sum / silence_frame_count
                     except ZeroDivisionError:
-                        silence_energy = energy.min()
+                        silence_energy = rms.min()
                     try:
                         nonsilence_energy = nonsilence_energy_sum / nonsilence_frame_count
                     except ZeroDivisionError:
-                        nonsilence_energy = energy.max()
-                    snr = nonsilence_energy - silence_energy
+                        nonsilence_energy = rms.max()
+                    snr = float((nonsilence_energy / max(silence_energy, 0.000001)) ** 2)
                     extraction_logger.debug(
-                        f"{utterance.id}: Energy shape: {energy.shape}, Nonsilence energy: {nonsilence_energy}, Silence energy: {silence_energy}, SNR: {snr}"
+                        f"{utterance.id}: Energy shape: {rms.shape}, Nonsilence energy: {nonsilence_energy}, Silence energy: {silence_energy}, SNR: {snr}"
                     )
                     self.callback(
                         (
@@ -856,11 +875,6 @@ class AnalyzeTranscriptsFunction(KaldiFunction):
                 .filter(Job.id == self.job_name)
                 .first()
             )
-            workflow = (
-                session.query(CorpusWorkflow)
-                .filter(CorpusWorkflow.current == True)  # noqa
-                .first()
-            )
             query = session.query(Utterance).filter(
                 Utterance.job_id == job.id, Utterance.alignment_log_likelihood != None  # noqa
             )
@@ -872,7 +886,6 @@ class AnalyzeTranscriptsFunction(KaldiFunction):
                         .join(WordInterval.word)
                         .filter(
                             WordInterval.utterance_id == utterance.id,
-                            WordInterval.workflow_id == workflow.id,
                             Word.word_type != WordType.silence,
                             WordInterval.end - WordInterval.begin > 0.03,
                         )
@@ -958,13 +971,13 @@ class FineTuneFunction(KaldiFunction):
                 self.tree_path,
                 self.lexicon_compiler,
             )
-            for d_id in job.dictionary_ids:
+            for d in job.dictionaries:
                 utterance_query = (
                     session.query(Utterance, SoundFile.sound_file_path)
                     .join(Utterance.file)
                     .join(Utterance.speaker)
                     .join(File.sound_file)
-                    .filter(Utterance.job_id == self.job_name, Speaker.dictionary_id == d_id)
+                    .filter(Utterance.job_id == self.job_name, Speaker.dictionary_id == d.id)
                     .order_by(Utterance.kaldi_id)
                 )
                 boost_silence = self.align_options.pop("boost_silence", 1.0)
@@ -985,12 +998,12 @@ class FineTuneFunction(KaldiFunction):
                     lda_mat = read_kaldi_object(FloatMatrix, workflow.lda_mat_path)
 
                 cmvn_reader = None
-                cmvn_path = cmvn_paths[d_id]
+                cmvn_path = cmvn_paths[d.id]
                 if cmvn_path.exists():
                     cmvn_read_specifier = generate_read_specifier(cmvn_path)
                     cmvn_reader = RandomAccessBaseDoubleMatrixReader(cmvn_read_specifier)
 
-                fmllr_path = trans_paths[d_id]
+                fmllr_path = trans_paths[d.id]
                 transform_reader = None
                 if fmllr_path.exists():
                     transform_read_specifier = generate_read_specifier(fmllr_path)
@@ -1004,7 +1017,6 @@ class FineTuneFunction(KaldiFunction):
                         .join(PhoneInterval.phone)
                         .filter(
                             PhoneInterval.utterance_id == utterance.id,
-                            PhoneInterval.workflow_id == workflow.id,
                         )
                         .order_by(PhoneInterval.begin)
                     )
@@ -1168,13 +1180,16 @@ class PhoneConfidenceFunction(KaldiFunction):
                 .options(
                     selectinload(Utterance.phone_intervals).joinedload(
                         PhoneInterval.phone, innerjoin=True
-                    )
+                    ),
+                    selectinload(Utterance.reference_phone_intervals).options(
+                        joinedload(ReferencePhoneInterval.phone, innerjoin=True),
+                    ),
                 )
             )
             utterances = {u.id: (u.begin, u.phone_intervals) for u in utterances}
 
-            for dict_id in job.dictionary_ids:
-                feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
+            for d in job.dictionaries:
+                feature_archive = job.construct_feature_archive(self.working_directory, d.name)
                 interval_mappings = []
 
                 for utterance_id, feats in feature_archive:
@@ -1209,7 +1224,9 @@ class PhoneConfidenceFunction(KaldiFunction):
                                 actual_score = phone_likes[i, phones[pi.phone.phone]]
                                 scores.append(phone_likes[i, top_phone_ind] - actual_score)
                         average_score = statistics.mean(scores)
-                        interval_mappings.append({"id": pi.id, "phone_goodness": float(average_score)})
+                        interval_mappings.append(
+                            {"id": pi.id, "phone_goodness": float(average_score)}
+                        )
                     self.callback(interval_mappings)
                     interval_mappings = []
 
@@ -1295,7 +1312,7 @@ class GeneratePronunciationsFunction(KaldiFunction):
             self.silence_words.update(x for x, in silence_words)
 
             for d in job.training_dictionaries:
-                ali_path = job.construct_path(workflow.working_directory, "ali", "ark", d.id)
+                ali_path = job.construct_path(workflow.working_directory, "ali", "ark", d.name)
                 if not os.path.exists(ali_path):
                     continue
                 if self.lexicon_compilers and d.id in self.lexicon_compilers:
@@ -1303,7 +1320,7 @@ class GeneratePronunciationsFunction(KaldiFunction):
                 else:
                     lexicon_compiler = d.lexicon_compiler
 
-                words_path = job.construct_path(workflow.working_directory, "words", "ark", d.id)
+                words_path = job.construct_path(workflow.working_directory, "words", "ark", d.name)
                 alignment_archive = AlignmentArchive(ali_path, words_file_name=words_path)
                 for alignment in alignment_archive:
                     intervals = alignment.generate_ctm(
@@ -1432,7 +1449,7 @@ class AlignmentExtractionFunction(KaldiFunction):
                     lexicon_compiler = d.lexicon_compiler
 
                 if self.transcription:
-                    lat_path = job.construct_path(workflow.working_directory, "lat", "ark", d.id)
+                    lat_path = job.construct_path(workflow.working_directory, "lat", "ark", d.name)
                     if not lat_path.exists():
                         continue
 
@@ -1484,14 +1501,14 @@ class AlignmentExtractionFunction(KaldiFunction):
                             )
                         self.callback((utterance_id, d.id, ctm))
                 else:
-                    ali_path = job.construct_path(workflow.working_directory, "ali", "ark", d.id)
+                    ali_path = job.construct_path(workflow.working_directory, "ali", "ark", d.name)
                     if not ali_path.exists():
                         continue
                     words_path = job.construct_path(
-                        workflow.working_directory, "words", "ark", d.id
+                        workflow.working_directory, "words", "ark", d.name
                     )
                     likes_path = job.construct_path(
-                        workflow.working_directory, "likelihoods", "ark", d.id
+                        workflow.working_directory, "likelihoods", "ark", d.name
                     )
                     alignment_archive = AlignmentArchive(
                         ali_path, words_file_name=words_path, likelihood_file_name=likes_path
@@ -1502,7 +1519,7 @@ class AlignmentExtractionFunction(KaldiFunction):
                             self.transition_model, lexicon_compiler.phone_table, self.frame_shift
                         )
                         utterance = int(alignment.utterance_id.split("-")[-1])
-                        found_utterances.add(utterance)
+                        found_utterances.add(alignment.utterance_id)
                         try:
                             text = utterance_texts.get(utterance, None)
                             ctm = lexicon_compiler.phones_to_pronunciations(
@@ -1549,84 +1566,68 @@ class AlignmentExtractionFunction(KaldiFunction):
                     alignment_archive.close()
                     extraction_logger.debug("Finished ali second pass")
                     ali_path = job.construct_path(
-                        self.working_directory, "ali_first_pass", "ark", d.id
+                        self.working_directory, "ali_first_pass", "ark", d.name
                     )
                     if ali_path.exists():
                         words_path = job.construct_path(
-                            self.working_directory, "words_first_pass", "ark", d.id
+                            self.working_directory, "words_first_pass", "ark", d.name
                         )
                         likes_path = job.construct_path(
-                            self.working_directory, "likelihoods_first_pass", "ark", d.id
+                            self.working_directory, "likelihoods_first_pass", "ark", d.name
                         )
                         alignment_archive = AlignmentArchive(
                             ali_path, words_file_name=words_path, likelihood_file_name=likes_path
                         )
-                        missing_utterances = (
-                            session.query(Utterance.kaldi_id)
-                            .join(Utterance.speaker)
-                            .filter(
-                                Utterance.job_id == self.job_name, Speaker.dictionary_id == d.id
+                        for alignment in alignment_archive:
+                            if alignment.utterance_id in found_utterances:
+                                continue
+                            extraction_logger.debug(f"Processing {alignment.utterance_id}")
+                            intervals = alignment.generate_ctm(
+                                self.transition_model,
+                                lexicon_compiler.phone_table,
+                                self.frame_shift,
                             )
-                            .filter(Utterance.ignored == False)  # noqa
-                            .filter(~Utterance.id.in_(found_utterances))
-                        )
-                        if job.corpus.current_subset > 0:
-                            missing_utterances = missing_utterances.filter(
-                                Utterance.in_subset == True  # noqa
-                            )
-                        for (utt_id,) in missing_utterances:
-                            extraction_logger.debug(f"Processing {utt_id}")
+                            utterance = int(alignment.utterance_id.split("-")[-1])
                             try:
-                                alignment = alignment_archive[utt_id]
-                                intervals = alignment.generate_ctm(
-                                    self.transition_model,
-                                    lexicon_compiler.phone_table,
-                                    self.frame_shift,
+                                ctm = lexicon_compiler.phones_to_pronunciations(
+                                    alignment.words,
+                                    intervals,
+                                    transcription=False,
+                                    text=utterance_texts.get(utterance, None),
                                 )
-                                utterance = int(alignment.utterance_id.split("-")[-1])
-                                try:
-                                    ctm = lexicon_compiler.phones_to_pronunciations(
-                                        alignment.words,
-                                        intervals,
-                                        transcription=False,
-                                        text=utterance_texts.get(utterance, None),
+                                ctm.update_utterance_boundaries(*utterance_times[utterance])
+                            except Exception:
+                                exc_type, exc_value, exc_traceback = sys.exc_info()
+                                utterance, sound_file_path, text_file_path = (
+                                    session.query(
+                                        Utterance,
+                                        SoundFile.sound_file_path,
+                                        TextFile.text_file_path,
                                     )
-                                    ctm.update_utterance_boundaries(*utterance_times[utterance])
-                                except Exception:
-                                    exc_type, exc_value, exc_traceback = sys.exc_info()
-                                    utterance, sound_file_path, text_file_path = (
-                                        session.query(
-                                            Utterance,
-                                            SoundFile.sound_file_path,
-                                            TextFile.text_file_path,
-                                        )
-                                        .join(Utterance.file)
-                                        .join(File.sound_file)
-                                        .join(File.text_file)
-                                        .filter(Utterance.id == utterance)
-                                        .first()
-                                    )
-                                    extraction_logger.debug(f"Error processing {utterance}:")
-                                    extraction_logger.debug(
-                                        f"Utterance information: {sound_file_path}, {text_file_path}, {utterance.begin} - {utterance.end}"
-                                    )
-                                    traceback_lines = traceback.format_exception(
-                                        exc_type, exc_value, exc_traceback
-                                    )
-                                    extraction_logger.debug("\n".join(traceback_lines))
-                                    raise AlignmentCollectionError(
-                                        sound_file_path,
-                                        text_file_path,
-                                        utterance.begin,
-                                        utterance.end,
-                                        traceback_lines,
-                                        self.log_path,
-                                    )
-                                self.callback((utterance, d.id, ctm))
-                                extraction_logger.debug(f"Processed {utt_id}")
-                            except (KeyError, KaldiFatalError):
-                                extraction_logger.debug(f"Did not find {utt_id}")
-                                pass
+                                    .join(Utterance.file)
+                                    .join(File.sound_file)
+                                    .join(File.text_file)
+                                    .filter(Utterance.id == utterance)
+                                    .first()
+                                )
+                                extraction_logger.debug(f"Error processing {utterance}:")
+                                extraction_logger.debug(
+                                    f"Utterance information: {sound_file_path}, {text_file_path}, {utterance.begin} - {utterance.end}"
+                                )
+                                traceback_lines = traceback.format_exception(
+                                    exc_type, exc_value, exc_traceback
+                                )
+                                extraction_logger.debug("\n".join(traceback_lines))
+                                raise AlignmentCollectionError(
+                                    sound_file_path,
+                                    text_file_path,
+                                    utterance.begin,
+                                    utterance.end,
+                                    traceback_lines,
+                                    self.log_path,
+                                )
+                            self.callback((utterance, d.id, ctm))
+                            extraction_logger.debug(f"Processed {alignment.utterance_id}")
                         alignment_archive.close()
                         extraction_logger.debug("Finished ali first pass")
                 del lexicon_compiler

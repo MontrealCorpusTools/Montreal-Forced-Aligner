@@ -11,13 +11,24 @@ from pathlib import Path
 from queue import Empty, Queue
 
 import sqlalchemy
+from _kalpy.util import Int32VectorWriter
+from kalpy.utils import generate_write_specifier
 from sqlalchemy.orm import joinedload, subqueryload
 
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.corpus.classes import FileData
 from montreal_forced_aligner.corpus.helper import find_exts
-from montreal_forced_aligner.data import Language, MfaArguments
-from montreal_forced_aligner.db import Dictionary, Job, Speaker, Utterance
+from montreal_forced_aligner.data import Language, MfaArguments, PhoneType, WorkflowType
+from montreal_forced_aligner.db import (
+    CorpusWorkflow,
+    Dictionary,
+    Job,
+    Phone,
+    PhoneMapping,
+    ReferencePhoneInterval,
+    Speaker,
+    Utterance,
+)
 from montreal_forced_aligner.exceptions import SoundFileError, TextGridParseError, TextParseError
 from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import Counter
@@ -250,6 +261,7 @@ class ExportKaldiFilesArguments(MfaArguments):
     """
 
     split_directory: Path
+    time_step: float
 
 
 class NormalizeTextFunction(KaldiFunction):
@@ -399,6 +411,7 @@ class ExportKaldiFilesFunction(KaldiFunction):
     def __init__(self, args: ExportKaldiFilesArguments):
         super().__init__(args)
         self.split_directory = args.split_directory
+        self.time_step = args.time_step
 
     def output_to_directory(self, session) -> None:
         """
@@ -413,6 +426,11 @@ class ExportKaldiFilesFunction(KaldiFunction):
             session.query(Job)
             .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
             .filter(Job.id == self.job_name)
+            .first()
+        )
+        reference_workflow = (
+            session.query(CorpusWorkflow)
+            .filter(CorpusWorkflow.workflow_type == WorkflowType.reference)
             .first()
         )
         base_utterance_query = (
@@ -521,8 +539,42 @@ class ExportKaldiFilesFunction(KaldiFunction):
                 base_utterance_query = base_utterance_query.filter(
                     Utterance.in_subset == True  # noqa
                 )
+            base_utterance_intervals_query = None
+            phone_mapping = {}
+            phone_id_mapping = {}
+            reference_mappings = {}
+            if reference_workflow is not None:
+                for p in (
+                    session.query(Phone)
+                    .filter(~Phone.phone_type.in_([PhoneType.disambiguation]))
+                    .all()
+                ):
+                    phone_id_mapping[p.id] = p.mapping_id
+                    phone_mapping[p.phone] = p.mapping_id
+                for x in session.query(PhoneMapping).all():
+                    if x.reference_phone_string not in reference_mappings:
+                        reference_mappings[x.reference_phone_string] = []
+                    reference_mappings[x.x.reference_phone_string].append(x.model_phone_string)
+                base_utterance_intervals_query = (
+                    session.query(Utterance)
+                    .join(Utterance.speaker)
+                    .filter(Utterance.job_id == job.id)
+                    .filter(Utterance.ignored == False)  # noqa
+                    .filter(Utterance.manual_alignments == True)  # noqa
+                    .order_by(Utterance.kaldi_id)
+                    .options(
+                        sqlalchemy.orm.subqueryload(
+                            Utterance.reference_phone_intervals
+                        ).joinedload(ReferencePhoneInterval.phone)
+                    )
+                )
+                if job.corpus.current_subset:
+                    base_utterance_intervals_query = base_utterance_intervals_query.filter(
+                        Utterance.in_subset == True  # noqa
+                    )
             utt2spk_paths = job.per_dictionary_utt2spk_scp_paths
             feats_paths = job.per_dictionary_feats_scp_paths
+            ref_phone_paths = job.per_dictionary_ref_phone_scp_paths
             cmvns_paths = job.per_dictionary_cmvn_scp_paths
             spk2utt_paths = job.per_dictionary_spk2utt_scp_paths
             for d in job.dictionaries:
@@ -530,6 +582,47 @@ class ExportKaldiFilesFunction(KaldiFunction):
                 feats = {}
                 cmvns = {}
                 utt2spk = {}
+                ref_phones = {}
+                if reference_workflow is not None:
+                    time_step_tolerance = self.time_step / 2
+                    utterances = base_utterance_intervals_query.filter(
+                        Speaker.dictionary_id == d.id
+                    )
+                    for u in utterances:
+                        utterance = f"{u.speaker_id}-{u.id}"
+                        phones = []
+                        reference_intervals = u.reference_phone_intervals
+                        reference_index = 0
+                        for i in range(u.num_frames):
+                            time_point = round(i * self.time_step, 3)
+                            interval_end = round(
+                                reference_intervals[reference_index].end - u.begin, 3
+                            )
+                            if (
+                                reference_index < len(reference_intervals) - 1
+                                and time_point >= interval_end - time_step_tolerance
+                            ):
+                                reference_index += 1
+                            if reference_mappings:
+                                if (
+                                    reference_intervals[reference_index].phone.phone
+                                    in reference_mappings
+                                ):
+                                    pass
+
+                                phones.append(
+                                    [
+                                        phone_mapping[
+                                            reference_intervals[reference_index].phone.phone
+                                        ]
+                                    ]
+                                )
+                            else:
+                                phones.append(
+                                    phone_id_mapping[reference_intervals[reference_index].phone_id]
+                                )
+                        ref_phones[utterance] = phones
+
                 utterances = base_utterance_query.filter(Speaker.dictionary_id == d.id)
                 for (
                     u_id,
@@ -547,7 +640,8 @@ class ExportKaldiFilesFunction(KaldiFunction):
                     feats[utterance] = features
                     cmvns[speaker] = cmvn
                     self.callback(1)
-
+                if not spk2utt:
+                    continue
                 with mfa_open(spk2utt_paths[d.id], "w") as f:
                     for speaker, utts in sorted(spk2utt.items()):
                         utts = " ".join(sorted(utts))
@@ -564,6 +658,15 @@ class ExportKaldiFilesFunction(KaldiFunction):
                 with mfa_open(feats_paths[d.id], "w") as f:
                     for utt, feat in sorted(feats.items()):
                         f.write(f"{utt} {feat}\n")
+                if ref_phones:
+                    write_specifier = generate_write_specifier(ref_phone_paths[d.id])
+
+                    writer = Int32VectorWriter(write_specifier)
+                    for utt, phones in sorted(ref_phones.items()):
+                        if not phones:
+                            continue
+                        writer.Write(str(utt), phones)
+                    writer.Close()
 
     def _run(self):
         """Run the function"""

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Optional, Union
 from praatio import textgrid
 
 from montreal_forced_aligner.corpus.helper import get_wav_info, load_text
-from montreal_forced_aligner.data import SoundFileInformation, TextFileType
+from montreal_forced_aligner.data import CtmInterval, SoundFileInformation, TextFileType
 from montreal_forced_aligner.exceptions import TextGridParseError, TextParseError
 
 if TYPE_CHECKING:
@@ -174,10 +174,29 @@ class FileData:
                 duration = tg.maxTimestamp
             if root_speaker:
                 self.speaker_ordering.append(root_speaker)
+            phone_data = {}
             for i, tier_name in enumerate(tg.tierNames):
+                if not tier_name.endswith(" - phones"):
+                    continue
+                speaker_name = tier_name.split(" - ")[0]
+                if speaker_name not in phone_data:
+                    phone_data[speaker_name] = []
                 ti = tg._tierDict[tier_name]
+                for begin, end, text in ti.entries:
+                    text = text.strip()
+                    if not text:
+                        continue
+                    begin, end = round(begin, 4), round(end, 4)
+                    if begin >= duration:
+                        continue
+                    end = min(end, duration)
+                    phone_data[speaker_name].append(CtmInterval(begin, end, text))
+            for i, tier_name in enumerate(tg.tierNames):
                 if tier_name.lower() == "notes":
                     continue
+                if tier_name.endswith("- words") or tier_name.endswith("- phones"):
+                    continue
+                ti = tg._tierDict[tier_name]
                 if not isinstance(ti, textgrid.IntervalTier):
                     continue
                 if not root_speaker:
@@ -207,6 +226,14 @@ class FileData:
                     )
                     if not utt.text:
                         continue
+                    if speaker_name in phone_data:
+                        for pi in phone_data[speaker_name]:
+                            if pi.begin < utt.begin:
+                                continue
+                            if pi.end > utt.end:
+                                break
+                            utt.phone_intervals.append(pi)
+                        utt.manual_alignments = len(utt.phone_intervals) > 0
                     self.utterances.append(utt)
         else:
             if self.wav_info is not None:
@@ -252,7 +279,9 @@ class UtteranceData:
     begin: float
     end: float
     channel: int = 0
+    manual_alignments: bool = False
     text: str = ""
     normalized_text: str = ""
     normalized_character_text: str = ""
     oovs: str = ""
+    phone_intervals: typing.List = []

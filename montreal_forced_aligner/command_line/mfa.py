@@ -24,6 +24,7 @@ from montreal_forced_aligner.command_line.diarize_speakers import diarize_speake
 from montreal_forced_aligner.command_line.g2p import g2p_cli
 from montreal_forced_aligner.command_line.history import history_cli
 from montreal_forced_aligner.command_line.model import model_cli
+from montreal_forced_aligner.command_line.remap_dictionary import remap_dictionary_cli
 from montreal_forced_aligner.command_line.server import server_cli
 from montreal_forced_aligner.command_line.tokenize import tokenize_cli
 from montreal_forced_aligner.command_line.train_acoustic_model import train_acoustic_model_cli
@@ -189,6 +190,7 @@ mfa_cli.add_command(history_cli)
 mfa_cli.add_command(g2p_cli)
 mfa_cli.add_command(model_cli, name="model")
 mfa_cli.add_command(model_cli, name="models")
+mfa_cli.add_command(remap_dictionary_cli)
 mfa_cli.add_command(server_cli)
 mfa_cli.add_command(tokenize_cli)
 mfa_cli.add_command(train_acoustic_model_cli)

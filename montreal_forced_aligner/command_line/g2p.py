@@ -66,6 +66,12 @@ __all__ = ["g2p_cli"]
     default=False,
 )
 @click.option(
+    "--strict_graphemes",
+    is_flag=True,
+    help="Skip words containing graphemes not in the G2P model",
+    default=False,
+)
+@click.option(
     "--export_scores",
     is_flag=True,
     help="Add a column to export for the score of the generated pronunciation.",
@@ -96,6 +102,7 @@ def g2p_cli(context, **kwargs) -> None:
     use_stdin = input_path == pathlib.Path("-")
     use_stdout = output_path == pathlib.Path("-")
     export_scores = kwargs.get("export_scores", False)
+    strict_graphemes = kwargs.get("strict_graphemes", False)
 
     if input_path.is_dir():
         per_utterance = False
@@ -118,6 +125,7 @@ def g2p_cli(context, **kwargs) -> None:
                 **PyniniCorpusGenerator.parse_parameters(
                     config_path, context.params, context.args
                 ),
+                strict_graphemes=strict_graphemes,
             )
             if per_utterance:
                 g2p.num_pronunciations = 1

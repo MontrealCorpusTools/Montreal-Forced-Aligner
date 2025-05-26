@@ -76,6 +76,7 @@ class AlignMixin(DictionaryMixin):
         fine_tune: bool = False,
         phone_confidence: bool = False,
         use_phone_model: bool = False,
+        careful: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -92,6 +93,7 @@ class AlignMixin(DictionaryMixin):
             self.retry_beam = self.beam * 4
         self.unaligned_files = set()
         self.final_alignment = False
+        self.careful = careful
 
     @property
     def tree_path(self) -> Path:
@@ -200,6 +202,7 @@ class AlignMixin(DictionaryMixin):
             "beam": self.beam,
             "retry_beam": self.retry_beam,
             "boost_silence": self.boost_silence,
+            "careful": self.careful,
         }
 
     def alignment_configuration(self) -> MetaDict:

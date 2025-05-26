@@ -44,7 +44,6 @@ class TreeStatsArguments(MfaArguments):
 class ConvertAlignmentsArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.triphone.ConvertAlignmentsFunction`"""
 
-    dictionaries: List[str]
     model_path: Path
     tree_path: Path
     align_model_path: Path
@@ -73,7 +72,6 @@ class ConvertAlignmentsFunction(KaldiFunction):
 
     def __init__(self, args: ConvertAlignmentsArguments):
         super().__init__(args)
-        self.dictionaries = args.dictionaries
         self.model_path = args.model_path
         self.tree_path = args.tree_path
         self.align_model_path = args.align_model_path
@@ -95,12 +93,11 @@ class ConvertAlignmentsFunction(KaldiFunction):
             train_logger.debug(f"Model path: {self.model_path}")
             train_logger.debug(f"Tree path: {self.tree_path}")
             for d in job.training_dictionaries:
-                dict_id = d.id
                 train_logger.debug(f"Converting alignments for {d.name}")
-                ali_path = self.ali_paths[dict_id]
+                ali_path = self.ali_paths[d.name]
                 if not ali_path.exists():
                     continue
-                new_ali_path = self.new_ali_paths[dict_id]
+                new_ali_path = self.new_ali_paths[d.name]
                 train_logger.debug(f"Old alignments: {ali_path}")
                 train_logger.debug(f"New alignments: {new_ali_path}")
                 tree = read_tree(self.tree_path)
@@ -164,9 +161,8 @@ class TreeStatsFunction(KaldiFunction):
             for d in job.training_dictionaries:
                 train_logger.debug(f"Accumulating stats for dictionary {d.name} ({d.id})")
                 train_logger.debug(f"Accumulating stats for model: {self.model_path}")
-                dict_id = d.id
-                feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
-                ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                feature_archive = job.construct_feature_archive(self.working_directory, d.name)
+                ali_path = job.construct_path(self.working_directory, "ali", "ark", d.name)
                 if not ali_path.exists():
                     continue
                 train_logger.debug("Feature Archive information:")
@@ -271,7 +267,6 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
                 j.id,
                 getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                 self.working_log_directory.joinpath(f"convert_alignments.{j.id}.log"),
-                j.dictionary_ids,
                 self.model_path,
                 self.tree_path,
                 self.previous_aligner.model_path,
@@ -402,9 +397,20 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
             questions = automatically_obtain_questions(tree_stats, phone_sets, [1], 1)
             train_logger.debug(f"Automatically obtained {len(questions)} questions")
             train_logger.debug("Automatic questions:")
+            new_questions = []
+            existing = set()
             for q_set in questions:
-                train_logger.debug(", ".join([self.reversed_phone_mapping[x] for x in q_set]))
-
+                if False and not all(x in self.silence_symbols for x in q_set):
+                    if any(x in self.silence_symbols for x in q_set):
+                        train_logger.debug("Removing silence phones from the set")
+                    q_set = [x for x in q_set if x not in self.silence_symbols]
+                if tuple(q_set) not in existing:
+                    new_questions.append(q_set)
+                    existing.add(tuple(q_set))
+                    train_logger.debug(", ".join([self.reversed_phone_mapping[x] for x in q_set]))
+            questions = new_questions
+            if tuple(self.silence_symbols) not in existing:
+                existing.add(tuple(self.silence_symbols))
             extra_questions = self.worker.extra_questions_mapping
             if extra_questions:
                 train_logger.debug(f"Adding {len(extra_questions)} questions")

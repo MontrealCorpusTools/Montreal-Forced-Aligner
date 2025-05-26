@@ -267,7 +267,7 @@ def parse_aligned_textgrid(
         for begin, end, text in ti.entries:
             text = text.lower().strip()
             if not text:
-                continue
+                text = "sil"
             begin, end = round(begin, 4), round(end, 4)
             if end - begin < 0.01:
                 continue
@@ -295,7 +295,6 @@ def construct_textgrid_output(
         .join(PhoneInterval.phone)
         .join(PhoneInterval.utterance)
         .join(Utterance.speaker)
-        .filter(PhoneInterval.workflow_id == workflow.id)
         .filter(PhoneInterval.duration > 0)
         .filter(Utterance.file_id.in_(list(file_batch.keys())))
     )
@@ -307,7 +306,6 @@ def construct_textgrid_output(
         .join(WordInterval.word)
         .join(WordInterval.utterance)
         .join(Utterance.speaker)
-        .filter(WordInterval.workflow_id == workflow.id)
         .filter(WordInterval.duration > 0)
         .filter(Utterance.file_id.in_(list(file_batch.keys())))
     )

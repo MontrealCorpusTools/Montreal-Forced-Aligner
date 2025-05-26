@@ -84,14 +84,13 @@ class AccStatsTwoFeatsFunction(KaldiFunction):
             for d in job.training_dictionaries:
                 train_logger.debug(f"Accumulating stats for dictionary {d.name} ({d.id})")
                 train_logger.debug(f"Accumulating stats for model: {self.model_path}")
-                dict_id = d.id
                 accumulator = TwoFeatsStatsAccumulator(self.model_path)
 
-                ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                ali_path = job.construct_path(self.working_directory, "ali", "ark", d.name)
                 if not ali_path.exists():
                     continue
                 fmllr_path = job.construct_path(
-                    job.corpus.current_subset_directory, "trans", "scp", dict_id
+                    job.corpus.current_subset_directory, "trans", "scp", d.name
                 )
                 if not fmllr_path.exists():
                     fmllr_path = None
@@ -99,12 +98,12 @@ class AccStatsTwoFeatsFunction(KaldiFunction):
                 if not lda_mat_path.exists():
                     lda_mat_path = None
                 feat_path = job.construct_path(
-                    job.corpus.current_subset_directory, "feats", "scp", dictionary_id=dict_id
+                    job.corpus.current_subset_directory, "feats", "scp", dictionary_id=d.name
                 )
                 train_logger.debug(f"Feature path: {feat_path}")
                 train_logger.debug(f"LDA transform path: {lda_mat_path}")
                 train_logger.debug(f"Speaker transform path: {fmllr_path}")
-                feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
+                feature_archive = job.construct_feature_archive(self.working_directory, d.name)
                 si_feature_archive = FeatureArchive(
                     feat_path,
                     lda_mat_file_name=lda_mat_path,
@@ -346,7 +345,7 @@ class SatTrainer(TriphoneTrainer):
         with kalpy_logger("kalpy.train", log_path):
             objf_impr, count = transition_model.mle_update(transition_accs)
             logger.debug(
-                f"Transition model update: Overall {objf_impr/count} "
+                f"Transition model update: Overall {objf_impr / count} "
                 f"log-like improvement per frame over {count} frames."
             )
             objf_impr, count = acoustic_model.mle_update(
@@ -356,13 +355,13 @@ class SatTrainer(TriphoneTrainer):
                 remove_low_count_gaussians=False,
             )
             logger.debug(
-                f"GMM update: Overall {objf_impr/count} "
+                f"GMM update: Overall {objf_impr / count} "
                 f"objective function improvement per frame over {count} frames."
             )
             tot_like = gmm_accs.TotLogLike()
             tot_t = gmm_accs.TotCount()
             logger.debug(
-                f"Average Likelihood per frame for iteration = {tot_like/tot_t} "
+                f"Average Likelihood per frame for iteration = {tot_like / tot_t} "
                 f"over {tot_t} frames."
             )
             write_gmm_model(

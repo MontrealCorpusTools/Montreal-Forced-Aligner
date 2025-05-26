@@ -10,7 +10,6 @@ from abc import ABCMeta
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from queue import Empty, Queue
-from typing import List, Optional
 
 import sqlalchemy
 from kalpy.data import KaldiMapping
@@ -46,6 +45,7 @@ from montreal_forced_aligner.db import (
     File,
     Phone,
     PhoneInterval,
+    ReferencePhoneInterval,
     SoundFile,
     Speaker,
     TextFile,
@@ -100,7 +100,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         Stop check for loading the corpus
     """
 
-    def __init__(self, audio_directory: Optional[str] = None, **kwargs):
+    def __init__(self, audio_directory: typing.Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
         self.audio_directory = audio_directory
         self.sound_file_errors = []
@@ -110,23 +110,9 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         self.alignment_evaluation_done = False
         self.transcriptions_required = True
 
-    def has_alignments(self, workflow_id: typing.Optional[int] = None) -> bool:
+    def has_alignments(self) -> bool:
         with self.session() as session:
-            if workflow_id is None:
-                check = session.query(PhoneInterval).limit(1).first() is not None
-            else:
-                if isinstance(workflow_id, int):
-                    check = (
-                        session.query(CorpusWorkflow.alignments_collected)
-                        .filter(CorpusWorkflow.id == workflow_id)
-                        .scalar()
-                    )
-                else:
-                    check = (
-                        session.query(CorpusWorkflow.alignments_collected)
-                        .filter(CorpusWorkflow.workflow_type == workflow_id)
-                        .scalar()
-                    )
+            check = session.query(PhoneInterval).limit(1).first() is not None
         return check
 
     def has_ivectors(self) -> bool:
@@ -167,7 +153,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         return check
 
     @property
-    def no_transcription_files(self) -> List[str]:
+    def no_transcription_files(self) -> typing.List[str]:
         """List of sound files without text files"""
         with self.session() as session:
             files = session.query(SoundFile.sound_file_path).filter(
@@ -176,7 +162,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             return [x[0] for x in files]
 
     @property
-    def transcriptions_without_wavs(self) -> List[str]:
+    def transcriptions_without_wavs(self) -> typing.List[str]:
         """List of text files without sound files"""
         with self.session() as session:
             files = session.query(TextFile.text_file_path).filter(
@@ -262,6 +248,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                             for u_id, speaker_name, begin, end in utterances:
                                 if speaker_name not in intervals:
                                     continue
+                                utterance_intervals = []
                                 while intervals[speaker_name]:
                                     interval = intervals[speaker_name].pop(0)
                                     dur = interval.end - interval.begin
@@ -279,21 +266,70 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                                                     "phone_type": PhoneType.extra,
                                                 }
                                             )
-                                        reference_intervals.append(
+                                        if (
+                                            utterance_intervals
+                                            and utterance_intervals[-1]["end"] != interval.begin
+                                        ):
+                                            utterance_intervals.append(
+                                                {
+                                                    "id": interval_id,
+                                                    "begin": utterance_intervals[-1]["end"],
+                                                    "end": interval.begin,
+                                                    "phone_id": phone_mapping.get(
+                                                        getattr(
+                                                            self, "optional_silence_phone", "sil"
+                                                        ),
+                                                        2,
+                                                    ),
+                                                    "utterance_id": u_id,
+                                                }
+                                            )
+                                            interval_id += 1
+                                        utterance_intervals.append(
                                             {
                                                 "id": interval_id,
                                                 "begin": interval.begin,
                                                 "end": interval.end,
                                                 "phone_id": phone_mapping[interval.label],
                                                 "utterance_id": u_id,
-                                                "workflow_id": workflow.id,
                                             }
                                         )
                                         interval_id += 1
                                     if mid_point > end:
                                         intervals[speaker_name].insert(0, interval)
                                         break
-
+                                if utterance_intervals:
+                                    if utterance_intervals[0]["begin"] != begin:
+                                        utterance_intervals.insert(
+                                            0,
+                                            {
+                                                "id": interval_id,
+                                                "begin": begin,
+                                                "end": utterance_intervals[0]["begin"],
+                                                "phone_id": phone_mapping.get(
+                                                    getattr(self, "optional_silence_phone", "sil"),
+                                                    2,
+                                                ),
+                                                "utterance_id": u_id,
+                                            },
+                                        )
+                                        interval_id += 1
+                                    if utterance_intervals[-1]["end"] != end:
+                                        utterance_intervals.insert(
+                                            0,
+                                            {
+                                                "id": interval_id,
+                                                "begin": utterance_intervals[-1]["end"],
+                                                "end": end,
+                                                "phone_id": phone_mapping.get(
+                                                    getattr(self, "optional_silence_phone", "sil"),
+                                                    2,
+                                                ),
+                                                "utterance_id": u_id,
+                                            },
+                                        )
+                                        interval_id += 1
+                                reference_intervals.extend(utterance_intervals)
                             pbar.update(1)
 
             if config.USE_MP:
@@ -337,7 +373,6 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                                             "end": interval.end,
                                             "phone_id": phone_mapping[interval.label],
                                             "utterance_id": u_id,
-                                            "workflow_id": workflow.id,
                                         }
                                     )
                                     interval_id += 1
@@ -347,7 +382,9 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             if new_phones:
                 session.execute(sqlalchemy.insert(Phone.__table__), new_phones)
                 session.commit()
-            session.execute(sqlalchemy.insert(PhoneInterval.__table__), reference_intervals)
+            session.execute(
+                sqlalchemy.insert(ReferencePhoneInterval.__table__), reference_intervals
+            )
             session.query(CorpusWorkflow).filter(CorpusWorkflow.id == workflow.id).update(
                 {CorpusWorkflow.done: True, CorpusWorkflow.alignments_collected: True}
             )
@@ -432,15 +469,15 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             ]
             for path in paths:
                 path.unlink(missing_ok=True)
-            for d_id in j.dictionary_ids:
+            for d in j.dictionaries:
                 paths = [
-                    j.construct_path(self.split_directory, "trans", "scp", d_id),
-                    j.construct_path(self.split_directory, "trans", "ark", d_id),
-                    j.construct_path(self.split_directory, "cmvn", "scp", d_id),
-                    j.construct_path(self.split_directory, "feats", "scp", d_id),
-                    j.construct_path(self.split_directory, "feats", "ark", d_id),
-                    j.construct_path(self.split_directory, "final_features", "scp", d_id),
-                    j.construct_path(self.split_directory, "final_features", "ark", d_id),
+                    j.construct_path(self.split_directory, "trans", "scp", d.name),
+                    j.construct_path(self.split_directory, "trans", "ark", d.name),
+                    j.construct_path(self.split_directory, "cmvn", "scp", d.name),
+                    j.construct_path(self.split_directory, "feats", "scp", d.name),
+                    j.construct_path(self.split_directory, "feats", "ark", d.name),
+                    j.construct_path(self.split_directory, "final_features", "scp", d.name),
+                    j.construct_path(self.split_directory, "final_features", "ark", d.name),
                 ]
                 for path in paths:
                     path.unlink(missing_ok=True)
@@ -554,7 +591,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         logger.info("Creating corpus split...")
         super().create_corpus_split()
 
-    def compute_vad_arguments(self) -> List[VadArguments]:
+    def compute_vad_arguments(self) -> typing.List[VadArguments]:
         """
         Generate Job arguments for :class:`~montreal_forced_aligner.corpus.features.ComputeVadFunction`
 
@@ -573,7 +610,9 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             for j in self.jobs
         ]
 
-    def calc_fmllr_arguments(self, iteration: Optional[int] = None) -> List[CalcFmllrArguments]:
+    def calc_fmllr_arguments(
+        self, iteration: typing.Optional[int] = None
+    ) -> typing.List[CalcFmllrArguments]:
         """
         Generate Job arguments for :class:`~montreal_forced_aligner.corpus.features.CalcFmllrFunction`
 
@@ -600,7 +639,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             )
         return arguments
 
-    def mfcc_arguments(self) -> List[MfccArguments]:
+    def mfcc_arguments(self) -> typing.List[MfccArguments]:
         """
         Generate Job arguments for :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
 
@@ -621,7 +660,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             for j in self.jobs
         ]
 
-    def final_feature_arguments(self) -> List[FinalFeatureArguments]:
+    def final_feature_arguments(self) -> typing.List[FinalFeatureArguments]:
         """
         Generate Job arguments for :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
 
@@ -664,8 +703,19 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         log_directory = self.split_directory.joinpath("log")
         os.makedirs(log_directory, exist_ok=True)
         arguments = self.mfcc_arguments()
-        for _ in run_kaldi_function(MfccFunction, arguments, total_count=self.num_utterances):
-            pass
+        update_mapping = []
+        for result in run_kaldi_function(MfccFunction, arguments, total_count=self.num_utterances):
+            if isinstance(result, tuple):
+                utt_id, num_frames = result
+                update_mapping.append(
+                    {
+                        "id": utt_id,
+                        "num_frames": num_frames,
+                    }
+                )
+        with self.session() as session:
+            bulk_update(session, Utterance, update_mapping)
+            session.commit()
         logger.debug(f"Generating MFCCs took {time.time() - begin:.3f} seconds")
 
     def calc_cmvn(self) -> None:
@@ -711,7 +761,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     for s_id, cmvn in sorted(query, key=lambda x: str(x)):
                         f.write(f"{s_id} {cmvn}\n")
 
-    def calc_fmllr(self, iteration: Optional[int] = None) -> None:
+    def calc_fmllr(self, iteration: typing.Optional[int] = None) -> None:
         """
         Multiprocessing function that computes speaker adaptation transforms via
         feature-space Maximum Likelihood Linear Regression (fMLLR).
@@ -744,8 +794,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         update_mapping = []
         if not config.SINGLE_SPEAKER:
             for j in self.jobs:
-                for d_id in j.dictionary_ids:
-                    scp_p = j.construct_path(self.split_directory, "trans", "scp", d_id)
+                for d in j.dictionaries:
+                    scp_p = j.construct_path(self.split_directory, "trans", "scp", d.name)
                     if not scp_p.exists():
                         continue
                     with mfa_open(scp_p) as f:
@@ -839,8 +889,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         """
         job = self.jobs[0]
         dict_id = None
-        if job.dictionary_ids:
-            dict_id = self.jobs[0].dictionary_ids[0]
+        if job.dictionaries:
+            dict_id = self.jobs[0].dictionaries[0].name
         feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
         feat_dim = None
         for _, feats in feature_archive:
@@ -1114,7 +1164,6 @@ class AcousticCorpusPronunciationMixin(
         if self.dictionary_model is not None and not initialized_check:
             self.apply_phonological_rules()
             self.calculate_disambiguation()
-            self.calculate_phone_mapping()
 
             begin = time.time()
             self.write_lexicon_information()
@@ -1130,7 +1179,7 @@ class AcousticCorpusPronunciationMixin(
 
         logger.debug(f"Setting up corpus took {time.time() - all_begin:.3f} seconds")
 
-    def subset_lexicon(self, write_disambiguation: Optional[bool] = False) -> None:
+    def subset_lexicon(self, write_disambiguation: typing.Optional[bool] = False) -> None:
         included_words = set()
         with self.session() as session:
             corpus = session.query(Corpus).first()
