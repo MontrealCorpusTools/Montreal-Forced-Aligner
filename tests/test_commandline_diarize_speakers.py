@@ -35,7 +35,7 @@ def test_cluster_mfa_no_postgres(
     ]
     command = [str(x) for x in command]
     with pytest.raises(DatabaseError):
-        result = click.testing.CliRunner(mix_stderr=False).invoke(
+        result = click.testing.CliRunner().invoke(
             mfa_cli, command, catch_exceptions=True
         )
         print(result.stdout)
@@ -70,7 +70,7 @@ def test_cluster_mfa(
         "--evaluate",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -103,7 +103,7 @@ def test_classify_mfa(
         "--use_postgres",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -143,7 +143,7 @@ def test_cluster_speechbrain(
         "--use_postgres",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -178,7 +178,7 @@ def test_classify_speechbrain(
         "--use_postgres",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)

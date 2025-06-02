@@ -154,7 +154,6 @@ TEMPORARY_DIRECTORY = get_temporary_directory()
 GITHUB_TOKEN = None
 HF_TOKEN = None
 BLAS_NUM_THREADS = 1
-BYTES_LIMIT = 100e6
 CURRENT_PROFILE_NAME = os.getenv(MFA_PROFILE_VARIABLE, "global")
 
 
@@ -178,7 +177,6 @@ class MfaProfile:
     cleanup_textgrids: bool = True
     use_postgres: bool = False
     database_limited_mode: bool = False
-    bytes_limit: int = 100e6
     seed: int = 0
     num_jobs: int = 3
     blas_num_threads: int = 1
@@ -309,7 +307,6 @@ GLOBAL_CONFIG = MfaConfiguration()
 MEMORY = joblib.Memory(
     location=os.path.join(get_temporary_directory(), "joblib_cache"),
     verbose=4 if VERBOSE else 0,
-    bytes_limit=BYTES_LIMIT,
 )
 
 os.environ["OMP_NUM_THREADS"] = f"{BLAS_NUM_THREADS}"

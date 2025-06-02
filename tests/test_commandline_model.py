@@ -44,7 +44,7 @@ def test_download_error():
 def test_download_acoustic():
     command = ["model", "download", "acoustic", "german_mfa", "--ignore_cache"]
 
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -60,7 +60,7 @@ def test_download_acoustic():
 
     command = ["model", "download", "acoustic", "german_mfa", "--version", "2.0.0"]
 
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -82,7 +82,7 @@ def test_download_g2p():
         "g2p",
         "german_mfa",
     ]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -103,7 +103,7 @@ def test_download_dictionary():
         "german_mfa",
     ]
 
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -119,7 +119,7 @@ def test_download_dictionary():
 def test_download_list_acoustic():
     command = ["model", "download", "acoustic", "--ignore_cache"]
 
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -137,7 +137,7 @@ def test_download_list_dictionary():
         "dictionary",
     ]
 
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -155,7 +155,7 @@ def test_inspect_model():
         "acoustic",
         "english_us_arpa",
     ]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -179,7 +179,7 @@ def test_add_pronunciations(
         "hindi",
         "--overwrite",
     ]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -198,7 +198,7 @@ def test_add_pronunciations(
             "hindi",
             str(japanese_dict_path),
         ]
-        result = click.testing.CliRunner(mix_stderr=False).invoke(
+        result = click.testing.CliRunner().invoke(
             mfa_cli, command, catch_exceptions=True
         )
         print(result.stdout)
@@ -216,7 +216,7 @@ def test_add_pronunciations(
         "acoustic",
         "--overwrite",
     ]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -234,7 +234,7 @@ def test_add_pronunciations(
         "acoustic",
         str(basic_dict_path),
     ]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -259,7 +259,7 @@ def test_list_model():
         "list",
         "acoustic",
     ]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -280,7 +280,7 @@ def test_save_model(transcription_acoustic_model):
         "test_acoustic",
         "--overwrite",
     ]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -293,7 +293,7 @@ def test_save_model(transcription_acoustic_model):
 
     command = ["model", "inspect", "acoustic", "test_acoustic"]
 
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -307,7 +307,7 @@ def test_save_model(transcription_acoustic_model):
 def test_expected_errors():
     command = ["model", "download", "not_acoustic", "bulgarian"]
 
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     assert isinstance(result.exception, SystemExit)
