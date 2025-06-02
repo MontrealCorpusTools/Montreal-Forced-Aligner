@@ -120,12 +120,6 @@ __all__ = ["configure_cli"]
     type=str,
 )
 @click.option(
-    "--bytes_limit",
-    default=None,
-    help="Bytes limit for Joblib Memory caching on disk.",
-    type=int,
-)
-@click.option(
     "--seed",
     default=None,
     help="Random seed to set for various pseudorandom processes.",
