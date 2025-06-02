@@ -37,7 +37,7 @@ def test_train_acoustic_with_g2p(
         train_g2p_acoustic_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -88,7 +88,7 @@ def test_train_and_align_basic_speaker_dict(
             bad_topology_path,
         ]
         command = [str(x) for x in command]
-        result = click.testing.CliRunner(mix_stderr=False).invoke(
+        result = click.testing.CliRunner().invoke(
             mfa_cli, command, catch_exceptions=True
         )
         print(result.stdout)
@@ -118,7 +118,7 @@ def test_train_and_align_basic_speaker_dict(
         "--use_postgres",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)

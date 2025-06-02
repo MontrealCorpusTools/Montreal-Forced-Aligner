@@ -20,7 +20,7 @@ def test_tokenize_pretrained(
         "False",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -47,7 +47,7 @@ def test_tokenize_unicode(
         "False",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -71,7 +71,7 @@ def test_train_tokenizer(combined_corpus_dir, temp_dir, generated_dir, db_setup)
         "--validate",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -98,7 +98,7 @@ def test_train_tokenizer_phonetisaurus(combined_corpus_dir, temp_dir, generated_
         "3",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -129,7 +129,7 @@ def test_tokenize_textgrid(
         "--debug",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -160,7 +160,7 @@ def test_tokenize_textgrid_phonetisaurus(
         "--debug",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)

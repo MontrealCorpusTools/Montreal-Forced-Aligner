@@ -24,7 +24,7 @@ def test_generate_pretrained(
         "False",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -58,7 +58,7 @@ def test_generate_pretrained_dictionary(
         "1",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -85,7 +85,7 @@ def test_generate_pretrained_threshold(
         "0.95",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -118,7 +118,7 @@ def test_generate_pretrained_corpus(
         "2",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -161,7 +161,7 @@ def test_train_g2p(
         train_g2p_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -192,7 +192,7 @@ def test_train_g2p_phonetisaurus(
         train_g2p_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -224,7 +224,7 @@ def test_generate_dict(
         g2p_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -261,7 +261,7 @@ def test_generate_dict_phonetisaurus(
         g2p_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -299,7 +299,7 @@ def test_generate_dict_text_only(
         g2p_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
@@ -337,7 +337,7 @@ def test_generate_dict_textgrid(
         g2p_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(mix_stderr=False).invoke(
+    result = click.testing.CliRunner().invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
