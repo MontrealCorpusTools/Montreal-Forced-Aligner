@@ -788,7 +788,7 @@ def test_acoustic_g2p_model(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner(, echo_stdin=True).invoke(
+    result = click.testing.CliRunner(echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
     )
     print(result.stdout)
