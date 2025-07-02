@@ -14,4 +14,3 @@
        WorkflowType
        DatabaseImportData
        PronunciationProbabilityCounter
-       CtmInterval

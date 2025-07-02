@@ -8,7 +8,7 @@ The primary workflow in MFA is forced alignment, where text is aligned to speech
 
 .. warning::
 
-   Speech-to-text functionality is pretty basic, and the model architecture used in MFA is older GMM-HMM and NGram models, so using something like :xref:`coqui` or Kaldi's ``nnet`` functionality will likely yield better quality transcriptions.
+   Speech-to-text functionality is pretty basic, and the model architecture used in MFA is older GMM-HMM and NGram models, so using something like :xref:`speechbrain` or :xref:`whisperx` will likely yield better quality transcriptions.
 
 .. hint::
 
@@ -22,3 +22,4 @@ The primary workflow in MFA is forced alignment, where text is aligned to speech
    train_acoustic_model
    dictionary_generating
    g2p_train
+   remap_dictionary

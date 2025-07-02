@@ -15,6 +15,7 @@ import sqlalchemy.types as types
 from kalpy.data import KaldiMapping, Segment
 from kalpy.feat.data import FeatureArchive
 from kalpy.fstext.lexicon import LexiconCompiler
+from kalpy.gmm.data import CtmInterval
 from kalpy.utterance import Utterance as KalpyUtterance
 from pgvector.sqlalchemy import Vector
 from praatio import textgrid
@@ -26,7 +27,6 @@ from sqlalchemy.orm import Bundle, declarative_base, joinedload, relationship
 
 from montreal_forced_aligner import config
 from montreal_forced_aligner.data import (
-    CtmInterval,
     PhoneSetType,
     PhoneType,
     TextFileType,
@@ -767,6 +767,13 @@ class Word(MfaSqlBase):
         collection_class=ordering_list("begin"),
         cascade="all, delete",
     )
+    reference_word_intervals = relationship(
+        "ReferenceWordInterval",
+        back_populates="word",
+        order_by="ReferenceWordInterval.begin",
+        collection_class=ordering_list("begin"),
+        cascade="all, delete",
+    )
 
     __table_args__ = (
         sqlalchemy.Index("dictionary_word_type_index", "dictionary_id", "word_type"),
@@ -1232,6 +1239,17 @@ class File(MfaSqlBase):
                         tiers[phone_tier_name] = textgrid.IntervalTier(
                             phone_tier_name, [], minT=0, maxT=max_time
                         )
+
+                    phone_intervals = (
+                        session.query(ReferencePhoneInterval)
+                        .options(
+                            joinedload(ReferencePhoneInterval.phone, innerjoin=True).load_only(
+                                Phone.phone
+                            ),
+                        )
+                        .filter(ReferencePhoneInterval.utterance_id == utterance.id)
+                    ).all()
+                    if len(phone_intervals) == 0:
                         phone_intervals = (
                             session.query(PhoneInterval)
                             .options(
@@ -1241,44 +1259,43 @@ class File(MfaSqlBase):
                             )
                             .filter(PhoneInterval.utterance_id == utterance.id)
                         ).all()
-                        reference_phone_intervals = (
-                            session.query(ReferencePhoneInterval)
-                            .options(
-                                joinedload(ReferencePhoneInterval.phone, innerjoin=True).load_only(
-                                    Phone.phone
-                                ),
+                    word_interval_ids = set()
+                    for pi in phone_intervals:
+                        word_interval_ids.add(pi.word_interval_id)
+                        tiers[phone_tier_name].insertEntry(
+                            Interval(
+                                start=pi.begin,
+                                end=min(pi.end, max_time),
+                                label=pi.phone.phone,
                             )
-                            .filter(ReferencePhoneInterval.utterance_id == utterance.id)
-                        ).all()
-                        if reference_phone_intervals:
-                            phone_intervals = reference_phone_intervals
-                        word_interval_ids = set()
-                        for pi in phone_intervals:
-                            word_interval_ids.add(pi)
-                            tiers[phone_tier_name].insertEntry(
-                                Interval(
-                                    start=pi.begin,
-                                    end=pi.end,
-                                    label=pi.phone.phone,
-                                )
-                            )
+                        )
+                    word_intervals = (
+                        session.query(ReferenceWordInterval)
+                        .options(
+                            joinedload(ReferenceWordInterval.word, innerjoin=True).load_only(
+                                Word.word
+                            ),
+                        )
+                        .filter(ReferenceWordInterval.utterance_id == utterance.id)
+                    ).all()
+                    if len(word_intervals) == 0:
                         word_intervals = (
                             session.query(WordInterval)
                             .options(
                                 joinedload(WordInterval.word, innerjoin=True).load_only(Word.word),
                             )
                             .filter(WordInterval.utterance_id == utterance.id)
-                        )
-                        for wi in word_intervals:
-                            if wi.id not in word_interval_ids:
-                                continue
-                            tiers[word_tier_name].insertEntry(
-                                Interval(
-                                    start=wi.begin,
-                                    end=wi.end,
-                                    label=wi.word.word,
-                                )
+                        ).all()
+                    for wi in word_intervals:
+                        if wi.id not in word_interval_ids:
+                            continue
+                        tiers[word_tier_name].insertEntry(
+                            Interval(
+                                start=wi.begin,
+                                end=min(wi.end, max_time),
+                                label=wi.word.word,
                             )
+                        )
 
                 if save_transcription:
                     tiers[utterance.speaker.name].insertEntry(
@@ -1315,7 +1332,7 @@ class File(MfaSqlBase):
 
         Returns
         -------
-        dict[str, dict[str, list[:class:`~montreal_forced_aligner.data.CtmInterval`]]]
+        dict[str, dict[str, list[:class:`~kalpy.gmm.data.CtmInterval`]]]
             Tier dictionary of utterance transcriptions
         """
         data = {}
@@ -1584,6 +1601,13 @@ class Utterance(MfaSqlBase):
         "ReferencePhoneInterval",
         back_populates="utterance",
         order_by="ReferencePhoneInterval.begin",
+        collection_class=ordering_list("begin"),
+        cascade="all, delete-orphan",
+    )
+    reference_word_intervals = relationship(
+        "ReferenceWordInterval",
+        back_populates="utterance",
+        order_by="ReferenceWordInterval.begin",
         collection_class=ordering_list("begin"),
         cascade="all, delete-orphan",
     )
@@ -1867,7 +1891,9 @@ class PhoneInterval(MfaSqlBase):
         :class:`~montreal_forced_aligner.data.CtmInterval`
             CTM interval object
         """
-        return CtmInterval(self.begin, self.end, self.phone.phone, confidence=self.phone_goodness)
+        return CtmInterval(
+            self.begin, self.end, self.phone.phone, self.phone.mapping_id, self.phone_goodness
+        )
 
 
 class ReferencePhoneInterval(MfaSqlBase):
@@ -1885,8 +1911,6 @@ class ReferencePhoneInterval(MfaSqlBase):
         Ending timestamp of the interval
     duration: float
         Calculated duration of the interval
-    phone_goodness: float
-        Confidence score, log-likelihood, etc for the phone interval
     phone_id: int
         Foreign key to :class:`~montreal_forced_aligner.db.Phone`
     phone: :class:`~montreal_forced_aligner.db.Phone`
@@ -1911,6 +1935,14 @@ class ReferencePhoneInterval(MfaSqlBase):
     )
     phone = relationship("Phone", back_populates="reference_phone_intervals")
 
+    word_interval_id = Column(
+        Integer,
+        ForeignKey("reference_word_interval.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
+    word_interval = relationship("ReferenceWordInterval", back_populates="phone_intervals")
+
     utterance_id = Column(
         Integer, ForeignKey("utterance.id", ondelete="CASCADE"), index=True, nullable=False
     )
@@ -1929,10 +1961,10 @@ class ReferencePhoneInterval(MfaSqlBase):
         return self.phone.phone
 
     def __repr__(self):
-        return f"<PhoneInterval {self.phone.kaldi_label} from {self.begin}-{self.end} for utterance {self.utterance_id}>"
+        return f"<ReferencePhoneInterval {self.phone.kaldi_label} from {self.begin}-{self.end} for utterance {self.utterance_id}>"
 
     @classmethod
-    def from_ctm(self, interval: CtmInterval, utterance: Utterance) -> PhoneInterval:
+    def from_ctm(self, interval: CtmInterval, utterance: Utterance) -> ReferencePhoneInterval:
         """
         Construct a PhoneInterval from a CtmInterval object
 
@@ -1945,7 +1977,7 @@ class ReferencePhoneInterval(MfaSqlBase):
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.db.PhoneInterval`
+        :class:`~montreal_forced_aligner.db.ReferencePhoneInterval`
             Phone interval object
         """
         return ReferencePhoneInterval(
@@ -2062,6 +2094,112 @@ class WordInterval(MfaSqlBase):
             Word interval object
         """
         return WordInterval(
+            begin=interval.begin,
+            end=interval.end,
+            label=interval.label,
+            utterance=utterance,
+        )
+
+    def as_ctm(self) -> CtmInterval:
+        """
+        Generate a CtmInterval from the database object
+
+        Returns
+        -------
+        :class:`~montreal_forced_aligner.data.CtmInterval`
+            CTM interval object
+        """
+        return CtmInterval(self.begin, self.end, self.word.word)
+
+
+class ReferenceWordInterval(MfaSqlBase):
+    """
+
+    Database class for storing information about aligned word intervals
+
+    Parameters
+    ----------
+    id: int
+        Primary key
+    begin: float
+        Beginning timestamp of the interval
+    end: float
+        Ending timestamp of the interval
+    word_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.Word`
+    word: :class:`~montreal_forced_aligner.db.Word`
+        Word of the interval
+    utterance_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.Utterance`
+    utterance: :class:`~montreal_forced_aligner.db.Utterance`
+        Utterance of the interval
+    reference_phone_intervals: list[:class:`~montreal_forced_aligner.db.ReferencePhoneInterval`]
+        Phone intervals for the word interval
+    """
+
+    __tablename__ = "reference_word_interval"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    begin = Column(Float, nullable=False, index=True)
+    end = Column(Float, nullable=False)
+    _duration = sqlalchemy.orm.deferred(
+        Column("duration", Float, sqlalchemy.Computed('"end" - "begin"'))
+    )
+
+    utterance_id = Column(
+        Integer, ForeignKey("utterance.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    utterance = relationship("Utterance", back_populates="reference_word_intervals")
+
+    word_id = Column(
+        Integer, ForeignKey("word.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    word = relationship("Word", back_populates="reference_word_intervals")
+
+    phone_intervals = relationship(
+        "ReferencePhoneInterval",
+        back_populates="word_interval",
+        order_by="ReferencePhoneInterval.begin",
+        collection_class=ordering_list("begin"),
+    )
+
+    @hybrid_property
+    def duration(self) -> float:
+        return self.end - self.begin
+
+    @duration.expression
+    def duration(cls):
+        return cls._duration
+
+    @property
+    def label(self) -> str:
+        return self.word.word
+
+    @property
+    def confidence(self) -> typing.Optional[float]:
+        return None
+
+    def __repr__(self):
+        return f"<WordInterval {self.word.word} from {self.begin}-{self.end} for utterance {self.utterance_id}>"
+
+    @classmethod
+    def from_ctm(self, interval: CtmInterval, utterance: Utterance) -> ReferenceWordInterval:
+        """
+        Construct a WordInterval from a CtmInterval object
+
+        Parameters
+        ----------
+        interval: :class:`~montreal_forced_aligner.data.CtmInterval`
+            CtmInterval containing data for the word interval
+        utterance: :class:`~montreal_forced_aligner.db.Utterance`
+            Utterance object that the word interval belongs to
+
+        Returns
+        -------
+        :class:`~montreal_forced_aligner.db.ReferenceWordInterval`
+            Word interval object
+        """
+        return ReferenceWordInterval(
             begin=interval.begin,
             end=interval.end,
             label=interval.label,
@@ -2315,7 +2453,7 @@ class Job(MfaSqlBase):
         """
         output = {}
         for d in self.dictionaries:
-            output[d.id] = directory.joinpath(f"{identifier}.{d.name}.{extension}")
+            output[d.name] = directory.joinpath(f"{identifier}.{d.name}.{extension}")
         return output
 
 

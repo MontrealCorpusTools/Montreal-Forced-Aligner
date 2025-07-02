@@ -41,6 +41,7 @@ def align_utterance_online(
     acoustic_scale: float = 0.1,
     self_loop_scale: float = 0.1,
     boost_silence: float = 1.0,
+    careful: bool = False,
 ) -> HierarchicalCtm:
     text = utterance.transcript
     rewriter = None
@@ -102,6 +103,7 @@ def align_utterance_online(
         transition_scale=transition_scale,
         acoustic_scale=acoustic_scale,
         self_loop_scale=self_loop_scale,
+        careful=careful,
     )
     if boost_silence != 1.0:
         aligner.boost_silence(boost_silence, lexicon_compiler.silence_symbols)

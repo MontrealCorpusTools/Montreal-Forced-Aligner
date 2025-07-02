@@ -11,7 +11,7 @@ from pathlib import Path
 from queue import Empty, Queue
 
 import sqlalchemy
-from _kalpy.util import Int32VectorWriter
+from _kalpy.util import Int32VectorVectorWriter
 from kalpy.utils import generate_write_specifier
 from sqlalchemy.orm import joinedload, subqueryload
 
@@ -554,7 +554,7 @@ class ExportKaldiFilesFunction(KaldiFunction):
                 for x in session.query(PhoneMapping).all():
                     if x.reference_phone_string not in reference_mappings:
                         reference_mappings[x.reference_phone_string] = []
-                    reference_mappings[x.x.reference_phone_string].append(x.model_phone_string)
+                    reference_mappings[x.reference_phone_string].append(x.model_phone_string)
                 base_utterance_intervals_query = (
                     session.query(Utterance)
                     .join(Utterance.speaker)
@@ -603,24 +603,26 @@ class ExportKaldiFilesFunction(KaldiFunction):
                                 and time_point >= interval_end - time_step_tolerance
                             ):
                                 reference_index += 1
+                            frame_phones = []
                             if reference_mappings:
-                                if (
-                                    reference_intervals[reference_index].phone.phone
-                                    in reference_mappings
-                                ):
-                                    pass
-
-                                phones.append(
-                                    [
-                                        phone_mapping[
-                                            reference_intervals[reference_index].phone.phone
-                                        ]
-                                    ]
-                                )
+                                reference_phone = reference_intervals[reference_index].phone.phone
+                                if reference_phone in reference_mappings:
+                                    for mapped_phone in reference_mappings[reference_phone]:
+                                        for split_mapped_phone in mapped_phone.split():
+                                            if split_mapped_phone not in phone_mapping:
+                                                continue
+                                            frame_phones.append(phone_mapping[split_mapped_phone])
+                                elif reference_phone in phone_mapping:
+                                    frame_phones.append(phone_mapping[reference_phone])
+                                else:
+                                    frame_phones.append(-1)
+                                if phone_mapping["spn"] not in frame_phones:
+                                    frame_phones.append(phone_mapping["spn"])
                             else:
-                                phones.append(
+                                frame_phones.append(
                                     phone_id_mapping[reference_intervals[reference_index].phone_id]
                                 )
+                            phones.append(frame_phones)
                         ref_phones[utterance] = phones
 
                 utterances = base_utterance_query.filter(Speaker.dictionary_id == d.id)
@@ -659,9 +661,9 @@ class ExportKaldiFilesFunction(KaldiFunction):
                     for utt, feat in sorted(feats.items()):
                         f.write(f"{utt} {feat}\n")
                 if ref_phones:
-                    write_specifier = generate_write_specifier(ref_phone_paths[d.id])
+                    write_specifier = generate_write_specifier(ref_phone_paths[d.id], text=True)
 
-                    writer = Int32VectorWriter(write_specifier)
+                    writer = Int32VectorVectorWriter(write_specifier)
                     for utt, phones in sorted(ref_phones.items()):
                         if not phones:
                             continue

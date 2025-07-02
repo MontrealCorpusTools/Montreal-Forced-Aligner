@@ -37,7 +37,7 @@ conda env create -n mfa-dev -f environment.yml
 Alternatively, the dependencies can be installed via:
 
 ```
-conda install -c conda-forge python=3.11 kaldi librosa biopython praatio tqdm requests colorama pyyaml pynini openfst baumwelch ngram
+conda install -c conda-forge python=3.11 kaldi librosa praatio tqdm requests colorama pyyaml pynini openfst baumwelch ngram
 ```
 
 MFA can be installed in develop mode via:

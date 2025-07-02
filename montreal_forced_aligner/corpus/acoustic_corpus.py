@@ -7,7 +7,6 @@ import threading
 import time
 import typing
 from abc import ABCMeta
-from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from queue import Empty, Queue
 
@@ -45,6 +44,7 @@ from montreal_forced_aligner.db import (
     File,
     Phone,
     PhoneInterval,
+    PhoneMapping,
     ReferencePhoneInterval,
     SoundFile,
     Speaker,
@@ -62,7 +62,7 @@ from montreal_forced_aligner.exceptions import (
     TextGridParseError,
     TextParseError,
 )
-from montreal_forced_aligner.helper import load_scp, mfa_open
+from montreal_forced_aligner.helper import load_evaluation_mapping, load_scp, mfa_open
 from montreal_forced_aligner.textgrid import parse_aligned_textgrid
 from montreal_forced_aligner.utils import Counter, run_kaldi_function
 
@@ -100,7 +100,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         Stop check for loading the corpus
     """
 
-    def __init__(self, audio_directory: typing.Optional[str] = None, **kwargs):
+    def __init__(self, audio_directory: typing.Optional[typing.Union[Path, str]] = None, **kwargs):
         super().__init__(**kwargs)
         self.audio_directory = audio_directory
         self.sound_file_errors = []
@@ -113,6 +113,11 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
     def has_alignments(self) -> bool:
         with self.session() as session:
             check = session.query(PhoneInterval).limit(1).first() is not None
+        return check
+
+    def has_reference_alignments(self) -> bool:
+        with self.session() as session:
+            check = session.query(ReferencePhoneInterval).limit(1).first() is not None
         return check
 
     def has_ivectors(self) -> bool:
@@ -205,8 +210,6 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             logger.info("Reference alignments already loaded!")
             return
         logger.info("Loading reference files...")
-        indices = []
-        jobs = []
         reference_intervals = []
         with tqdm(total=self.num_files, disable=config.QUIET) as pbar, self.session() as session:
             phone_mapping = {}
@@ -220,6 +223,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 if p_id > max_id:
                     max_id = p_id
             new_phones = []
+            utterance_mapping = []
             for root, _, files in os.walk(reference_directory, followlinks=True):
                 if root.startswith("."):  # Ignore hidden directories
                     continue
@@ -232,112 +236,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                         file_id = session.query(File.id).filter_by(name=file_name).scalar()
                         if not file_id:
                             continue
-                        if config.USE_MP:
-                            indices.append(file_id)
-                            jobs.append((os.path.join(root, f), root_speaker))
-                        else:
-                            intervals = parse_aligned_textgrid(os.path.join(root, f), root_speaker)
-                            utterances = (
-                                session.query(
-                                    Utterance.id, Speaker.name, Utterance.begin, Utterance.end
-                                )
-                                .join(Utterance.speaker)
-                                .filter(Utterance.file_id == file_id)
-                                .order_by(Utterance.begin)
-                            )
-                            for u_id, speaker_name, begin, end in utterances:
-                                if speaker_name not in intervals:
-                                    continue
-                                utterance_intervals = []
-                                while intervals[speaker_name]:
-                                    interval = intervals[speaker_name].pop(0)
-                                    dur = interval.end - interval.begin
-                                    mid_point = interval.begin + (dur / 2)
-                                    if begin <= mid_point <= end:
-                                        if interval.label not in phone_mapping:
-                                            max_id += 1
-                                            phone_mapping[interval.label] = max_id
-                                            new_phones.append(
-                                                {
-                                                    "id": max_id,
-                                                    "mapping_id": max_id - 1,
-                                                    "phone": interval.label,
-                                                    "kaldi_label": interval.label,
-                                                    "phone_type": PhoneType.extra,
-                                                }
-                                            )
-                                        if (
-                                            utterance_intervals
-                                            and utterance_intervals[-1]["end"] != interval.begin
-                                        ):
-                                            utterance_intervals.append(
-                                                {
-                                                    "id": interval_id,
-                                                    "begin": utterance_intervals[-1]["end"],
-                                                    "end": interval.begin,
-                                                    "phone_id": phone_mapping.get(
-                                                        getattr(
-                                                            self, "optional_silence_phone", "sil"
-                                                        ),
-                                                        2,
-                                                    ),
-                                                    "utterance_id": u_id,
-                                                }
-                                            )
-                                            interval_id += 1
-                                        utterance_intervals.append(
-                                            {
-                                                "id": interval_id,
-                                                "begin": interval.begin,
-                                                "end": interval.end,
-                                                "phone_id": phone_mapping[interval.label],
-                                                "utterance_id": u_id,
-                                            }
-                                        )
-                                        interval_id += 1
-                                    if mid_point > end:
-                                        intervals[speaker_name].insert(0, interval)
-                                        break
-                                if utterance_intervals:
-                                    if utterance_intervals[0]["begin"] != begin:
-                                        utterance_intervals.insert(
-                                            0,
-                                            {
-                                                "id": interval_id,
-                                                "begin": begin,
-                                                "end": utterance_intervals[0]["begin"],
-                                                "phone_id": phone_mapping.get(
-                                                    getattr(self, "optional_silence_phone", "sil"),
-                                                    2,
-                                                ),
-                                                "utterance_id": u_id,
-                                            },
-                                        )
-                                        interval_id += 1
-                                    if utterance_intervals[-1]["end"] != end:
-                                        utterance_intervals.insert(
-                                            0,
-                                            {
-                                                "id": interval_id,
-                                                "begin": utterance_intervals[-1]["end"],
-                                                "end": end,
-                                                "phone_id": phone_mapping.get(
-                                                    getattr(self, "optional_silence_phone", "sil"),
-                                                    2,
-                                                ),
-                                                "utterance_id": u_id,
-                                            },
-                                        )
-                                        interval_id += 1
-                                reference_intervals.extend(utterance_intervals)
-                            pbar.update(1)
-
-            if config.USE_MP:
-                with ThreadPool(config.NUM_JOBS) as pool:
-                    gen = pool.starmap(parse_aligned_textgrid, jobs)
-                    for i, intervals in enumerate(gen):
-                        pbar.update(1)
-                        file_id = indices[i]
+                        intervals = parse_aligned_textgrid(os.path.join(root, f), root_speaker)
                         utterances = (
                             session.query(
                                 Utterance.id, Speaker.name, Utterance.begin, Utterance.end
@@ -349,6 +248,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                         for u_id, speaker_name, begin, end in utterances:
                             if speaker_name not in intervals:
                                 continue
+                            utterance_intervals = []
                             while intervals[speaker_name]:
                                 interval = intervals[speaker_name].pop(0)
                                 dur = interval.end - interval.begin
@@ -366,7 +266,24 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                                                 "phone_type": PhoneType.extra,
                                             }
                                         )
-                                    reference_intervals.append(
+                                    if (
+                                        utterance_intervals
+                                        and utterance_intervals[-1]["end"] != interval.begin
+                                    ):
+                                        utterance_intervals.append(
+                                            {
+                                                "id": interval_id,
+                                                "begin": utterance_intervals[-1]["end"],
+                                                "end": interval.begin,
+                                                "phone_id": phone_mapping.get(
+                                                    getattr(self, "optional_silence_phone", "sil"),
+                                                    2,
+                                                ),
+                                                "utterance_id": u_id,
+                                            }
+                                        )
+                                        interval_id += 1
+                                    utterance_intervals.append(
                                         {
                                             "id": interval_id,
                                             "begin": interval.begin,
@@ -379,15 +296,54 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                                 if mid_point > end:
                                     intervals[speaker_name].insert(0, interval)
                                     break
+                            if utterance_intervals:
+                                if utterance_intervals[0]["begin"] != begin:
+                                    utterance_intervals.insert(
+                                        0,
+                                        {
+                                            "id": interval_id,
+                                            "begin": begin,
+                                            "end": utterance_intervals[0]["begin"],
+                                            "phone_id": phone_mapping.get(
+                                                getattr(self, "optional_silence_phone", "sil"),
+                                                2,
+                                            ),
+                                            "utterance_id": u_id,
+                                        },
+                                    )
+                                    interval_id += 1
+                                if utterance_intervals[-1]["end"] != end:
+                                    utterance_intervals.insert(
+                                        0,
+                                        {
+                                            "id": interval_id,
+                                            "begin": utterance_intervals[-1]["end"],
+                                            "end": end,
+                                            "phone_id": phone_mapping.get(
+                                                getattr(self, "optional_silence_phone", "sil"),
+                                                2,
+                                            ),
+                                            "utterance_id": u_id,
+                                        },
+                                    )
+                                    interval_id += 1
+                            reference_intervals.extend(utterance_intervals)
+                            if utterance_intervals:
+                                utterance_mapping.append({"id": u_id, "manual_alignments": True})
+                        pbar.update(1)
+
             if new_phones:
                 session.execute(sqlalchemy.insert(Phone.__table__), new_phones)
                 session.commit()
             session.execute(
                 sqlalchemy.insert(ReferencePhoneInterval.__table__), reference_intervals
             )
+            if utterance_mapping:
+                bulk_update(session, Utterance, utterance_mapping)
             session.query(CorpusWorkflow).filter(CorpusWorkflow.id == workflow.id).update(
                 {CorpusWorkflow.done: True, CorpusWorkflow.alignments_collected: True}
             )
+            session.query(Corpus).update({Corpus.has_reference_alignments: True})
             session.commit()
 
     def validate_corpus(self):
@@ -1136,8 +1092,56 @@ class AcousticCorpusPronunciationMixin(
         For dictionary parsing parameters
     """
 
-    def __init__(self, **kwargs):
+    def __init__(
+        self,
+        reference_directory: typing.Optional[typing.Union[Path, str]] = None,
+        custom_mapping_path: typing.Optional[typing.Union[Path, str]] = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
+        self.reference_directory = reference_directory
+        self.custom_mapping_path = custom_mapping_path
+
+    def load_mapping(self, custom_mapping_path: typing.Union[Path, str]):
+        mapping = load_evaluation_mapping(custom_mapping_path)
+        with self.session() as session:
+            extra_phones = {
+                phone: p_id
+                for phone, p_id in session.query(Phone.phone, Phone.id).filter(
+                    Phone.phone_type == PhoneType.extra
+                )
+            }
+            phones = {
+                phone: p_id
+                for phone, p_id in session.query(Phone.phone, Phone.id).filter(
+                    Phone.phone_type == PhoneType.non_silence
+                )
+            }
+            phone_mappings = []
+            found_phones = set()
+            found_extra_phones = set()
+            for aligned_phones, ref_phones in mapping.items():
+                if isinstance(ref_phones, str):
+                    ref_phones = [ref_phones]
+                for rp in ref_phones:
+                    phone_mappings.append(
+                        {
+                            "model_phone_string": aligned_phones,
+                            "reference_phone_string": rp,
+                        }
+                    )
+                found_phones.update(aligned_phones.split())
+                found_extra_phones.update(ref_phones)
+            session.bulk_insert_mappings(PhoneMapping, phone_mappings)
+            session.commit()
+            unreferenced_phones = sorted(set(phones.keys()) - found_phones)
+            unreferenced_extra_phones = sorted(set(extra_phones.keys()) - found_extra_phones)
+            logger.debug(
+                f"Phones not referenced in mapping file: {', '.join(unreferenced_phones)}"
+            )
+            logger.debug(
+                f"Reference phones not referenced in mapping file: {', '.join(unreferenced_extra_phones)}"
+            )
 
     def load_corpus(self) -> None:
         """
@@ -1172,7 +1176,10 @@ class AcousticCorpusPronunciationMixin(
             self.load_phone_topologies()
             self.load_phone_groups()
             self.load_lexicon_compilers()
-
+        if self.reference_directory is not None:
+            self.load_reference_alignments(self.reference_directory)
+        if self.custom_mapping_path is not None:
+            self.load_mapping(self.custom_mapping_path)
         begin = time.time()
         self.generate_features()
         logger.debug(f"Generated features in {time.time() - begin:.3f} seconds")

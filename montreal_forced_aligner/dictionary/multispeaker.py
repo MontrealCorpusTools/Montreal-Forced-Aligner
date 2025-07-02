@@ -1706,6 +1706,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     .filter(Word.dictionary_id == d.id)
                     .filter(Word.included == True)  # noqa
                     .filter(Word.word_type != WordType.silence)
+                    .filter(Word.word_type != WordType.extra)
                     .order_by(Word.word)
                 )
             else:
@@ -1722,6 +1723,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     .join(Pronunciation.word)
                     .filter(Word.included == True)  # noqa
                     .filter(Word.word_type != WordType.silence)
+                    .filter(Word.word_type != WordType.extra)
                     .group_by(Word.mapping_id, Word.word, Pronunciation.pronunciation)
                     .order_by(Word.mapping_id)
                 )

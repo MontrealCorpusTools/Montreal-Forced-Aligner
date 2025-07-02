@@ -26,6 +26,7 @@ from montreal_forced_aligner.corpus.multiprocessing import (
 from montreal_forced_aligner.data import (
     DatabaseImportData,
     Language,
+    PhoneType,
     TextFileType,
     WordType,
     WorkflowType,
@@ -41,6 +42,7 @@ from montreal_forced_aligner.db import (
     Phone,
     Pronunciation,
     ReferencePhoneInterval,
+    ReferenceWordInterval,
     SoundFile,
     Speaker,
     SpeakerOrdering,
@@ -592,19 +594,134 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     sqlalchemy.insert(Utterance.__table__), import_data.utterance_objects
                 )
             session.flush()
-            if import_data.phone_interval_objects:
+            if import_data.word_interval_objects and import_data.phone_interval_objects:
+                word_mapping = {}
+
+                new_word_objects = []
+                max_word_id = 0
+                for word in session.query(Word).all():
+                    word_mapping[word.word] = word.id
+                    if word.id > max_word_id:
+                        max_word_id = word.id
+                max_word_id += 1
                 phone_mapping = {}
+
+                new_phone_objects = []
+                max_phone_id = 0
                 for phone in session.query(Phone).all():
                     phone_mapping[phone.phone] = phone.id
+                    if phone.id > max_phone_id:
+                        max_phone_id = phone.id
+                max_phone_id += 1
                 reference_workflow = CorpusWorkflow(
                     name="reference",
                     workflow_type=WorkflowType.reference,
                     alignments_collected=True,
                 )
                 session.add(reference_workflow)
+                session.query(Corpus).update({Corpus.has_reference_alignments: True})
                 session.flush()
+                phone_interval_index = 0
+                word_interval_id = 1
+                for wi in import_data.word_interval_objects:
+                    w = wi.pop("word")
+                    if w not in word_mapping:
+                        word_type = WordType.extra
+                        if w == "<eps>":
+                            word_type = WordType.silence
+                        elif w == "<unk>":
+                            word_type = WordType.oov
+
+                        new_word_objects.append(
+                            {
+                                "id": max_word_id,
+                                "mapping_id": max_word_id - 1,
+                                "word": w,
+                                "dictionary_id": 1,
+                                "word_type": word_type,
+                                "included": False,
+                                "count": 0,
+                            }
+                        )
+
+                        word_mapping[w] = max_word_id
+                        max_word_id += 1
+                    wi["word_id"] = word_mapping[w]
+                    wi["id"] = word_interval_id
+                    while phone_interval_index < len(import_data.phone_interval_objects):
+                        pi = import_data.phone_interval_objects[phone_interval_index]
+                        mid_point = (pi["end"] + pi["begin"]) / 2
+                        if mid_point < wi["begin"]:
+                            phone_interval_index += 1
+                            continue
+                        if pi["utterance_id"] != wi["utterance_id"]:
+                            break
+                        if mid_point > wi["end"]:
+                            break
+                        p = pi.pop("phone")
+                        if p not in phone_mapping:
+                            phone_type = PhoneType.non_silence
+                            if p == "sil":
+                                phone_type = PhoneType.silence
+                            elif p == "spn":
+                                phone_type = PhoneType.oov
+                            new_phone_objects.append(
+                                {
+                                    "id": max_phone_id,
+                                    "mapping_id": max_phone_id - 1,
+                                    "phone": p,
+                                    "kaldi_label": p,
+                                    "phone_type": phone_type,
+                                }
+                            )
+                            phone_mapping[p] = max_phone_id
+                            max_phone_id += 1
+                        pi["phone_id"] = phone_mapping[p]
+                        pi["word_interval_id"] = word_interval_id
+                        phone_interval_index += 1
+                    word_interval_id += 1
                 for pi in import_data.phone_interval_objects:
-                    pi["phone_id"] = phone_mapping[pi.pop("phone")]
+                    if "word_interval_id" in pi:
+                        continue
+                    p = pi.pop("phone")
+                    if p not in phone_mapping:
+                        phone_type = PhoneType.non_silence
+                        if p == "sil":
+                            phone_type = PhoneType.silence
+                        elif p == "spn":
+                            phone_type = PhoneType.oov
+                        new_phone_objects.append(
+                            {
+                                "id": max_phone_id,
+                                "mapping_id": max_phone_id - 1,
+                                "phone": p,
+                                "kaldi_label": p,
+                                "phone_type": phone_type,
+                            }
+                        )
+                        phone_mapping[p] = max_phone_id
+                        max_phone_id += 1
+                    pi["phone_id"] = phone_mapping[p]
+                    phone_interval_index += 1
+                if new_word_objects:
+                    session.execute(
+                        sqlalchemy.insert(Word.__table__),
+                        new_word_objects,
+                    )
+                    session.flush()
+                if new_phone_objects:
+                    session.execute(
+                        sqlalchemy.insert(Phone.__table__),
+                        new_phone_objects,
+                    )
+                    session.flush()
+
+                session.execute(
+                    sqlalchemy.insert(ReferenceWordInterval.__table__),
+                    import_data.word_interval_objects,
+                )
+                session.flush()
+
                 session.execute(
                     sqlalchemy.insert(ReferencePhoneInterval.__table__),
                     import_data.phone_interval_objects,
@@ -1190,6 +1307,15 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     "speaker_id": self._speaker_ids[u.speaker_name],
                 }
             )
+            for wi in u.word_intervals:
+                data.word_interval_objects.append(
+                    {
+                        "begin": wi.begin,
+                        "end": wi.end,
+                        "word": wi.label,
+                        "utterance_id": self._current_utterance_index,
+                    }
+                )
             for pi in u.phone_intervals:
                 data.phone_interval_objects.append(
                     {

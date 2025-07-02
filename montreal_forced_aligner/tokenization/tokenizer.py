@@ -14,6 +14,7 @@ from queue import Queue
 
 import pynini
 import pywrapfst
+from kalpy.gmm.data import to_tg_interval
 from praatio import textgrid
 from pynini import Fst
 from pynini.lib import rewrite
@@ -297,7 +298,7 @@ class CorpusTokenizer(AcousticCorpusMixin, TopLevelMfaWorker, DictionaryMixin):
                         intervals = data[speaker]["text"]
                         tier = textgrid.IntervalTier(
                             speaker,
-                            [x.to_tg_interval() for x in intervals],
+                            [to_tg_interval(x, tg.maxTimestamp) for x in intervals],
                             minT=0,
                             maxT=round(duration, 5),
                         )

@@ -248,6 +248,7 @@ class VadSegmenter(
         os.makedirs(log_dir, exist_ok=True)
         try:
             self.load_corpus()
+            self.create_corpus_split()
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs)

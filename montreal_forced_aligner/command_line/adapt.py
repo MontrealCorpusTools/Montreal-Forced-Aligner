@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import typing
 from pathlib import Path
 
 import rich_click as click
@@ -72,6 +73,16 @@ __all__ = ["adapt_model_cli"]
     help="Flag to include original utterance text in the output.",
     default=False,
 )
+@click.option(
+    "--reference_directory",
+    help="Directory containing gold standard alignments to use in training",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+)
+@click.option(
+    "--custom_mapping_path",
+    help="YAML file for mapping phones from acoustic model phone set to phone set in golden alignments.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+)
 @common_options
 @click.help_option("-h", "--help")
 @click.pass_context
@@ -82,18 +93,23 @@ def adapt_model_cli(context, **kwargs) -> None:
     if kwargs.get("profile", None) is not None:
         os.environ[config.MFA_PROFILE_VARIABLE] = kwargs.pop("profile")
     config.update_configuration(kwargs)
-    config_path = kwargs.get("config_path", None)
-    output_directory = kwargs.get("output_directory", None)
-    output_model_path = kwargs.get("output_model_path", None)
+    config_path: typing.Optional[Path] = kwargs.get("config_path", None)
+    output_directory: typing.Optional[Path] = kwargs.get("output_directory", None)
+    output_model_path: typing.Optional[Path] = kwargs.get("output_model_path", None)
     corpus_directory = kwargs["corpus_directory"].absolute()
     dictionary_path = kwargs["dictionary_path"]
     acoustic_model_path = kwargs["acoustic_model_path"]
     output_format = kwargs["output_format"]
     include_original_text = kwargs["include_original_text"]
+    reference_directory: typing.Optional[Path] = kwargs.get("reference_directory", None)
+    custom_mapping_path: typing.Optional[Path] = kwargs.get("custom_mapping_path", None)
     adapter = AdaptingAligner(
         corpus_directory=corpus_directory,
         dictionary_path=dictionary_path,
         acoustic_model_path=acoustic_model_path,
+        reference_directory=reference_directory,
+        custom_mapping_path=custom_mapping_path,
+        use_reference_alignments=True,
         **AdaptingAligner.parse_parameters(config_path, context.params, context.args),
     )
 

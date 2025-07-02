@@ -280,6 +280,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                         )
                     self.ivector_extractor.export_model(self.working_directory)
                     self.load_corpus()
+                    self.create_corpus_split()
                     self.extract_ivectors()
                     self.compute_speaker_ivectors()
             if self.evaluation_mode:

@@ -28,7 +28,7 @@ from tqdm.rich import tqdm
 
 from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import KaldiFunction
-from montreal_forced_aligner.data import CtmInterval, DatasetType
+from montreal_forced_aligner.data import DatasetType
 from montreal_forced_aligner.db import Corpus, Dictionary
 from montreal_forced_aligner.exceptions import (
     DictionaryError,
@@ -37,6 +37,9 @@ from montreal_forced_aligner.exceptions import (
 )
 from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.textgrid import process_ctm_line
+
+if typing.TYPE_CHECKING:
+    from kalpy.gmm.data import CtmInterval
 
 __all__ = [
     "check_third_party",
@@ -227,7 +230,7 @@ def parse_ctm_output(
     -------
     int or str
         Utterance ID
-    list[:class:`~montreal_forced_aligner.data.CtmInterval`]
+    list[:class:`~kalpy.gmm.data.CtmInterval`]
         List of CTM intervals for the utterance
     """
     current_utt = None

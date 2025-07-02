@@ -31,11 +31,12 @@ from _kalpy.matrix import FloatMatrix, FloatSubMatrix
 from _kalpy.util import (
     RandomAccessBaseDoubleMatrixReader,
     RandomAccessBaseFloatMatrixReader,
-    RandomAccessInt32VectorReader,
+    RandomAccessInt32VectorVectorReader,
 )
 from kalpy.data import Segment
 from kalpy.decoder.data import FstArchive
 from kalpy.decoder.training_graphs import TrainingGraphCompiler
+from kalpy.evaluation import align_words, fix_unk_words
 from kalpy.feat.mfcc import MfccComputer
 from kalpy.feat.pitch import PitchComputer
 from kalpy.fstext.lexicon import LexiconCompiler
@@ -71,12 +72,7 @@ from montreal_forced_aligner.db import (
     WordInterval,
 )
 from montreal_forced_aligner.exceptions import AlignmentCollectionError, AlignmentExportError
-from montreal_forced_aligner.helper import (
-    align_words,
-    fix_unk_words,
-    mfa_open,
-    split_phone_position,
-)
+from montreal_forced_aligner.helper import mfa_open, split_phone_position
 from montreal_forced_aligner.textgrid import construct_textgrid_output
 from montreal_forced_aligner.utils import thread_logger
 
@@ -386,6 +382,7 @@ class AccStatsArguments(MfaArguments):
 
     working_directory: Path
     model_path: Path
+    filter_likely_errors: bool = False
 
 
 class CompileTrainGraphsFunction(KaldiFunction):
@@ -518,6 +515,7 @@ class AccStatsFunction(KaldiFunction):
         super().__init__(args)
         self.working_directory = args.working_directory
         self.model_path = args.model_path
+        self.filter_likely_errors = args.filter_likely_errors
 
     def _run(self) -> None:
         """Run the function"""
@@ -534,6 +532,33 @@ class AccStatsFunction(KaldiFunction):
                 train_logger.debug(f"Accumulating stats for dictionary {d.name} ({d.id})")
                 train_logger.debug(f"Accumulating stats for model: {self.model_path}")
                 accumulator = GmmStatsAccumulator(self.model_path)
+                ignored_keys = None
+                if self.filter_likely_errors:
+                    ignored_keys = set(
+                        x[0]
+                        for x in session.query(Utterance.kaldi_id)
+                        .filter(Utterance.job_id == self.job_name)  # noqa
+                        .filter(
+                            sqlalchemy.or_(
+                                sqlalchemy.and_(
+                                    Utterance.manual_alignments == True,  # noqa
+                                    Utterance.alignment_log_likelihood < -1000,
+                                ),
+                                sqlalchemy.and_(
+                                    Utterance.manual_alignments == False,  # noqa
+                                    Utterance.duration_deviation > 10,
+                                ),
+                                sqlalchemy.and_(
+                                    Utterance.manual_alignments == False,  # noqa
+                                    Utterance.snr <= 1.0,
+                                ),
+                            )
+                        )
+                        .all()
+                    )
+                    train_logger.debug(
+                        f"Ignoring {len(ignored_keys)} utterances due to likely alignment errors"
+                    )
 
                 feature_archive = job.construct_feature_archive(self.working_directory, d.name)
                 ali_path = job.construct_path(self.working_directory, "ali", "ark", d.name)
@@ -549,7 +574,10 @@ class AccStatsFunction(KaldiFunction):
                 train_logger.debug(f"Alignment path: {ali_path}")
 
                 accumulator.accumulate_stats(
-                    feature_archive, alignment_archive, callback=self.callback
+                    feature_archive,
+                    alignment_archive,
+                    callback=self.callback,
+                    ignored_keys=ignored_keys,
                 )
                 self.callback((accumulator.transition_accs, accumulator.gmm_accs))
 
@@ -638,7 +666,7 @@ class AlignFunction(KaldiFunction):
                 )
                 if reference_phones_path.exists():
                     align_logger.debug(f"Reference phones: {reference_phones_path}")
-                    reference_phone_archive = RandomAccessInt32VectorReader(
+                    reference_phone_archive = RandomAccessInt32VectorVectorReader(
                         generate_read_specifier(reference_phones_path)
                     )
                 else:
@@ -786,7 +814,7 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
                     sr = 16_000
                     rms = librosa.feature.rms(
                         y=audio, frame_length=int(0.025 * sr), hop_length=int(0.01 * sr)
-                    )
+                    )[0, ...]
                     interval_count = 0
                     log_like_sum = 0
                     duration_zscore_max = 0
@@ -795,12 +823,12 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
                     nonsilence_energy_sum = 0
                     nonsilence_frame_count = 0
                     for pi in phone_intervals:
-                        begin_index = int(pi.begin / 0.01)
-                        end_index = int(pi.end / 0.01)
+                        begin_index = int((pi.begin - utterance.begin) / 0.01)
+                        end_index = int((pi.end - utterance.begin) / 0.01)
                         if pi.phone_id == silence_phone_id:
                             silence_frame_count += end_index - begin_index
                             silence_energy_sum += rms[begin_index:end_index].sum()
-                        else:
+                        elif pi.phone_id in phones:
                             nonsilence_frame_count += end_index - begin_index
                             nonsilence_energy_sum += rms[begin_index:end_index].sum()
                         if pi.phone_id not in phones:
@@ -825,9 +853,13 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
                         nonsilence_energy = nonsilence_energy_sum / nonsilence_frame_count
                     except ZeroDivisionError:
                         nonsilence_energy = rms.max()
-                    snr = float((nonsilence_energy / max(silence_energy, 0.000001)) ** 2)
+                    nonsilence_energy = 10 * math.log10(
+                        max(nonsilence_energy, sys.float_info.epsilon)
+                    )
+                    silence_energy = 10 * math.log10(max(silence_energy, sys.float_info.epsilon))
+                    snr = nonsilence_energy - silence_energy
                     extraction_logger.debug(
-                        f"{utterance.id}: Energy shape: {rms.shape}, Nonsilence energy: {nonsilence_energy}, Silence energy: {silence_energy}, SNR: {snr}"
+                        f"{utterance.id}: Energy shape: {rms.shape}, Nonsilence energy: {nonsilence_energy} ({nonsilence_frame_count}), Silence energy: {silence_energy} ({silence_frame_count}), SNR: {snr}"
                     )
                     self.callback(
                         (
@@ -1070,7 +1102,7 @@ class FineTuneFunction(KaldiFunction):
                             pitch = self.pitch_computer.compute_pitch_for_export(
                                 segment, compress=False
                             )
-                            feats = kalpy_feat.paste_feats([feats, pitch], 0)
+                            feats = kalpy_feat.paste_feats([feats, pitch], 1)
                         if use_deltas:
                             feats = kalpy_feat.compute_deltas(delta_options, feats)
                         elif use_splices:

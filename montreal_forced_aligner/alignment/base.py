@@ -17,13 +17,15 @@ import typing
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from queue import Empty
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import sqlalchemy
+from kalpy.evaluation import align_phones
 from kalpy.feat.mfcc import MfccComputer
 from kalpy.feat.pitch import PitchComputer
 from kalpy.fstext.lexicon import LexiconCompiler
 from kalpy.gmm.align import GmmAligner
+from kalpy.gmm.data import CtmInterval
 from kalpy.gmm.utils import read_transition_model
 from sqlalchemy.orm import joinedload, subqueryload
 from tqdm.rich import tqdm
@@ -45,8 +47,6 @@ from montreal_forced_aligner.alignment.multiprocessing import (
 )
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
 from montreal_forced_aligner.data import (
-    CtmInterval,
-    PhoneType,
     PronunciationProbabilityCounter,
     TextFileType,
     WordType,
@@ -73,12 +73,7 @@ from montreal_forced_aligner.db import (
     bulk_update,
 )
 from montreal_forced_aligner.exceptions import AlignmentExportError, KaldiProcessingError
-from montreal_forced_aligner.helper import (
-    align_phones,
-    format_correction,
-    format_probability,
-    mfa_open,
-)
+from montreal_forced_aligner.helper import format_correction, format_probability, mfa_open
 from montreal_forced_aligner.textgrid import (
     construct_textgrid_output,
     output_textgrid_writing_errors,
@@ -364,9 +359,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         """Run the aligner"""
         self.alignment_mode = True
         self.initialize_database()
-        wf = self.current_workflow
-        if wf is None:
-            self.create_new_current_workflow(WorkflowType.alignment, workflow_name)
+        self.create_new_current_workflow(WorkflowType.alignment, workflow_name)
         wf = self.current_workflow
         if wf.done:
             logger.info("Alignment already done, skipping.")
@@ -931,7 +924,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 "utterance_id",
             ],
         )
-
+        exception = None
         if not config.USE_POSTGRES:
             word_writer.writeheader()
             phone_writer.writeheader()
@@ -942,76 +935,85 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         ) in run_kaldi_function(
             AlignmentExtractionFunction, arguments, total_count=self.num_current_utterances
         ):
-            new_phone_interval_mappings = []
-            new_word_interval_mappings = []
-            for word_interval in ctm.word_intervals:
-                if word_interval.label not in word_mappings[dict_id]:
-                    new_words.append(
-                        {
-                            "id": word_index,
-                            "mapping_id": mapping_id,
-                            "word": word_interval.label,
-                            "dictionary_id": 1,
-                            "word_type": WordType.oov,
-                        }
+            if exception is not None:
+                continue
+            try:
+                new_phone_interval_mappings = []
+                new_word_interval_mappings = []
+                for word_interval in ctm.word_intervals:
+                    if word_interval.label not in word_mappings[dict_id]:
+                        new_words.append(
+                            {
+                                "id": word_index,
+                                "mapping_id": mapping_id,
+                                "word": word_interval.label,
+                                "dictionary_id": 1,
+                                "word_type": WordType.oov,
+                            }
+                        )
+                        word_mappings[dict_id][word_interval.label] = word_index
+                        word_id = word_index
+                        word_index += 1
+                        mapping_id += 1
+                    else:
+                        word_id = word_mappings[dict_id][word_interval.label]
+                    max_word_interval_id += 1
+                    pronunciation_id = pronunciation_mappings[dict_id].get(
+                        (word_interval.label, word_interval.pronunciation), None
                     )
-                    word_mappings[dict_id][word_interval.label] = word_index
-                    word_id = word_index
-                    word_index += 1
-                    mapping_id += 1
-                else:
-                    word_id = word_mappings[dict_id][word_interval.label]
-                max_word_interval_id += 1
-                pronunciation_id = pronunciation_mappings[dict_id].get(
-                    (word_interval.label, word_interval.pronunciation), None
-                )
 
-                new_word_interval_mappings.append(
-                    {
-                        "id": max_word_interval_id,
-                        "begin": word_interval.begin,
-                        "end": word_interval.end,
-                        "word_id": word_id,
-                        "pronunciation_id": pronunciation_id,
-                        "utterance_id": utterance,
-                    }
-                )
-                for interval in word_interval.phones:
-                    max_phone_interval_id += 1
-                    new_phone_interval_mappings.append(
+                    new_word_interval_mappings.append(
                         {
-                            "id": max_phone_interval_id,
-                            "begin": interval.begin,
-                            "end": interval.end,
-                            "phone_id": phone_to_phone_id[interval.symbol],
+                            "id": max_word_interval_id,
+                            "begin": word_interval.begin,
+                            "end": word_interval.end,
+                            "word_id": word_id,
+                            "pronunciation_id": pronunciation_id,
                             "utterance_id": utterance,
-                            "word_interval_id": max_word_interval_id,
-                            "phone_goodness": interval.confidence if interval.confidence else 0.0,
                         }
                     )
-            phone_writer.writerows(new_phone_interval_mappings)
-            word_writer.writerows(new_word_interval_mappings)
-            if new_word_interval_mappings:
-                has_words = True
-            phone_interval_count += 1
-            if config.USE_POSTGRES and phone_interval_count > 100000:
-                bulk_insert_begin = time.time()
-                if has_words:
-                    word_buf.seek(0)
-                    cursor.copy_from(word_buf, WordInterval.__tablename__, sep=",", null="")
-                    word_buf.truncate(0)
-                    word_buf.seek(0)
+                    for interval in word_interval.phones:
+                        max_phone_interval_id += 1
+                        new_phone_interval_mappings.append(
+                            {
+                                "id": max_phone_interval_id,
+                                "begin": interval.begin,
+                                "end": interval.end,
+                                "phone_id": phone_to_phone_id[interval.symbol],
+                                "utterance_id": utterance,
+                                "word_interval_id": max_word_interval_id,
+                                "phone_goodness": interval.confidence
+                                if interval.confidence
+                                else 0.0,
+                            }
+                        )
+                phone_writer.writerows(new_phone_interval_mappings)
+                word_writer.writerows(new_word_interval_mappings)
+                if new_word_interval_mappings:
+                    has_words = True
+                phone_interval_count += 1
+                if config.USE_POSTGRES and phone_interval_count > 100000:
+                    bulk_insert_begin = time.time()
+                    if has_words:
+                        word_buf.seek(0)
+                        cursor.copy_from(word_buf, WordInterval.__tablename__, sep=",", null="")
+                        word_buf.truncate(0)
+                        word_buf.seek(0)
 
-                phone_buf.seek(0)
-                cursor.copy_from(phone_buf, PhoneInterval.__tablename__, sep=",", null="")
-                phone_buf.truncate(0)
-                phone_buf.seek(0)
-                conn.commit()
-                cursor.close()
-                conn.close()
-                conn = self.db_engine.raw_connection()
-                cursor = conn.cursor()
-                phone_interval_count = 0
+                    phone_buf.seek(0)
+                    cursor.copy_from(phone_buf, PhoneInterval.__tablename__, sep=",", null="")
+                    phone_buf.truncate(0)
+                    phone_buf.seek(0)
+                    conn.commit()
+                    cursor.close()
+                    conn.close()
+                    conn = self.db_engine.raw_connection()
+                    cursor = conn.cursor()
+                    phone_interval_count = 0
+            except Exception as e:
+                exception = e
+        if exception is not None:
+            raise exception
 
         if config.USE_POSTGRES:
             logger.debug(f"Collecting intervals took {time.time() - all_begin:.3f} seconds")
@@ -1402,51 +1404,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             )
         self.export_textgrids(output_format, include_original_text)
 
-    def validate_mapping(self, mapping: Dict[str, typing.Union[str, typing.List[str]]]):
-        with self.session() as session:
-            extra_phones = {
-                phone: p_id
-                for phone, p_id in session.query(Phone.phone, Phone.id).filter(
-                    Phone.phone_type == PhoneType.extra
-                )
-            }
-            phones = {
-                phone: p_id
-                for phone, p_id in session.query(Phone.phone, Phone.id).filter(
-                    Phone.phone_type == PhoneType.non_silence
-                )
-            }
-            phone_mappings = []
-            found_phones = set()
-            found_extra_phones = set()
-            for aligned_phones, ref_phones in mapping.items():
-                aligned_phones = aligned_phones.split()
-                if isinstance(ref_phones, str):
-                    ref_phones = [ref_phones]
-                for rp in ref_phones:
-                    phone_mappings.append(
-                        {
-                            "model_phone_string": aligned_phones,
-                            "reference_phone_string": rp,
-                        }
-                    )
-                found_phones.update(aligned_phones)
-                found_extra_phones.update(ref_phones)
-
-            session.bulk_insert_mappings(PhoneMapping, phone_mappings)
-            session.commit()
-            unreferenced_phones = sorted(set(phones.keys()) - found_phones)
-            unreferenced_extra_phones = sorted(set(extra_phones.keys()) - found_extra_phones)
-            logger.debug(
-                f"Phones not referenced in mapping file: {', '.join(unreferenced_phones)}"
-            )
-            logger.debug(
-                f"Reference phones not referenced in mapping file: {', '.join(unreferenced_extra_phones)}"
-            )
-
     def evaluate_alignments(
         self,
-        mapping: Optional[Dict[str, str]] = None,
         output_directory: Optional[str] = None,
         comparison_source=WorkflowType.alignment,
         reference_source=WorkflowType.reference,
@@ -1510,6 +1469,11 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         phone_confusions = collections.Counter()
         with self.session() as session:
             # Set up
+            mapping = {}
+            for x in session.query(PhoneMapping).all():
+                if x.model_phone_string not in mapping:
+                    mapping[x.model_phone_string] = set()
+                mapping[x.model_phone_string].add(x.reference_phone_string)
             logger.info("Evaluating alignments...")
             logger.debug(f"Mapping: {mapping}")
             update_mappings = []
@@ -1537,8 +1501,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             )
             reference_phone_counts = {}
             for u in utterances:
-                reference_phones = u.reference_phone_intervals
-                comparison_phones = u.phone_intervals
+                reference_phones = [x.as_ctm() for x in u.reference_phone_intervals]
+                comparison_phones = [x.as_ctm() for x in u.phone_intervals]
                 if self.use_cutoff_model:
                     for wi in u.word_intervals:
                         if wi.word.word_type is WordType.cutoff:
@@ -1550,7 +1514,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                             comparison_phones.append(
                                 CtmInterval(begin=wi.begin, end=wi.end, label=self.oov_word)
                             )
-                    comparison_phones = sorted(comparison_phones)
+                    comparison_phones = sorted(comparison_phones, key=lambda x: x.begin)
 
                 reference_phone_counts[u.id] = len(reference_phones)
                 if not reference_phone_counts[u.id]:
@@ -1568,7 +1532,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     continue
                 indices.append(u)
                 to_comp.append((reference_phones, comparison_phones))
-            with ThreadPool(config.NUM_JOBS) as pool:
+            with ThreadPool(1) as pool:
                 gen = pool.starmap(score_func, to_comp)
                 for i, (score, phone_error_rate, errors) in enumerate(gen):
                     if score is None:

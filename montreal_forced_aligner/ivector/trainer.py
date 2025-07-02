@@ -705,6 +705,7 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
             return
         try:
             super().load_corpus()
+            self.create_corpus_split()
             with self.session() as session:
                 workflows: typing.Dict[str, CorpusWorkflow] = {
                     x.name: x for x in session.query(CorpusWorkflow)

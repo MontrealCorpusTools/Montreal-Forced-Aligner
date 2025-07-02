@@ -1,5 +1,6 @@
 channels:
   - conda-forge
+  - defaults
 dependencies:
   - python>=3.9
   - numpy
@@ -17,7 +18,6 @@ dependencies:
   - scikit-learn
   - hdbscan
   - psycopg2
-  - biopython
   - click
   - setuptools_scm
   - importlib_metadata
@@ -37,3 +37,4 @@ dependencies:
   - rich-click
   - kaldi =*=cpu*
   - kalpy
+  - compilers

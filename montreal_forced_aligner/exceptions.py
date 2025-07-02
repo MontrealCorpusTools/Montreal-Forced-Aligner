@@ -18,7 +18,7 @@ from montreal_forced_aligner import config
 from montreal_forced_aligner.helper import comma_join
 
 if TYPE_CHECKING:
-    from montreal_forced_aligner.data import CtmInterval
+    from kalpy.gmm.data import CtmInterval
 
 
 __all__ = [
@@ -599,7 +599,7 @@ class CtmError(AlignmentError):
 
     Parameters
     ----------
-    ctm: :class:`~montreal_forced_aligner.data.CtmInterval`
+    ctm: :class:`~kalpy.gmm.data.CtmInterval`
         CTM interval that was not parsed correctly
 
     """
