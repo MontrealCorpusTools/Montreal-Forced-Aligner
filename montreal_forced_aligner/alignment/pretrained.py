@@ -10,19 +10,22 @@ import typing
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+import sqlalchemy
 from _kalpy.matrix import DoubleMatrix, FloatMatrix
 from kalpy.data import Segment
 from kalpy.utils import read_kaldi_object
 from kalpy.utterance import Utterance as KalpyUtterance
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, subqueryload
 
 from montreal_forced_aligner.abc import TopLevelMfaWorker
 from montreal_forced_aligner.alignment.multiprocessing import AnalyzeTranscriptsFunction
 from montreal_forced_aligner.data import PhoneType, WorkflowType
 from montreal_forced_aligner.db import (
+    Corpus,
     CorpusWorkflow,
     Dictionary,
     Grapheme,
+    Job,
     Phone,
     Speaker,
     Utterance,
@@ -71,9 +74,11 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
     def __init__(
         self,
         acoustic_model_path: Path = None,
+        use_reference_alignments: bool = False,
         **kwargs,
     ):
         self.acoustic_model = AcousticModel(acoustic_model_path)
+        self.use_reference_alignments = use_reference_alignments
         kw = self.acoustic_model.parameters
         kw.update(kwargs)
         super().__init__(**kw)
@@ -321,7 +326,7 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
             fmllr_trans=fmllr_trans,
             **self.align_options,
         )
-        update_utterance_intervals(session, utterance, workflow.id, ctm)
+        update_utterance_intervals(session, utterance, ctm)
 
     def verify_transcripts(self, workflow_name=None) -> None:
         self.initialize_database()
@@ -351,6 +356,36 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
             bulk_update(session, Utterance, update_mappings)
             session.commit()
 
+    def reset_manual_alignments(self):
+        with self.session() as session:
+            corpus = session.query(Corpus).first()
+            if corpus is not None and corpus.has_reference_alignments:
+                session.query(Utterance).update({Utterance.manual_alignments: False})
+                session.commit()
+                jobs = session.query(Job).options(subqueryload(Job.dictionaries))
+                for job in jobs:
+                    for d in job.training_dictionaries:
+                        reference_phones_path = job.construct_path(
+                            job.corpus.current_subset_directory, "ref_phones", "ark", d.name
+                        )
+                        reference_phones_path.unlink(missing_ok=True)
+
+    def check_manual_alignments(self):
+        with self.session() as session:
+            corpus = session.query(Corpus).first()
+            if corpus is not None and corpus.has_reference_alignments:
+                ref_phone_counts = (
+                    session.query(Utterance.id, sqlalchemy.func.count())
+                    .join(Utterance.reference_phone_intervals)
+                    .group_by(Utterance.id)
+                )
+                mapping = []
+                for u_id, c in ref_phone_counts:
+                    if c > 0:
+                        mapping.append({"id": u_id, "manual_alignments": True})
+                bulk_update(session, Utterance, mapping)
+                session.commit()
+
     def align(self, workflow_name=None) -> None:
         """Run the aligner"""
         self.initialize_database()
@@ -360,6 +395,8 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
             logger.info("Alignment already done, skipping.")
             return
         self.setup()
+        if not self.use_reference_alignments:
+            self.reset_manual_alignments()
         super().align()
 
 

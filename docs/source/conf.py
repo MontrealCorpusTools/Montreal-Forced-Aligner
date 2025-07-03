@@ -61,7 +61,6 @@ intersphinx_mapping = {
     "sqlalchemy": ("https://docs.sqlalchemy.org/en/14/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "python": ("https://docs.python.org/3", None),
-    "Bio": ("https://biopython.org/docs/latest/api/", None),
     "click": ("https://click.palletsprojects.com/en/8.1.x/", None),
 }
 rst_prolog = """
@@ -76,8 +75,21 @@ extlinks = {
 
 xref_links = {
     "mfa_models": ("MFA Models", "https://mfa-models.readthedocs.io/"),
+    "mfa_models_repo": (
+        "MFA Models repository",
+        "https://github.com/MontrealCorpusTools/mfa-models",
+    ),
+    "mfa_adaptation_scripts": (
+        "MFA Adaptation workshop scripts",
+        "https://github.com/mmcauliffe/mfa-adaptation/tree/main/scripts",
+    ),
+    "mfa_model_scripts": (
+        "MFA-Models training scripts",
+        "https://github.com/MontrealCorpusTools/mfa-models/tree/main/scripts/training_models",
+    ),
     "anchor": ("Anchor Annotator", "https://anchor-annotator.readthedocs.io/en/latest/"),
     "speechbrain": ("SpeechBrain", "https://speechbrain.github.io/"),
+    "whisperx": ("WhisperX", "https://github.com/m-bain/whisperX"),
     "scikit-learn": ("scikit-learn", "https://scikit-learn.org/stable/index.html"),
     "spacy-pkuseg": ("spacy-pkuseg", "https://github.com/explosion/spacy-pkuseg"),
     "hanziconv": ("hanziconv", "https://github.com/berniey/hanziconv"),
@@ -165,7 +177,6 @@ xref_links = {
         "Corpus Phonetics Tutorial",
         "https://eleanorchodroff.com/tutorial/intro.html",
     ),
-    "coqui": ("Coqui", "https://coqui.ai/"),
     "conda_installation": (
         "Conda installation",
         "https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html",

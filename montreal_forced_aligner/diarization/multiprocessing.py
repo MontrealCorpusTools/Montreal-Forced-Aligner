@@ -1,12 +1,14 @@
 """Multiprocessing functionality for speaker diarization"""
 from __future__ import annotations
 
+import collections
 import logging
 import os
 import queue
 import sys
 import threading
 import time
+import traceback
 import typing
 from pathlib import Path
 
@@ -25,6 +27,7 @@ import sqlalchemy
 from _kalpy.ivector import Plda
 from kalpy.data import Segment
 from kalpy.ivector.plda import PldaScorer
+from kalpy.utils import kalpy_logger
 from scipy.spatial import distance
 from sklearn import cluster, manifold, metrics, neighbors, preprocessing
 from sqlalchemy.orm import joinedload
@@ -38,6 +41,7 @@ from montreal_forced_aligner.data import (
     MfaArguments,
 )
 from montreal_forced_aligner.db import File, Job, SoundFile, Speaker, Utterance
+from montreal_forced_aligner.vad.models import MfaVAD
 
 try:
     import warnings
@@ -51,17 +55,35 @@ try:
         import torch
 
         try:
-            from speechbrain.pretrained import EncoderClassifier, SpeakerRecognition
-        except ImportError:  # speechbrain 1.0
-            from speechbrain.inference.classifiers import EncoderClassifier
-            from speechbrain.inference.speaker import SpeakerRecognition
-        from speechbrain.utils.metric_stats import EER
-    FOUND_SPEECHBRAIN = True
+            try:
+                from speechbrain.pretrained import EncoderClassifier, SpeakerRecognition
+            except ImportError:  # speechbrain 1.0
+                from speechbrain.inference.classifiers import EncoderClassifier
+                from speechbrain.inference.speaker import SpeakerRecognition
+            from speechbrain.utils.metric_stats import EER
+
+            FOUND_SPEECHBRAIN = True
+        except (ImportError, OSError):
+            FOUND_SPEECHBRAIN = False
+            EncoderClassifier = None
+            SpeakerRecognition = None
+            EER = None
+        try:
+            from pyannote.audio.pipelines.speaker_diarization import (
+                SpeakerDiarization as PyannoteDiarizationPipeline,
+            )
+
+            FOUND_PYANNOTE = True
+        except (ImportError, OSError):
+            FOUND_PYANNOTE = False
+            PyannoteDiarizationPipeline = None
 except (ImportError, OSError):
     FOUND_SPEECHBRAIN = False
+    FOUND_PYANNOTE = False
     EncoderClassifier = None
     SpeakerRecognition = None
     EER = None
+    PyannoteDiarizationPipeline = None
 
 __all__ = [
     "PldaClassificationArguments",
@@ -700,12 +722,16 @@ class SpeechbrainEmbeddingFunction(KaldiFunction):
             ),
             run_opts=run_opts,
         )
-
+        vad_model = MfaVAD.from_hparams(
+            source="speechbrain/vad-crdnn-libriparty",
+            savedir=os.path.join(config.TEMPORARY_DIRECTORY, "models", "VAD"),
+            run_opts=run_opts,
+        )
         return_q = queue.Queue(2)
         finished_adding = threading.Event()
         stopped = threading.Event()
         loader = UtteranceFileLoader(
-            self.job_name, self.session, return_q, stopped, finished_adding
+            self.job_name, self.session, return_q, stopped, finished_adding, vad_model=vad_model
         )
         loader.start()
         exception = None
@@ -731,12 +757,30 @@ class SpeechbrainEmbeddingFunction(KaldiFunction):
                 .numpy()
                 .squeeze(axis=1)
             )
-            embeddings = preprocessing.normalize(embeddings)
-            for i, u_id in enumerate(batch.utterance_id):
-                self.callback((int(u_id), embeddings[i]))
-            del embeddings
             del audio
             del lens
+            embeddings = preprocessing.normalize(embeddings)
+            collected_embeddings = collections.defaultdict(list)
+            collected_durations = collections.defaultdict(list)
+            for i, u_id in enumerate(batch.utterance_id):
+                collected_embeddings[int(u_id)].append(embeddings[i])
+                collected_durations[int(u_id)].append(batch.duration[i])
+            for u_id, emb in collected_embeddings.items():
+                if len(emb) == 1:
+                    self.callback((int(u_id), emb[0], 0.0))
+                else:
+                    emb = np.array(emb)
+                    durations = np.array(collected_durations[u_id])
+                    durations /= np.sum(durations)
+                    mean_embedding = np.average(emb, axis=0, weights=durations)
+                    mean_embedding = preprocessing.normalize(mean_embedding[np.newaxis, ...])[0]
+                    distance_variance = 0.0
+                    for e in emb:
+                        d = distance.cosine(mean_embedding, e)
+                        if d > distance_variance:
+                            distance_variance = d
+                    self.callback((int(u_id), mean_embedding, float(distance_variance)))
+            del embeddings
             current_index += 1
             if current_index > 10:
                 torch.cuda.empty_cache()
@@ -745,6 +789,151 @@ class SpeechbrainEmbeddingFunction(KaldiFunction):
         loader.join()
         if exception:
             raise exception
+
+
+class PyannoteEmbeddingFunction(KaldiFunction):
+    """
+    Multiprocessing function to generating xvector embeddings from a speechbrain model
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.diarization.multiprocessing.SpeechbrainArguments`
+        Arguments for the function
+    """
+
+    def __init__(self, args: SpeechbrainArguments):
+        super().__init__(args)
+        self.cuda = args.cuda
+        self.cluster = args.cluster
+
+    def _run(self) -> None:
+        """Run the function"""
+        with kalpy_logger("kalpy.ivector", self.log_path) as embedding_logger:
+            device = "cpu"
+            if self.cuda:
+                device = "cuda"
+            model = PyannoteDiarizationPipeline.from_pretrained(
+                "pyannote/speaker-diarization-3.1",
+                cache_dir=os.path.join(config.TEMPORARY_DIRECTORY, "models", "hf_cache"),
+                use_auth_token=config.HF_TOKEN,
+            ).to(torch.device(device))
+
+            return_q = queue.Queue(20)
+            finished_adding = threading.Event()
+            stopped = threading.Event()
+            loader = UtteranceFileLoader(
+                self.job_name, self.session, return_q, stopped, finished_adding, batch_output=False
+            )
+            loader.start()
+            exception = None
+            current_index = 0
+            while True:
+                try:
+                    result = return_q.get(timeout=1)
+                except queue.Empty:
+                    if finished_adding.is_set():
+                        break
+                    continue
+                if stopped.is_set():
+                    continue
+                if isinstance(result, Exception):
+                    exception = result
+                    stopped.set()
+                    continue
+                try:
+                    utterance_id, audio = result
+                    embedding_logger.debug(f"Processing {utterance_id}")
+                    diarization, embeddings = model(
+                        {"waveform": torch.Tensor(audio[np.newaxis, ...]), "sample_rate": 16_000},
+                        min_speakers=1,
+                        max_speakers=3,
+                        return_embeddings=True,
+                    )
+                    speaker_embeddings = {}
+                    speaker_mapping = {}
+                    for s, speaker in enumerate(diarization.labels()):
+                        speaker_mapping[speaker] = s
+                        speaker_embeddings[speaker] = embeddings[s]
+                    distance_variance = 0.0
+                    if len(speaker_embeddings) == 1:
+                        if np.any(np.isnan(embeddings[0])):
+                            continue
+                        self.callback((int(utterance_id), embeddings[0], distance_variance))
+                    else:
+                        durations = np.zeros((embeddings.shape[0],))
+                        for segment, track, label in diarization.itertracks(yield_label=True):
+                            s_ind = speaker_mapping[label]
+                            durations[s_ind] += segment.end - segment.start
+                        durations /= np.sum(durations)
+                        try:
+                            mean_embedding = np.average(embeddings, axis=0, weights=durations)
+                        except ZeroDivisionError:
+                            continue
+                        mean_embedding = preprocessing.normalize(mean_embedding[np.newaxis, ...])[
+                            0
+                        ]
+                        if np.any(np.isnan(mean_embedding)):
+                            continue
+                        distance_variance = 0.0
+                        for e in embeddings:
+                            d = distance.cosine(mean_embedding, e)
+                            if d > distance_variance:
+                                distance_variance = d
+                        self.callback(
+                            (int(utterance_id), mean_embedding, float(distance_variance))
+                        )
+                    del diarization
+                    del speaker_embeddings
+                    del embeddings
+                    current_index += 1
+                    if current_index > 10:
+                        torch.cuda.empty_cache()
+                        current_index = 0
+                except Exception as e:
+                    exc_type, exc_value, exc_traceback = sys.exc_info()
+                    error_text = "\n".join(
+                        traceback.format_exception(exc_type, exc_value, exc_traceback)
+                    )
+                    embedding_logger.debug(error_text)
+                    exception = e
+
+                    stopped.set()
+
+            loader.join()
+            if exception:
+                raise exception
+
+
+if FOUND_SPEECHBRAIN:
+    from speechbrain.dataio.batch import PaddedBatch, batch_pad_right
+
+    class VadPaddedBatch(PaddedBatch):
+        def __init__(
+            self,
+            examples,
+            padded_keys=None,
+            device_prep_keys=None,
+            padding_func=batch_pad_right,
+            padding_kwargs={},
+            apply_default_convert=True,
+            nonpadded_stack=True,
+        ):
+            new_examples = []
+            for e in examples:
+                for s, d in zip(e["signal"], e["duration"]):
+                    new_e = dict(**e)
+                    new_e["signal"] = s
+                    new_e["duration"] = d
+                    new_examples.append(new_e)
+            super().__init__(
+                new_examples,
+                padded_keys,
+                device_prep_keys,
+                padding_func,
+                padding_kwargs,
+                apply_default_convert,
+                nonpadded_stack,
+            )
 
 
 class UtteranceFileLoader(threading.Thread):
@@ -773,7 +962,9 @@ class UtteranceFileLoader(threading.Thread):
         stopped: threading.Event,
         finished_adding: threading.Event,
         model=None,
+        vad_model: MfaVAD = None,
         for_xvector=True,
+        batch_output=True,
     ):
         super().__init__()
         self.job_name = job_name
@@ -782,7 +973,9 @@ class UtteranceFileLoader(threading.Thread):
         self.stopped = stopped
         self.finished_adding = finished_adding
         self.model = model
+        self.vad_model = vad_model
         self.for_xvector = for_xvector
+        self.batch_output = batch_output
 
     def run(self) -> None:
         """
@@ -793,12 +986,26 @@ class UtteranceFileLoader(threading.Thread):
         from torch.utils.data import DataLoader
 
         @speechbrain.utils.data_pipeline.takes("segment")
-        @speechbrain.utils.data_pipeline.provides("signal")
+        @speechbrain.utils.data_pipeline.provides("signal", "duration")
         def audio_pipeline(segment):
             signal = torch.tensor(segment.load_audio())
+            duration = segment.end - segment.begin
             if self.model is not None:
                 signal = self.model.audio_normalizer(signal, 16000)
-            return signal
+            if self.vad_model is not None:
+                if duration < 5:
+                    signal = [signal]
+                    duration = [duration]
+                else:
+                    segments = self.vad_model.segment_for_whisper(signal, min_pause_duration=1.0)
+                    if not segments:
+                        signal = [signal]
+                        duration = [duration]
+                    else:
+                        del signal
+                        signal = [x["inputs"] for x in segments]
+                        duration = [x["end"] - x["start"] for x in segments]
+            return signal, duration
 
         with self.session() as session:
             try:
@@ -821,21 +1028,34 @@ class UtteranceFileLoader(threading.Thread):
                 if not utterances.count():
                     self.finished_adding.set()
                     return
-                dataset = speechbrain.dataio.dataset.DynamicItemDataset(
-                    {
-                        u[0]: {"utterance_id": u[0], "segment": Segment(u[1], u[2], u[3], u[4])}
-                        for u in utterances
-                    }
-                )
-                dataset.add_dynamic_item(audio_pipeline)
-                dataset.set_output_keys(["signal", "utterance_id"])
-                dataloader = DataLoader(
-                    dataset, collate_fn=PaddedBatch, batch_size=config.NUM_JOBS
-                )
-                for batch in dataloader:
-                    if self.stopped.is_set():
-                        break
-                    self.return_q.put(batch)
+                if self.batch_output:
+                    dataset = speechbrain.dataio.dataset.DynamicItemDataset(
+                        {
+                            u[0]: {
+                                "utterance_id": u[0],
+                                "segment": Segment(u[1], u[2], u[3], u[4]),
+                            }
+                            for u in utterances
+                        }
+                    )
+                    dataset.add_dynamic_item(audio_pipeline)
+                    dataset.set_output_keys(["signal", "utterance_id", "duration"])
+                    collate_fn = PaddedBatch
+                    if self.vad_model is not None:
+                        collate_fn = VadPaddedBatch
+                    dataloader = DataLoader(
+                        dataset, collate_fn=collate_fn, batch_size=config.NUM_JOBS
+                    )
+                    for batch in dataloader:
+                        if self.stopped.is_set():
+                            break
+                        self.return_q.put(batch)
+                else:
+                    for u in utterances:
+                        utterance_id = u[0]
+                        segment = Segment(u[1], u[2], u[3], u[4])
+                        signal = segment.load_audio()
+                        self.return_q.put((utterance_id, signal))
             except Exception as e:
                 self.return_q.put(e)
             finally:

@@ -76,6 +76,7 @@ class AlignMixin(DictionaryMixin):
         fine_tune: bool = False,
         phone_confidence: bool = False,
         use_phone_model: bool = False,
+        careful: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -92,6 +93,7 @@ class AlignMixin(DictionaryMixin):
             self.retry_beam = self.beam * 4
         self.unaligned_files = set()
         self.final_alignment = False
+        self.careful = careful
 
     @property
     def tree_path(self) -> Path:
@@ -200,6 +202,7 @@ class AlignMixin(DictionaryMixin):
             "beam": self.beam,
             "retry_beam": self.retry_beam,
             "boost_silence": self.boost_silence,
+            "careful": self.careful,
         }
 
     def alignment_configuration(self) -> MetaDict:
@@ -283,23 +286,31 @@ class AlignMixin(DictionaryMixin):
         update_mappings = []
         num_errors = 0
         num_successful = 0
+        e = None
         for utterance, log_likelihood in run_kaldi_function(
             AlignFunction, self.align_arguments(), total_count=self.num_current_utterances
         ):
-            if log_likelihood:
-                num_successful += 1
+            if e:
+                continue
+            try:
                 if log_likelihood:
-                    log_like_sum += log_likelihood
-                    log_like_count += 1
-            else:
-                num_errors += 1
-            if not training:
-                update_mappings.append(
-                    {
-                        "id": int(utterance.split("-")[-1]),
-                        "alignment_log_likelihood": log_likelihood,
-                    }
-                )
+                    num_successful += 1
+                    if log_likelihood:
+                        log_like_sum += log_likelihood
+                        log_like_count += 1
+                else:
+                    num_errors += 1
+                if not training:
+                    update_mappings.append(
+                        {
+                            "id": int(utterance.split("-")[-1]),
+                            "alignment_log_likelihood": log_likelihood,
+                        }
+                    )
+            except Exception:
+                continue
+        if e is not None:
+            raise e
         if not training:
             if len(update_mappings) == 0 or num_successful == 0:
                 raise NoAlignmentsError(self.num_current_utterances, self.beam, self.retry_beam)

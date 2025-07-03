@@ -76,14 +76,13 @@ class MonoAlignEqualFunction(KaldiFunction):
             tot_like = 0.0
             tot_t = 0.0
             for d in job.training_dictionaries:
-                dict_id = d.id
                 train_logger.debug(f"Aligning for dictionary {d.name} ({d.id})")
                 train_logger.debug(f"Aligning with model: {self.model_path}")
-                fst_path = job.construct_path(self.working_directory, "fsts", "ark", dict_id)
+                fst_path = job.construct_path(self.working_directory, "fsts", "ark", d.name)
                 train_logger.debug(f"Training graph archive: {fst_path}")
                 accumulator = GmmStatsAccumulator(self.model_path)
                 feat_path = job.construct_path(
-                    job.corpus.current_subset_directory, "feats", "scp", dictionary_id=dict_id
+                    job.corpus.current_subset_directory, "feats", "scp", dictionary_id=d.name
                 )
                 train_logger.debug(f"Feature path: {feat_path}")
                 feature_archive = FeatureArchive(
@@ -91,7 +90,7 @@ class MonoAlignEqualFunction(KaldiFunction):
                     deltas=True,
                 )
                 training_graph_archive = FstArchive(fst_path)
-                ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                ali_path = job.construct_path(self.working_directory, "ali", "ark", d.name)
                 write_specifier = generate_write_specifier(ali_path, write_scp=False)
                 writer = Int32VectorWriter(write_specifier)
                 for utt_id, decode_fst in training_graph_archive:
@@ -135,7 +134,7 @@ class MonoAlignEqualFunction(KaldiFunction):
                 train_logger.info(f"Done {num_done} utterances, errors on {num_error} utterances.")
                 if tot_t:
                     train_logger.info(
-                        f"Overall avg like per frame (Gaussian only) = {tot_like/tot_t} over {tot_t} frames."
+                        f"Overall avg like per frame (Gaussian only) = {tot_like / tot_t} over {tot_t} frames."
                     )
 
 
@@ -274,7 +273,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
         with kalpy_logger("kalpy.train", log_path):
             objf_impr, count = transition_model.mle_update(transition_accs)
             logger.debug(
-                f"Transition model update: Overall {objf_impr/count} "
+                f"Transition model update: Overall {objf_impr / count} "
                 f"log-like improvement per frame over {count} frames."
             )
             objf_impr, count = acoustic_model.mle_update(
@@ -284,13 +283,13 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
                 power=self.power,
             )
             logger.debug(
-                f"GMM update: Overall {objf_impr/count} "
+                f"GMM update: Overall {objf_impr / count} "
                 f"objective function improvement per frame over {count} frames."
             )
             tot_like = gmm_accs.TotLogLike()
             tot_t = gmm_accs.TotCount()
             logger.debug(
-                f"Average Likelihood per frame for iteration {self.iteration} = {tot_like/tot_t} "
+                f"Average Likelihood per frame for iteration {self.iteration} = {tot_like / tot_t} "
                 f"over {tot_t} frames."
             )
             write_gmm_model(str(self.next_model_path), transition_model, acoustic_model)
@@ -308,10 +307,10 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
             dict_index = 0
             while len(feats) < 10:
                 try:
-                    dict_id = job.dictionary_ids[dict_index]
+                    d = job.dictionaries[dict_index]
                 except IndexError:
                     break
-                feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
+                feature_archive = job.construct_feature_archive(self.working_directory, d.name)
                 for i, (_, mat) in enumerate(feature_archive):
                     if i > 10:
                         break

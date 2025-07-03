@@ -17,14 +17,11 @@ from pathlib import Path
 import dataclassy
 import pynini
 import pywrapfst
-from praatio.utilities.constants import Interval, TextgridFormats
+from praatio.utilities.constants import TextgridFormats
 from sqlalchemy.orm import scoped_session
-
-from montreal_forced_aligner.exceptions import CtmError
 
 __all__ = [
     "MfaArguments",
-    "CtmInterval",
     "TextFileType",
     "TextgridFormats",
     "SoundFileType",
@@ -83,6 +80,8 @@ class DatabaseImportData:
         List of dictionaries with :class:`~montreal_forced_aligner.db.SpeakerOrdering` properties
     utterance_objects: list[dict[str, Any]]
         List of dictionaries with :class:`~montreal_forced_aligner.db.Utterance` properties
+    phone_interval_objects: list[dict[str, Any]]
+        List of dictionaries with :class:`~montreal_forced_aligner.db.PhoneInterval` properties
     """
 
     speaker_objects: typing.List[typing.Dict[str, typing.Any]] = dataclassy.factory(list)
@@ -91,6 +90,8 @@ class DatabaseImportData:
     sound_file_objects: typing.List[typing.Dict[str, typing.Any]] = dataclassy.factory(list)
     speaker_ordering_objects: typing.List[typing.Dict[str, typing.Any]] = dataclassy.factory(list)
     utterance_objects: typing.List[typing.Dict[str, typing.Any]] = dataclassy.factory(list)
+    phone_interval_objects: typing.List[typing.Dict[str, typing.Any]] = dataclassy.factory(list)
+    word_interval_objects: typing.List[typing.Dict[str, typing.Any]] = dataclassy.factory(list)
 
     def add_objects(self, other_import: DatabaseImportData) -> None:
         """
@@ -107,6 +108,8 @@ class DatabaseImportData:
         self.sound_file_objects.extend(other_import.sound_file_objects)
         self.speaker_ordering_objects.extend(other_import.speaker_ordering_objects)
         self.utterance_objects.extend(other_import.utterance_objects)
+        self.phone_interval_objects.extend(other_import.phone_interval_objects)
+        self.word_interval_objects.extend(other_import.word_interval_objects)
 
 
 # noinspection PyUnresolvedReferences
@@ -437,6 +440,7 @@ class WordType(enum.Enum):
     music = 9  #: Words that represent music
     disambiguation = 10  #: Disambiguation symbols internal to Kaldi
     interjection = 11  #: Set of words that can be added on the fly to transcripts
+    extra = 12  #: Set of words that can be added on the fly to transcripts
 
     @classmethod
     def speech_types(cls):
@@ -2011,98 +2015,3 @@ class PronunciationProbabilityCounter:
         self.non_silence_following_counts.update(other_counter.non_silence_following_counts)
         self.silence_before_counts.update(other_counter.silence_before_counts)
         self.non_silence_before_counts.update(other_counter.non_silence_before_counts)
-
-
-# noinspection PyUnresolvedReferences
-@dataclassy.dataclass(slots=True)
-class CtmInterval:
-    """
-    Data class for intervals derived from CTM files
-
-    Parameters
-    ----------
-    begin: float
-        Start time of interval
-    end: float
-        End time of interval
-    label: str
-        Text of interval
-    confidence: float, optional
-        Confidence score of the interval
-    """
-
-    begin: float
-    end: float
-    label: typing.Union[int, str]
-    confidence: typing.Optional[float] = None
-
-    def __lt__(self, other: CtmInterval):
-        """Sorting function for CtmIntervals"""
-        return self.begin < other.begin
-
-    def __add__(self, other):
-        if isinstance(other, str):
-            return self.label + other
-        else:
-            self.begin += other
-            self.end += other
-
-    def __post_init__(self) -> None:
-        """
-        Check on data validity
-
-        Raises
-        ------
-        :class:`~montreal_forced_aligner.exceptions.CtmError`
-            If begin or end are not valid
-        """
-        if self.end < -1 or self.begin == 1000000:
-            raise CtmError(self)
-
-    def to_tg_interval(self, file_duration=None) -> Interval:
-        """
-        Converts the CTMInterval to
-        `PraatIO's Interval class <http://timmahrt.github.io/praatIO/praatio/utilities/constants.html#Interval>`_
-
-        Returns
-        -------
-        :class:`praatio.utilities.constants.Interval`
-            Derived PraatIO Interval
-        """
-        if self.end < -1 or self.begin == 1000000:
-            raise CtmError(self)
-        end = round(self.end, 6)
-        begin = round(self.begin, 6)
-        if file_duration is not None and end > file_duration:
-            end = round(file_duration, 6)
-        if begin >= end:
-            raise CtmError(self)
-        return Interval(round(self.begin, 6), end, self.label)
-
-
-# noinspection PyUnresolvedReferences
-@dataclassy.dataclass(slots=True)
-class WordCtmInterval:
-    """
-    Data class for word intervals derived from CTM files
-
-    Parameters
-    ----------
-    begin: float
-        Start time of interval
-    end: float
-        End time of interval
-    word_id: int
-        Integer id of word
-    pronunciation_id: int
-        Pronunciation integer id of word
-    """
-
-    begin: float
-    end: float
-    word_id: int
-    pronunciation_id: int
-
-    def __lt__(self, other: WordCtmInterval):
-        """Sorting function for WordCtmIntervals"""
-        return self.begin < other.begin

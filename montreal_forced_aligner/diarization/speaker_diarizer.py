@@ -7,7 +7,6 @@ from __future__ import annotations
 import collections
 import csv
 import logging
-import math
 import os
 import random
 import shutil
@@ -56,12 +55,15 @@ from montreal_forced_aligner.db import (
 )
 from montreal_forced_aligner.diarization.multiprocessing import (
     EER,
+    FOUND_PYANNOTE,
     FOUND_SPEECHBRAIN,
     ComputeEerArguments,
     ComputeEerFunction,
     EncoderClassifier,
     PldaClassificationArguments,
     PldaClassificationFunction,
+    PyannoteDiarizationPipeline,
+    PyannoteEmbeddingFunction,
     SpeakerRecognition,
     SpeechbrainArguments,
     SpeechbrainClassificationFunction,
@@ -134,6 +136,13 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             if not FOUND_SPEECHBRAIN:
                 logger.error(
                     "Could not import speechbrain, please ensure it is installed via `pip install speechbrain`"
+                )
+                sys.exit(1)
+            self.use_xvector = True
+        elif ivector_extractor_path == "pyannote":
+            if not FOUND_PYANNOTE:
+                logger.error(
+                    "Could not import pyannote.audio, please ensure it is installed via `pip install pyannote.audio`"
                 )
                 sys.exit(1)
             self.use_xvector = True
@@ -231,22 +240,29 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         os.makedirs(log_dir, exist_ok=True)
         try:
             if self.ivector_extractor is None:  # Download models if needed
-                _ = EncoderClassifier.from_hparams(
-                    source="speechbrain/spkrec-ecapa-voxceleb",
-                    savedir=os.path.join(
-                        config.TEMPORARY_DIRECTORY,
-                        "models",
-                        "EncoderClassifier",
-                    ),
-                )
-                _ = SpeakerRecognition.from_hparams(
-                    source="speechbrain/spkrec-ecapa-voxceleb",
-                    savedir=os.path.join(
-                        config.TEMPORARY_DIRECTORY,
-                        "models",
-                        "SpeakerRecognition",
-                    ),
-                )
+                if self.ivector_extractor_path == "speechbrain":
+                    _ = EncoderClassifier.from_hparams(
+                        source="speechbrain/spkrec-ecapa-voxceleb",
+                        savedir=os.path.join(
+                            config.TEMPORARY_DIRECTORY,
+                            "models",
+                            "EncoderClassifier",
+                        ),
+                    )
+                    _ = SpeakerRecognition.from_hparams(
+                        source="speechbrain/spkrec-ecapa-voxceleb",
+                        savedir=os.path.join(
+                            config.TEMPORARY_DIRECTORY,
+                            "models",
+                            "SpeakerRecognition",
+                        ),
+                    )
+                else:
+                    _ = PyannoteDiarizationPipeline.from_pretrained(
+                        "pyannote/speaker-diarization-3.1",
+                        cache_dir=os.path.join(config.TEMPORARY_DIRECTORY, "models", "hf_cache"),
+                        use_auth_token=config.HF_TOKEN,
+                    )
                 self.initialize_database()
                 self._load_corpus()
                 self.initialize_jobs()
@@ -264,6 +280,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                         )
                     self.ivector_extractor.export_model(self.working_directory)
                     self.load_corpus()
+                    self.create_corpus_split()
                     self.extract_ivectors()
                     self.compute_speaker_ivectors()
             if self.evaluation_mode:
@@ -1295,37 +1312,60 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         logger.debug(
             f"Mismatching scores: {np.min(mismatch_scores):.3f}-{np.max(mismatch_scores):.3f} (mean = {mismatch_scores.mean():.3f}, n = {mismatch_scores.shape[0]})"
         )
-        logger.info(f"EER: {eer*100:.2f}%")
+        logger.info(f"EER: {eer * 100:.2f}%")
         logger.info(f"Threshold: {thresh:.4f}")
         logger.debug(f"Calculating EER took {time.time() - begin:.3f} seconds")
         return eer, thresh
 
     def load_embeddings(self) -> None:
         """Load embeddings from a speechbrain model"""
-        logger.info("Loading SpeechBrain embeddings...")
+        logger.info(f"Loading {self.ivector_extractor_path} embeddings...")
+
         with self.session() as session:
             begin = time.time()
             update_mapping = {}
-            arguments = [SpeechbrainArguments(1, self.session, None, self.cuda, self.cluster)]
+            log_path = self.working_log_directory.joinpath(
+                f"{self.ivector_extractor_path}_embeddings.log"
+            )
+            arguments = [SpeechbrainArguments(1, self.session, log_path, self.cuda, self.cluster)]
             utterance_ids = []
             original_use_mp = config.USE_MP
             if self.cuda:
                 config.update_configuration(
                     {
                         "USE_MP": False,
+                        "USE_THREADING": True,
                     }
                 )
             batch_size = 100000
-            for u_id, emb in run_kaldi_function(
-                SpeechbrainEmbeddingFunction, arguments, total_count=self.num_utterances
+            if self.ivector_extractor_path == "speechbrain":
+                function = SpeechbrainEmbeddingFunction
+            else:
+                function = PyannoteEmbeddingFunction
+            exception = None
+            for u_id, emb, variance in run_kaldi_function(
+                function, arguments, total_count=self.num_utterances
             ):
-                utterance_ids.append(u_id)
+                if exception is not None:
+                    continue
+                try:
+                    utterance_ids.append(u_id)
 
-                update_mapping[u_id] = {"id": u_id, "xvector": emb}
-                if len(update_mapping) >= batch_size:
-                    bulk_update(session, Utterance, list(update_mapping.values()))
-                    session.commit()
-                    update_mapping = {}
+                    update_mapping[u_id] = {
+                        "id": u_id,
+                        "xvector": emb,
+                        "diarization_variance": variance,
+                    }
+                    if len(update_mapping) >= batch_size:
+                        bulk_update(session, Utterance, list(update_mapping.values()))
+                        session.commit()
+                        update_mapping = {}
+                except Exception as e:
+                    exception = e
+
+            if exception is not None:
+                raise exception
+
             if len(update_mapping):
                 bulk_update(session, Utterance, list(update_mapping.values()))
                 session.commit()
@@ -1341,14 +1381,15 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 )
                 session.commit()
 
-            n_lists = int(math.sqrt(self.num_utterances))
-            n_probe = int(math.sqrt(n_lists))
             session.execute(
                 sqlalchemy.text(
-                    f"CREATE INDEX IF NOT EXISTS utterance_xvector_index ON utterance USING ivfflat (xvector vector_cosine_ops) WITH (lists = {n_lists});"
+                    "CREATE INDEX IF NOT EXISTS utterance_xvector_index ON utterance USING hnsw (xvector vector_cosine_ops) WITH (ef_construction = 128);"
                 )
             )
-            session.execute(sqlalchemy.text(f"SET ivfflat.probes = {n_probe};"))
+            session.execute(sqlalchemy.text("SET hnsw.ef_search = 1000;"))
+            session.execute(
+                sqlalchemy.text(f"SET max_parallel_maintenance_workers = {config.NUM_JOBS};")
+            )
             session.commit()
             session.query(Corpus).update({Corpus.xvectors_loaded: True})
             session.commit()
@@ -1388,14 +1429,16 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
 
             bulk_update(session, Utterance, update_mapping)
             c.plda_calculated = True
-            n_lists = int(math.sqrt(self.num_utterances))
-            n_probe = int(math.sqrt(n_lists))
             session.execute(
                 sqlalchemy.text(
-                    f"CREATE INDEX IF NOT EXISTS utterance_plda_vector_index ON utterance USING ivfflat (plda_vector vector_cosine_ops) WITH (lists = {n_lists});"
+                    "CREATE INDEX IF NOT EXISTS utterance_plda_vector_index ON utterance USING hnsw (plda_vector vector_cosine_ops) WITH (ef_construction = 1000);"
                 )
             )
-            session.execute(sqlalchemy.text(f"SET ivfflat.probes = {n_probe};"))
+            session.execute(sqlalchemy.text("SET hnsw.ef_search = 1500;"))
+            session.execute(sqlalchemy.text("SET hnsw.iterative_scan = relaxed_order;"))
+            session.execute(
+                sqlalchemy.text(f"SET max_parallel_maintenance_workers = {config.NUM_JOBS};")
+            )
             session.commit()
         autocommit_engine = self.db_engine.execution_options(isolation_level="AUTOCOMMIT")
         with sqlalchemy.orm.Session(autocommit_engine) as session:
@@ -1423,7 +1466,6 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                     s_ivectors.append(u_ivector)
                 if not s_ivectors:
                     continue
-                print(s_ivectors)
                 mean_ivector = np.mean(np.array(s_ivectors), axis=0)
                 speaker_mean = DoubleVector()
                 speaker_mean.from_numpy(mean_ivector)
@@ -1488,11 +1530,14 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             logger.debug(f"Updating {len(update_mapping)} speakers...")
             bulk_update(session, Speaker, update_mapping)
             session.commit()
-            n_lists = int(math.sqrt(self.num_speakers))
             session.execute(
                 sqlalchemy.text(
-                    f"CREATE INDEX IF NOT EXISTS speaker_xvector_index ON speaker USING ivfflat (xvector vector_cosine_ops) WITH (lists = {n_lists});"
+                    "CREATE INDEX IF NOT EXISTS speaker_xvector_index ON speaker USING hnsw (xvector vector_cosine_ops) WITH (ef_construction = 128)"
                 )
+            )
+            session.execute(sqlalchemy.text("SET hnsw.ef_search = 1000;"))
+            session.execute(
+                sqlalchemy.text(f"SET max_parallel_maintenance_workers = {config.NUM_JOBS};")
             )
             session.commit()
         if update_mapping:

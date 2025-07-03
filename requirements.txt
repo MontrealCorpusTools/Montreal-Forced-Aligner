@@ -6,7 +6,6 @@ numpy
 scipy
 scikit-learn
 requests
-biopython
 dataclassy
 sqlalchemy>=2.0
 click

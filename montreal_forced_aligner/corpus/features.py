@@ -237,13 +237,13 @@ class MfccFunction(KaldiFunction):
                         mfcc_logger.warning(str(e))
                         num_error += 1
                         continue
-
+                    num_frames = mfccs.NumRows()
                     mfcc_writer.Write(u.kaldi_id, mfccs)
                     if self.pitch_computer is not None:
                         pitch = self.pitch_computer.compute_pitch_for_export(seg, compress=True)
                         pitch_writer.Write(u.kaldi_id, pitch)
                     num_done += 1
-                    self.callback(1)
+                    self.callback((u.id, num_frames))
                 offset += limit
             mfcc_writer.Close()
             if self.pitch_computer is not None:
@@ -459,7 +459,6 @@ class CalcFmllrFunction(KaldiFunction):
 
     def _run(self) -> None:
         """Run the function"""
-        from montreal_forced_aligner.db import Dictionary
 
         with self.session() as session, thread_logger(
             "kalpy.fmllr", self.log_path, job_name=self.job_name
@@ -468,8 +467,7 @@ class CalcFmllrFunction(KaldiFunction):
                 Job, self.job_name, options=[joinedload(Job.dictionaries), joinedload(Job.corpus)]
             )
 
-            for dict_id in job.dictionary_ids:
-                d = session.get(Dictionary, dict_id)
+            for d in job.dictionaries:
                 silence_phones = [
                     x
                     for x, in session.query(Phone.mapping_id).filter(
@@ -477,7 +475,7 @@ class CalcFmllrFunction(KaldiFunction):
                     )
                 ]
                 fmllr_trans_path = job.construct_path(
-                    job.corpus.current_subset_directory, "trans", "scp", dictionary_id=dict_id
+                    job.corpus.current_subset_directory, "trans", "scp", dictionary_id=d.name
                 )
                 previous_transform_archive = None
                 if not fmllr_trans_path.exists():
@@ -487,11 +485,13 @@ class CalcFmllrFunction(KaldiFunction):
                     fmllr_logger.debug(f"Updating previous transforms {fmllr_trans_path}")
                     previous_transform_archive = MatrixArchive(fmllr_trans_path)
                 spk2utt_path = job.construct_path(
-                    job.corpus.current_subset_directory, "spk2utt", "scp", dictionary_id=dict_id
+                    job.corpus.current_subset_directory, "spk2utt", "scp", dictionary_id=d.name
                 )
+                if not spk2utt_path.exists():
+                    continue
                 spk2utt = KaldiMapping(list_mapping=True)
                 spk2utt.load(spk2utt_path)
-                feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
+                feature_archive = job.construct_feature_archive(self.working_directory, d.name)
 
                 fmllr_logger.debug("Feature Archive information:")
                 fmllr_logger.debug(f"CMVN: {feature_archive.cmvn_read_specifier}")
@@ -510,13 +510,13 @@ class CalcFmllrFunction(KaldiFunction):
                     spk2utt=spk2utt,
                     **self.fmllr_options,
                 )
-                ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+                ali_path = job.construct_path(self.working_directory, "ali", "ark", d.name)
                 if not ali_path.exists():
                     continue
                 fmllr_logger.debug(f"Alignment path: {ali_path}")
                 alignment_archive = AlignmentArchive(ali_path)
                 temp_trans_path = job.construct_path(
-                    self.working_directory, "trans", "ark", dict_id
+                    self.working_directory, "trans", "ark", d.name
                 )
                 computer.export_transforms(
                     temp_trans_path,
@@ -536,7 +536,7 @@ class CalcFmllrFunction(KaldiFunction):
                 trans_archive = MatrixArchive(temp_trans_path)
                 write_specifier = generate_write_specifier(
                     job.construct_path(
-                        job.corpus.current_subset_directory, "trans", "ark", dictionary_id=dict_id
+                        job.corpus.current_subset_directory, "trans", "ark", dictionary_id=d.name
                     ),
                     write_scp=True,
                 )

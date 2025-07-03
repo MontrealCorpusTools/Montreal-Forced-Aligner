@@ -544,6 +544,7 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
                 begin = time.time()
                 self.generate_features()
                 logger.debug(f"Generated features in {time.time() - begin:.3f} seconds")
+                self.create_corpus_split()
                 begin = time.time()
                 logger.debug(f"Calculated OOVs in {time.time() - begin:.3f} seconds")
                 self.setup_trainers()
@@ -623,6 +624,7 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
                 if self.test_transcriptions:
                     self.write_lexicon_information(write_disambiguation=True)
                 self.generate_features()
+                self.create_corpus_split()
             self.acoustic_model.validate(self)
             self.acoustic_model.log_details()
 

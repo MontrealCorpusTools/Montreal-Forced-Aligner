@@ -8,6 +8,7 @@ import typing
 import unicodedata
 from typing import TYPE_CHECKING, Optional, Union
 
+from kalpy.gmm.data import CtmInterval
 from praatio import textgrid
 
 from montreal_forced_aligner.corpus.helper import get_wav_info, load_text
@@ -174,10 +175,43 @@ class FileData:
                 duration = tg.maxTimestamp
             if root_speaker:
                 self.speaker_ordering.append(root_speaker)
+            phone_data = {}
+            word_data = {}
             for i, tier_name in enumerate(tg.tierNames):
-                ti = tg._tierDict[tier_name]
+                if tier_name.endswith(" - phones"):
+                    speaker_name = tier_name.split(" - ")[0]
+                    if speaker_name not in phone_data:
+                        phone_data[speaker_name] = []
+                    ti = tg._tierDict[tier_name]
+                    for begin, end, text in ti.entries:
+                        text = text.strip()
+                        if not text:
+                            continue
+                        begin, end = round(begin, 4), round(end, 4)
+                        if begin >= duration:
+                            continue
+                        end = min(end, duration)
+                        phone_data[speaker_name].append(CtmInterval(begin, end, text))
+                elif tier_name.endswith(" - words"):
+                    speaker_name = tier_name.split(" - ")[0]
+                    if speaker_name not in word_data:
+                        word_data[speaker_name] = []
+                    ti = tg._tierDict[tier_name]
+                    for begin, end, text in ti.entries:
+                        text = text.strip()
+                        if not text:
+                            continue
+                        begin, end = round(begin, 4), round(end, 4)
+                        if begin >= duration:
+                            continue
+                        end = min(end, duration)
+                        word_data[speaker_name].append(CtmInterval(begin, end, text))
+            for i, tier_name in enumerate(tg.tierNames):
                 if tier_name.lower() == "notes":
                     continue
+                if tier_name.endswith("- words") or tier_name.endswith("- phones"):
+                    continue
+                ti = tg._tierDict[tier_name]
                 if not isinstance(ti, textgrid.IntervalTier):
                     continue
                 if not root_speaker:
@@ -207,6 +241,53 @@ class FileData:
                     )
                     if not utt.text:
                         continue
+                    if speaker_name in phone_data:
+                        for pi in phone_data[speaker_name]:
+                            if pi.begin < utt.begin:
+                                continue
+                            if pi.end > utt.end:
+                                break
+                            if (
+                                len(utt.phone_intervals) > 0
+                                and pi.begin != utt.phone_intervals[-1].end
+                            ):
+                                utt.phone_intervals.append(
+                                    CtmInterval(utt.phone_intervals[-1].end, pi.begin, "sil")
+                                )
+                            utt.phone_intervals.append(pi)
+                        utt.manual_alignments = len(utt.phone_intervals) > 0
+                        if utt.manual_alignments:
+                            if utt.begin != utt.phone_intervals[0].begin:
+                                utt.phone_intervals.insert(
+                                    0, CtmInterval(utt.begin, utt.phone_intervals[0].begin, "sil")
+                                )
+                            if utt.phone_intervals[-1].end != utt.end:
+                                utt.phone_intervals.append(
+                                    CtmInterval(utt.phone_intervals[-1].end, utt.end, "sil")
+                                )
+                    if speaker_name in word_data:
+                        for wi in word_data[speaker_name]:
+                            if wi.begin < utt.begin:
+                                continue
+                            if wi.end > utt.end:
+                                break
+                            if (
+                                len(utt.word_intervals) > 0
+                                and wi.begin != utt.word_intervals[-1].end
+                            ):
+                                utt.word_intervals.append(
+                                    CtmInterval(utt.word_intervals[-1].end, wi.begin, "<eps>")
+                                )
+                            utt.word_intervals.append(wi)
+                        if utt.manual_alignments and len(utt.word_intervals) > 0:
+                            if utt.begin != utt.word_intervals[0].begin:
+                                utt.word_intervals.insert(
+                                    0, CtmInterval(utt.begin, utt.word_intervals[0].begin, "<eps>")
+                                )
+                            if utt.word_intervals[-1].end != utt.end:
+                                utt.word_intervals.append(
+                                    CtmInterval(utt.word_intervals[-1].end, utt.end, "<eps>")
+                                )
                     self.utterances.append(utt)
         else:
             if self.wav_info is not None:
@@ -252,7 +333,10 @@ class UtteranceData:
     begin: float
     end: float
     channel: int = 0
+    manual_alignments: bool = False
     text: str = ""
     normalized_text: str = ""
     normalized_character_text: str = ""
     oovs: str = ""
+    phone_intervals: typing.List = []
+    word_intervals: typing.List = []

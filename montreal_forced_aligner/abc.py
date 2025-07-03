@@ -647,10 +647,13 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
                 else:
                     params[name] = param_type(args[name])
             elif name in unknown_dict:
-                params[name] = param_type(unknown_dict[name])
-                if param_type == bool and not isinstance(unknown_dict[name], bool):
+                if param_type == Language:
+                    params[name] = param_type[unknown_dict[name]]
+                elif param_type == bool and not isinstance(unknown_dict[name], bool):
                     if unknown_dict[name].lower() == "false":
                         params[name] = False
+                else:
+                    params[name] = param_type(unknown_dict[name])
         return params
 
     @classmethod

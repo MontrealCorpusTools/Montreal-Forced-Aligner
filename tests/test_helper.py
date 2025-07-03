@@ -1,5 +1,7 @@
-from montreal_forced_aligner.data import CtmInterval
-from montreal_forced_aligner.helper import align_phones, load_evaluation_mapping
+from kalpy.evaluation import align_phones
+from kalpy.gmm.data import CtmInterval
+
+from montreal_forced_aligner.helper import load_evaluation_mapping
 
 
 def test_align_phones(basic_corpus_dir, basic_dict_path, temp_dir, eval_mapping_path):

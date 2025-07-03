@@ -66,6 +66,12 @@ __all__ = ["g2p_cli"]
     default=False,
 )
 @click.option(
+    "--strict_graphemes",
+    is_flag=True,
+    help="Skip words containing graphemes not in the G2P model",
+    default=False,
+)
+@click.option(
     "--export_scores",
     is_flag=True,
     help="Add a column to export for the score of the generated pronunciation.",

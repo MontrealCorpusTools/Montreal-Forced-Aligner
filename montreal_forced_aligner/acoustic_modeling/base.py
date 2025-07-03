@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import time
+import typing
 from abc import abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING, List
@@ -89,6 +90,7 @@ class AcousticModelTrainingMixin(
         worker: AcousticCorpusPronunciationMixin,
         num_iterations: int = 40,
         subset: int = 0,
+        subset_folders: typing.List[str] = None,
         max_gaussians: int = 1000,
         boost_silence: float = 1.0,
         power: float = 0.25,
@@ -109,6 +111,8 @@ class AcousticModelTrainingMixin(
         self.optional = optional
         self.realignment_iterations = []  # Gets set later
         self.final_gaussian_iteration = 0  # Gets set later
+        self.careful = True
+        self.subset_folders = subset_folders
 
     @property
     def db_string(self) -> str:
@@ -479,7 +483,7 @@ class AcousticModelTrainingMixin(
             summary = session.query(
                 func.count(Utterance.id),
                 func.sum(Utterance.duration),
-                func.sum(Utterance.alignment_log_likelihood) / func.sum(Utterance.num_frames),
+                func.avg(Utterance.alignment_log_likelihood),
             ).filter(
                 Utterance.alignment_log_likelihood != None  # noqa
             )

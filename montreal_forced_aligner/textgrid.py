@@ -13,19 +13,15 @@ import typing
 from pathlib import Path
 from typing import Dict, List
 
+import dataclassy
 import sqlalchemy
+from kalpy.gmm.data import to_tg_interval
 from praatio import textgrid as tgio
 from praatio.data_classes.interval_tier import Interval
 from praatio.utilities import utils as tgio_utils
 from sqlalchemy.orm import Session
 
-from montreal_forced_aligner.data import (
-    CtmInterval,
-    PhoneType,
-    TextFileType,
-    TextgridFormats,
-    WordType,
-)
+from montreal_forced_aligner.data import PhoneType, TextFileType, TextgridFormats, WordType
 from montreal_forced_aligner.db import (
     CorpusWorkflow,
     Phone,
@@ -35,7 +31,7 @@ from montreal_forced_aligner.db import (
     Word,
     WordInterval,
 )
-from montreal_forced_aligner.exceptions import AlignmentExportError, TextGridParseError
+from montreal_forced_aligner.exceptions import AlignmentExportError, CtmError, TextGridParseError
 from montreal_forced_aligner.helper import mfa_open
 
 __all__ = [
@@ -45,6 +41,73 @@ __all__ = [
     "construct_output_path",
     "output_textgrid_writing_errors",
 ]
+
+
+# noinspection PyUnresolvedReferences
+@dataclassy.dataclass(slots=True)
+class CtmInterval:
+    """
+    Data class for intervals derived from CTM files
+
+    Parameters
+    ----------
+    begin: float
+        Start time of interval
+    end: float
+        End time of interval
+    label: str
+        Text of interval
+    confidence: float, optional
+        Confidence score of the interval
+    """
+
+    begin: float
+    end: float
+    label: typing.Union[int, str]
+    confidence: typing.Optional[float] = None
+
+    def __lt__(self, other: CtmInterval):
+        """Sorting function for CtmIntervals"""
+        return self.begin < other.begin
+
+    def __add__(self, other):
+        if isinstance(other, str):
+            return self.label + other
+        else:
+            self.begin += other
+            self.end += other
+
+    def __post_init__(self) -> None:
+        """
+        Check on data validity
+
+        Raises
+        ------
+        :class:`~montreal_forced_aligner.exceptions.CtmError`
+            If begin or end are not valid
+        """
+        if self.end < -1 or self.begin == 1000000:
+            raise CtmError(self)
+
+    def to_tg_interval(self, file_duration=None) -> Interval:
+        """
+        Converts the CTMInterval to
+        `PraatIO's Interval class <http://timmahrt.github.io/praatIO/praatio/utilities/constants.html#Interval>`_
+
+        Returns
+        -------
+        :class:`praatio.utilities.constants.Interval`
+            Derived PraatIO Interval
+        """
+        if self.end < -1 or self.begin == 1000000:
+            raise CtmError(self)
+        end = round(self.end, 6)
+        begin = round(self.begin, 6)
+        if file_duration is not None and end > file_duration:
+            end = round(file_duration, 6)
+        if begin >= end:
+            raise CtmError(self)
+        return Interval(round(self.begin, 6), end, self.label)
 
 
 class Textgrid(tgio.Textgrid):
@@ -180,7 +243,7 @@ def process_ctm_line(
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.data.CtmInterval`
+    :class:`~kalpy.gmm.data.CtmInterval`
         Extracted data from the line
     """
     line = line.split()
@@ -240,7 +303,7 @@ def parse_aligned_textgrid(
 
     Returns
     -------
-    dict[str, list[:class:`~montreal_forced_aligner.data.CtmInterval`]]
+    dict[str, list[:class:`~kalpy.gmm.data.CtmInterval`]]
         Parsed phone tier
     """
     tg = tgio.openTextgrid(path, includeEmptyIntervals=False, reportingMode="silence")
@@ -265,9 +328,9 @@ def parse_aligned_textgrid(
         if speaker_name not in data:
             data[speaker_name] = []
         for begin, end, text in ti.entries:
-            text = text.lower().strip()
+            text = text.strip()
             if not text:
-                continue
+                text = "sil"
             begin, end = round(begin, 4), round(end, 4)
             if end - begin < 0.01:
                 continue
@@ -295,7 +358,6 @@ def construct_textgrid_output(
         .join(PhoneInterval.phone)
         .join(PhoneInterval.utterance)
         .join(Utterance.speaker)
-        .filter(PhoneInterval.workflow_id == workflow.id)
         .filter(PhoneInterval.duration > 0)
         .filter(Utterance.file_id.in_(list(file_batch.keys())))
     )
@@ -307,7 +369,6 @@ def construct_textgrid_output(
         .join(WordInterval.word)
         .join(WordInterval.utterance)
         .join(Utterance.speaker)
-        .filter(WordInterval.workflow_id == workflow.id)
         .filter(WordInterval.duration > 0)
         .filter(Utterance.file_id.in_(list(file_batch.keys())))
     )
@@ -472,8 +533,8 @@ def export_textgrid(
 
     Parameters
     ----------
-    speaker_data: dict[Speaker, dict[str, list[:class:`~montreal_forced_aligner.data.CtmInterval`]]
-        Per speaker, per word/phone :class:`~montreal_forced_aligner.data.CtmInterval`
+    speaker_data: dict[Speaker, dict[str, list[:class:`~kalpy.gmm.data.CtmInterval`]]
+        Per speaker, per word/phone :class:`~kalpy.gmm.data.CtmInterval`
     output_path: :class:`~pathlib.Path`
         Output path of the file
     duration: float
@@ -549,10 +610,10 @@ def export_textgrid(
                         frame_shift * 2
                     ):  # Fix rounding issues
                         a.end = duration
-                    tg_interval = a.to_tg_interval()
+                    tg_interval = to_tg_interval(a, duration)
                     if i > 0 and tier._entries[-1].end > tg_interval.start:
                         a.begin = tier._entries[-1].end
-                        tg_interval = a.to_tg_interval()
+                        tg_interval = to_tg_interval(a, duration)
                     tier._entries.append(tg_interval)
         if has_data:
             for tier in tg.tiers:

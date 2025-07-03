@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 import pywrapfst
 from _kalpy.fstext import VectorFst
 from kalpy.decoder.decode_graph import DecodeGraphCompiler
+from kalpy.gmm.data import to_tg_interval
 from kalpy.utils import kalpy_logger
 from praatio import textgrid
 from sqlalchemy.orm import joinedload, selectinload
@@ -339,7 +340,7 @@ class TranscriptionEvaluationMixin:
                         intervals = data[speaker]["transcription"]
                         tier = textgrid.IntervalTier(
                             speaker,
-                            [x.to_tg_interval() for x in intervals],
+                            [to_tg_interval(x, tg.maxTimestamp) for x in intervals],
                             minT=0,
                             maxT=round(duration, 5),
                         )
@@ -494,7 +495,7 @@ class TranscriberMixin(CorpusAligner, TranscriptionEvaluationMixin):
 
     def train_phone_lm(self):
         """Train a phone-based language model (i.e., not using words)."""
-        if not self.has_alignments(self.current_workflow.id):
+        if not self.has_alignments():
             logger.error("Cannot train phone LM without alignments")
             return
         if self.use_g2p:
@@ -1093,7 +1094,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
             for d in session.query(Dictionary):
                 args.append(
                     CreateHclgArguments(
-                        d.id,
+                        d.name,
                         getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                         self.model_directory.joinpath("log", f"hclg.{d.id}.log"),
                         self.lexicon_compilers[d.id],
@@ -1260,6 +1261,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
         begin = time.time()
         os.makedirs(self.working_log_directory, exist_ok=True)
         self.load_corpus()
+        self.create_corpus_split()
         dirty_path = self.working_directory.joinpath("dirty")
         if os.path.exists(dirty_path):
             shutil.rmtree(self.working_directory, ignore_errors=True)

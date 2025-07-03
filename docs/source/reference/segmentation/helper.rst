@@ -15,4 +15,3 @@ Helper functions
    merge_segments
    segment_utterance_transcript
    segment_utterance_vad
-   segment_utterance_vad_speech_brain

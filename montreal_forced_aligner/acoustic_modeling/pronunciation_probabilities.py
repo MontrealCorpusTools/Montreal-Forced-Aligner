@@ -206,13 +206,12 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
             ):
                 if utt_id not in texts or not texts[utt_id]:
                     continue
-
-                print(phones, file=output_alignment_files[dict_id])
-                print(
-                    re.sub(r"\s+", " ", phones.replace("#1", "").replace("#2", "")).strip(),
-                    file=output_files[dict_id],
-                )
-                print(texts[utt_id], file=input_files[dict_id])
+                output_string = re.sub(
+                    r"\s+", " ", phones.replace("#1", "").replace("#2", "")
+                ).strip()
+                output_alignment_files[dict_id].write(f"{phones}\n")
+                output_files[dict_id].write(f"{output_string}\n")
+                input_files[dict_id].write(f"{texts[utt_id]}\n")
             for f in input_files.values():
                 f.close()
             for f in output_files.values():
@@ -252,7 +251,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                     os.rename(d.lexicon_fst_path, d.lexicon_fst_path.with_suffix(".backup"))
                 os.rename(self.fst_path, d.lexicon_fst_path)
 
-                if False and not config.DEBUG:
+                if not config.DEBUG:
                     os.remove(self.output_path)
                     os.remove(self.input_far_path)
                     os.remove(self.output_far_path)

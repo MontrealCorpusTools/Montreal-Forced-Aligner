@@ -13,6 +13,7 @@ try:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         import faster_whisper
+        from faster_whisper.transcribe import TranscriptionOptions
         from whisperx import asr
         from whisperx.asr import FasterWhisperPipeline
 
@@ -20,6 +21,7 @@ try:
 
 except (ImportError, OSError):
     FasterWhisperPipeline = object
+    TranscriptionOptions = object
     FOUND_WHISPERX = False
 
 if typing.TYPE_CHECKING:
@@ -32,7 +34,7 @@ class MfaFasterWhisperPipeline(FasterWhisperPipeline):
         model,
         vad,
         vad_params: dict,
-        options: typing.NamedTuple,
+        options: TranscriptionOptions,
         tokenizer=None,
         device: typing.Union[int, str, torch.device] = -1,
         framework: str = "pt",
@@ -115,7 +117,7 @@ class MfaFasterWhisperPipeline(FasterWhisperPipeline):
             numeral_symbol_tokens = self.get_suppressed_tokens()
             new_suppressed_tokens = numeral_symbol_tokens + self.base_suppress_tokens
             new_suppressed_tokens = sorted(set(new_suppressed_tokens))
-            self.options = self.options._replace(suppress_tokens=new_suppressed_tokens)
+            self.options.suppress_tokens = new_suppressed_tokens
 
     def transcribe(
         self,
@@ -219,10 +221,12 @@ def load_model(
         "word_timestamps": False,
         "prepend_punctuations": "\"'“¿([{-",
         "append_punctuations": "\"'.。,，!！?？:：”)]}、",
+        "multilingual": model.model.is_multilingual,
         "suppress_numerals": True,
         "max_new_tokens": None,
         "clip_timestamps": None,
         "hallucination_silence_threshold": None,
+        "hotwords": None,
     }
 
     if asr_options is not None:

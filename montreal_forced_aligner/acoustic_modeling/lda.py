@@ -95,13 +95,13 @@ class LdaAccStatsFunction(KaldiFunction):
                     Phone.phone_type.in_([PhoneType.silence, PhoneType.oov])
                 )
             ]
-            for dict_id in job.dictionary_ids:
-                ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+            for d in job.dictionaries:
+                ali_path = job.construct_path(self.working_directory, "ali", "ark", d.name)
                 if not ali_path.exists():
                     continue
                 lda_logger.debug(f"Processing {ali_path}")
                 feat_path = job.construct_path(
-                    job.corpus.current_subset_directory, "feats", "scp", dictionary_id=dict_id
+                    job.corpus.current_subset_directory, "feats", "scp", dictionary_id=d.name
                 )
                 feature_archive = FeatureArchive(
                     feat_path,
@@ -164,12 +164,12 @@ class CalcLdaMlltFunction(KaldiFunction):
                     Phone.phone_type.in_([PhoneType.silence, PhoneType.oov])
                 )
             ]
-            for dict_id in job.dictionary_ids:
-                ali_path = job.construct_path(self.working_directory, "ali", "ark", dict_id)
+            for d in job.dictionaries:
+                ali_path = job.construct_path(self.working_directory, "ali", "ark", d.name)
                 if not ali_path.exists():
                     continue
                 lda_logger.debug(f"Processing {ali_path}")
-                feature_archive = job.construct_feature_archive(self.working_directory, dict_id)
+                feature_archive = job.construct_feature_archive(self.working_directory, d.name)
                 alignment_archive = AlignmentArchive(ali_path)
                 accumulator = MlltStatsAccumulator(
                     self.model_path, silence_phones, rand_prune=self.lda_options["random_prune"]
@@ -414,7 +414,7 @@ class LdaTrainer(TriphoneTrainer):
                 f"(acoustic model dimension: {acoustic_model.Dim()})"
             )
             lda_logger.debug(
-                f"Overall objective function improvement for MLLT is {objf_impr/count} "
+                f"Overall objective function improvement for MLLT is {objf_impr / count} "
                 f"over {count} frames, logdet is {mat.LogDet()}"
             )
             if mat.NumRows() != acoustic_model.Dim():

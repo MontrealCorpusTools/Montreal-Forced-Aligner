@@ -1,6 +1,7 @@
 """Command line functions for aligning corpora"""
 from __future__ import annotations
 
+import typing
 from pathlib import Path
 
 import rich_click as click
@@ -14,7 +15,6 @@ from montreal_forced_aligner.command_line.utils import (
     validate_g2p_model,
 )
 from montreal_forced_aligner.data import WorkflowType
-from montreal_forced_aligner.helper import load_evaluation_mapping
 
 __all__ = ["align_corpus_cli"]
 
@@ -64,7 +64,7 @@ __all__ = ["align_corpus_cli"]
 )
 @click.option(
     "--custom_mapping_path",
-    help="YAML file for mapping phones across phone sets in evaluations.",
+    help="YAML file for mapping phones from acoustic model phone set to phone set in golden alignments.",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
 @click.option(
@@ -99,15 +99,15 @@ def align_corpus_cli(context, **kwargs) -> None:
         config.CURRENT_PROFILE_NAME = kwargs.pop("profile")
     config.update_configuration(kwargs)
     config_path = kwargs.get("config_path", None)
-    reference_directory = kwargs.get("reference_directory", None)
-    custom_mapping_path = kwargs.get("custom_mapping_path", None)
+    reference_directory: typing.Optional[Path] = kwargs.get("reference_directory", None)
+    custom_mapping_path: typing.Optional[Path] = kwargs.get("custom_mapping_path", None)
     corpus_directory = kwargs["corpus_directory"].absolute()
     dictionary_path = kwargs["dictionary_path"]
     acoustic_model_path = kwargs["acoustic_model_path"]
     output_directory = kwargs["output_directory"]
     output_format = kwargs["output_format"]
     include_original_text = kwargs["include_original_text"]
-    g2p_model_path = kwargs.get("g2p_model_path", None)
+    g2p_model_path: typing.Optional[Path] = kwargs.get("g2p_model_path", None)
     if g2p_model_path:
         g2p_model_path = validate_g2p_model(context, kwargs, g2p_model_path)
     aligner = PretrainedAligner(
@@ -132,19 +132,20 @@ def align_corpus_cli(context, **kwargs) -> None:
                 output_format=output_format,
                 include_original_text=include_original_text,
             )
-        if reference_directory:
-            aligner.load_reference_alignments(reference_directory)
-            mapping = None
-            if custom_mapping_path:
-                mapping = load_evaluation_mapping(custom_mapping_path)
-                aligner.validate_mapping(mapping)
+        if reference_directory or aligner.has_reference_alignments():
+            if reference_directory:
+                aligner.load_reference_alignments(reference_directory)
+            else:
+                aligner.check_manual_alignments()
+
+            if custom_mapping_path is not None:
+                aligner.load_mapping(custom_mapping_path)
             reference_alignments = WorkflowType.reference
         else:
             reference_alignments = WorkflowType.alignment
 
         if aligner.use_phone_model:
             aligner.evaluate_alignments(
-                mapping,
                 output_directory=output_directory,
                 reference_source=reference_alignments,
                 comparison_source=WorkflowType.phone_transcription,
@@ -152,7 +153,6 @@ def align_corpus_cli(context, **kwargs) -> None:
         else:
             if reference_alignments is WorkflowType.reference:
                 aligner.evaluate_alignments(
-                    mapping,
                     output_directory=output_directory,
                     reference_source=reference_alignments,
                     comparison_source=WorkflowType.alignment,

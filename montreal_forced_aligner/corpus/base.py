@@ -26,6 +26,7 @@ from montreal_forced_aligner.corpus.multiprocessing import (
 from montreal_forced_aligner.data import (
     DatabaseImportData,
     Language,
+    PhoneType,
     TextFileType,
     WordType,
     WorkflowType,
@@ -38,7 +39,10 @@ from montreal_forced_aligner.db import (
     Dictionary2Job,
     File,
     Job,
+    Phone,
     Pronunciation,
+    ReferencePhoneInterval,
+    ReferenceWordInterval,
     SoundFile,
     Speaker,
     SpeakerOrdering,
@@ -320,6 +324,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                     None,
                     self.split_directory,
+                    getattr(self, "export_frame_shift", 0.01),
                 )
                 for j in jobs
             ]
@@ -475,6 +480,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             joinedload(Utterance.file, innerjoin=True),
             joinedload(Utterance.speaker, innerjoin=True),
             selectinload(Utterance.phone_intervals),
+            selectinload(Utterance.reference_phone_intervals),
             selectinload(Utterance.word_intervals),
         )
         if close:
@@ -588,6 +594,139 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     sqlalchemy.insert(Utterance.__table__), import_data.utterance_objects
                 )
             session.flush()
+            if import_data.word_interval_objects and import_data.phone_interval_objects:
+                word_mapping = {}
+
+                new_word_objects = []
+                max_word_id = 0
+                for word in session.query(Word).all():
+                    word_mapping[word.word] = word.id
+                    if word.id > max_word_id:
+                        max_word_id = word.id
+                max_word_id += 1
+                phone_mapping = {}
+
+                new_phone_objects = []
+                max_phone_id = 0
+                for phone in session.query(Phone).all():
+                    phone_mapping[phone.phone] = phone.id
+                    if phone.id > max_phone_id:
+                        max_phone_id = phone.id
+                max_phone_id += 1
+                reference_workflow = CorpusWorkflow(
+                    name="reference",
+                    workflow_type=WorkflowType.reference,
+                    alignments_collected=True,
+                )
+                session.add(reference_workflow)
+                session.query(Corpus).update({Corpus.has_reference_alignments: True})
+                session.flush()
+                phone_interval_index = 0
+                word_interval_id = 1
+                for wi in import_data.word_interval_objects:
+                    w = wi.pop("word")
+                    if w not in word_mapping:
+                        word_type = WordType.extra
+                        if w == "<eps>":
+                            word_type = WordType.silence
+                        elif w == "<unk>":
+                            word_type = WordType.oov
+
+                        new_word_objects.append(
+                            {
+                                "id": max_word_id,
+                                "mapping_id": max_word_id - 1,
+                                "word": w,
+                                "dictionary_id": 1,
+                                "word_type": word_type,
+                                "included": False,
+                                "count": 0,
+                            }
+                        )
+
+                        word_mapping[w] = max_word_id
+                        max_word_id += 1
+                    wi["word_id"] = word_mapping[w]
+                    wi["id"] = word_interval_id
+                    while phone_interval_index < len(import_data.phone_interval_objects):
+                        pi = import_data.phone_interval_objects[phone_interval_index]
+                        mid_point = (pi["end"] + pi["begin"]) / 2
+                        if mid_point < wi["begin"]:
+                            phone_interval_index += 1
+                            continue
+                        if pi["utterance_id"] != wi["utterance_id"]:
+                            break
+                        if mid_point > wi["end"]:
+                            break
+                        p = pi.pop("phone")
+                        if p not in phone_mapping:
+                            phone_type = PhoneType.non_silence
+                            if p == "sil":
+                                phone_type = PhoneType.silence
+                            elif p == "spn":
+                                phone_type = PhoneType.oov
+                            new_phone_objects.append(
+                                {
+                                    "id": max_phone_id,
+                                    "mapping_id": max_phone_id - 1,
+                                    "phone": p,
+                                    "kaldi_label": p,
+                                    "phone_type": phone_type,
+                                }
+                            )
+                            phone_mapping[p] = max_phone_id
+                            max_phone_id += 1
+                        pi["phone_id"] = phone_mapping[p]
+                        pi["word_interval_id"] = word_interval_id
+                        phone_interval_index += 1
+                    word_interval_id += 1
+                for pi in import_data.phone_interval_objects:
+                    if "word_interval_id" in pi:
+                        continue
+                    p = pi.pop("phone")
+                    if p not in phone_mapping:
+                        phone_type = PhoneType.non_silence
+                        if p == "sil":
+                            phone_type = PhoneType.silence
+                        elif p == "spn":
+                            phone_type = PhoneType.oov
+                        new_phone_objects.append(
+                            {
+                                "id": max_phone_id,
+                                "mapping_id": max_phone_id - 1,
+                                "phone": p,
+                                "kaldi_label": p,
+                                "phone_type": phone_type,
+                            }
+                        )
+                        phone_mapping[p] = max_phone_id
+                        max_phone_id += 1
+                    pi["phone_id"] = phone_mapping[p]
+                    phone_interval_index += 1
+                if new_word_objects:
+                    session.execute(
+                        sqlalchemy.insert(Word.__table__),
+                        new_word_objects,
+                    )
+                    session.flush()
+                if new_phone_objects:
+                    session.execute(
+                        sqlalchemy.insert(Phone.__table__),
+                        new_phone_objects,
+                    )
+                    session.flush()
+
+                session.execute(
+                    sqlalchemy.insert(ReferenceWordInterval.__table__),
+                    import_data.word_interval_objects,
+                )
+                session.flush()
+
+                session.execute(
+                    sqlalchemy.insert(ReferencePhoneInterval.__table__),
+                    import_data.phone_interval_objects,
+                )
+                session.flush()
 
         self.imported = True
         speakers = (
@@ -754,28 +893,33 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         result["oovs"] = " ".join(sorted(oovs))
                     else:
                         for w in result["normalized_text"].split():
+                            if dictionaries[dict_id].name in ["default", "nonnative"]:
+                                continue
                             if (dict_id, w) in existing_oovs:
                                 existing_oovs[(dict_id, w)]["count"] += 1
                             elif (dict_id, w) not in word_indexes:
                                 if (dict_id, w) not in word_insert_mappings:
+                                    included = False
+                                    if not has_words:
+                                        if hasattr(self, "brackets") and any(
+                                            w.startswith(b) for b, _ in self.brackets
+                                        ):
+                                            word_type = WordType.bracketed
+                                        else:
+                                            word_type = WordType.speech
+                                            included = True
+                                    else:
+                                        word_type = WordType.oov
                                     word_insert_mappings[(dict_id, w)] = {
                                         "id": word_key,
                                         "word": w,
-                                        "word_type": WordType.oov,
+                                        "word_type": word_type,
                                         "mapping_id": word_key - 1,
                                         "count": 0,
                                         "dictionary_id": dict_id,
-                                        "included": False,
+                                        "included": included,
                                     }
-                                    pronunciation_insert_mappings.append(
-                                        {
-                                            "id": pronunciation_key,
-                                            "word_id": word_key,
-                                            "pronunciation": getattr(self, "oov_phone", "spn"),
-                                        }
-                                    )
                                     word_key += 1
-                                    pronunciation_key += 1
                                 word_insert_mappings[(dict_id, w)]["count"] += 1
                             elif (dict_id, w) not in word_update_mappings:
                                 word_update_mappings[(dict_id, w)] = {
@@ -894,15 +1038,16 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                     "included": False,
                                     "dictionary_id": dict_id,
                                 }
-                                pronunciation_insert_mappings.append(
-                                    {
-                                        "id": pronunciation_key,
-                                        "word_id": word_key,
-                                        "pronunciation": getattr(self, "oov_phone", "spn"),
-                                    }
-                                )
+                                if has_words:
+                                    pronunciation_insert_mappings.append(
+                                        {
+                                            "id": pronunciation_key,
+                                            "word_id": word_key,
+                                            "pronunciation": getattr(self, "oov_phone", "spn"),
+                                        }
+                                    )
+                                    pronunciation_key += 1
                                 word_key += 1
-                                pronunciation_key += 1
                             word_insert_mappings[(dict_id, word)]["count"] += 1
                 log_file.write("Found the following OOVs:\n")
                 log_file.write(f"{existing_oovs}\n")
@@ -1054,9 +1199,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             frame_shift = round(frame_shift / 1000, 4)
         for u in file.utterances:
             duration = u.end - u.begin
-            num_frames = None
-            if frame_shift is not None:
-                num_frames = int(duration / frame_shift)
             utterance = Utterance(
                 id=self._current_utterance_index,
                 begin=u.begin,
@@ -1067,7 +1209,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 normalized_text=u.normalized_text,
                 normalized_character_text=u.normalized_character_text,
                 text=u.text,
-                num_frames=num_frames,
                 in_subset=False,
                 ignored=False,
                 file_id=self._current_file_index,
@@ -1145,10 +1286,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         if frame_shift is not None:
             frame_shift = round(frame_shift / 1000, 4)
         for u in file.utterances:
-            duration = u.end - u.begin
-            num_frames = None
-            if frame_shift is not None:
-                num_frames = int(duration / frame_shift)
             ignored = False
             if self.ignore_empty_utterances and not u.text:
                 ignored = True
@@ -1162,14 +1299,32 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     "normalized_text": u.normalized_text,
                     "normalized_character_text": u.normalized_character_text,
                     "text": u.text,
-                    "num_frames": num_frames,
                     "in_subset": False,
                     "ignored": ignored,
+                    "manual_alignments": u.manual_alignments,
                     "file_id": self._current_file_index,
                     "job_id": 1,
                     "speaker_id": self._speaker_ids[u.speaker_name],
                 }
             )
+            for wi in u.word_intervals:
+                data.word_interval_objects.append(
+                    {
+                        "begin": wi.begin,
+                        "end": wi.end,
+                        "word": wi.label,
+                        "utterance_id": self._current_utterance_index,
+                    }
+                )
+            for pi in u.phone_intervals:
+                data.phone_interval_objects.append(
+                    {
+                        "begin": pi.begin,
+                        "end": pi.end,
+                        "phone": pi.label,
+                        "utterance_id": self._current_utterance_index,
+                    }
+                )
             self._current_utterance_index += 1
         self._current_file_index += 1
         return data
@@ -1179,7 +1334,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         """Corpus name"""
         return os.path.basename(self.corpus_directory)
 
-    def create_subset(self, subset: int) -> None:
+    def create_subset(self, subset: int, subset_folders: typing.List[str] = None) -> None:
         """
         Create a subset of utterances to use for training
 
@@ -1187,6 +1342,8 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         ----------
         subset: int
             Number of utterances to include in subset
+        subset_folders: list[str], optional
+            Root folders to use in the subset
         """
         logger.info(f"Creating subset directory with {subset} utterances...")
         if hasattr(self, "cutoff_word") and hasattr(self, "brackets"):
@@ -1204,27 +1361,44 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             multiword_pattern = rf"(\s\S+){{{subset_word_count},}}"
             filtered = (
                 query.filter(
-                    Utterance.normalized_text.op("~")(multiword_pattern)
-                    if config.USE_POSTGRES
-                    else Utterance.normalized_text.regexp_match(multiword_pattern)
+                    sqlalchemy.or_(
+                        Utterance.normalized_text.op("~")(multiword_pattern)
+                        if config.USE_POSTGRES
+                        else Utterance.normalized_text.regexp_match(multiword_pattern),
+                        Utterance.manual_alignments == True,  # noqa
+                    )
                 )
                 .filter(Utterance.ignored == False)  # noqa
                 .filter(
                     sqlalchemy.or_(
                         Utterance.duration_deviation == None,  # noqa
                         Utterance.duration_deviation < 10,
+                        Utterance.manual_alignments == True,  # noqa
+                    )
+                )
+                .filter(
+                    sqlalchemy.or_(
+                        Utterance.snr == None,  # noqa
+                        Utterance.snr > 0,
+                        Utterance.manual_alignments == True,  # noqa
                     )
                 )
             )
+            if subset_folders:
+                filtered = filtered.filter(
+                    sqlalchemy.or_(*[File.relative_path.like(f"{x}%") for x in subset_folders])
+                )
             if subset <= 25000:
                 filtered = filtered.filter(
-                    sqlalchemy.not_(
-                        Utterance.normalized_text.op("~")(cutoff_pattern)
-                        if config.USE_POSTGRES
-                        else Utterance.normalized_text.regexp_match(cutoff_pattern)
+                    sqlalchemy.or_(
+                        sqlalchemy.not_(
+                            Utterance.normalized_text.op("~")(cutoff_pattern)
+                            if config.USE_POSTGRES
+                            else Utterance.normalized_text.regexp_match(cutoff_pattern)
+                        ),
+                        Utterance.manual_alignments == True,  # noqa
                     )
                 )
-
             return filtered
 
         with self.session() as session:
@@ -1234,10 +1408,8 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             )
             session.commit()
             dictionary_query = session.query(Dictionary.name, Dictionary.id).filter(
-                Dictionary.name != "default"
+                ~Dictionary.name.in_(["default", "nonnative"])
             )
-            if subset <= 25000:
-                dictionary_query = dictionary_query.filter(Dictionary.name != "nonnative")
             dictionary_lookup = {k: v for k, v in dictionary_query}
             num_dictionaries = len(dictionary_lookup)
             if num_dictionaries > 1:
@@ -1248,6 +1420,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     base_query = (
                         session.query(Utterance)
                         .join(Utterance.speaker)
+                        .join(Utterance.file)
                         .filter(Speaker.dictionary_id == dict_id)  # noqa
                     )
                     base_query = add_filters(base_query)
@@ -1274,13 +1447,16 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             remaining_subset_per_dictionary = int(
                                 remaining_subset / remaining_dicts
                             )
-                    logger.debug(f"For {dict_name}, total number of utterances is {num_utts}")
+                    logger.debug(
+                        f"For {dict_name}, total number of utterances is {num_utts}, looking to get {subset_per_dictionary} utterances"
+                    )
                     larger_subset_num = int(subset_per_dictionary * 10)
                     speaker_ids = None
                     average_duration = (
                         add_filters(
                             session.query(sqlalchemy.func.avg(Utterance.duration))
                             .join(Utterance.speaker)
+                            .join(Utterance.file)
                             .filter(Speaker.dictionary_id == dict_id)
                         )
                     ).first()[0]
@@ -1292,6 +1468,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                     sqlalchemy.func.count(Utterance.id).label("utt_count"),
                                 )
                                 .join(Utterance.speaker)
+                                .join(Utterance.file)
                                 .filter(Speaker.dictionary_id == dict_id)
                             )
                             .filter(Utterance.duration <= average_duration)
@@ -1303,18 +1480,34 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                 sq.c.utt_count >= utt_count_cutoff
                             )
                         ).first()[0]
+                        if not total_speaker_utterances:
+                            continue
                         if total_speaker_utterances >= subset_per_dictionary:
                             speaker_ids = [
-                                x
-                                for x, in session.query(sq.c.speaker_id).filter(
+                                x[0]
+                                for x in session.query(sq.c.speaker_id).filter(
                                     sq.c.utt_count >= utt_count_cutoff
                                 )
                             ]
                             break
+                    else:
+                        if not total_speaker_utterances:
+                            logger.debug(
+                                f"Could not get speakers with more than 5 utterance for {dict_name} ({total_speaker_utterances})"
+                            )
+                            continue
+                        else:
+                            speaker_ids = [
+                                x[0]
+                                for x in session.query(sq.c.speaker_id).filter(
+                                    sq.c.utt_count >= utt_count_cutoff
+                                )
+                            ]
                     if num_utts > larger_subset_num:
                         larger_subset_query = (
-                            session.query(Utterance.id)
+                            session.query(Utterance.id, Utterance.manual_alignments)
                             .join(Utterance.speaker)
+                            .join(Utterance.file)
                             .filter(Speaker.dictionary_id == dict_id)  # noqa
                         )
                         larger_subset_query = add_filters(larger_subset_query)
@@ -1328,7 +1521,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         sq = larger_subset_query.subquery()
                         subset_utts = (
                             sqlalchemy.select(sq.c.id)
-                            .order_by(sqlalchemy.func.random())
+                            .order_by(sq.c.manual_alignments.desc(), sqlalchemy.func.random())
                             .limit(subset_per_dictionary)
                             .scalar_subquery()
                         )
@@ -1339,6 +1532,17 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             .where(Utterance.id.in_(subset_utts))
                         )
                         session.execute(query)
+                        session.commit()
+                        subset_count = (
+                            session.query(Utterance)
+                            .join(Utterance.speaker)
+                            .filter(
+                                Speaker.dictionary_id == dict_id,
+                                Utterance.in_subset == True,  # noqa
+                            )
+                            .count()
+                        )
+                        logger.debug(f"For {dict_name}, initial subset is {subset_count}")
 
                         # Remove speakers with less than 5 utterances from subset,
                         # can't estimate speaker transforms well for low utterance counts
@@ -1358,11 +1562,11 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             Utterance.speaker_id.in_(speaker_ids)
                         ).update({Utterance.in_subset: False})
                         session.commit()
-                        logger.debug(f"For {dict_name}, subset is {subset_per_dictionary}")
                     elif num_utts > subset_per_dictionary:
                         larger_subset_query = (
-                            session.query(Utterance.id)
+                            session.query(Utterance.id, Utterance.manual_alignments)
                             .join(Utterance.speaker)
+                            .join(Utterance.file)
                             .filter(Speaker.dictionary_id == dict_id)  # noqa
                         )
                         larger_subset_query = add_filters(larger_subset_query)
@@ -1373,7 +1577,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         sq = larger_subset_query.subquery()
                         subset_utts = (
                             sqlalchemy.select(sq.c.id)
-                            .order_by(sqlalchemy.func.random())
+                            .order_by(sq.c.manual_alignments.desc(), sqlalchemy.func.random())
                             .limit(subset_per_dictionary)
                             .scalar_subquery()
                         )
@@ -1385,8 +1589,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         )
                         session.execute(query)
                         session.commit()
-
-                        logger.debug(f"For {dict_name}, subset is {subset_per_dictionary}")
                     else:
                         larger_subset_query = (
                             session.query(Utterance.id)
@@ -1397,6 +1599,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                 sqlalchemy.or_(
                                     Utterance.duration_deviation == None,  # noqa
                                     Utterance.duration_deviation < 10,
+                                    Utterance.manual_alignments == True,  # noqa
                                 )
                             )  # noqa
                         )
@@ -1431,8 +1634,9 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         speaker_ids = [x for x, in session.query(sq.c.speaker_id)]
 
                         larger_subset_query = (
-                            session.query(Utterance.id)
+                            session.query(Utterance.id, Utterance.manual_alignments)
                             .join(Utterance.speaker)
+                            .join(Utterance.file)
                             .filter(Speaker.dictionary_id == dict_id)  # noqa
                         )
                         larger_subset_query = add_filters(larger_subset_query)
@@ -1441,12 +1645,12 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                 Speaker.id.in_(speaker_ids)
                             )
                         larger_subset_query = larger_subset_query.order_by(
-                            Utterance.duration
+                            Utterance.manual_alignments.desc(), Utterance.duration
                         ).limit(remaining * 10)
                         sq = larger_subset_query.subquery()
                         subset_utts = (
                             sqlalchemy.select(sq.c.id)
-                            .order_by(sqlalchemy.func.random())
+                            .order_by(sq.c.manual_alignments.desc(), sqlalchemy.func.random())
                             .limit(remaining)
                             .scalar_subquery()
                         )
@@ -1457,20 +1661,34 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             .where(Utterance.id.in_(subset_utts))
                         )
                         session.execute(query)
+                        session.commit()
+                    subset_count = (
+                        session.query(Utterance)
+                        .join(Utterance.speaker)
+                        .filter(
+                            Speaker.dictionary_id == dict_id, Utterance.in_subset == True  # noqa
+                        )
+                        .count()
+                    )
+                    logger.debug(f"For {dict_name}, subset is {subset_count}")
 
             else:
                 larger_subset_num = subset * 10
                 if subset < self.num_utterances:
                     # Get all shorter utterances that are not one word long
                     larger_subset_query = (
-                        add_filters(session.query(Utterance.id))
-                        .order_by(Utterance.duration)
+                        add_filters(
+                            session.query(Utterance.id, Utterance.manual_alignments).join(
+                                Utterance.file
+                            )
+                        )
+                        .order_by(Utterance.manual_alignments.desc(), Utterance.duration)
                         .limit(larger_subset_num)
                     )
                     sq = larger_subset_query.subquery()
                     subset_utts = (
                         sqlalchemy.select(sq.c.id)
-                        .order_by(sqlalchemy.func.random())
+                        .order_by(sq.c.manual_alignments.desc(), sqlalchemy.func.random())
                         .limit(subset)
                         .scalar_subquery()
                     )
@@ -1505,6 +1723,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         getattr(self, "session" if config.USE_THREADING else "db_string", ""),
                         None,
                         subset_directory,
+                        getattr(self, "export_frame_shift", 0.01),
                     )
                     for j in self._jobs
                 ]
@@ -1535,7 +1754,9 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 self._num_speakers = session.query(sqlalchemy.func.count(Speaker.id)).scalar()
         return self._num_speakers
 
-    def subset_directory(self, subset: typing.Optional[int]) -> Path:
+    def subset_directory(
+        self, subset: typing.Optional[int], subset_folders: typing.List[str] = None
+    ) -> Path:
         """
         Construct a subset directory for the corpus
 
@@ -1544,6 +1765,8 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         subset: int, optional
             Number of utterances to include, if larger than the total number of utterance or not specified, the
             split_directory is returned
+        subset_folders: list[str], optional
+            Root folders to use in the subset
 
         Returns
         -------
@@ -1564,7 +1787,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             return self.split_directory
         directory = self.corpus_output_directory.joinpath(f"subset_{subset}")
         if not os.path.exists(directory):
-            self.create_subset(subset)
+            self.create_subset(subset, subset_folders)
             if hasattr(self, "subset_lexicon"):
                 self.subset_lexicon()
         return directory

@@ -158,6 +158,22 @@ each speaker.
 
    Intervals in the TextGrid less than 100 milliseconds will not be aligned.
 
+.. _reference_alignment_format:
+
+Including reference alignments
+==============================
+
+As of version 3.3, it's possible to use reference alignments that have been hand corrected or verified to guide training
+or adaptation of acoustic models.  The two ways to specify reference alignments, either in the corpus files or supplied via
+a ``--reference_directory`` argument supplied to :ref:`train_acoustic_model` or :ref:`adapt_acoustic_model`. In both cases,
+MFA will use a tier named like ``{speaker_name} - phones`` (i.e., the same format as MFA's TextGrid output). MFA will also
+load intervals from ``{speaker_name} - words`` as reference words, but these are not actually used or necessary, as all alignments
+are on a phone basis.
+
+.. note::
+
+    You can use MFA's :xref:`anchor` to more easily fix and save manual alignments for use in MFA training.
+
 Sound files
 ===========
 

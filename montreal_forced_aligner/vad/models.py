@@ -10,9 +10,9 @@ from pathlib import Path
 
 import numpy as np
 from kalpy.data import Segment
+from kalpy.gmm.data import CtmInterval
 
 from montreal_forced_aligner import config
-from montreal_forced_aligner.data import CtmInterval
 
 if typing.TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
@@ -54,7 +54,7 @@ def get_initial_segmentation(frames: np.ndarray, frame_shift: float) -> typing.L
 
     Returns
     -------
-    List[CtmInterval]
+    List[:class:`~kalpy.gmm.data.CtmInterval`]
         Initial segmentation
     """
     segments = []
@@ -102,7 +102,7 @@ def merge_segments(
 
     Returns
     -------
-    List[CtmInterval]
+    List[:class:`~kalpy.gmm.data.CtmInterval`]
         Merged segments
     """
     merged_segments = []
@@ -155,7 +155,7 @@ class MfaVAD(VAD):
         audio_file: path
             Path of the audio file containing the recording. The file is read
             with torchaudio.
-        segments: list[CtmInterval]
+        segments: list[:class:`~kalpy.gmm.data.CtmInterval`]
             torch.Tensor containing the speech boundaries. It can be derived using the
             get_boundaries method.
         activation_threshold: float
@@ -294,7 +294,7 @@ class MfaVAD(VAD):
         energy_activation_threshold: float = 0.5,
         energy_deactivation_threshold: float = 0.4,
         **kwargs,
-    ) -> typing.List[Segment]:
+    ) -> typing.List[typing.Union[Segment, CtmInterval]]:
         if isinstance(segment, Segment):
             y = torch.tensor(segment.wave[np.newaxis, :])
         else:
@@ -373,8 +373,8 @@ class MfaVAD(VAD):
 
         Returns
         -------
-        vad_th: torch.Tensor
-            torch.Tensor containing 1 for speech regions and 0 for non-speech regions.
+        segments: list[CtmInterval]
+            Segments generated from VAD
         """
         if begin is None:
             begin = 0

@@ -14,7 +14,9 @@ Unlike alignment, transcription does not require transcribed audio files (except
 
 .. warning::
 
-   The technology that MFA uses is several years out of date, and as such if you have other options available such as :xref:`coqui` or other production systems for :abbr:`STT (Speech to Text)`, we recommend using those.  The transcription capabilities are more here for completeness.
+   The technology that MFA uses by default is several years out of date, and as such if you have other options available such as :xref:`whisperx` or other production systems for :abbr:`STT (Speech to Text)`, we recommend using those.  The transcription capabilities are more here for completeness.
+
+    See also `transcribing_speechbrain`_ and `transcribing_whisper`_ for MFA's command line utilities that leverage more modern ASR models.
 
 .. _transcription_evaluation:
 
@@ -44,3 +46,29 @@ API reference
 -------------
 
 - :ref:`transcription_api`
+
+.. _transcribing_speechbrain:
+
+Transcribe audio files with SpeechBrain models ``(mfa transcribe)``
+===================================================================
+
+
+Command reference
+-----------------
+
+.. click:: montreal_forced_aligner.command_line.transcribe:transcribe_speechbrain_cli
+   :prog: mfa transcribe_speechbrain
+   :nested: full
+
+.. _transcribing_whisper:
+
+Transcribe audio files with SpeechBrain models ``(mfa transcribe_whisper)``
+===========================================================================
+
+
+Command reference
+-----------------
+
+.. click:: montreal_forced_aligner.command_line.transcribe:transcribe_whisper_cli
+   :prog: mfa transcribe_whisper
+   :nested: full

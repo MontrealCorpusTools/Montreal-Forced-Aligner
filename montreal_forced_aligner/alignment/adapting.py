@@ -79,6 +79,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
                     self.working_log_directory.joinpath(f"map_acc_stats.{j.id}.log"),
                     self.working_directory,
                     model_path,
+                    filter_likely_errors=True,
                 )
             )
         return arguments
