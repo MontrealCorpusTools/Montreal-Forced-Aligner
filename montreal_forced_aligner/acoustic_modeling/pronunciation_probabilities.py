@@ -201,23 +201,31 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                 )
                 for x in self.worker.dictionary_lookup.values()
             }
+            exception = None
             for dict_id, utt_id, phones in run_kaldi_function(
                 GeneratePronunciationsFunction, arguments, total_count=self.num_current_utterances
             ):
-                if utt_id not in texts or not texts[utt_id]:
+                if exception is not None:
                     continue
-                output_string = re.sub(
-                    r"\s+", " ", phones.replace("#1", "").replace("#2", "")
-                ).strip()
-                output_alignment_files[dict_id].write(f"{phones}\n")
-                output_files[dict_id].write(f"{output_string}\n")
-                input_files[dict_id].write(f"{texts[utt_id]}\n")
+                try:
+                    if utt_id not in texts or not texts[utt_id]:
+                        continue
+                    output_string = re.sub(
+                        r"\s+", " ", phones.replace("#1", "").replace("#2", "")
+                    ).strip()
+                    output_alignment_files[dict_id].write(f"{phones}\n")
+                    output_files[dict_id].write(f"{output_string}\n")
+                    input_files[dict_id].write(f"{texts[utt_id]}\n")
+                except Exception as e:
+                    exception = e
             for f in input_files.values():
                 f.close()
             for f in output_files.values():
                 f.close()
             for f in output_alignment_files.values():
                 f.close()
+            if exception is not None:
+                raise exception
             self.pronunciations_complete = True
             os.makedirs(self.working_log_directory, exist_ok=True)
             dictionaries = session.query(Dictionary)

@@ -1259,9 +1259,7 @@ class File(MfaSqlBase):
                             )
                             .filter(PhoneInterval.utterance_id == utterance.id)
                         ).all()
-                    word_interval_ids = set()
                     for pi in phone_intervals:
-                        word_interval_ids.add(pi.word_interval_id)
                         tiers[phone_tier_name].insertEntry(
                             Interval(
                                 start=pi.begin,
@@ -1287,8 +1285,6 @@ class File(MfaSqlBase):
                             .filter(WordInterval.utterance_id == utterance.id)
                         ).all()
                     for wi in word_intervals:
-                        if wi.id not in word_interval_ids:
-                            continue
                         tiers[word_tier_name].insertEntry(
                             Interval(
                                 start=wi.begin,

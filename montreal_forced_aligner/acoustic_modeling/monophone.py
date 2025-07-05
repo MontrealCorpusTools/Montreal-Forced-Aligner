@@ -259,15 +259,23 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
         transition_model.InitStats(transition_accs)
         gmm_accs.init(acoustic_model)
         log_path = self.working_log_directory.joinpath("mono_align_equal.log")
+        exception = None
         with kalpy_logger("kalpy.train", log_path):
             for result in run_kaldi_function(
                 MonoAlignEqualFunction, arguments, total_count=self.num_current_utterances
             ):
-                if isinstance(result, tuple):
-                    job_transition_accs, job_gmm_accs = result
+                if exception is not None:
+                    continue
+                try:
+                    if isinstance(result, tuple):
+                        job_transition_accs, job_gmm_accs = result
 
-                    transition_accs.AddVec(1.0, job_transition_accs)
-                    gmm_accs.Add(1.0, job_gmm_accs)
+                        transition_accs.AddVec(1.0, job_transition_accs)
+                        gmm_accs.Add(1.0, job_gmm_accs)
+                except Exception as e:
+                    exception = e
+        if exception is not None:
+            raise exception
 
         log_path = self.working_log_directory.joinpath("update.0.log")
         with kalpy_logger("kalpy.train", log_path):

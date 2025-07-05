@@ -213,27 +213,35 @@ class VadSegmenter(
             utterance_cache = {}
             for u_id, channel, speaker_id, file_id in utterances:
                 utterance_cache[u_id] = (channel, speaker_id, file_id)
+            exception = None
             for utt, segments in run_kaldi_function(
                 SegmentVadFunction, arguments, total_count=self.num_utterances
             ):
-                old_utts.add(utt)
-                channel, speaker_id, file_id = utterance_cache[utt]
-                for seg in segments:
-                    new_utts.append(
-                        {
-                            "begin": seg.begin,
-                            "end": seg.end,
-                            "text": "speech",
-                            "speaker_id": speaker_id,
-                            "file_id": file_id,
-                            "oovs": "",
-                            "normalized_text": "",
-                            "features": "",
-                            "in_subset": False,
-                            "ignored": False,
-                            "channel": channel,
-                        }
-                    )
+                if exception is not None:
+                    continue
+                try:
+                    old_utts.add(utt)
+                    channel, speaker_id, file_id = utterance_cache[utt]
+                    for seg in segments:
+                        new_utts.append(
+                            {
+                                "begin": seg.begin,
+                                "end": seg.end,
+                                "text": "speech",
+                                "speaker_id": speaker_id,
+                                "file_id": file_id,
+                                "oovs": "",
+                                "normalized_text": "",
+                                "features": "",
+                                "in_subset": False,
+                                "ignored": False,
+                                "channel": channel,
+                            }
+                        )
+                except Exception as e:
+                    exception = e
+            if exception is not None:
+                raise exception
             session.query(Utterance).filter(Utterance.id.in_(old_utts)).delete()
             session.bulk_insert_mappings(
                 Utterance, new_utts, return_defaults=False, render_nulls=True
@@ -673,27 +681,35 @@ class TranscriptionSegmenter(
             utterance_cache = {}
             for u_id, speaker_id, file_id in utterances:
                 utterance_cache[u_id] = (speaker_id, file_id)
+        exception = None
         for utt, new_utts in run_kaldi_function(
             SegmentTranscriptFunction, arguments, total_count=self.num_utterances
         ):
-            old_utts.add(utt)
-            speaker_id, file_id = utterance_cache[utt]
-            for new_utt in new_utts:
-                new_utterance_mapping.append(
-                    {
-                        "begin": new_utt.segment.begin,
-                        "end": new_utt.segment.end,
-                        "speaker_id": speaker_id,
-                        "file_id": file_id,
-                        "oovs": "",
-                        "text": new_utt.transcript,
-                        "normalized_text": new_utt.transcript,
-                        "features": "",
-                        "in_subset": False,
-                        "ignored": False,
-                        "channel": new_utt.segment.channel,
-                    }
-                )
+            if exception is not None:
+                continue
+            try:
+                old_utts.add(utt)
+                speaker_id, file_id = utterance_cache[utt]
+                for new_utt in new_utts:
+                    new_utterance_mapping.append(
+                        {
+                            "begin": new_utt.segment.begin,
+                            "end": new_utt.segment.end,
+                            "speaker_id": speaker_id,
+                            "file_id": file_id,
+                            "oovs": "",
+                            "text": new_utt.transcript,
+                            "normalized_text": new_utt.transcript,
+                            "features": "",
+                            "in_subset": False,
+                            "ignored": False,
+                            "channel": new_utt.segment.channel,
+                        }
+                    )
+            except Exception as e:
+                exception = e
+        if exception is not None:
+            raise exception
         with self.session() as session:
             session.query(Utterance).filter(Utterance.id.in_(old_utts)).delete()
             session.bulk_insert_mappings(

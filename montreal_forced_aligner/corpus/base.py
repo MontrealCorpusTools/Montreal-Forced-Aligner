@@ -132,6 +132,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         self._current_speaker_index = 1
         self._current_file_index = 1
         self._current_utterance_index = 1
+        self._current_word_interval_index = 1
         self._speaker_ids = {}
         self._word_set = []
         self._jobs = []
@@ -622,7 +623,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 session.query(Corpus).update({Corpus.has_reference_alignments: True})
                 session.flush()
                 phone_interval_index = 0
-                word_interval_id = 1
                 for wi in import_data.word_interval_objects:
                     w = wi.pop("word")
                     if w not in word_mapping:
@@ -643,46 +643,10 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                 "count": 0,
                             }
                         )
-
                         word_mapping[w] = max_word_id
                         max_word_id += 1
                     wi["word_id"] = word_mapping[w]
-                    wi["id"] = word_interval_id
-                    while phone_interval_index < len(import_data.phone_interval_objects):
-                        pi = import_data.phone_interval_objects[phone_interval_index]
-                        mid_point = (pi["end"] + pi["begin"]) / 2
-                        if mid_point < wi["begin"]:
-                            phone_interval_index += 1
-                            continue
-                        if pi["utterance_id"] != wi["utterance_id"]:
-                            break
-                        if mid_point > wi["end"]:
-                            break
-                        p = pi.pop("phone")
-                        if p not in phone_mapping:
-                            phone_type = PhoneType.non_silence
-                            if p == "sil":
-                                phone_type = PhoneType.silence
-                            elif p == "spn":
-                                phone_type = PhoneType.oov
-                            new_phone_objects.append(
-                                {
-                                    "id": max_phone_id,
-                                    "mapping_id": max_phone_id - 1,
-                                    "phone": p,
-                                    "kaldi_label": p,
-                                    "phone_type": phone_type,
-                                }
-                            )
-                            phone_mapping[p] = max_phone_id
-                            max_phone_id += 1
-                        pi["phone_id"] = phone_mapping[p]
-                        pi["word_interval_id"] = word_interval_id
-                        phone_interval_index += 1
-                    word_interval_id += 1
                 for pi in import_data.phone_interval_objects:
-                    if "word_interval_id" in pi:
-                        continue
                     p = pi.pop("phone")
                     if p not in phone_mapping:
                         phone_type = PhoneType.non_silence
@@ -721,7 +685,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     import_data.word_interval_objects,
                 )
                 session.flush()
-
                 session.execute(
                     sqlalchemy.insert(ReferencePhoneInterval.__table__),
                     import_data.phone_interval_objects,
@@ -1282,9 +1245,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     "file_type": text_type,
                 }
             )
-        frame_shift = getattr(self, "frame_shift", None)
-        if frame_shift is not None:
-            frame_shift = round(frame_shift / 1000, 4)
         for u in file.utterances:
             ignored = False
             if self.ignore_empty_utterances and not u.text:
@@ -1307,17 +1267,22 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     "speaker_id": self._speaker_ids[u.speaker_name],
                 }
             )
+            word_intervals = []
             for wi in u.word_intervals:
-                data.word_interval_objects.append(
+                word_intervals.append(
                     {
+                        "id": self._current_word_interval_index,
                         "begin": wi.begin,
                         "end": wi.end,
                         "word": wi.label,
                         "utterance_id": self._current_utterance_index,
                     }
                 )
+                self._current_word_interval_index += 1
+            data.word_interval_objects.extend(word_intervals)
+            phone_intervals = []
             for pi in u.phone_intervals:
-                data.phone_interval_objects.append(
+                phone_intervals.append(
                     {
                         "begin": pi.begin,
                         "end": pi.end,
@@ -1325,6 +1290,14 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         "utterance_id": self._current_utterance_index,
                     }
                 )
+                mid_point = (pi.begin + pi.end) / 2
+                for wi in word_intervals:
+                    if wi["begin"] <= mid_point <= wi["end"]:
+                        phone_intervals[-1]["word_interval_id"] = wi["id"]
+                        break
+                else:
+                    phone_intervals[-1]["word_interval_id"] = None
+            data.phone_interval_objects.extend(phone_intervals)
             self._current_utterance_index += 1
         self._current_file_index += 1
         return data

@@ -305,15 +305,22 @@ class AcousticModelTrainingMixin(
         gmm_accs = AccumAmDiagGmm()
         transition_model.InitStats(transition_accs)
         gmm_accs.init(acoustic_model)
+        exception = None
         for result in run_kaldi_function(
             AccStatsFunction, arguments, total_count=self.num_current_utterances
         ):
-            if isinstance(result, tuple):
-                job_transition_accs, job_gmm_accs = result
+            if exception is not None:
+                continue
+            try:
+                if isinstance(result, tuple):
+                    job_transition_accs, job_gmm_accs = result
 
-                transition_accs.AddVec(1.0, job_transition_accs)
-                gmm_accs.Add(1.0, job_gmm_accs)
-
+                    transition_accs.AddVec(1.0, job_transition_accs)
+                    gmm_accs.Add(1.0, job_gmm_accs)
+            except Exception as e:
+                exception = e
+        if exception is not None:
+            raise exception
         log_path = self.working_log_directory.joinpath(f"update.{self.iteration}.log")
         with kalpy_logger("kalpy.train", log_path) as train_logger:
             train_logger.debug(f"Model path: {self.model_path}")

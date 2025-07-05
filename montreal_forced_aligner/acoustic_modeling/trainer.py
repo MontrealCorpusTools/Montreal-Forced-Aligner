@@ -675,11 +675,19 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         arguments = self.transition_acc_arguments()
         transition_model, acoustic_model = read_gmm_model(self.model_path)
         transition_accs = DoubleVector(transition_model.NumTransitionIds() + 1)
+        exception = None
         for result in run_kaldi_function(
             TransitionAccFunction, arguments, total_count=self.num_utterances
         ):
-            if not isinstance(result, int):
-                transition_accs.AddVec(1.0, result)
+            if exception is not None:
+                continue
+            try:
+                if not isinstance(result, int):
+                    transition_accs.AddVec(1.0, result)
+            except Exception as e:
+                exception = e
+        if exception is not None:
+            raise exception
         smoothing = 1
         phone_pdf_mapping = collections.defaultdict(collections.Counter)
         for tid in range(1, transition_model.NumTransitionIds() + 1):
