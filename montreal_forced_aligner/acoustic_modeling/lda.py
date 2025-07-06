@@ -334,14 +334,22 @@ class LdaTrainer(TriphoneTrainer):
             os.remove(worker_lda_path)
         arguments = self.lda_acc_stats_arguments()
         lda = None
+        exception = None
         for result in run_kaldi_function(
             LdaAccStatsFunction, arguments, total_count=self.num_current_utterances
         ):
-            if not isinstance(result, str):
-                if lda is None:
-                    lda = result
-                else:
-                    lda.Add(result)
+            if exception is not None:
+                continue
+            try:
+                if not isinstance(result, str):
+                    if lda is None:
+                        lda = result
+                    else:
+                        lda.Add(result)
+            except Exception as e:
+                exception = e
+        if exception is not None:
+            raise exception
 
         log_path = self.working_log_directory.joinpath("lda_est.log")
 
@@ -392,14 +400,22 @@ class LdaTrainer(TriphoneTrainer):
         logger.info("Re-calculating LDA...")
         arguments = self.calc_lda_mllt_arguments()
         mllt_accs = None
+        exception = None
         for result in run_kaldi_function(
             CalcLdaMlltFunction, arguments, total_count=self.num_current_utterances
         ):
-            if not isinstance(result, str):
-                if mllt_accs is None:
-                    mllt_accs = result
-                else:
-                    mllt_accs.Add(result)
+            if exception is not None:
+                continue
+            try:
+                if not isinstance(result, str):
+                    if mllt_accs is None:
+                        mllt_accs = result
+                    else:
+                        mllt_accs.Add(result)
+            except Exception as e:
+                exception = e
+        if exception is not None:
+            raise exception
         if mllt_accs is None:
             raise TrainerError("No MLLT stats were found")
         log_path = os.path.join(

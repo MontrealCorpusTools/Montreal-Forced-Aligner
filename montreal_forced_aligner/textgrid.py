@@ -330,7 +330,7 @@ def parse_aligned_textgrid(
         for begin, end, text in ti.entries:
             text = text.strip()
             if not text:
-                text = "sil"
+                continue
             begin, end = round(begin, 4), round(end, 4)
             if end - begin < 0.01:
                 continue

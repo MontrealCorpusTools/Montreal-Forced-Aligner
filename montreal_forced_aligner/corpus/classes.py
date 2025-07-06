@@ -258,13 +258,28 @@ class FileData:
                         utt.manual_alignments = len(utt.phone_intervals) > 0
                         if utt.manual_alignments:
                             if utt.begin != utt.phone_intervals[0].begin:
-                                utt.phone_intervals.insert(
-                                    0, CtmInterval(utt.begin, utt.phone_intervals[0].begin, "sil")
-                                )
+                                if (
+                                    abs(utt.phone_intervals[0].begin - utt.begin) < 0.02
+                                    or utt.phone_intervals[0].label == "sil"
+                                ):
+                                    utt.phone_intervals[0].begin = utt.begin
+                                else:
+                                    utt.phone_intervals.insert(
+                                        0,
+                                        CtmInterval(
+                                            utt.begin, utt.phone_intervals[0].begin, "sil"
+                                        ),
+                                    )
                             if utt.phone_intervals[-1].end != utt.end:
-                                utt.phone_intervals.append(
-                                    CtmInterval(utt.phone_intervals[-1].end, utt.end, "sil")
-                                )
+                                if (
+                                    abs(utt.phone_intervals[-1].end - utt.end) < 0.02
+                                    or utt.phone_intervals[-1].label == "sil"
+                                ):
+                                    utt.phone_intervals[-1].end = utt.end
+                                else:
+                                    utt.phone_intervals.append(
+                                        CtmInterval(utt.phone_intervals[-1].end, utt.end, "sil")
+                                    )
                     if speaker_name in word_data:
                         for wi in word_data[speaker_name]:
                             if wi.begin < utt.begin:
