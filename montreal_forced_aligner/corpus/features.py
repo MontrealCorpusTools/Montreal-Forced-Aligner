@@ -8,6 +8,7 @@ from abc import abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Union
 import traceback
+import sys
 
 import dataclassy
 from _kalpy.feat import paste_feats
@@ -235,7 +236,9 @@ class MfccFunction(KaldiFunction):
                     try:
                         mfccs = self.mfcc_computer.compute_mfccs_for_export(seg, compress=True)
                     except (ImportError, ModuleNotFoundError):
-                        raise Exception("If you're running on Python 3.13, please reinstall the environment with Python 3.12 (conda create -n mfa python=3.12 montreal-forced-aligner)")
+                        raise Exception("If you're running on Python 3.13, please reinstall the environment with Python 3.12 "
+                                        "(conda create -n mfa python=3.12 montreal-forced-aligner) or "
+                                        "run `pip install standard-aifc standard-sunau` and retry.")
                     except Exception as e:
                         exc_type, exc_value, exc_traceback = sys.exc_info()
                         error_text = "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
