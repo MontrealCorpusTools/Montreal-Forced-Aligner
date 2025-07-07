@@ -7,6 +7,7 @@ import typing
 from abc import abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Union
+import traceback
 
 import dataclassy
 from _kalpy.feat import paste_feats
@@ -233,8 +234,13 @@ class MfccFunction(KaldiFunction):
                     mfcc_logger.info(f"Processing {u.kaldi_id}")
                     try:
                         mfccs = self.mfcc_computer.compute_mfccs_for_export(seg, compress=True)
+                    except (ImportError, ModuleNotFoundError):
+                        raise Exception("If you're running on Python 3.13, please reinstall the environment with Python 3.12 (conda create -n mfa python=3.12 montreal-forced-aligner)")
                     except Exception as e:
-                        mfcc_logger.warning(str(e))
+                        exc_type, exc_value, exc_traceback = sys.exc_info()
+                        error_text = "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+
+                        mfcc_logger.warning(error_text)
                         num_error += 1
                         continue
                     num_frames = mfccs.NumRows()
