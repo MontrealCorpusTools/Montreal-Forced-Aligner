@@ -50,7 +50,7 @@ In the same environment that you've installed MFA, enter the following command i
 
 .. code-block:: bash
 
-   mfa align /path/to/librispeech/dataset english_us_ma english_mfa ~/Documents/aligned_librispeech
+   mfa align /path/to/librispeech/dataset english_us_mfa english_mfa ~/Documents/aligned_librispeech
 
 Aligning through training
 ~~~~~~~~~~~~~~~~~~~~~~~~~
