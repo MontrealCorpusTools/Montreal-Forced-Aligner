@@ -18,7 +18,9 @@ Installation
        .. code-block:: bash
 
           conda config --add channels conda-forge
-          conda install montreal-forced-aligner
+          conda create -n aligner montreal-forced-aligner
+          conda activate aligner
+          mfa --help
 
        +++
 

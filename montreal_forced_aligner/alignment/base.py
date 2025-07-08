@@ -947,7 +947,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                                 "id": word_index,
                                 "mapping_id": mapping_id,
                                 "word": word_interval.label,
-                                "dictionary_id": 1,
+                                "dictionary_id": dict_id,
                                 "word_type": WordType.oov,
                             }
                         )
