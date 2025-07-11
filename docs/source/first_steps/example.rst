@@ -70,7 +70,7 @@ Set up
 ------
 
 1. Ensure you have installed MFA via :ref:`installation`.
-2. Ensure you have downloaded the pretrained model via :code:`mfa model download g2p mandarin_pinyin_g2p`
+2. Ensure you have downloaded the pretrained model via :code:`mfa model download g2p mandarin_china_pinyin_mfa`
 3. Download the prepared Mandarin dataset from (`example Mandarin corpus`_) and extract it somewhere on your computer
 
 .. note::
@@ -81,7 +81,7 @@ To generate a new dictionary for this "corpus" from the pretrained G2P model, ru
 
 .. code-block:: bash
 
-   mfa g2p mandarin_pinyin_g2p /path/to/mandarin/dataset /path/to/save/mandarin_dict.txt
+   mfa g2p mandarin_china_pinyin_mfa /path/to/mandarin/dataset /path/to/save/mandarin_dict.txt
 
 This should take no more than a few seconds. Open the output file, and check that all the words are there. The accuracy
 of the transcription should be near 100%. You can now use this to align your mini corpus:
