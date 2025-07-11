@@ -6,6 +6,22 @@
 Troubleshooting
 ***************
 
+General Tips
+============
+
+- Use dedicated Conda environments
+  - Don't be afraid to recreate environments
+    - Particularly if you get environment solver errors, it's generally easier to redo the commands in :ref:`installation` to get to a working environment than fixing dependency hell
+  - Software is disposable and easily reinstalled, data is not
+- If something isn't working, first run :code:`mfa_update` to update to the latest available versions
+  - If things still aren't working, try running commands with the :code:`--clean` flag to ensure no temporary files are interfering with the run
+- Feel free to delete the MFA temporary directory as necessary (defaults to :code:`~/Documents/MFA`), it is made to be temporary
+  - Even if you're using PostGreSQL databases, they are geared towards shorter term use
+  - If you've run :ref:`configure_cli` in the past, you'll need to rerun it, as the configuration is saved in the temporary directory
+- Please use the search functionality of the docs to see if your issue or question is answered in the docs, they are generally quite extensive
+  - If you can't find the answer to your question, please feel free to email michael.e.mcauliffe@gmail.com and it'll inspire me to add more to the relevant documentation
+
+
 Errors aligning single files
 ============================
 

@@ -44,12 +44,14 @@ extensions = [
     "sphinx.ext.mathjax",
     "sphinx.ext.intersphinx",
     "sphinx.ext.extlinks",
+    #"sphinx_immaterial",
     "myst_parser",
     "external_links",
     # "numpydoc",
     "sphinx.ext.napoleon",
     "sphinx_design",
     "sphinx.ext.viewcode",
+    "sphinx_immaterial.graphviz",
     "sphinx_click",
     # "sphinx_autodoc_typehints",
 ]
@@ -362,6 +364,7 @@ html_theme_options = {
             "name": "Pretrained MFA models",
         },
     ],
+    "font": "Segoe UI",
     "icon_links": [
         {
             "name": "GitHub",

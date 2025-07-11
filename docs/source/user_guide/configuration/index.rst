@@ -12,8 +12,8 @@ MFA uses a temporary directory for commands that can be specified in running com
 
 .. _configure_cli:
 
-Global configuration
-====================
+Global configuration (``mfa configure``)
+========================================
 
 Global configuration for MFA can be updated via the ``mfa configure`` subcommand. Once the command is called with a flag, it will set a default value for any future runs (though, you can overwrite most settings when you call other commands).
 

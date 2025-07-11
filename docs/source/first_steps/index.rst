@@ -13,6 +13,49 @@ Also check out :ref:`tutorials` for external tutorials or blog posts on specific
 Use cases
 =========
 
+.. graphviz::
+
+   digraph {
+     nodesep=0.4;
+     ranksep=0.6;
+     node [
+       shape=rectangle margin="0.3,0.1"
+     ]
+
+     start [label="Do you have..."]
+     transcripts [label="Transcripts?"]
+     dictionary [label="Dictionary?"]
+     acoustic_model [label="Acoustic model?"]
+     pretrained_acoustic_model [label="How similar to a pretrained language?"]
+     how_much_data [label="How much data?"]
+     adapt [xref=":ref:`Adapt acoustic model <first_steps_adapt_pretrained>`"]
+     align [xref=":ref:`Align <first_steps_align_pretrained>`"]
+     train [xref=":ref:`Train acoustic model <first_steps_align_train_acoustic_model>`"]
+     g2p [xref=":ref:`G2P <first_steps_g2p_oovs>`"]
+     remap [xref=":ref:`Remap dictionary <first_steps_remap_dictionary>`"]
+     formatted [xref=":ref:`Formatted for MFA <corpus_structure>`?"]
+     transcribe [xref=":ref:`Transcribe <transcribing>`"]
+
+     start -> transcripts
+     start -> dictionary
+     start -> acoustic_model
+     transcripts -> formatted [label="Yes"]
+     transcripts -> transcribe [label="No"]
+     formatted -> align
+     dictionary -> align
+     remap_dictionary -> align
+     remap_dictionary -> adapt
+     dictionary -> g2p [label="OOVs"]
+     dictionary -> remap [label="Wrong phone set"]
+     acoustic_model -> align
+     adapt -> align
+     acoustic_model -> pretrained_acoustic_model [label="No"]
+     pretrained_acoustic_model -> adapt [label="Similar"]
+     pretrained_acoustic_model -> how_much_data [label="Different"]
+     how_much_data -> adapt [label="<2-3 hours"]
+     how_much_data -> train [label="3 hours"]
+   }
+
 There are several broad use cases that you might want to use MFA for.  Take a look below and if any are close matches, you should be able to apply the linked instructions to your data.
 
 #. **Use case 1:** You have a :ref:`speech corpus <corpus_structure>`, the language has a :xref:`pretrained acoustic model <pretrained_acoustic_models>` and :xref:`pretrained dictionary <pretrained_dictionaries>`.
@@ -156,6 +199,77 @@ The new pronunciations will be available when you use  :code:`english_us_arpa` a
 .. warning::
 
    Please do look over the G2P results before adding them to the dictionary, at the very least to spot check.  Especially for non-transparent orthography systems, words with unseen graphemes, homographs, etc, G2P can generate phonotactically illegal forms, so I do not recommend piping G2P output to alignment without human spot checking.
+
+
+
+.. _first_steps_remap_dictionary:
+
+Remap a dictionary to use the phone set of a pretrained acoustic model
+----------------------------------------------------------------------
+
+For the purposes of this example, we'll use the "english_us_arpa" acoustic model and the "english_us_mfa" dictionary, but the instructions will be applicable to any pretrained acoustic model/pronunciation dictionary pairing. We'll also assume that you have done nothing else with MFA other than follow the :ref:`installation` instructions and you have the :code:`mfa` command working.  Finally, we'll assume that your :ref:`speech corpus <corpus_structure>` is stored in the folder :code:`~/mfa_data/my_corpus`, so when working with your data, this will be the main thing to update.
+
+First we'll need the pretrained models and dictionary.  These are installed via the :code:`mfa model download` command:
+
+.. code-block::
+
+   mfa model download acoustic english_us_arpa
+   mfa model download dictionary english_us_mfa
+
+You should be able to run :code:`mfa model inspect acoustic english_us_arpa` and it will output information about the :code:`english_us_arpa` acoustic model.
+
+We'll also need a mapping file that maps phones in the dictionary (in this case the english_us_mfa phone set) to the phones in the acoustic model (in this case the Arpabet phone set).  Mapping files look something like:
+
+.. code-block:: yaml
+
+   aj: AY1
+   aw: AW1
+   b: B
+   ...
+   m̩: AH0 M
+   ...
+
+You can download the mapping from english_us_mfa phone set to english_us_arpa phone set `here <https://github.com/mmcauliffe/mfa-adaptation/blob/main/data/dictionary_mappings/english_to_arpa_phone_mapping.yaml>`_. For the purposes of this tutorial, we assume you've saved it to :code:`~/mfa_data/english_to_arpa_phone_mapping.yaml`.
+
+Once we have a phone set mapping defined, we can use it to remap our dictionary to the new phone set via the :code:`mfa remap_dictionary` command:
+
+.. code-block::
+
+   mfa remap_dictionary english_us_mfa english_us_arpa ~/mfa_data/english_to_arpa_phone_mapping.yaml ~/mfa_data/remapped_english_us_arpa.dict
+
+The remapped dictionary in :code:`~/mfa_data/remapped_english_us_arpa.dict` can now be used to specify the dictionary path for  :ref:`first_steps_align_pretrained` or :ref:`first_steps_adapt_pretrained`.
+
+.. _first_steps_adapt_pretrained:
+
+Adapting a pretrained model with existing pronunciation dictionary to a dataset
+-------------------------------------------------------------------------------
+
+For the purposes of this example, we'll use the "english_us_arpa" model, but the instructions will be applicable to any pretrained acoustic model/pronunciation dictionary pairing. We'll also assume that you have done nothing else with MFA other than follow the :ref:`installation` instructions and you have the :code:`mfa` command working.  Finally, we'll assume that your :ref:`speech corpus <corpus_structure>` is stored in the folder :code:`~/mfa_data/my_corpus`, so when working with your data, this will be the main thing to update.
+
+First we'll need the pretrained models and dictionary.  These are installed via the :code:`mfa model download` command:
+
+.. code-block::
+
+   mfa model download acoustic english_us_arpa
+   mfa model download dictionary english_us_arpa
+
+You should be able to run :code:`mfa model inspect acoustic english_us_arpa` and it will output information about the :code:`english_us_arpa` acoustic model.
+
+Next, we want to make sure that the dataset is in the proper format for MFA, which is what the :code:`mfa validate` command does:
+
+.. code-block::
+
+   mfa validate ~/mfa_data/my_corpus english_us_arpa english_us_arpa
+
+This command will look through the corpus and make sure that MFA is parsing everything correctly.  There are couple of different types of :ref:`corpus_structure` that MFA supports, but in general the core requirement is that you should have pairs of sound files and transcription files with the same name (except for the extension).  Take a look over the validator output and make sure that the number of speakers and number of files and utterances match your expectations, and that the number of Out of Vocabulary (OOV) items is not too high.  If you want to generate transcriptions for these words so that they can be aligned, see :ref:`first_steps_g2p_pretrained` to make a new dictionary.  The validator will also attempt to run feature generation and train a simple monophone model to make sure that everything works within Kaldi.
+
+Once we've validated the data, we can use it to adapt our pretrained model via the :code:`mfa adapt` command:
+
+.. code-block::
+
+   mfa adapt ~/mfa_data/my_corpus english_us_arpa english_us_arpa ~/mfa_data/english_us_arpa_adapted.zip
+
+This model can now be used as input for :ref:`first_steps_align_pretrained`.
 
 .. _first_steps_align_train_acoustic_model:
 

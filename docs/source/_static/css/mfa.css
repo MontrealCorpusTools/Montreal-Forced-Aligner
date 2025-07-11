@@ -65,6 +65,11 @@ html[data-theme="light"] {
  --pst-color-toc-link: var(--base-blue);
  --pst-color-toc-link-hover: var(--pst-color-hover-navigation);
  --pst-color-toc-link-active: var(--pst-color-active-navigation);
+
+  --md-code-fg-color: var(--base-blue);
+  --md-graphviz-node-bg-color: var(--base-yellow);
+  --md-graphviz-node-fg-color: var(--base-blue);
+  --md-graphviz-edge-color: var(--base-blue);
 }
 /*******************************************************************************
 * dark theme
@@ -99,6 +104,11 @@ html[data-theme="dark"] {
     --pst-color-toc-link: var(--base-yellow);
     --pst-color-toc-link-hover: var(--pst-color-hover-navigation);
     --pst-color-toc-link-active: var(--pst-color-active-navigation);
+
+  --md-code-fg-color: var(--base-yellow);
+  --md-graphviz-node-bg-color: var(--base-blue);
+  --md-graphviz-node-fg-color: var(--base-yellow);
+  --md-graphviz-edge-color: var(--base-yellow);
 }
 
 .container, .container-xl, .container-lg {
