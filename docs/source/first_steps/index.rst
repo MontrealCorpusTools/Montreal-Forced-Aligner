@@ -379,9 +379,3 @@ You can check the tokenized text in :code:`~/mfa_data/tokenized_version`, verify
 
    The above were used in the initial construction of the training corpora for MFA, though the training segmentations for Japanese have begun to diverge from :code:`nagisa`, as they break up phonological words into morphological parses where for the purposes of acoustic model training and alignment it makes more sense to not split (nagisa: :ipa_inline:`使っ て [ts ɨ k a Q t e]` vs mfa: :ipa_inline:`使って [ts ɨ k a tː e]`). The MFA tokenizer models are provided as an easy start up path as the ones listed above may have extra dependencies and platform restrictions.
 
-.. toctree::
-   :maxdepth: 1
-   :hidden:
-
-   example
-   tutorials

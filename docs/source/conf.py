@@ -147,6 +147,7 @@ xref_links = {
     "wagner": ("Michael Wagner", "https://prosodylab.org/"),
     "coles": ("Arlie Coles", "https://a-coles.github.io/"),
     "chodroff": ("Eleanor Chodroff", "https://www.eleanorchodroff.com/"),
+    "chenzixu": ("Chenzi Xu", "https://chenzixu.rbind.io/"),
     "dias": ("Danoja Dias", "https://medium.com/breaktheloop"),
     "rutgers_spanish_portuguese": (
         "Rutgers University Department of Spanish and Portuguese",

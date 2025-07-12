@@ -19,7 +19,9 @@ External tutorials
 
 I will try to keep this updated with a list of in-depth tutorials for using MFA.  If you write up anything that could be included here, please let me know by `filing an issue`_ and I will add it.
 
-*  `Montreal Forced Aligner v2 Corpus Phonetics Tutorial`_ (Now updated for 2.0!)
+* `A Gentle Guide to Montreal Forced Aligner <https://chenzixu.rbind.io/resources/1forcedalignment/fa6/>`_ (Updated for MFA 3.0)
+   * Courtesy of :xref:`chenzixu`
+* `Montreal Forced Aligner v2 Corpus Phonetics Tutorial`_ (Based on MFA 2.0)
    * Courtesy of :xref:`chodroff`
 * `Phonetic forced alignment with the Montreal Forced Aligner`_ (YouTube recording)
    * Courtesy of :xref:`chodroff` and :xref:`rutgers_spanish_portuguese`
