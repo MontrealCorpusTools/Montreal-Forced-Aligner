@@ -118,11 +118,11 @@ def load_configuration(config_path: typing.Union[str, Path]) -> typing.Dict[str,
             data = yaml.load(f, Loader=yaml.Loader)
         elif config_path.suffix == ".json":
             data = json.load(f)
+    if not data:
+        return {}
     for k, v in data.items():
         if any(k.endswith(x) for x in ["_path", "_directory", "_dir"]):
             data[k] = Path(v)
-    if not data:
-        return {}
     return data
 
 
