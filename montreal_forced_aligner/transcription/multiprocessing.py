@@ -733,7 +733,7 @@ class WhisperUtteranceLoader(threading.Thread):
 
     def __init__(
         self,
-        job_name: int,
+        job_name: typing.Optional[int],
         session: sqlalchemy.orm.scoped_session,
         return_q: queue.Queue,
         stopped: threading.Event,
@@ -774,6 +774,8 @@ class WhisperUtteranceLoader(threading.Thread):
                     .join(Utterance.file)
                     .join(File.sound_file)
                 )
+                if self.job_name is not None:
+                    utterances = utterances.filter(Utterance.job_id == self.job_name)
                 utterances = utterances.order_by(Utterance.file_id, Utterance.begin)
                 if not utterances.count():
                     self.finished_adding.set()
@@ -890,7 +892,7 @@ class WhisperAsrFunction(KaldiFunction):
         super().__init__(args)
         self.working_directory = args.working_directory
         self.working_directory = args.working_directory
-        self.cuda = args.cuda
+        self.cuda = args.cuda and torch.cuda.is_available()
         self.architecture = None
         self.model = None
         self.language = None
@@ -925,6 +927,7 @@ class WhisperAsrFunction(KaldiFunction):
                 language=language,
                 vad_model=vad_model,
                 vad_options=None,
+                compute_type="float16" if self.cuda else "int8",
                 download_root=os.path.join(
                     config.TEMPORARY_DIRECTORY,
                     "models",
@@ -938,7 +941,7 @@ class WhisperAsrFunction(KaldiFunction):
         finished_adding = threading.Event()
         stopped = threading.Event()
         loader = WhisperUtteranceLoader(
-            self.job_name,
+            self.job_name if not self.cuda else None,
             self.session,
             return_q,
             stopped,

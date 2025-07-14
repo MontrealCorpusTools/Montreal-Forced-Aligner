@@ -174,7 +174,7 @@ def visualize_clusters(
             init="pca" if metric != "precomputed" else "random",
             n_jobs=config.NUM_JOBS,
             angle=tsne_angle,
-            n_iter=tsne_iterations,
+            max_iter=tsne_iterations,
         ).fit_transform(to_fit)
     elif manifold_algorithm is ManifoldAlgorithm.spectral:
         points = manifold.SpectralEmbedding(

@@ -41,7 +41,7 @@ from montreal_forced_aligner.exceptions import (
     KaldiProcessingError,
     MultiprocessingError,
 )
-from montreal_forced_aligner.helper import comma_join, load_configuration, mfa_open
+from montreal_forced_aligner.helper import comma_join, load_configuration, mfa_open, MfaYamlDumper
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -740,7 +740,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         if not os.path.exists(self.output_directory):
             return
         with mfa_open(self.worker_config_path, "w") as f:
-            yaml.dump(self.configuration, f)
+            yaml.dump(self.configuration, f, Dumper=MfaYamlDumper)
 
     def _validate_previous_configuration(self, conf: MetaDict) -> None:
         """
