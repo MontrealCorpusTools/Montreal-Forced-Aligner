@@ -1480,6 +1480,10 @@ class WhisperTranscriber(HuggingFaceTranscriber, SpeechbrainSegmenterMixin):
             )
         try:
             vad_model = None
+            import torch
+            if not torch.cuda.is_available():
+                logger.warning("cuda was specified but not available, using CPU mode")
+                self.cuda = False
             if self.cuda:
                 config.update_configuration(
                     {
@@ -1490,6 +1494,7 @@ class WhisperTranscriber(HuggingFaceTranscriber, SpeechbrainSegmenterMixin):
             m = load_model(
                 self.architecture,
                 device="cuda" if self.cuda else "cpu",
+                compute_type="float16" if self.cuda else "int8",
                 language=iso_code,
                 vad_model=vad_model,
                 vad_options=self.segmentation_options,

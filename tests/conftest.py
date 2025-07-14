@@ -984,12 +984,13 @@ def sat_train_config_path(config_directory):
 
 @pytest.fixture(scope="session")
 def multispeaker_dictionary_config_path(generated_dir, basic_dict_path, english_dictionary):
+    from montreal_forced_aligner.helper import MfaYamlDumper
     path = generated_dir.joinpath("multispeaker_dictionary.yaml")
     with mfa_open(path, "w") as f:
         yaml.dump(
             {"default": english_dictionary, "michael": basic_dict_path},
             f,
-            Dumper=yaml.Dumper,
+            Dumper=MfaYamlDumper,
             allow_unicode=True,
         )
     return path
@@ -997,12 +998,13 @@ def multispeaker_dictionary_config_path(generated_dir, basic_dict_path, english_
 
 @pytest.fixture(scope="session")
 def mfa_speaker_dict_path(generated_dir, english_uk_mfa_dictionary, english_us_mfa_reduced_dict):
+    from montreal_forced_aligner.helper import MfaYamlDumper
     path = generated_dir.joinpath("test_multispeaker_mfa_dictionary.yaml")
     with mfa_open(path, "w") as f:
         yaml.dump(
             {"default": english_us_mfa_reduced_dict, "speaker": english_us_mfa_reduced_dict},
             f,
-            Dumper=yaml.Dumper,
+            Dumper=MfaYamlDumper,
             allow_unicode=True,
         )
     return path

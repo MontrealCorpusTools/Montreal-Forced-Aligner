@@ -5,6 +5,14 @@
 3.3 Changelog
 *************
 
+3.3.3
+-----
+
+- Fixed a data type mismatch issue when using whisperx with CPU
+- Fixed a bug where files were being multiply transcribed when using torch models on CPU
+- Fixed a python version compatibility issue with paths being saved in configuration files
+- Fixed a compatibility issue with sklearn 1.5
+
 3.3.0
 -----
 

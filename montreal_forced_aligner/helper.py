@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 import dataclassy
 import numpy
 import yaml
+import pathlib
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.theme import Theme
@@ -44,6 +45,7 @@ __all__ = [
     "format_correction",
     "format_probability",
     "load_evaluation_mapping",
+    "MfaYamlDumper",
 ]
 
 
@@ -59,6 +61,17 @@ console = Console(
     stderr=True,
 )
 
+def path_representer(dumper, obj):
+    return dumper.represent_str(str(obj))
+
+class MfaYamlDumper(yaml.dumper.SafeDumper):
+    pass
+
+yaml.add_representer(
+    type(pathlib.Path()),
+    path_representer,
+    MfaYamlDumper,
+)
 
 @contextmanager
 def mfa_open(
@@ -105,6 +118,9 @@ def load_configuration(config_path: typing.Union[str, Path]) -> typing.Dict[str,
             data = yaml.load(f, Loader=yaml.Loader)
         elif config_path.suffix == ".json":
             data = json.load(f)
+    for k, v in data.items():
+        if any(k.endswith(x) for x in ["_path", "_directory", "_dir"]):
+            data[k] = Path(v)
     if not data:
         return {}
     return data

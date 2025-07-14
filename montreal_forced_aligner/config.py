@@ -18,7 +18,7 @@ import yaml
 from dataclassy import dataclass
 
 from montreal_forced_aligner.exceptions import RootDirectoryError
-from montreal_forced_aligner.helper import mfa_open
+from montreal_forced_aligner.helper import mfa_open, MfaYamlDumper
 
 __all__ = [
     "generate_config_path",
@@ -132,7 +132,7 @@ def update_command_history(command_data: Dict[str, Any]) -> None:
     history.append(command_data)
     history = history[-50:]
     with mfa_open(path, "w") as f:
-        yaml.dump(history, f, Dumper=yaml.Dumper, allow_unicode=True)
+        yaml.dump(history, f, Dumper=MfaYamlDumper, allow_unicode=True)
 
 
 CLEAN = False
@@ -259,12 +259,15 @@ class MfaConfiguration:
             k: dataclassy.asdict(v) for k, v in self.profiles.items() if k != "global"
         }
         with mfa_open(global_configuration_file, "w") as f:
-            yaml.dump(data, f)
+            yaml.dump(data, f, Dumper=MfaYamlDumper)
 
     def load(self) -> None:
         """Load MFA configuration"""
         with mfa_open(self.config_path, "r") as f:
             data = yaml.load(f, Loader=yaml.Loader)
+        for k, v in data.items():
+            if any(k.endswith(x) for x in ["_path", "_directory", "_dir"]):
+                data[k] = pathlib.Path(v)
         for name, p in data.pop("profiles", {}).items():
             self.profiles[name] = MfaProfile()
             self.profiles[name].update(p)
