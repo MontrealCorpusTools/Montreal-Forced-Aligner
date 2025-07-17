@@ -109,7 +109,6 @@ def adapt_model_cli(context, **kwargs) -> None:
         acoustic_model_path=acoustic_model_path,
         reference_directory=reference_directory,
         custom_mapping_path=custom_mapping_path,
-        use_reference_alignments=True,
         **AdaptingAligner.parse_parameters(config_path, context.params, context.args),
     )
 

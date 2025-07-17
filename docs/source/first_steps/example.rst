@@ -59,7 +59,7 @@ In the same environment that you've installed MFA, enter the following command i
 
 .. code-block:: bash
 
-   mfa train  /path/to/librispeech/dataset /path/to/librispeech/lexicon.txt ~/Documents/aligned_librispeech
+   mfa train  /path/to/librispeech/dataset /path/to/librispeech/lexicon.txt /where/to/save/acoustic_model.zip --output_directory ~/Documents/aligned_librispeech
 
 .. _dict_generating_example:
 

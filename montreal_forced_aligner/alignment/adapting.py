@@ -54,6 +54,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
     def __init__(self, mapping_tau: int = 20, **kwargs):
         self.initialized = False
         self.adaptation_done = False
+        self.use_reference_alignments = True
         super().__init__(**kwargs)
         self.mapping_tau = mapping_tau
 
