@@ -47,6 +47,7 @@ from montreal_forced_aligner.alignment.multiprocessing import (
 )
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
 from montreal_forced_aligner.data import (
+    PhoneType,
     PronunciationProbabilityCounter,
     TextFileType,
     WordType,
@@ -176,28 +177,59 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 session.execute(sqlalchemy.text("ALTER TABLE phone_interval ENABLE TRIGGER all"))
                 session.commit()
 
-    def analyze_alignments(self):
-        if not config.USE_POSTGRES:
-            logger.warning("Alignment analysis not available without using postgresql")
-            return
+    def analyze_alignments(self, calculate_duration_statistics=True):
         workflow = self.current_workflow
         if not workflow.alignments_collected:
             self.collect_alignments()
         logger.info("Analyzing alignment quality...")
         begin = time.time()
         with self.session() as session:
-            update_mappings = []
-            query = session.query(
-                PhoneInterval.phone_id,
-                sqlalchemy.func.avg(PhoneInterval.duration),
-                sqlalchemy.func.stddev_samp(PhoneInterval.duration),
-            ).group_by(PhoneInterval.phone_id)
-            for p_id, mean_duration, sd_duration in query:
-                update_mappings.append(
-                    {"id": p_id, "mean_duration": mean_duration, "sd_duration": sd_duration}
-                )
-            bulk_update(session, Phone, update_mappings)
-            session.commit()
+            if calculate_duration_statistics:
+                update_mappings = []
+                if not config.USE_POSTGRES:
+                    import statistics
+
+                    query = (
+                        session.query(PhoneInterval.phone_id, PhoneInterval.duration)
+                        .join(PhoneInterval.phone)
+                        .filter(Phone.phone_type == PhoneType.non_silence)
+                    )
+                    phone_data = {}
+                    for p_id, duration in query:
+                        if p_id not in phone_data:
+                            phone_data[p_id] = []
+                        phone_data[p_id].append(duration)
+                    for p_id, durations in phone_data.items():
+                        mean_duration = statistics.mean(durations)
+                        sd_duration = statistics.stdev(durations)
+                        update_mappings.append(
+                            {
+                                "id": p_id,
+                                "mean_duration": mean_duration,
+                                "sd_duration": sd_duration,
+                            }
+                        )
+                else:
+                    query = (
+                        session.query(
+                            PhoneInterval.phone_id,
+                            sqlalchemy.func.avg(PhoneInterval.duration),
+                            sqlalchemy.func.stddev_samp(PhoneInterval.duration),
+                        )
+                        .join(PhoneInterval.phone)
+                        .filter(Phone.phone_type == PhoneType.non_silence)
+                        .group_by(PhoneInterval.phone_id)
+                    )
+                    for p_id, mean_duration, sd_duration in query:
+                        update_mappings.append(
+                            {
+                                "id": p_id,
+                                "mean_duration": mean_duration,
+                                "sd_duration": sd_duration,
+                            }
+                        )
+                bulk_update(session, Phone, update_mappings)
+                session.commit()
 
             arguments = self.analyze_alignments_arguments()
             update_mappings = []

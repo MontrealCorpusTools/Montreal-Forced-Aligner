@@ -25,11 +25,12 @@ from montreal_forced_aligner.abc import (
     ModelExporterMixin,
     TopLevelMfaWorker,
 )
-from montreal_forced_aligner.data import MfaArguments, WorkflowType
+from montreal_forced_aligner.data import MfaArguments, PhoneType, WorkflowType
 from montreal_forced_aligner.db import (
     CorpusWorkflow,
     Dictionary,
     Job,
+    Phone,
     Speaker,
     Utterance,
     bulk_update,
@@ -385,8 +386,21 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
     def meta(self) -> MetaDict:
         """Metadata about the final round of training"""
         meta = self.training_configs[self.final_identifier].meta
+        with self.session() as session:
+            duration_information = {
+                k: (m, sd)
+                for k, m, sd in session.query(
+                    Phone.kaldi_label, Phone.mean_duration, Phone.sd_duration
+                ).filter(
+                    Phone.phone_type == PhoneType.non_silence,
+                    Phone.sd_duration != None,  # noqa
+                    Phone.sd_duration != 0,
+                )
+            }
         if self.model_version is not None:
             meta["version"] = self.model_version
+        if duration_information:
+            meta["duration_information"] = duration_information
         return meta
 
     def add_config(self, train_type: str, params: MetaDict) -> None:
