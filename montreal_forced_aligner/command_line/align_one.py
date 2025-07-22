@@ -74,6 +74,12 @@ __all__ = ["align_one_cli"]
     type=click.Choice(["long_textgrid", "short_textgrid", "json", "csv"]),
 )
 @click.option(
+    "--no_tokenization",
+    is_flag=True,
+    help="Flag to disable any pretrained tokenization.",
+    default=False,
+)
+@click.option(
     "--g2p_model_path",
     "g2p_model_path",
     help="Path to G2P model to use for OOV items.",
@@ -98,6 +104,7 @@ def align_one_cli(context, **kwargs) -> None:
     if output_path.is_dir():
         output_path = output_path.joinpath(sound_file_path.stem + ".TextGrid")
     output_format = kwargs["output_format"]
+    no_tokenization = kwargs["no_tokenization"]
     g2p_model_path = kwargs.get("g2p_model_path", None)
 
     acoustic_model = AcousticModel(acoustic_model_path)
@@ -138,7 +145,7 @@ def align_one_cli(context, **kwargs) -> None:
         lexicon_compiler.phone_table.write_text(phones_path)
         lexicon_compiler.clear()
 
-    if acoustic_model.language is Language.unknown:
+    if no_tokenization or acoustic_model.language is Language.unknown:
         tokenizer = SimpleTokenizer(
             word_table=lexicon_compiler.word_table,
             word_break_markers=c.get("word_break_markers", DEFAULT_WORD_BREAK_MARKERS),
@@ -191,7 +198,6 @@ def align_one_cli(context, **kwargs) -> None:
         )
         file_ctm.word_intervals.extend(ctm.word_intervals)
     if str(output_path) != "-":
-
         output_path.parent.mkdir(parents=True, exist_ok=True)
     file_ctm.export_textgrid(
         output_path, file_duration=file.wav_info.duration, output_format=output_format

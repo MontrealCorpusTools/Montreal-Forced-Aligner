@@ -156,6 +156,7 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
                     os.makedirs(dictionary.temp_directory, exist_ok=True)
                     shutil.copyfile(fst_path, dictionary.align_lexicon_path)
             phone_objs = []
+            duration_information = self.acoustic_model.meta.get("duration_information", {})
             with mfa_open(self.phone_symbol_table_path, "r") as f:
                 for line in f:
                     line = line.strip()
@@ -177,6 +178,10 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
                             "phone_type": phone_type,
                         }
                     )
+                    if phone_label in duration_information:
+                        mean_duration, sd_duration = duration_information[phone_label]
+                        phone_objs[-1]["mean_duration"] = mean_duration
+                        phone_objs[-1]["sd_duration"] = sd_duration
             grapheme_objs = []
             with mfa_open(self.grapheme_symbol_table_path, "r") as f:
                 for line in f:
@@ -193,6 +198,9 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
                 Phone, phone_objs, return_defaults=False, render_nulls=True
             )
             session.commit()
+
+    def analyze_alignments(self, calculate_duration_statistics=False):
+        super().analyze_alignments(calculate_duration_statistics=calculate_duration_statistics)
 
     def setup(self) -> None:
         """Setup for alignment"""

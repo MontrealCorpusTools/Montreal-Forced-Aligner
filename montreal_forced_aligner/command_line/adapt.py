@@ -74,6 +74,12 @@ __all__ = ["adapt_model_cli"]
     default=False,
 )
 @click.option(
+    "--no_tokenization",
+    is_flag=True,
+    help="Flag to disable any pretrained tokenization.",
+    default=False,
+)
+@click.option(
     "--reference_directory",
     help="Directory containing gold standard alignments to use in training",
     type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
@@ -101,6 +107,10 @@ def adapt_model_cli(context, **kwargs) -> None:
     acoustic_model_path = kwargs["acoustic_model_path"]
     output_format = kwargs["output_format"]
     include_original_text = kwargs["include_original_text"]
+    extra_kwargs = AdaptingAligner.parse_parameters(config_path, context.params, context.args)
+    no_tokenization = kwargs["no_tokenization"]
+    if no_tokenization:
+        extra_kwargs["language"] = "unknown"
     reference_directory: typing.Optional[Path] = kwargs.get("reference_directory", None)
     custom_mapping_path: typing.Optional[Path] = kwargs.get("custom_mapping_path", None)
     adapter = AdaptingAligner(
@@ -109,7 +119,7 @@ def adapt_model_cli(context, **kwargs) -> None:
         acoustic_model_path=acoustic_model_path,
         reference_directory=reference_directory,
         custom_mapping_path=custom_mapping_path,
-        **AdaptingAligner.parse_parameters(config_path, context.params, context.args),
+        **extra_kwargs,
     )
 
     try:
