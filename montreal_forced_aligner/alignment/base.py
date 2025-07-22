@@ -190,25 +190,33 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     import statistics
 
                     query = (
-                        session.query(PhoneInterval.phone_id, PhoneInterval.duration)
+                        session.query(Phone.phone, Phone.id, PhoneInterval.duration)
                         .join(PhoneInterval.phone)
                         .filter(Phone.phone_type == PhoneType.non_silence)
                     )
+                    id_mapping = {}
                     phone_data = {}
-                    for p_id, duration in query:
-                        if p_id not in phone_data:
-                            phone_data[p_id] = []
-                        phone_data[p_id].append(duration)
-                    for p_id, durations in phone_data.items():
+                    for p, p_id, duration in query:
+                        if p not in phone_data:
+                            phone_data[p] = []
+                        if p not in id_mapping:
+                            id_mapping[p] = set()
+                        phone_data[p].append(duration)
+                        id_mapping[p].add(p_id)
+                    for p, durations in phone_data.items():
                         mean_duration = statistics.mean(durations)
-                        sd_duration = statistics.stdev(durations)
-                        update_mappings.append(
-                            {
-                                "id": p_id,
-                                "mean_duration": mean_duration,
-                                "sd_duration": sd_duration,
-                            }
-                        )
+                        try:
+                            sd_duration = statistics.stdev(durations)
+                        except statistics.StatisticsError:
+                            sd_duration = None
+                        for p_id in id_mapping[p]:
+                            update_mappings.append(
+                                {
+                                    "id": p_id,
+                                    "mean_duration": mean_duration,
+                                    "sd_duration": sd_duration,
+                                }
+                            )
                 else:
                     query = (
                         session.query(
