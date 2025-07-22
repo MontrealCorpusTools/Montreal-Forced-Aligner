@@ -80,6 +80,12 @@ __all__ = ["align_corpus_cli"]
     default=False,
 )
 @click.option(
+    "--no_tokenization",
+    is_flag=True,
+    help="Flag to disable any pretrained tokenization.",
+    default=False,
+)
+@click.option(
     "--fine_tune", is_flag=True, help="Flag for running extra fine tuning stage.", default=False
 )
 @click.option(
@@ -107,6 +113,10 @@ def align_corpus_cli(context, **kwargs) -> None:
     output_directory = kwargs["output_directory"]
     output_format = kwargs["output_format"]
     include_original_text = kwargs["include_original_text"]
+    extra_kwargs = PretrainedAligner.parse_parameters(config_path, context.params, context.args)
+    no_tokenization = kwargs["no_tokenization"]
+    if no_tokenization:
+        extra_kwargs["language"] = "unknown"
     g2p_model_path: typing.Optional[Path] = kwargs.get("g2p_model_path", None)
     if g2p_model_path:
         g2p_model_path = validate_g2p_model(context, kwargs, g2p_model_path)
@@ -115,7 +125,7 @@ def align_corpus_cli(context, **kwargs) -> None:
         dictionary_path=dictionary_path,
         acoustic_model_path=acoustic_model_path,
         g2p_model_path=g2p_model_path,
-        **PretrainedAligner.parse_parameters(config_path, context.params, context.args),
+        **extra_kwargs,
     )
     try:
         aligner.align()
