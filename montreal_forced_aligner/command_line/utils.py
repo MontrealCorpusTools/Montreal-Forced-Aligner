@@ -217,7 +217,7 @@ def validate_corpus_directory(ctx, param, value):
             value = Path(value)
         if not value.exists():
             raise click.BadParameter("Corpus directory does not exist.")
-        if not value.is_file():
+        if value.is_file():
             raise click.BadParameter("Corpus directory must be a directory, not a file.")
         if not value.is_dir():
             raise click.BadParameter("Corpus directory must be a directory.")
