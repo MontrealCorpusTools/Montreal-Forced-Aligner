@@ -6,7 +6,11 @@ from pathlib import Path
 import rich_click as click
 
 from montreal_forced_aligner import config
-from montreal_forced_aligner.command_line.utils import common_options, validate_ivector_extractor
+from montreal_forced_aligner.command_line.utils import (
+    common_options,
+    validate_corpus_directory,
+    validate_ivector_extractor,
+)
 from montreal_forced_aligner.data import ClusterType
 from montreal_forced_aligner.diarization.speaker_diarizer import SpeakerDiarizer
 from montreal_forced_aligner.exceptions import DatabaseError
@@ -23,10 +27,7 @@ __all__ = ["diarize_speakers_cli"]
     ),
     short_help="Diarize a corpus",
 )
-@click.argument(
-    "corpus_directory",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
-)
+@click.argument("corpus_directory", type=click.UNPROCESSED, callback=validate_corpus_directory)
 @click.argument(
     "ivector_extractor_path", type=click.UNPROCESSED, callback=validate_ivector_extractor
 )

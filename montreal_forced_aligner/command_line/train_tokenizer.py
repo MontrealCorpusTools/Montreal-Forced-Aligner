@@ -6,7 +6,7 @@ from pathlib import Path
 import rich_click as click
 
 from montreal_forced_aligner import config
-from montreal_forced_aligner.command_line.utils import common_options
+from montreal_forced_aligner.command_line.utils import common_options, validate_corpus_directory
 from montreal_forced_aligner.tokenization.trainer import (
     PhonetisaurusTokenizerTrainer,
     TokenizerTrainer,
@@ -24,10 +24,7 @@ __all__ = ["train_tokenizer_cli"]
     ),
     short_help="Train a tokenizer model",
 )
-@click.argument(
-    "corpus_directory",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
-)
+@click.argument("corpus_directory", type=click.UNPROCESSED, callback=validate_corpus_directory)
 @click.argument(
     "output_model_path", type=click.Path(file_okay=True, dir_okay=False, path_type=Path)
 )

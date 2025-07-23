@@ -9,6 +9,7 @@ from montreal_forced_aligner import config
 from montreal_forced_aligner.acoustic_modeling import TrainableAligner
 from montreal_forced_aligner.command_line.utils import (
     common_options,
+    validate_corpus_directory,
     validate_dictionary,
     validate_g2p_model,
 )
@@ -26,10 +27,7 @@ __all__ = ["train_acoustic_model_cli"]
     ),
     short_help="Train a new acoustic model",
 )
-@click.argument(
-    "corpus_directory",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
-)
+@click.argument("corpus_directory", type=click.UNPROCESSED, callback=validate_corpus_directory)
 @click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
 @click.argument(
     "output_model_path", type=click.Path(file_okay=True, dir_okay=False, path_type=Path)

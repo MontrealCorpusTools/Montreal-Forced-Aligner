@@ -9,6 +9,7 @@ from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.utils import (
     common_options,
     validate_acoustic_model,
+    validate_corpus_directory,
     validate_dictionary,
 )
 from montreal_forced_aligner.vad.segmenter import TranscriptionSegmenter, VadSegmenter
@@ -25,10 +26,7 @@ __all__ = ["create_segments_vad_cli", "create_segments_cli"]
     ),
     short_help="Split long audio files into shorter segments",
 )
-@click.argument(
-    "corpus_directory",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
-)
+@click.argument("corpus_directory", type=click.UNPROCESSED, callback=validate_corpus_directory)
 @click.argument(
     "output_directory", type=click.Path(file_okay=False, dir_okay=True, path_type=Path)
 )
@@ -98,10 +96,7 @@ def create_segments_vad_cli(context, **kwargs) -> None:
     ),
     short_help="Split long audio files into shorter segments",
 )
-@click.argument(
-    "corpus_directory",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
-)
+@click.argument("corpus_directory", type=click.UNPROCESSED, callback=validate_corpus_directory)
 @click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
 @click.argument("acoustic_model_path", type=click.UNPROCESSED, callback=validate_acoustic_model)
 @click.argument(

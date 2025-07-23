@@ -12,6 +12,7 @@ from montreal_forced_aligner.alignment import AdaptingAligner
 from montreal_forced_aligner.command_line.utils import (
     common_options,
     validate_acoustic_model,
+    validate_corpus_directory,
     validate_dictionary,
 )
 
@@ -27,10 +28,7 @@ __all__ = ["adapt_model_cli"]
     ),
     short_help="Adapt an acoustic model",
 )
-@click.argument(
-    "corpus_directory",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
-)
+@click.argument("corpus_directory", type=click.UNPROCESSED, callback=validate_corpus_directory)
 @click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
 @click.argument("acoustic_model_path", type=click.UNPROCESSED, callback=validate_acoustic_model)
 @click.argument(

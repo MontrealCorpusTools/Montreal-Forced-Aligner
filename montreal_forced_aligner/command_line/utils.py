@@ -28,6 +28,7 @@ from montreal_forced_aligner.models import MODEL_TYPES
 
 __all__ = [
     "cleanup_logger",
+    "validate_corpus_directory",
     "validate_acoustic_model",
     "validate_g2p_model",
     "validate_ivector_extractor",
@@ -205,6 +206,27 @@ def validate_model_arg(name: str, model_type: str) -> typing.Union[Path, str]:
                 str(PretrainedModelNotFoundError(name, model_type, available_models))
             )
     return name
+
+
+def validate_corpus_directory(ctx, param, value):
+    """Validation callback for acoustic model paths"""
+    from montreal_forced_aligner import config
+
+    if value:
+        if not isinstance(value, Path):
+            value = Path(value)
+        if not value.exists():
+            raise click.BadParameter("Corpus directory does not exist.")
+        if not value.is_file():
+            raise click.BadParameter("Corpus directory must be a directory, not a file.")
+        if not value.is_dir():
+            raise click.BadParameter("Corpus directory must be a directory.")
+        if str(value).startswith(str(config.TEMPORARY_DIRECTORY)):
+            raise click.BadParameter(
+                "Corpus directories must be outside of MFA's temporary directory to prevent data loss, "
+                "please move the corpus directory elsewhere and rerun."
+            )
+        return value
 
 
 def validate_acoustic_model(ctx, param, value):
