@@ -1645,6 +1645,12 @@ class SpeechbrainTranscriber(HuggingFaceTranscriber):
         """
         if self.initialized:
             return
+        if not CUDA_AVAILABLE or not self.cuda:
+            raise ModelError(
+                "Speechbrain transcription must use CUDA. "
+                "If your device does not have CUDA support, "
+                "try mfa transcribe_whisper instead."
+            )
         common_voice_code = self.language.iso_code
         if common_voice_code is None:
             raise ModelError(

@@ -66,7 +66,7 @@ def get_initial_segmentation(frames: np.ndarray, frame_shift: float) -> typing.L
         if int(f) > 0:
             non_silent_frames += 1
             if cur_segment is None:
-                cur_segment = CtmInterval(begin=i * frame_shift, end=0, label="speech")
+                cur_segment = CtmInterval(i * frame_shift, 0, "speech")
         else:
             silent_frames += 1
             if cur_segment is not None:
@@ -387,9 +387,7 @@ class MfaVAD(VAD):
             if is_active:
                 if y < deactivation_threshold:
                     e = self.time_resolution * (time_step - 1)
-                    boundaries.append(
-                        CtmInterval(begin=start + begin, end=e + begin, label="speech")
-                    )
+                    boundaries.append(CtmInterval(start + begin, e + begin, "speech"))
                     is_active = False
             elif y > activation_threshold:
                 is_active = True
@@ -400,7 +398,7 @@ class MfaVAD(VAD):
             else:
                 e = self.time_resolution * vad_prob.shape[0]
                 e += begin
-            boundaries.append(CtmInterval(begin=start + begin, end=e, label="speech"))
+            boundaries.append(CtmInterval(start + begin, e, "speech"))
         return boundaries
 
     def get_speech_prob_chunk(self, wavs, wav_lens=None):

@@ -57,6 +57,8 @@ def test_transcribe_speechbrain(
 ):
     if not FOUND_SPEECHBRAIN:
         pytest.skip("SpeechBrain not installed")
+    if not CUDA_AVAILABLE:
+        pytest.skip("CUDA not available")
     output_path = generated_dir.joinpath("transcribe_test_sb")
     command = [
         "transcribe_speechbrain",
@@ -68,7 +70,7 @@ def test_transcribe_speechbrain(
         "--clean",
         "--no_debug",
         "--evaluate",
-        "--no_cuda",
+        "--cuda",
         "--use_postgres",
     ]
     command = [str(x) for x in command]
