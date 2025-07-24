@@ -71,6 +71,7 @@ from montreal_forced_aligner.models import AcousticModel, LanguageModel
 from montreal_forced_aligner.textgrid import construct_output_path
 from montreal_forced_aligner.transcription.models import FOUND_WHISPERX, load_model
 from montreal_forced_aligner.transcription.multiprocessing import (
+    CUDA_AVAILABLE,
     FOUND_SPEECHBRAIN,
     CarpaLmRescoreArguments,
     CarpaLmRescoreFunction,
@@ -1379,13 +1380,48 @@ class HuggingFaceTranscriber(
                     }
                 )
             update_mapping = []
+            insert_mappings = []
+            max_utterance_id = self.get_next_primary_key(Utterance)
             with self.session() as session:
-                for u_id, transcript in run_kaldi_function(
+                for u_id, segments in run_kaldi_function(
                     self.transcription_function, arguments, total_count=self.num_utterances
                 ):
-                    update_mapping.append({"id": u_id, "transcription_text": transcript})
+                    if isinstance(segments, str):
+                        update_mapping.append({"id": u_id, "transcription_text": segments})
+                    elif len(segments) == 1:
+                        update_mapping.append(
+                            {"id": u_id, "transcription_text": segments[0]["text"]}
+                        )
+                    elif self.evaluation_mode:
+                        update_mapping.append(
+                            {
+                                "id": u_id,
+                                "transcription_text": " ".join(x["text"] for x in segments),
+                            }
+                        )
+                    else:
+                        utterance = session.get(Utterance, u_id)
+                        for s in segments:
+                            insert_mappings.append(
+                                {
+                                    "id": max_utterance_id,
+                                    "begin": s["start"],
+                                    "end": s["end"],
+                                    "transcription_text": s["text"],
+                                    "channel": utterance.channel,
+                                    "file_id": utterance.file_id,
+                                    "speaker_id": utterance.speaker_id,
+                                    "job_id": utterance.job_id,
+                                }
+                            )
+                            max_utterance_id += 1
+                        session.delete(utterance)
+                session.flush()
                 if update_mapping:
                     bulk_update(session, Utterance, update_mapping)
+                    session.commit()
+                if insert_mappings:
+                    session.bulk_insert_mappings(Utterance, insert_mappings)
                     session.commit()
             if self.evaluation_mode:
                 os.makedirs(self.working_log_directory, exist_ok=True)
@@ -1480,8 +1516,7 @@ class WhisperTranscriber(HuggingFaceTranscriber, SpeechbrainSegmenterMixin):
             )
         try:
             vad_model = None
-            import torch
-            if not torch.cuda.is_available():
+            if not CUDA_AVAILABLE:
                 logger.warning("cuda was specified but not available, using CPU mode")
                 self.cuda = False
             if self.cuda:
@@ -1610,6 +1645,12 @@ class SpeechbrainTranscriber(HuggingFaceTranscriber):
         """
         if self.initialized:
             return
+        if not CUDA_AVAILABLE or not self.cuda:
+            raise ModelError(
+                "Speechbrain transcription must use CUDA. "
+                "If your device does not have CUDA support, "
+                "try mfa transcribe_whisper instead."
+            )
         common_voice_code = self.language.iso_code
         if common_voice_code is None:
             raise ModelError(

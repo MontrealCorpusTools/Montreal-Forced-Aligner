@@ -1,7 +1,5 @@
 channels:
   - conda-forge
-  - pytorch
-  - nvidia
   - anaconda
 dependencies:
   - python>=3.8
