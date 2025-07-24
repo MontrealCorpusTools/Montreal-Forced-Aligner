@@ -4,9 +4,8 @@ import click.testing
 import pytest
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
-from montreal_forced_aligner.exceptions import MultiprocessingError
 from montreal_forced_aligner.transcription.models import FOUND_WHISPERX
-from montreal_forced_aligner.transcription.multiprocessing import FOUND_SPEECHBRAIN
+from montreal_forced_aligner.transcription.multiprocessing import CUDA_AVAILABLE, FOUND_SPEECHBRAIN
 
 
 def test_transcribe(
@@ -73,23 +72,128 @@ def test_transcribe_speechbrain(
         "--use_postgres",
     ]
     command = [str(x) for x in command]
-    try:
-        result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
-        print(result.stdout)
-        print(result.stderr)
-        if result.exception:
-            print(result.exc_info)
-            raise result.exception
-        assert not result.return_value
-        assert os.path.exists(output_path)
-    except MultiprocessingError as e:
-        if "NotImplementedError: Cannot copy out of meta tensor" in e.message:
-            pytest.skip("Likely issue in speechbrain and pytorch versions")
-        else:
-            raise
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+    assert os.path.exists(output_path)
 
 
-def test_transcribe_whisper(
+def test_transcribe_whisper_cuda(
+    combined_corpus_dir,
+    generated_dir,
+    transcription_acoustic_model,
+    transcription_language_model,
+    temp_dir,
+    db_setup,
+):
+    if not FOUND_WHISPERX:
+        pytest.skip("whisperx not installed")
+    if not CUDA_AVAILABLE:
+        pytest.skip("CUDA not available")
+    output_path = generated_dir.joinpath("transcribe_test_whisper")
+    command = [
+        "transcribe_whisper",
+        combined_corpus_dir,
+        output_path,
+        "--language",
+        "english",
+        "--architecture",
+        "tiny",
+        "--clean",
+        "--no_debug",
+        "--evaluate",
+        "--cuda",
+        "--use_postgres",
+    ]
+    command = [str(x) for x in command]
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+    assert os.path.exists(output_path)
+
+
+def test_transcribe_whisper_vad(
+    combined_corpus_dir,
+    generated_dir,
+    transcription_acoustic_model,
+    transcription_language_model,
+    temp_dir,
+    db_setup,
+):
+    if not FOUND_WHISPERX:
+        pytest.skip("whisperx not installed")
+    output_path = generated_dir.joinpath("transcribe_test_whisper")
+    command = [
+        "transcribe_whisper",
+        combined_corpus_dir,
+        output_path,
+        "--language",
+        "english",
+        "--architecture",
+        "tiny",
+        "--clean",
+        "--no_debug",
+        "--vad",
+        "--no_cuda",
+        "--use_postgres",
+    ]
+    command = [str(x) for x in command]
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+    assert os.path.exists(output_path)
+
+
+def test_transcribe_whisper_vad_evaluate(
+    combined_corpus_dir,
+    generated_dir,
+    transcription_acoustic_model,
+    transcription_language_model,
+    temp_dir,
+    db_setup,
+):
+    if not FOUND_WHISPERX:
+        pytest.skip("whisperx not installed")
+    output_path = generated_dir.joinpath("transcribe_test_whisper")
+    command = [
+        "transcribe_whisper",
+        combined_corpus_dir,
+        output_path,
+        "--language",
+        "english",
+        "--architecture",
+        "tiny",
+        "--clean",
+        "--no_debug",
+        "--vad",
+        "--evaluate",
+        "--no_cuda",
+        "--use_postgres",
+    ]
+    command = [str(x) for x in command]
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+    assert os.path.exists(output_path)
+
+
+def test_transcribe_whisper_no_cuda(
     combined_corpus_dir,
     generated_dir,
     transcription_acoustic_model,
@@ -111,21 +215,18 @@ def test_transcribe_whisper(
         "--clean",
         "--no_debug",
         "--evaluate",
-        "--cuda",
+        "--no_cuda",
         "--use_postgres",
     ]
     command = [str(x) for x in command]
-    try:
-        result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
-        print(result.stdout)
-        print(result.stderr)
-        if result.exception:
-            print(result.exc_info)
-            raise result.exception
-        assert not result.return_value
-        assert os.path.exists(output_path)
-    except RuntimeError:
-        pytest.skip("Likely issue in speechbrain and pytorch versions")
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+    assert os.path.exists(output_path)
 
 
 def test_transcribe_arpa(

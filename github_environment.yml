@@ -40,3 +40,15 @@ dependencies:
   - rich
   - rich-click
   - kalpy
+  - pip
+  - pip:
+      - build
+      - twine
+      # Tokenization dependencies
+      - python-mecab-ko
+      - jamo
+      - pythainlp
+      - hanziconv
+      - dragonmapper
+      - speechbrain
+      - whisperx

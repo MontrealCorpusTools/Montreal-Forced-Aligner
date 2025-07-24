@@ -62,6 +62,7 @@ try:
         transformers_logger.setLevel(logging.ERROR)
         import torch
 
+        CUDA_AVAILABLE = torch.cuda.is_available()
         try:
             from speechbrain.pretrained import EncoderASR, WhisperASR
         except ImportError:  # speechbrain 1.0
@@ -69,6 +70,7 @@ try:
     FOUND_SPEECHBRAIN = True
 except (ImportError, OSError):
     FOUND_SPEECHBRAIN = False
+    CUDA_AVAILABLE = False
     WhisperASR = None
     EncoderASR = None
 
@@ -81,7 +83,6 @@ __all__ = [
     "DecodeFunction",
     "LmRescoreFunction",
     "CreateHclgFunction",
-    "FOUND_SPEECHBRAIN",
     "WhisperASR",
     "EncoderASR",
     "SpeechbrainAsrArguments",
@@ -90,6 +91,8 @@ __all__ = [
     "WhisperCudaArguments",
     "SpeechbrainAsrFunction",
     "WhisperAsrFunction",
+    "FOUND_SPEECHBRAIN",
+    "CUDA_AVAILABLE",
 ]
 
 logger = logging.getLogger("mfa")
@@ -892,7 +895,7 @@ class WhisperAsrFunction(KaldiFunction):
         super().__init__(args)
         self.working_directory = args.working_directory
         self.working_directory = args.working_directory
-        self.cuda = args.cuda and torch.cuda.is_available()
+        self.cuda = args.cuda and CUDA_AVAILABLE
         self.architecture = None
         self.model = None
         self.language = None
@@ -1022,8 +1025,7 @@ class WhisperAsrFunction(KaldiFunction):
                                 seg["text"],
                             )
                         )
-                    text = " ".join(texts)
-                    self.callback((utterance_id, text))
+                    self.callback((utterance_id, segments))
             except Exception as e:
                 exception = e
                 stopped.set()
