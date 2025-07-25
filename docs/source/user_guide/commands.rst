@@ -55,12 +55,13 @@ Other utilities
    "``mfa history``", "List previous MFA commands run locally",
 
 
-Grapheme-to-phoneme
+Dictionary creation
 ===================
 
 .. csv-table::
    :header: "Command", "Description", "Link"
    :widths: 50, 110, 40
 
+   "``mfa find_oovs``", "Generate list and counts of OOVs in a dictionary", :ref:`g2p_dictionary_generating`
    "``mfa g2p``", "Use a G2P model to generate a pronunciation dictionary", :ref:`g2p_dictionary_generating`
    "``mfa train_g2p``", "Train a G2P model from a pronunciation dictionary", :ref:`g2p_model_training`

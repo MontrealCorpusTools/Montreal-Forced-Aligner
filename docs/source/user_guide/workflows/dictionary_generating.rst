@@ -15,9 +15,7 @@ We have trained several G2P models that are available for download (:xref:`pretr
 
 .. note::
 
-   Generating pronunciations to supplement your existing pronunciation
-   dictionary can be done by running the validation utility (see :ref:`running_the_validator`), and then use the path
-   to the ``oovs_found.txt`` file that it generates.
+   You can use the :ref:`mfa find_oovs command <g2p_find_oovs>` to generate a list of OOV items in a corpus and use the ``oovs_found.txt`` file that it generates as input to ``mfa g2p``.
 
 
 Pronunciation dictionaries can also be generated from the orthographies of the words themselves, rather than relying on
