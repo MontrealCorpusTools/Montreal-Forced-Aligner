@@ -28,7 +28,7 @@ MFA uses a variable 3-state topology for modeling phones.  Each state has a like
 
 Custom numbers of states can be specified via a topology configuration file. The configuration file should list per-phone minimum and maximum states, as below.
 
-```{code}yaml
+```{code} yaml
 tʃ:
   - min_states: 3
   - max_states: 5

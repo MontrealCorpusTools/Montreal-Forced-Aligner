@@ -18,14 +18,6 @@ def server_cli():
 
 
 @server_cli.command(name="init", short_help="Initialize the MFA database server")
-@click.option(
-    "-p",
-    "--profile",
-    "profile",
-    help='Configuration profile to use, defaults to "global"',
-    type=str,
-    default=None,
-)
 @click.help_option("-h", "--help")
 @common_options
 @click.pass_context
@@ -37,13 +29,6 @@ def init_cli(context, **kwargs):
 
 
 @server_cli.command(name="start", short_help="Start the MFA database server")
-@click.option(
-    "-p",
-    "--profile",
-    help='Configuration profile to use, defaults to "global"',
-    type=str,
-    default=None,
-)
 @click.help_option("-h", "--help")
 @common_options
 @click.pass_context
@@ -55,13 +40,6 @@ def start_cli(context, **kwargs):
 
 
 @server_cli.command(name="stop", short_help="Stop the MFA database server")
-@click.option(
-    "-p",
-    "--profile",
-    help='Configuration profile to use, defaults to "global"',
-    type=str,
-    default=None,
-)
 @click.option(
     "-m",
     "--mode",
@@ -80,13 +58,6 @@ def stop_cli(context, **kwargs):
 
 
 @server_cli.command(name="delete", short_help="Delete the MFA database server")
-@click.option(
-    "-p",
-    "--profile",
-    help='Configuration profile to use, defaults to "global"',
-    type=str,
-    default=None,
-)
 @click.help_option("-h", "--help")
 @common_options
 @click.pass_context

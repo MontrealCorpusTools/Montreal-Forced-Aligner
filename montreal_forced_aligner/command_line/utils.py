@@ -229,6 +229,23 @@ def validate_corpus_directory(ctx, param, value):
         return value
 
 
+def validate_output_directory(ctx, param, value):
+    """Validation callback for acoustic model paths"""
+    from montreal_forced_aligner import config
+
+    if value:
+        if not isinstance(value, Path):
+            value = Path(value)
+        if value.exists() and value.is_file():
+            raise click.BadParameter("Output directory must be a directory, not a file.")
+        if str(value).startswith(str(config.TEMPORARY_DIRECTORY)):
+            raise click.BadParameter(
+                "Output directories must be outside of MFA's temporary directory to prevent data loss and errors, "
+                "please specify a different output directory and rerun."
+            )
+        return value
+
+
 def validate_acoustic_model(ctx, param, value):
     """Validation callback for acoustic model paths"""
     if value:
