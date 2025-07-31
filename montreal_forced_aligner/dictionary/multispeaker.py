@@ -1534,7 +1534,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     .join(Pronunciation.word)
                     .filter(
                         Word.dictionary_id == d_id,
-                        Word.count > 1,
+                        Word.count > oov_count_threshold,
                         Word.word_type == WordType.speech,
                     )
                 )

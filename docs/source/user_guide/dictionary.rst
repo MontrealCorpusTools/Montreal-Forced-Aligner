@@ -200,6 +200,12 @@ The generated pronunciations will be subsequences of the following word, along w
 
    <cutoff-off> with the <cutoff> <cutoff> cut off
 
+Internally, MFA will transform this transcript a normalized version. Note the final "<cutoff>" has been replaced with "<cutoff-cut>", as "<cutoff>" without an explicit target word will take its target as the following word.
+Note as well that "<cutoff-off>" and the first "<cutoff>" remain unchanged by the normalization, as "<cutoff-off>" already has a target word specified, and the first "<cutoff>" doesn't have a valid target word following it, so it will just be modeled with the OOV ``spn`` phone.
+
+::
+
+   <cutoff-off> with the <cutoff> <cutoff-cut> cut off
 
 The following pronunciations will be generated for  the `English (US) MFA dictionary <https://mfa-models.readthedocs.io/en/latest/dictionary/English/English%20%28US%29%20MFA%20dictionary%20v3_0_0.html>`_:
 
