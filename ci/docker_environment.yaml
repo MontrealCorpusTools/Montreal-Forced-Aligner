@@ -21,6 +21,10 @@ dependencies:
   - praatio>=6.0.0
   - sqlalchemy>=2.0
   - git
+  - cmake
+  - make
+  - compilers
+  - pkg-config
   - pgvector
   - pgvector-python
   - postgresql
@@ -40,10 +44,10 @@ dependencies:
   - sudachipy
   - sudachidict-core
   - spacy-pkuseg
+  - sentencepiece
   - pip
   - pip:
       - speechbrain
-      - python-mecab-ko
       - jamo
       - pythainlp
       - dragonmapper
