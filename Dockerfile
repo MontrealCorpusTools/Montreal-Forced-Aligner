@@ -1,4 +1,4 @@
-FROM condaforge/mambaforge:22.11.1-4 as build
+FROM condaforge/mambaforge:22.11.1-4 AS build
 
 COPY ci/docker_environment.yaml .
 RUN mkdir -p /mfa
@@ -14,4 +14,4 @@ ENV MFA_ROOT_DIR=/mfa
 RUN conda run -p /env mfa server init
 
 RUN echo "source activate /env && mfa server start" > ~/.bashrc
-ENV PATH /env/bin:$PATH
+ENV PATH=/env/bin:$PATH
