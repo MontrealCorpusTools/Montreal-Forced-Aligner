@@ -6,10 +6,10 @@ from pathlib import Path
 
 import rich_click as click
 
-from montreal_forced_aligner import config
 from montreal_forced_aligner.alignment import PretrainedAligner
 from montreal_forced_aligner.command_line.utils import (
     common_options,
+    initialize_configuration,
     validate_acoustic_model,
     validate_corpus_directory,
     validate_dictionary,
@@ -99,9 +99,7 @@ def align_corpus_cli(context, **kwargs) -> None:
     """
     Align a corpus with a pronunciation dictionary and a pretrained acoustic model.
     """
-    if kwargs.get("profile", None) is not None:
-        config.CURRENT_PROFILE_NAME = kwargs.pop("profile")
-    config.update_configuration(kwargs)
+    initialize_configuration(context)
     config_path = kwargs.get("config_path", None)
     reference_directory: typing.Optional[Path] = kwargs.get("reference_directory", None)
     custom_mapping_path: typing.Optional[Path] = kwargs.get("custom_mapping_path", None)

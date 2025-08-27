@@ -5,8 +5,11 @@ from pathlib import Path
 
 import rich_click as click
 
-from montreal_forced_aligner import config
-from montreal_forced_aligner.command_line.utils import common_options, validate_tokenizer_model
+from montreal_forced_aligner.command_line.utils import (
+    common_options,
+    initialize_configuration,
+    validate_tokenizer_model,
+)
 from montreal_forced_aligner.tokenization.tokenizer import CorpusTokenizer
 
 __all__ = ["tokenize_cli"]
@@ -41,9 +44,7 @@ def tokenize_cli(context, **kwargs) -> None:
     """
     Tokenize utterances with a trained tokenizer model
     """
-    if kwargs.get("profile", None) is not None:
-        config.profile = kwargs.pop("profile")
-    config.update_configuration(kwargs)
+    initialize_configuration(context)
 
     config_path = kwargs.get("config_path", None)
     input_path = kwargs["input_path"]

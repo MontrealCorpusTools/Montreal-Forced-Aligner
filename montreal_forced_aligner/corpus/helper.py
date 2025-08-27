@@ -52,7 +52,7 @@ def find_exts(files: typing.List[str]) -> FileExtensions:
 
     Parameters
     ----------
-    files: List
+    files: list
         List of filename
 
     Returns
@@ -85,9 +85,7 @@ def find_exts(files: typing.List[str]) -> FileExtensions:
     return exts
 
 
-def get_wav_info(
-    file_path: str, enforce_mono: bool = False, enforce_sample_rate: typing.Optional[int] = None
-) -> SoundFileInformation:
+def get_wav_info(file_path: str) -> SoundFileInformation:
     """
     Get sound file information
 
@@ -95,11 +93,6 @@ def get_wav_info(
     ----------
     file_path: str
         Sound file path
-    enforce_mono: bool
-        Flag for whether to ensure that stereo files have the first channel extracted when processing
-        them in Kaldi
-    enforce_sample_rate: int, optional
-        Sampling rate to enforce when sending data to Kaldi
 
     Returns
     -------

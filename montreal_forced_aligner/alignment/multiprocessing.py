@@ -1724,11 +1724,6 @@ class ExportTextGridProcessWorker(mp.Process):
         """Run the exporter function"""
         db_engine = sqlalchemy.create_engine(self.db_string)
         with sqlalchemy.orm.Session(db_engine) as session:
-            workflow: CorpusWorkflow = (
-                session.query(CorpusWorkflow)
-                .filter(CorpusWorkflow.current == True)  # noqa
-                .first()
-            )
             while True:
                 try:
                     (file_batch) = self.for_write_queue.get(timeout=1)
@@ -1744,7 +1739,6 @@ class ExportTextGridProcessWorker(mp.Process):
                     for output_path in construct_textgrid_output(
                         session,
                         file_batch,
-                        workflow,
                         self.cleanup_textgrids,
                         self.clitic_marker,
                         self.output_directory,

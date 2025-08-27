@@ -1279,6 +1279,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         ----------
         output_format: str, optional
             Format to save alignments, one of 'long_textgrids' (the default), 'short_textgrids', or 'json', passed to praatio
+        include_original_text: bool, defaults to false
+            Flag for whether to save original utterance text as well
         """
         workflow = self.current_workflow
         if not workflow.alignments_collected:
@@ -1386,7 +1388,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 for _ in construct_textgrid_output(
                     session,
                     file_batch,
-                    workflow,
                     config.CLEANUP_TEXTGRIDS,
                     self.clitic_marker,
                     self.export_output_directory,
@@ -1412,7 +1413,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
     def export_files(
         self,
         output_directory: typing.Union[Path, str],
-        output_format: Optional[str] = None,
+        output_format: typing.Optional[str] = None,
         include_original_text: bool = False,
     ) -> None:
         """

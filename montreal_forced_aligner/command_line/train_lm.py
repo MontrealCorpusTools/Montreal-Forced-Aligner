@@ -5,8 +5,11 @@ from pathlib import Path
 
 import rich_click as click
 
-from montreal_forced_aligner import config
-from montreal_forced_aligner.command_line.utils import common_options, validate_dictionary
+from montreal_forced_aligner.command_line.utils import (
+    common_options,
+    initialize_configuration,
+    validate_dictionary,
+)
 from montreal_forced_aligner.language_modeling.trainer import (
     MfaLmArpaTrainer,
     MfaLmCorpusTrainer,
@@ -50,9 +53,7 @@ def train_lm_cli(context, **kwargs) -> None:
     """
     Train a language model from a corpus or convert an existing ARPA-format language model to an MFA language model.
     """
-    if kwargs.get("profile", None) is not None:
-        config.profile = kwargs.pop("profile")
-    config.update_configuration(kwargs)
+    initialize_configuration(context)
 
     config_path = kwargs.get("config_path", None)
     dictionary_path = kwargs.get("dictionary_path", None)

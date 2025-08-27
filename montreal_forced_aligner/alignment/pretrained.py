@@ -8,10 +8,10 @@ import shutil
 import time
 import typing
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import sqlalchemy
 from _kalpy.matrix import DoubleMatrix, FloatMatrix
+from kalpy.aligner import KalpyAligner
 from kalpy.data import Segment
 from kalpy.utils import read_kaldi_object
 from kalpy.utterance import Utterance as KalpyUtterance
@@ -39,14 +39,11 @@ from montreal_forced_aligner.helper import (
     split_phone_position,
 )
 from montreal_forced_aligner.models import AcousticModel
-from montreal_forced_aligner.online.alignment import (
-    align_utterance_online,
-    update_utterance_intervals,
-)
+from montreal_forced_aligner.online.alignment import update_utterance_intervals
 from montreal_forced_aligner.transcription.transcriber import TranscriberMixin
 from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
 
-if TYPE_CHECKING:
+if typing.TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
 
 __all__ = ["PretrainedAligner", "DictionaryTrainer"]
@@ -83,6 +80,7 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
         kw.update(kwargs)
         super().__init__(**kw)
         self.final_alignment = True
+        self.kalpy_aligner = None
 
     def setup_acoustic_model(self) -> None:
         """Set up the acoustic model"""
@@ -227,6 +225,11 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
                 )
             self.acoustic_model.validate(self)
             self.acoustic_model.log_details()
+            self.kalpy_aligner = KalpyAligner(
+                self.acoustic_model,
+                self.lexicon_compilers,
+                **self.align_options,
+            )
 
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
@@ -239,9 +242,9 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
     @classmethod
     def parse_parameters(
         cls,
-        config_path: Optional[Path] = None,
-        args: Optional[Dict[str, Any]] = None,
-        unknown_args: Optional[typing.Iterable[str]] = None,
+        config_path: typing.Optional[Path] = None,
+        args: typing.Optional[typing.Dict[str, typing.Any]] = None,
+        unknown_args: typing.Optional[typing.Iterable[str]] = None,
     ) -> MetaDict:
         """
         Parse parameters from a config path or command-line arguments
@@ -321,18 +324,12 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
         fmllr_trans = None
         if fmllr_string:
             fmllr_trans = read_kaldi_object(FloatMatrix, fmllr_string)
-
         text = utterance.normalized_text
         if self.use_g2p:
             text = utterance.normalized_character_text
         utterance_data = KalpyUtterance(segment, text, cmvn_string, fmllr_string)
-        ctm = align_utterance_online(
-            self.acoustic_model,
-            utterance_data,
-            self.lexicon_compilers[dictionary_id],
-            cmvn=cmvn,
-            fmllr_trans=fmllr_trans,
-            **self.align_options,
+        ctm = self.kalpy_aligner.align_utterance(
+            utterance_data, cmvn, fmllr_trans, dictionary_id=dictionary_id
         )
         update_utterance_intervals(session, utterance, ctm)
 

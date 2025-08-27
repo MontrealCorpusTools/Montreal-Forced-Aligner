@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import os
-import sys
-import traceback
 import typing
 import unicodedata
 from typing import TYPE_CHECKING, Optional, Union
@@ -13,7 +11,8 @@ from praatio import textgrid
 
 from montreal_forced_aligner.corpus.helper import get_wav_info, load_text
 from montreal_forced_aligner.data import SoundFileInformation, TextFileType
-from montreal_forced_aligner.exceptions import TextGridParseError, TextParseError
+from montreal_forced_aligner.exceptions import TextParseError
+from montreal_forced_aligner.textgrid import load_textgrid
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
@@ -63,7 +62,6 @@ class FileData:
         text_path: Optional[str],
         relative_path: str,
         speaker_characters: Union[int, str],
-        enforce_sample_rate: Optional[int] = None,
     ):
         """
         Parse a collection of sound file and transcription file into a File
@@ -80,8 +78,6 @@ class FileData:
             Relative path from the corpus directory root
         speaker_characters: int, optional
             Number of characters in the file name to specify the speaker
-        sanitize_function: Callable, optional
-            Function to sanitize words and strip punctuation
 
         Returns
         -------
@@ -99,11 +95,7 @@ class FileData:
         )
         if wav_path is not None:
             root = os.path.dirname(wav_path)
-            file.wav_info = get_wav_info(
-                wav_path,
-                enforce_mono=file.text_type is TextFileType.LAB,
-                enforce_sample_rate=enforce_sample_rate,
-            )
+            file.wav_info = get_wav_info(wav_path)
         else:
             root = os.path.dirname(text_path)
         if not speaker_characters:
@@ -114,25 +106,19 @@ class FileData:
             speaker_name = file_name.split("_")[1]
         else:
             speaker_name = file_name
-        root_speaker = None
-        if speaker_characters or file.text_type != TextFileType.TEXTGRID:
-            root_speaker = speaker_name
-        file.load_text(
-            root_speaker=root_speaker,
-        )
+        file.load_text(speaker_name, ensure_root_speaker=bool(speaker_characters))
         return file
 
-    def load_text(
-        self,
-        root_speaker: Optional[str] = None,
-    ) -> None:
+    def load_text(self, root_speaker: str, ensure_root_speaker: bool = False) -> None:
         """
         Load the transcription text from the text_file of the object
 
         Parameters
         ----------
-        root_speaker: str, optional
-            Speaker derived from the root directory, ignored for TextGrids
+        root_speaker: str
+            Speaker derived from the root directory, ignored for TextGrid tiers that have a speaker label
+        ensure_root_speaker: bool, defaults to False
+            Flag for ensuring that root_speaker is used as the speaker name
         """
         if self.text_type == TextFileType.LAB:
             try:
@@ -155,18 +141,8 @@ class FileData:
             self.utterances.append(utterance)
             self.speaker_ordering.append(root_speaker)
         elif self.text_type == TextFileType.TEXTGRID:
-            try:
-                tg = textgrid.openTextgrid(self.text_path, includeEmptyIntervals=False)
-            except Exception:
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                raise TextGridParseError(
-                    self.text_path,
-                    "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback)),
-                )
-
-            num_tiers = len(tg.tierNames)
-            if num_tiers == 0:
-                raise TextGridParseError(self.text_path, "Number of tiers parsed was zero")
+            tg = load_textgrid(self.text_path)
+            num_tiers = len(tg.tiers)
             num_channels = 1
             if self.wav_info is not None:
                 duration = self.wav_info.duration
@@ -178,8 +154,11 @@ class FileData:
             phone_data = {}
             word_data = {}
             for i, tier_name in enumerate(tg.tierNames):
-                if tier_name.endswith(" - phones"):
-                    speaker_name = tier_name.split(" - ")[0]
+                if tier_name.endswith("phones"):
+                    if " - " in tier_name:
+                        speaker_name = tier_name.split(" - ")[0]
+                    else:
+                        speaker_name = root_speaker
                     if speaker_name not in phone_data:
                         phone_data[speaker_name] = []
                     ti = tg._tierDict[tier_name]
@@ -192,8 +171,11 @@ class FileData:
                             continue
                         end = min(end, duration)
                         phone_data[speaker_name].append(CtmInterval(begin, end, text))
-                elif tier_name.endswith(" - words"):
-                    speaker_name = tier_name.split(" - ")[0]
+                elif tier_name.endswith("words"):
+                    if " - " in tier_name:
+                        speaker_name = tier_name.split(" - ")[0]
+                    else:
+                        speaker_name = root_speaker
                     if speaker_name not in word_data:
                         word_data[speaker_name] = []
                     ti = tg._tierDict[tier_name]
@@ -209,16 +191,18 @@ class FileData:
             for i, tier_name in enumerate(tg.tierNames):
                 if tier_name.lower() == "notes":
                     continue
-                if tier_name.endswith("- words") or tier_name.endswith("- phones"):
+                if tier_name.endswith("words") or tier_name.endswith("phones"):
+                    if root_speaker not in self.speaker_ordering:
+                        self.speaker_ordering.append(root_speaker)
                     continue
                 ti = tg._tierDict[tier_name]
                 if not isinstance(ti, textgrid.IntervalTier):
                     continue
-                if not root_speaker:
+                if not ensure_root_speaker:
                     speaker_name = tier_name.strip()
-                    self.speaker_ordering.append(speaker_name)
                 else:
                     speaker_name = root_speaker
+                self.speaker_ordering.append(speaker_name)
                 channel = 0
                 if num_channels == 2 and i >= num_tiers / 2:
                     channel = 1

@@ -151,8 +151,6 @@ class TextCorpusMixin(CorpusMixin):
             while True:
                 try:
                     _ = return_queue.get(timeout=1)
-                    if self.stopped.is_set():
-                        continue
                     return_queue.task_done()
                 except Empty:
                     for proc in procs:
@@ -179,7 +177,6 @@ class TextCorpusMixin(CorpusMixin):
         self.stopped = False
 
         import_data = DatabaseImportData()
-        sanitize_function = getattr(self, "sanitize_function", None)
         with self.session() as session:
             for root, _, files in os.walk(self.corpus_directory, followlinks=True):
                 if self.stopped:
@@ -207,7 +204,6 @@ class TextCorpusMixin(CorpusMixin):
                             transcription_path,
                             relative_path,
                             self.speaker_characters,
-                            sanitize_function,
                         )
                         import_data.add_objects(self.generate_import_objects(file))
                     except TextParseError as e:
@@ -232,7 +228,7 @@ class TextCorpusMixin(CorpusMixin):
                 for e in self.textgrid_read_errors:
                     logger.debug(f"{e.file_name}: {e.error}")
 
-        logger.debug(f"Parsed corpus directory in {time.time()-begin_time} seconds")
+        logger.debug(f"Parsed corpus directory in {time.time() - begin_time} seconds")
 
 
 class DictionaryTextCorpusMixin(TextCorpusMixin, MultispeakerDictionaryMixin):

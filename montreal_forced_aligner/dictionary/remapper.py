@@ -6,9 +6,7 @@ import logging
 import os
 from pathlib import Path
 
-import yaml
-
-from montreal_forced_aligner.abc import TopLevelMfaWorker
+from montreal_forced_aligner.abc import PhoneRemapperMixin, TopLevelMfaWorker
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
 from montreal_forced_aligner.exceptions import RemapAcousticMismatchError
 from montreal_forced_aligner.helper import format_correction, format_probability, mfa_open
@@ -19,18 +17,15 @@ logger = logging.getLogger("mfa")
 __all__ = ["DictionaryRemapper"]
 
 
-class DictionaryRemapper(MultispeakerDictionaryMixin, TopLevelMfaWorker):
+class DictionaryRemapper(MultispeakerDictionaryMixin, PhoneRemapperMixin, TopLevelMfaWorker):
     def __init__(
         self,
-        acoustic_model_path: Path,
-        phone_mapping_path: Path,
+        acoustic_model_path: str,
         **kwargs,
     ):
         self._data_source = kwargs["dictionary_path"].stem
         super().__init__(**kwargs)
         self.acoustic_model = AcousticModel(acoustic_model_path)
-        self.phone_mapping_path = phone_mapping_path
-        self.phone_remapping = {}
 
     @property
     def data_source_identifier(self) -> str:
@@ -52,13 +47,6 @@ class DictionaryRemapper(MultispeakerDictionaryMixin, TopLevelMfaWorker):
         self.dictionary_setup()
         os.makedirs(self.phones_dir, exist_ok=True)
         self.initialized = True
-
-    def load_mapping(self):
-        with mfa_open(self.phone_mapping_path, "r") as f:
-            self.phone_remapping = yaml.load(f, Loader=yaml.Loader)
-        for key, values in self.phone_remapping.items():
-            if not isinstance(values, list):
-                self.phone_remapping[key] = [values]
 
     def validate_mapping(self):
         unknown_phones = set()
@@ -88,7 +76,7 @@ class DictionaryRemapper(MultispeakerDictionaryMixin, TopLevelMfaWorker):
             new_pron = []
             for p in pron:
                 if p not in self.phone_remapping:
-                    if p in self.acoustic_model.meta["phones"]:
+                    if p in self.acoustic_model.meta["phones"] or p in self.silence_phones:
                         new_p = p
                     else:
                         skip = True

@@ -5,8 +5,11 @@ from pathlib import Path
 
 import rich_click as click
 
-from montreal_forced_aligner import config
-from montreal_forced_aligner.command_line.utils import common_options, validate_corpus_directory
+from montreal_forced_aligner.command_line.utils import (
+    common_options,
+    initialize_configuration,
+    validate_corpus_directory,
+)
 from montreal_forced_aligner.ivector.trainer import TrainableIvectorExtractor
 
 __all__ = ["train_ivector_cli"]
@@ -52,10 +55,7 @@ def train_ivector_cli(context, **kwargs) -> None:
     """
     Train an ivector extractor from a corpus and pretrained acoustic model.
     """
-    if kwargs.get("profile", None) is not None:
-        config.profile = kwargs.pop("profile")
-    kwargs["USE_THREADING"] = False
-    config.update_configuration(kwargs)
+    initialize_configuration(context)
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"].absolute()
     output_model_path = kwargs["output_model_path"]

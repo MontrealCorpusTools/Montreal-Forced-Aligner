@@ -43,8 +43,8 @@ Corpus creation
    "``mfa train_lm``", "Train a language model from a text corpus or from an existing language model", :ref:`training_lm`
    "``mfa anchor``", "Run the Anchor annotator utility (if installed) for editing and managing corpora", :ref:`anchor`
 
-Other utilities
-===============
+Utilities
+=========
 
 .. csv-table::
    :header: "Command", "Description", "Link"
@@ -52,6 +52,8 @@ Other utilities
 
    "``mfa model``", "Inspect/list/download/save models", :ref:`pretrained_models`
    "``mfa configure``", "Configure MFA to use customized defaults for command line arguments", :ref:`configuration`
+   "``mfa remap dictionary``", "Remap a dictionary to a new phone set", :ref:`remap_dictionary`
+   "``mfa remap alignments``", "Remap aligned TextGrids to a new phone set", :ref:`remap_alignments`
    "``mfa history``", "List previous MFA commands run locally",
 
 

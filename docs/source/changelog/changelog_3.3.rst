@@ -5,6 +5,11 @@
 3.3 Changelog
 *************
 
+3.3.5
+-----
+
+- Added utility command for :ref:`remap_alignments`
+
 3.3.4
 -----
 
@@ -38,6 +43,7 @@
 
 - Added support for incorporating existing reference alignments into acoustic model training and adaptation
 - Added ReferencePhoneIntervals and ReferenceWordIntervals tables separate from those generated from alignments
+- Added utility command for :ref:`remap_dictionary`
 - Removed dependency on Biopython's pairwise2 module for evaluating alignments
 - Added signal-to-noise ratio calculation as part of alignment evaluation
 - Added filters in training and adaptation based on alignment evaluation metrics

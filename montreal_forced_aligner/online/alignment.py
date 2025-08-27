@@ -4,12 +4,9 @@ from __future__ import annotations
 import typing
 
 import sqlalchemy.orm
-from _kalpy.matrix import DoubleMatrix, FloatMatrix
-from kalpy.decoder.training_graphs import TrainingGraphCompiler
-from kalpy.feat.cmvn import CmvnComputer
+from kalpy.aligner import KalpyAligner
 from kalpy.fstext.lexicon import LexiconCompiler
 from kalpy.fstext.lexicon import Pronunciation as KalpyPronunciation
-from kalpy.gmm.align import GmmAligner
 from kalpy.gmm.data import HierarchicalCtm
 from kalpy.utterance import Utterance as KalpyUtterance
 
@@ -23,8 +20,46 @@ from montreal_forced_aligner.db import (
     WordInterval,
     get_next_primary_key,
 )
-from montreal_forced_aligner.exceptions import AlignerError
 from montreal_forced_aligner.models import AcousticModel, G2PModel
+
+
+def tokenize_utterance_text(
+    text,
+    lexicon_compiler: LexiconCompiler,
+    tokenizer=None,
+    g2p_model: G2PModel = None,
+    language: Language = Language.unknown,
+):
+    if tokenizer is None:
+        return text.lower()
+    if language is Language.unknown:
+        normalized_text, _, oovs = tokenizer(text)
+        if g2p_model is not None:
+            for w in oovs:
+                if not lexicon_compiler.word_table.member(w):
+                    pron = g2p_model.rewriter(w)
+                    if pron:
+                        lexicon_compiler.add_pronunciation(
+                            KalpyPronunciation(w, pron[0], None, None, None, None, None)
+                        )
+
+    else:
+        normalized_text, pronunciation_form = tokenizer(text)
+        if not pronunciation_form:
+            pronunciation_form = text
+        g2p_cache = {}
+        if g2p_model is not None:
+            for norm_w, w in zip(text.split(), pronunciation_form.split()):
+                if w not in g2p_cache:
+                    pron = g2p_model.rewriter(w)
+                    if not pron:
+                        continue
+                    g2p_cache[w] = pron[0]
+                if w in g2p_cache and not lexicon_compiler.word_table.member(norm_w):
+                    lexicon_compiler.add_pronunciation(
+                        KalpyPronunciation(norm_w, g2p_cache[w], None, None, None, None, None)
+                    )
+    return normalized_text
 
 
 def align_utterance_online(
@@ -33,8 +68,6 @@ def align_utterance_online(
     lexicon_compiler: LexiconCompiler,
     tokenizer=None,
     g2p_model: G2PModel = None,
-    cmvn: DoubleMatrix = None,
-    fmllr_trans: FloatMatrix = None,
     beam: int = 10,
     retry_beam: int = 40,
     transition_scale: float = 1.0,
@@ -43,85 +76,26 @@ def align_utterance_online(
     boost_silence: float = 1.0,
     careful: bool = False,
 ) -> HierarchicalCtm:
-    text = utterance.transcript
-    rewriter = None
-    if g2p_model is not None:
-        rewriter = g2p_model.rewriter
-    if tokenizer is not None:
-        if acoustic_model.language is Language.unknown:
-            text, _, oovs = tokenizer(text)
-            if rewriter is not None:
-                for w in oovs:
-                    if not lexicon_compiler.word_table.member(w):
-                        pron = rewriter(w)
-                        if pron:
-                            lexicon_compiler.add_pronunciation(
-                                KalpyPronunciation(w, pron[0], None, None, None, None, None)
-                            )
-
-        else:
-            text, pronunciation_form = tokenizer(text)
-            if not pronunciation_form:
-                pronunciation_form = text
-            g2p_cache = {}
-            if rewriter is not None:
-                for norm_w, w in zip(text.split(), pronunciation_form.split()):
-                    if w not in g2p_cache:
-                        pron = rewriter(w)
-                        if not pron:
-                            continue
-                        g2p_cache[w] = pron[0]
-                    if w in g2p_cache and not lexicon_compiler.word_table.member(norm_w):
-                        lexicon_compiler.add_pronunciation(
-                            KalpyPronunciation(norm_w, g2p_cache[w], None, None, None, None, None)
-                        )
-
-    graph_compiler = TrainingGraphCompiler(
-        acoustic_model.alignment_model_path,
-        acoustic_model.tree_path,
+    utterance.transcript = tokenize_utterance_text(
+        utterance.transcript,
         lexicon_compiler,
+        lexicon_compiler,
+        tokenizer,
+        g2p_model,
+        language=acoustic_model.language,
     )
-    if utterance.mfccs is None:
-        utterance.generate_mfccs(acoustic_model.mfcc_computer)
-        if acoustic_model.uses_cmvn:
-            if cmvn is None:
-                cmvn_computer = CmvnComputer()
-                cmvn = cmvn_computer.compute_cmvn_from_features([utterance.mfccs])
-            utterance.apply_cmvn(cmvn)
-    feats = utterance.generate_features(
-        acoustic_model.mfcc_computer,
-        acoustic_model.pitch_computer,
-        lda_mat=acoustic_model.lda_mat,
-        fmllr_trans=fmllr_trans,
-    )
-
-    fst = graph_compiler.compile_fst(text)
-    aligner = GmmAligner(
-        acoustic_model.alignment_model_path if fmllr_trans is None else acoustic_model.model_path,
+    kalpy_aligner = KalpyAligner(
+        acoustic_model,
+        lexicon_compiler,
         beam=beam,
         retry_beam=retry_beam,
         transition_scale=transition_scale,
         acoustic_scale=acoustic_scale,
         self_loop_scale=self_loop_scale,
+        boost_silence=boost_silence,
         careful=careful,
     )
-    if boost_silence != 1.0:
-        aligner.boost_silence(boost_silence, lexicon_compiler.silence_symbols)
-    alignment = aligner.align_utterance(fst, feats)
-    if alignment is None:
-        raise AlignerError(
-            f"Could not align the file with the current beam size ({aligner.beam}, "
-            "please try increasing the beam size via `--beam X`"
-        )
-    phone_intervals = alignment.generate_ctm(
-        aligner.transition_model,
-        lexicon_compiler.phone_table,
-        acoustic_model.mfcc_computer.frame_shift,
-    )
-    ctm = lexicon_compiler.phones_to_pronunciations(
-        alignment.words, phone_intervals, transcription=False, text=utterance.transcript
-    )
-    ctm.likelihood = alignment.likelihood
+    ctm = kalpy_aligner.align_utterance(utterance)
     ctm.update_utterance_boundaries(utterance.segment.begin, utterance.segment.end)
     return ctm
 

@@ -26,6 +26,12 @@ Corpora
    FileData -- Class for representing sound file/transcription file pairs in corpora
    UtteranceData -- Class for collecting information about utterances
 
+.. currentmodule:: montreal_forced_aligner.corpus.remapper
+
+.. autosummary::
+   :toctree: generated/
+
+   AlignmentRemapper -- Class to remap aligned TextGrids to a new phone set
 
 
 Helper classes and functions
