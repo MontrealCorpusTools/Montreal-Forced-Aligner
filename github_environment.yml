@@ -39,7 +39,7 @@ dependencies:
   - seaborn
   - rich
   - rich-click
-  - kalpy
+  - kalpy>=0.7
   - pip
   - pip:
       - build

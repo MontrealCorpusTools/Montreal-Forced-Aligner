@@ -39,7 +39,7 @@ dependencies:
   - sqlite
   - rich
   - rich-click
-  - kalpy
+  - kalpy>=0.7
   - spacy
   - sudachipy
   - sudachidict-core
