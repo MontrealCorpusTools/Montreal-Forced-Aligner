@@ -41,7 +41,7 @@ dependencies:
   - pip
   - rich
   - rich-click
-  - kalpy
+  - kalpy>=0.7
     # Tokenization dependencies
   - spacy
   - sudachipy
