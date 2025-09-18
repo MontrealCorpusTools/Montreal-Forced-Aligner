@@ -87,6 +87,12 @@ __all__ = ["align_corpus_cli"]
     "--fine_tune", is_flag=True, help="Flag for running extra fine tuning stage.", default=False
 )
 @click.option(
+    "--fine_tune_boundary_tolerance",
+    type=float,
+    default=None,
+    help="Flag for running extra fine tuning stage.",
+)
+@click.option(
     "--g2p_model_path",
     "g2p_model_path",
     help="Path to G2P model to use for OOV items.",
@@ -126,18 +132,11 @@ def align_corpus_cli(context, **kwargs) -> None:
     try:
         aligner.align()
         aligner.analyze_alignments()
-        if aligner.use_phone_model:
-            aligner.export_files(
-                output_directory,
-                output_format=output_format,
-                include_original_text=include_original_text,
-            )
-        else:
-            aligner.export_files(
-                output_directory,
-                output_format=output_format,
-                include_original_text=include_original_text,
-            )
+        aligner.export_files(
+            output_directory,
+            output_format=output_format,
+            include_original_text=include_original_text,
+        )
         if reference_directory or aligner.has_reference_alignments():
             if reference_directory:
                 aligner.load_reference_alignments(reference_directory)
@@ -150,19 +149,12 @@ def align_corpus_cli(context, **kwargs) -> None:
         else:
             reference_alignments = WorkflowType.alignment
 
-        if aligner.use_phone_model:
+        if reference_alignments is WorkflowType.reference:
             aligner.evaluate_alignments(
                 output_directory=output_directory,
                 reference_source=reference_alignments,
-                comparison_source=WorkflowType.phone_transcription,
+                comparison_source=WorkflowType.alignment,
             )
-        else:
-            if reference_alignments is WorkflowType.reference:
-                aligner.evaluate_alignments(
-                    output_directory=output_directory,
-                    reference_source=reference_alignments,
-                    comparison_source=WorkflowType.alignment,
-                )
     except Exception:
         aligner.dirty = True
         raise

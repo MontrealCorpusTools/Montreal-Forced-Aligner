@@ -709,8 +709,6 @@ class TranscriberMixin(CorpusAligner, TranscriptionEvaluationMixin):
                 self.lm_rescore()
                 self.carpa_lm_rescore()
             self.collect_alignments()
-            if self.fine_tune:
-                self.fine_tune_alignments()
             if self.evaluation_mode:
                 os.makedirs(self.working_log_directory, exist_ok=True)
                 self.evaluate_transcriptions()

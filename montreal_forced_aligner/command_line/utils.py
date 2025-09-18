@@ -165,7 +165,7 @@ def initialize_configuration(ctx: click.Context):
     while parent_context.parent is not None:
         parent_context = parent_context.parent
     config.load_configuration()
-    if ctx.params["profile"] is not None:
+    if ctx.params.get("profile", None) is not None:
         os.environ[config.MFA_PROFILE_VARIABLE] = ctx.params["profile"]
     config.update_configuration(ctx.params)
     auto_server = False

@@ -21,9 +21,6 @@ from typing import List, Optional
 
 import sqlalchemy
 from kalpy.evaluation import align_phones
-from kalpy.feat.mfcc import MfccComputer
-from kalpy.feat.pitch import PitchComputer
-from kalpy.fstext.lexicon import LexiconCompiler
 from kalpy.gmm.align import GmmAligner
 from kalpy.gmm.data import CtmInterval
 from kalpy.gmm.utils import read_transition_model
@@ -40,8 +37,6 @@ from montreal_forced_aligner.alignment.multiprocessing import (
     AnalyzeAlignmentsFunction,
     ExportTextGridArguments,
     ExportTextGridProcessWorker,
-    FineTuneArguments,
-    FineTuneFunction,
     GeneratePronunciationsArguments,
     GeneratePronunciationsFunction,
 )
@@ -185,24 +180,26 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         begin = time.time()
         with self.session() as session:
             if calculate_duration_statistics:
+                query = session.query(Phone.phone, Phone.id)
+                id_mapping = {}
+                for p, p_id in query:
+                    if p not in id_mapping:
+                        id_mapping[p] = set()
+                    id_mapping[p].add(p_id)
                 update_mappings = []
                 if not config.USE_POSTGRES:
                     import statistics
 
                     query = (
-                        session.query(Phone.phone, Phone.id, PhoneInterval.duration)
+                        session.query(Phone.phone, PhoneInterval.duration)
                         .join(PhoneInterval.phone)
                         .filter(Phone.phone_type == PhoneType.non_silence)
                     )
-                    id_mapping = {}
                     phone_data = {}
-                    for p, p_id, duration in query:
+                    for p, duration in query:
                         if p not in phone_data:
                             phone_data[p] = []
-                        if p not in id_mapping:
-                            id_mapping[p] = set()
                         phone_data[p].append(duration)
-                        id_mapping[p].add(p_id)
                     for p, durations in phone_data.items():
                         mean_duration = statistics.mean(durations)
                         try:
@@ -220,22 +217,23 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 else:
                     query = (
                         session.query(
-                            PhoneInterval.phone_id,
+                            Phone.phone,
                             sqlalchemy.func.avg(PhoneInterval.duration),
                             sqlalchemy.func.stddev_samp(PhoneInterval.duration),
                         )
                         .join(PhoneInterval.phone)
                         .filter(Phone.phone_type == PhoneType.non_silence)
-                        .group_by(PhoneInterval.phone_id)
+                        .group_by(Phone.phone)
                     )
-                    for p_id, mean_duration, sd_duration in query:
-                        update_mappings.append(
-                            {
-                                "id": p_id,
-                                "mean_duration": mean_duration,
-                                "sd_duration": sd_duration,
-                            }
-                        )
+                    for p, mean_duration, sd_duration in query:
+                        for p_id in id_mapping[p]:
+                            update_mappings.append(
+                                {
+                                    "id": p_id,
+                                    "mean_duration": mean_duration,
+                                    "sd_duration": sd_duration,
+                                }
+                            )
                 bulk_update(session, Phone, update_mappings)
                 session.commit()
 
@@ -395,11 +393,38 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             for j in self.jobs
         ]
 
-    def align(self, workflow_name=None) -> None:
+    def _align(self):
+        perform_speaker_adaptation = self.uses_speaker_adaptation and not config.SINGLE_SPEAKER
+        if perform_speaker_adaptation:
+            self.final_alignment = False
+        self.uses_speaker_adaptation = False
+        acoustic_model = getattr(self, "acoustic_model", None)
+        final_alignment = self.final_alignment
+        logger.info("Performing first-pass alignment...")
+        for j in self.jobs:
+            paths = j.construct_path_dictionary(self.working_directory, "trans", "ark")
+            for p in paths.values():
+                if os.path.exists(p):
+                    os.remove(p)
+        self.align_utterances()
+        if (
+            acoustic_model is not None
+            and acoustic_model.meta["features"]["uses_speaker_adaptation"]
+            and perform_speaker_adaptation
+        ):
+            self.calc_fmllr()
+            if final_alignment:
+                self.final_alignment = True
+            self.uses_speaker_adaptation = True
+            assert self.alignment_model_path.suffix == ".mdl"
+            logger.info("Performing second-pass alignment...")
+            self.align_utterances()
+
+    def align(self) -> None:
         """Run the aligner"""
         self.alignment_mode = True
         self.initialize_database()
-        self.create_new_current_workflow(WorkflowType.alignment, workflow_name)
+        self.create_new_current_workflow(WorkflowType.alignment)
         wf = self.current_workflow
         if wf.done:
             logger.info("Alignment already done, skipping.")
@@ -408,41 +433,12 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         acoustic_model = getattr(self, "acoustic_model", None)
         if acoustic_model is not None:
             acoustic_model.export_model(self.working_directory)
-        perform_speaker_adaptation = self.uses_speaker_adaptation and not config.SINGLE_SPEAKER
-        final_alignment = self.final_alignment
-        if perform_speaker_adaptation:
-            self.final_alignment = False
         try:
             self.uses_speaker_adaptation = False
 
             self.compile_train_graphs()
-
-            logger.info("Performing first-pass alignment...")
-            for j in self.jobs:
-                paths = j.construct_path_dictionary(self.working_directory, "trans", "ark")
-                for p in paths.values():
-                    if os.path.exists(p):
-                        os.remove(p)
-
-            self.align_utterances()
-            if (
-                acoustic_model is not None
-                and acoustic_model.meta["features"]["uses_speaker_adaptation"]
-                and perform_speaker_adaptation
-            ):
-                self.calc_fmllr()
-                if final_alignment:
-                    self.final_alignment = True
-                self.uses_speaker_adaptation = True
-                assert self.alignment_model_path.suffix == ".mdl"
-                logger.info("Performing second-pass alignment...")
-                self.align_utterances()
+            self._align()
             self.collect_alignments()
-            if self.use_phone_model:
-                self.transcribe(WorkflowType.phone_transcription)
-            elif self.fine_tune:
-                self.fine_tune_alignments()
-
             with self.session() as session:
                 session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update(
                     {"done": True}
@@ -1157,108 +1153,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             conn.close()
             logger.debug(f"Updating indices took {time.time() - cleanup_begin:.3f} seconds")
         logger.debug(f"Collecting alignments took {time.time() - all_begin:.3f} seconds")
-
-    def fine_tune_alignments(self) -> None:
-        """
-        Fine tune aligned boundaries to millisecond precision
-        """
-        logger.info("Fine tuning alignments...")
-        all_begin = time.time()
-        with self.session() as session:
-            arguments = self.fine_tune_arguments()
-            update_mappings = []
-            for result in run_kaldi_function(
-                FineTuneFunction, arguments, total_count=self.num_utterances
-            ):
-                update_mappings.extend(result[0])
-                update_mappings.extend([{"id": x, "begin": 0, "end": 0} for x in result[1]])
-            bulk_update(session, PhoneInterval, update_mappings)
-            session.flush()
-            deleted_count = session.execute(
-                PhoneInterval.__table__.delete().where(PhoneInterval.end == 0)
-            )
-            logger.debug(f"Deleted {deleted_count} phone intervals of zero duration")
-            session.flush()
-            word_update_mappings = []
-            word_intervals = (
-                session.query(
-                    WordInterval.id,
-                    sqlalchemy.func.min(PhoneInterval.begin),
-                    sqlalchemy.func.max(PhoneInterval.end),
-                )
-                .join(PhoneInterval.word_interval)
-                .group_by(WordInterval.id)
-            )
-            for wi_id, begin, end in word_intervals:
-                word_update_mappings.append({"id": wi_id, "begin": begin, "end": end})
-            bulk_update(session, WordInterval, word_update_mappings)
-            session.commit()
-            sq = (
-                session.query(
-                    WordInterval.id, sqlalchemy.func.count(PhoneInterval.id).label("phone_count")
-                )
-                .outerjoin(WordInterval.phone_intervals)
-                .group_by(WordInterval.id)
-            ).subquery()
-            word_interval_deletions = session.query(sq.c.id).filter(sq.c.phone_count == 0)
-            deleted_count = (
-                session.query(WordInterval)
-                .filter(WordInterval.id.in_(word_interval_deletions))
-                .delete()
-            )
-            logger.debug(
-                f"Deleted {deleted_count} word intervals no longer containing phone intervals"
-            )
-            session.commit()
-        self.export_frame_shift = round(self.export_frame_shift / 10, 4)
-        logger.debug(f"Fine tuning alignments took {time.time() - all_begin:.3f} seconds")
-
-    def fine_tune_arguments(self) -> List[FineTuneArguments]:
-        """
-        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.FineTuneFunction`
-
-        Returns
-        -------
-        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.FineTuneArguments`]
-            Arguments for processing
-        """
-        args = []
-        fst, group_table, phone_to_group_mapping = self.compile_phone_group_lexicon_fst()
-        lexicon_compiler = LexiconCompiler(
-            position_dependent_phones=self.position_dependent_phones,
-            phones=self.non_silence_phones,
-        )
-        lexicon_compiler.word_table = group_table
-        lexicon_compiler._fst = fst
-        options = self.mfcc_options
-        options["frame_shift"] = 1
-        mfcc_computer = MfccComputer(**options)
-        pitch_computer = None
-        if self.use_pitch:
-            options = self.pitch_options
-            options["frame_shift"] = 1
-            pitch_computer = PitchComputer(**options)
-        align_options = self.align_options
-        # align_options['transition_scale'] = align_options['transition_scale'] / 10
-        align_options["acoustic_scale"] = 1.0
-        for j in self.jobs:
-            log_path = self.working_log_directory.joinpath(f"fine_tune.{j.id}.log")
-            args.append(
-                FineTuneArguments(
-                    j.id,
-                    getattr(self, "session" if config.USE_THREADING else "db_string", ""),
-                    log_path,
-                    mfcc_computer,
-                    pitch_computer,
-                    lexicon_compiler,
-                    self.model_path,
-                    self.tree_path,
-                    align_options,
-                    phone_to_group_mapping,
-                    self.mfcc_computer.frame_shift,
-                )
-            )
-        return args
 
     def export_textgrids(
         self,

@@ -23,28 +23,23 @@ from typing import TYPE_CHECKING
 import librosa.feature
 import numpy as np
 import sqlalchemy
-from _kalpy import feat as kalpy_feat
-from _kalpy import transform as kalpy_transform
 from _kalpy.gmm import gmm_compute_likes
 from _kalpy.hmm import TransitionModel
-from _kalpy.matrix import FloatMatrix, FloatSubMatrix
 from _kalpy.util import (
     RandomAccessBaseDoubleMatrixReader,
     RandomAccessBaseFloatMatrixReader,
     RandomAccessInt32VectorVectorReader,
 )
-from kalpy.data import Segment
+from kalpy.aligner import KalpyAligner
 from kalpy.decoder.data import FstArchive
 from kalpy.decoder.training_graphs import TrainingGraphCompiler
 from kalpy.evaluation import align_words, fix_unk_words
-from kalpy.feat.mfcc import MfccComputer
-from kalpy.feat.pitch import PitchComputer
 from kalpy.fstext.lexicon import LexiconCompiler
 from kalpy.gmm.align import GmmAligner
 from kalpy.gmm.data import AlignmentArchive, TranscriptionArchive
 from kalpy.gmm.train import GmmStatsAccumulator
 from kalpy.gmm.utils import read_gmm_model
-from kalpy.utils import generate_read_specifier, read_kaldi_object
+from kalpy.utils import generate_read_specifier
 from sqlalchemy.orm import joinedload, selectinload, subqueryload
 
 from montreal_forced_aligner.abc import KaldiFunction
@@ -73,6 +68,7 @@ from montreal_forced_aligner.db import (
 )
 from montreal_forced_aligner.exceptions import AlignmentCollectionError, AlignmentExportError
 from montreal_forced_aligner.helper import mfa_open, split_phone_position
+from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.textgrid import construct_textgrid_output
 from montreal_forced_aligner.utils import thread_logger
 
@@ -260,8 +256,8 @@ class AlignArguments(MfaArguments):
         Path to model file
     align_options: dict[str, Any]
         Alignment options
-    confidence: bool
-        Flag for outputting confidence
+    final: bool
+        Flag for final alignment pass
     """
 
     working_directory: Path
@@ -307,32 +303,17 @@ class FineTuneArguments(MfaArguments):
         SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
-    tree_path: :class:`~pathlib.Path`
-        Path to tree file
-    model_path: :class:`~pathlib.Path`
-        Path to model file
-    frame_shift: int
-        Frame shift in ms
-    mfcc_options: dict[str, Any]
-        MFCC computation options
-    pitch_options: dict[str, Any]
-        Pitch computation options
-    align_options: dict[str, Any]
-        Alignment options
-    position_dependent_phones: bool
-        Flag for whether to use position dependent phones
-    grouped_phones: dict[str, list[str]]
-        Grouped lists of phones
+    acoustic_model: :class:`~montreal_forced_aligner.models.AcousticModel`
+        Acoustic model
+    lexicon_compilers: dict[int, :class:`~kalpy.lexicon.LexiconCompiler`]
+        Lexicon compilers
+    boundary_tolerance: float, optional
+        Boundary tolerance, defaults to half the feature generation time step
     """
 
-    mfcc_computer: MfccComputer
-    pitch_computer: typing.Optional[PitchComputer]
-    lexicon_compiler: LexiconCompiler
-    model_path: Path
-    tree_path: Path
-    align_options: MetaDict
-    phone_to_group_mapping: typing.Dict[str, str]
-    original_frame_shift: float
+    acoustic_model: AcousticModel
+    lexicon_compilers: typing.Dict[int, LexiconCompiler]
+    boundary_tolerance: typing.Optional[float]
 
 
 @dataclass
@@ -938,7 +919,7 @@ class AnalyzeTranscriptsFunction(KaldiFunction):
 
 class FineTuneFunction(KaldiFunction):
     """
-    Multiprocessing function for fine tuning alignment.
+    Multiprocessing function for fine-tuning alignment.
 
     Parameters
     ----------
@@ -948,19 +929,9 @@ class FineTuneFunction(KaldiFunction):
 
     def __init__(self, args: FineTuneArguments):
         super().__init__(args)
-        self.mfcc_computer = args.mfcc_computer
-        self.pitch_computer = args.pitch_computer
-        self.lexicon_compiler = args.lexicon_compiler
-        self.model_path = args.model_path
-        self.tree_path = args.tree_path
-        self.align_options = args.align_options
-        self.phone_to_group_mapping = args.phone_to_group_mapping
-        self.frame_shift_seconds = args.original_frame_shift
-
-        self.new_frame_shift_seconds = 0.001
-        self.feature_padding_factor = 3
-        self.padding = round(self.frame_shift_seconds, 3)
-        self.splice_frames = 3
+        self.acoustic_model = args.acoustic_model
+        self.lexicon_compilers = args.lexicon_compilers
+        self.boundary_tolerance = args.boundary_tolerance
 
     def _run(self):
         """Run the function"""
@@ -979,31 +950,15 @@ class FineTuneFunction(KaldiFunction):
                 .first()
             )
 
-            phone_mapping = {}
-            phone_query = session.query(Phone.id, Phone.kaldi_label)
-            for p_id, phone in phone_query:
-                phone_mapping[phone] = p_id
-            disambiguation_symbols = [
-                x
-                for x, in session.query(Phone.mapping_id).filter(
-                    Phone.phone_type == PhoneType.disambiguation
-                )
-            ]
-            silence_phones = [
-                x
-                for x, in session.query(Phone.mapping_id).filter(
-                    Phone.phone_type.in_([PhoneType.silence])
-                )
-            ]
-
             cmvn_paths = job.per_dictionary_cmvn_scp_paths
             trans_paths = job.per_dictionary_trans_scp_paths
-            compiler = TrainingGraphCompiler(
-                self.model_path,
-                self.tree_path,
-                self.lexicon_compiler,
-            )
             for d in job.dictionaries:
+                aligner = KalpyAligner(
+                    acoustic_model=self.acoustic_model,
+                    lexicon_compiler=self.lexicon_compilers[d.id],
+                )
+                ali_path = job.construct_path(workflow.working_directory, "ali", ".ark", d.name)
+                alignment_archive = AlignmentArchive(ali_path)
                 utterance_query = (
                     session.query(Utterance, SoundFile.sound_file_path)
                     .join(Utterance.file)
@@ -1012,22 +967,6 @@ class FineTuneFunction(KaldiFunction):
                     .filter(Utterance.job_id == self.job_name, Speaker.dictionary_id == d.id)
                     .order_by(Utterance.kaldi_id)
                 )
-                boost_silence = self.align_options.pop("boost_silence", 1.0)
-                aligner = GmmAligner(
-                    self.model_path,
-                    disambiguation_symbols=disambiguation_symbols,
-                    **self.align_options,
-                )
-                if boost_silence != 1.0:
-                    aligner.boost_silence(boost_silence, silence_phones)
-                delta_options = kalpy_feat.DeltaFeaturesOptions()
-                use_splices = False
-                use_deltas = True
-                lda_mat = None
-                if workflow.lda_mat_path.exists():
-                    use_splices = True
-                    use_deltas = False
-                    lda_mat = read_kaldi_object(FloatMatrix, workflow.lda_mat_path)
 
                 cmvn_reader = None
                 cmvn_path = cmvn_paths[d.id]
@@ -1044,15 +983,17 @@ class FineTuneFunction(KaldiFunction):
                 current_transform = None
                 current_cmvn = None
                 for utterance, sf_path in utterance_query:
+                    try:
+                        alignment = alignment_archive[utterance.id]
+                    except KeyError:
+                        continue
                     interval_query = (
-                        session.query(PhoneInterval, Phone.kaldi_label)
-                        .join(PhoneInterval.phone)
+                        session.query(PhoneInterval)
                         .filter(
                             PhoneInterval.utterance_id == utterance.id,
                         )
                         .order_by(PhoneInterval.begin)
                     )
-                    prev_label = None
                     if utterance.speaker_id != current_speaker:
                         current_speaker = utterance.speaker_id
                         if cmvn_reader is not None and cmvn_reader.HasKey(str(current_speaker)):
@@ -1061,104 +1002,25 @@ class FineTuneFunction(KaldiFunction):
                             str(current_speaker)
                         ):
                             current_transform = transform_reader.Value(str(current_speaker))
+                    ctm = aligner.fine_tune_alignments(
+                        utterance.to_kalpy(),
+                        alignment,
+                        boundary_tolerance=self.boundary_tolerance,
+                        cmvn=current_cmvn,
+                        fmllr_trans=current_transform,
+                    )
+                    new_boundaries = ctm.phone_boundaries
+
                     interval_mapping = []
-                    for interval, phone in interval_query:
-                        if prev_label is None:
-                            prev_label = phone
+                    for i, interval in enumerate(interval_query):
+                        begin = interval.begin
+                        if i != 0:
+                            begin = new_boundaries[i - 1]
+                        if i < len(new_boundaries) - 1:
                             interval_mapping.append(
-                                {"id": interval.id, "begin": interval.begin, "end": interval.end}
+                                {"id": interval.id, "begin": begin, "end": new_boundaries[i]}
                             )
-                            continue
-                        end_padding = round(self.frame_shift_seconds * 1.5, 3)
-                        prev_padding = round(self.frame_shift_seconds * 1.5, 3)
-                        segment_begin = max(round(interval.begin - prev_padding, 4), 0)
-                        feature_segment_begin = max(
-                            round(
-                                interval.begin - (prev_padding * self.feature_padding_factor), 4
-                            ),
-                            0,
-                        )
-                        segment_end = round(min(interval.begin + end_padding, interval.end), 3)
-                        feature_segment_end = min(
-                            round(interval.begin + (end_padding * self.feature_padding_factor), 4),
-                            utterance.end,
-                        )
-                        begin_offset = round(segment_begin - feature_segment_begin, 4)
-                        end_offset = round(segment_end - feature_segment_begin, 4)
-                        segment = Segment(
-                            sf_path, feature_segment_begin, feature_segment_end, utterance.channel
-                        )
-                        text = f"{self.phone_to_group_mapping[prev_label]} {self.phone_to_group_mapping[phone]}"
-
-                        train_graph = compiler.compile_fst(text)
-
-                        feats = self.mfcc_computer.compute_mfccs_for_export(
-                            segment, compress=False
-                        )
-                        if current_cmvn is not None:
-                            kalpy_transform.ApplyCmvn(current_cmvn, False, feats)
-
-                        if self.pitch_computer is not None:
-                            pitch = self.pitch_computer.compute_pitch_for_export(
-                                segment, compress=False
-                            )
-                            feats = kalpy_feat.paste_feats([feats, pitch], 1)
-                        if use_deltas:
-                            feats = kalpy_feat.compute_deltas(delta_options, feats)
-                        elif use_splices:
-                            feats = kalpy_feat.splice_frames(
-                                feats, self.splice_frames, self.splice_frames
-                            )
-                            if lda_mat is not None:
-                                feats = kalpy_transform.apply_transform(feats, lda_mat)
-                        if current_transform is not None:
-                            feats = kalpy_transform.apply_transform(feats, current_transform)
-                        start_samp = int(round(begin_offset * 1000))
-                        end_samp = int(round(end_offset * 1000))
-                        sub_matrix = FloatSubMatrix(
-                            feats, start_samp, end_samp - start_samp, 0, feats.NumCols()
-                        )
-                        feats = FloatMatrix(sub_matrix)
-                        alignment = aligner.align_utterance(train_graph, feats)
-                        if alignment is None:
-                            aligner.acoustic_scale = 0.1
-                            alignment = aligner.align_utterance(train_graph, feats)
-                            aligner.acoustic_scale = 1.0
-                        ctm_intervals = alignment.generate_ctm(
-                            aligner.transition_model,
-                            self.lexicon_compiler.phone_table,
-                            frame_shift=0.001,
-                        )
-                        interval_mapping.append(
-                            {
-                                "id": interval.id,
-                                "begin": round(
-                                    ctm_intervals[1].begin + feature_segment_begin + begin_offset,
-                                    4,
-                                ),
-                                "end": interval.end,
-                                "label": phone_mapping[ctm_intervals[1].label],
-                            }
-                        )
-                        prev_label = phone
-                    deletions = []
-                    while True:
-                        for i in range(len(interval_mapping) - 1):
-                            if interval_mapping[i]["end"] != interval_mapping[i + 1]["begin"]:
-                                interval_mapping[i]["end"] = interval_mapping[i + 1]["begin"]
-                        new_deletions = [
-                            x["id"] for x in interval_mapping if x["begin"] >= x["end"]
-                        ]
-                        interval_mapping = [
-                            x for x in interval_mapping if x["id"] not in new_deletions
-                        ]
-                        deletions.extend(new_deletions)
-                        if not new_deletions and all(
-                            interval_mapping[i]["end"] == interval_mapping[i + 1]["begin"]
-                            for i in range(len(interval_mapping) - 1)
-                        ):
-                            break
-                    self.callback((interval_mapping, deletions))
+                    self.callback(interval_mapping)
 
 
 class PhoneConfidenceFunction(KaldiFunction):

@@ -7,7 +7,6 @@ import numpy as np
 from _kalpy.fstext import ConstFst
 from _kalpy.matrix import DoubleMatrix, FloatMatrix
 from kalpy.data import Segment
-from kalpy.feat.cmvn import CmvnComputer
 from kalpy.fstext.lexicon import LexiconCompiler
 from kalpy.gmm.data import HierarchicalCtm
 from kalpy.gmm.decode import GmmDecoder
@@ -44,18 +43,12 @@ def transcribe_utterance_online(
     prune_scale: float = 0.1,
     allow_partial: bool = True,
 ) -> HierarchicalCtm:
-    if utterance.mfccs is None:
-        utterance.generate_mfccs(acoustic_model.mfcc_computer)
-        if acoustic_model.uses_cmvn:
-            if cmvn is None:
-                cmvn_computer = CmvnComputer()
-                cmvn = cmvn_computer.compute_cmvn_from_features([utterance.mfccs])
-            utterance.apply_cmvn(cmvn)
     feats = utterance.generate_features(
         acoustic_model.mfcc_computer,
         acoustic_model.pitch_computer,
         lda_mat=acoustic_model.lda_mat,
         fmllr_trans=fmllr_trans,
+        cmvn=cmvn,
     )
     decoder = GmmDecoder(
         acoustic_model.alignment_model_path,

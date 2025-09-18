@@ -13,7 +13,7 @@ dependencies:
   - kaldi=*=*cpu*
   - scipy
   - pynini
-  - openfst=1.8.3
+  - openfst
   - scikit-learn
   - hdbscan
   - baumwelch
@@ -41,7 +41,8 @@ dependencies:
   - pip
   - rich
   - rich-click
-  - kalpy>=0.7
+  - kalpy>=0.8
+  - huggingface_hub
     # Tokenization dependencies
   - spacy
   - sudachipy

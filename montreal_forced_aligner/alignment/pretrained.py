@@ -17,8 +17,13 @@ from kalpy.utils import read_kaldi_object
 from kalpy.utterance import Utterance as KalpyUtterance
 from sqlalchemy.orm import Session, subqueryload
 
+from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import TopLevelMfaWorker
-from montreal_forced_aligner.alignment.multiprocessing import AnalyzeTranscriptsFunction
+from montreal_forced_aligner.alignment.multiprocessing import (
+    AnalyzeTranscriptsFunction,
+    FineTuneArguments,
+    FineTuneFunction,
+)
 from montreal_forced_aligner.data import PhoneType, WorkflowType
 from montreal_forced_aligner.db import (
     Corpus,
@@ -27,8 +32,10 @@ from montreal_forced_aligner.db import (
     Grapheme,
     Job,
     Phone,
+    PhoneInterval,
     Speaker,
     Utterance,
+    WordInterval,
     bulk_update,
 )
 from montreal_forced_aligner.exceptions import KaldiProcessingError
@@ -72,6 +79,8 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
         self,
         acoustic_model_path: Path = None,
         use_reference_alignments: bool = False,
+        fine_tune: bool = False,
+        fine_tune_boundary_tolerance: typing.Optional[float] = None,
         **kwargs,
     ):
         self.acoustic_model = AcousticModel(acoustic_model_path)
@@ -79,6 +88,8 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
         kw = self.acoustic_model.parameters
         kw.update(kwargs)
         super().__init__(**kw)
+        self.fine_tune = fine_tune
+        self.fine_tune = fine_tune_boundary_tolerance
         self.final_alignment = True
         self.kalpy_aligner = None
 
@@ -88,7 +99,7 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
         os.makedirs(self.phones_dir, exist_ok=True)
         for f in ["phones.txt", "graphemes.txt"]:
             path = self.working_directory.joinpath(f)
-            if os.path.exists(path):
+            if os.path.exists(path) and not os.path.exists(os.path.join(self.phones_dir, f)):
                 os.rename(path, os.path.join(self.phones_dir, f))
         dict_info = self.acoustic_model.meta.get("dictionaries", None)
         if not dict_info:
@@ -197,7 +208,7 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
             )
             session.commit()
 
-    def analyze_alignments(self, calculate_duration_statistics=False):
+    def analyze_alignments(self, calculate_duration_statistics=True):
         super().analyze_alignments(calculate_duration_statistics=calculate_duration_statistics)
 
     def setup(self) -> None:
@@ -208,6 +219,12 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
             return
         begin = time.time()
         try:
+            self.initialize_database()
+            self.create_new_current_workflow(WorkflowType.alignment)
+            wf = self.current_workflow
+            if wf.done:
+                logger.info("Alignment already done, skipping.")
+                return
             os.makedirs(self.working_log_directory, exist_ok=True)
             check = self.check_previous_run()
             if check:
@@ -391,18 +408,73 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
                 bulk_update(session, Utterance, mapping)
                 session.commit()
 
-    def align(self, workflow_name=None) -> None:
-        """Run the aligner"""
-        self.initialize_database()
-        self.create_new_current_workflow(WorkflowType.alignment, workflow_name)
-        wf = self.current_workflow
-        if wf.done:
-            logger.info("Alignment already done, skipping.")
-            return
-        self.setup()
+    def _align(self):
         if not self.use_reference_alignments:
             self.reset_manual_alignments()
+        super()._align()
+        if self.fine_tune:
+            self.fine_tune_alignments()
+
+    def align(self) -> None:
+        """Run the aligner"""
+        self.setup()
         super().align()
+
+    def fine_tune_alignments(self) -> None:
+        """
+        Fine tune aligned boundaries to millisecond precision
+        """
+        logger.info("Fine tuning alignments...")
+        all_begin = time.time()
+        with self.session() as session:
+            arguments = self.fine_tune_arguments()
+            update_mappings = []
+            for result in run_kaldi_function(
+                FineTuneFunction, arguments, total_count=self.num_utterances
+            ):
+                update_mappings.extend(result)
+            bulk_update(session, PhoneInterval, update_mappings)
+            session.flush()
+            word_update_mappings = []
+            word_intervals = (
+                session.query(
+                    WordInterval.id,
+                    sqlalchemy.func.min(PhoneInterval.begin),
+                    sqlalchemy.func.max(PhoneInterval.end),
+                )
+                .join(PhoneInterval.word_interval)
+                .group_by(WordInterval.id)
+            )
+            for wi_id, begin, end in word_intervals:
+                word_update_mappings.append({"id": wi_id, "begin": begin, "end": end})
+            bulk_update(session, WordInterval, word_update_mappings)
+            session.commit()
+        self.export_frame_shift = round(self.export_frame_shift / 10, 4)
+        logger.debug(f"Fine tuning alignments took {time.time() - all_begin:.3f} seconds")
+
+    def fine_tune_arguments(self) -> typing.List[FineTuneArguments]:
+        """
+        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.FineTuneFunction`
+
+        Returns
+        -------
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.FineTuneArguments`]
+            Arguments for processing
+        """
+        args = []
+        for j in self.jobs:
+            log_path = self.working_log_directory.joinpath(f"fine_tune.{j.id}.log")
+            args.append(
+                FineTuneArguments(
+                    j.id,
+                    getattr(self, "session" if config.USE_THREADING else "db_string", ""),
+                    log_path,
+                    self.acoustic_model,
+                    self.lexicon_compilers,
+                    self.fine_tune_boundary_tolerance,
+                )
+            )
+        return args
 
 
 class DictionaryTrainer(PretrainedAligner):
