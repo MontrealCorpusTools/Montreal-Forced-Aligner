@@ -131,6 +131,7 @@ def configure_cli(**kwargs) -> None:
     Configure Montreal Forced Aligner command lines to new defaults
 
     """
+    config.load_configuration()
     if kwargs.get("profile", None) is not None:
         config.GLOBAL_CONFIG.current_profile_name = kwargs.pop("profile")
     config.GLOBAL_CONFIG.current_profile.update(kwargs)
