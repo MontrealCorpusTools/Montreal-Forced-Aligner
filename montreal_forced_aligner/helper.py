@@ -45,6 +45,7 @@ __all__ = [
     "format_correction",
     "format_probability",
     "load_evaluation_mapping",
+    "configure_cli_logger",
     "MfaYamlDumper",
 ]
 
@@ -187,6 +188,21 @@ def parse_old_features(config: MetaDict) -> MetaDict:
     return config
 
 
+def configure_cli_logger(logger):
+    from montreal_forced_aligner.config import MfaConfiguration
+
+    config = MfaConfiguration()
+    if not config.current_profile.quiet:
+        handler = RichHandler(
+            rich_tracebacks=True, log_time_format="", console=console, show_path=False
+        )
+        if config.current_profile.verbose:
+            handler.setLevel(logging.DEBUG)
+        else:
+            handler.setLevel(logging.INFO)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        logger.addHandler(handler)
+
 def configure_logger(identifier: str, log_file: typing.Optional[Path] = None) -> None:
     """
     Configure logging for the given identifier
@@ -198,9 +214,6 @@ def configure_logger(identifier: str, log_file: typing.Optional[Path] = None) ->
     log_file: str
         Path to file to write all messages to
     """
-    from montreal_forced_aligner.config import MfaConfiguration
-
-    config = MfaConfiguration()
     logger = logging.getLogger(identifier)
     logger.setLevel(logging.DEBUG)
     if log_file is not None:
@@ -209,16 +222,7 @@ def configure_logger(identifier: str, log_file: typing.Optional[Path] = None) ->
         formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
-    if not config.current_profile.quiet:
-        handler = RichHandler(
-            rich_tracebacks=True, log_time_format="", console=console, show_path=False
-        )
-        if config.current_profile.verbose:
-            handler.setLevel(logging.DEBUG)
-        else:
-            handler.setLevel(logging.INFO)
-        handler.setFormatter(logging.Formatter("%(message)s"))
-        logger.addHandler(handler)
+    configure_cli_logger(logger)
 
 
 def comma_join(sequence: typing.List[typing.Any]) -> str:

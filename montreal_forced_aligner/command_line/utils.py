@@ -27,7 +27,7 @@ from montreal_forced_aligner.exceptions import (
     ModelTypeNotSupportedError,
     PretrainedModelNotFoundError,
 )
-from montreal_forced_aligner.helper import mfa_open
+from montreal_forced_aligner.helper import mfa_open, configure_cli_logger
 from montreal_forced_aligner.models import MODEL_TYPES
 from montreal_forced_aligner.utils import check_third_party
 
@@ -421,6 +421,7 @@ def check_databases(db_name: str) -> None:
 def initialize_server() -> None:
     """Initialize the MFA server for the current profile"""
     logger = logging.getLogger("mfa")
+    configure_cli_logger(logger)
     logger.info(f"Initializing the {config.CURRENT_PROFILE_NAME} MFA database server...")
 
     db_directory = config.get_temporary_directory().joinpath(
@@ -479,6 +480,7 @@ def initialize_server() -> None:
 def check_server() -> None:
     """Check the status of the MFA server for the current profile"""
     logger = logging.getLogger("mfa")
+    configure_cli_logger(logger)
 
     db_directory = config.get_temporary_directory().joinpath(
         f"pg_mfa_{config.CURRENT_PROFILE_NAME}"
@@ -520,6 +522,7 @@ def check_server() -> None:
 def start_server() -> None:
     """Start the MFA server for the current profile"""
     logger = logging.getLogger("mfa")
+    configure_cli_logger(logger)
     try:
         check_server()
         logger.info(f"{config.CURRENT_PROFILE_NAME} MFA database server already running.")
@@ -572,6 +575,7 @@ def stop_server(mode: str = "smart") -> None:
         Mode to be passed to `pg_ctl`, defaults to "smart"
     """
     logger = logging.getLogger("mfa")
+    configure_cli_logger(logger)
 
     db_directory = config.get_temporary_directory().joinpath(
         f"pg_mfa_{config.CURRENT_PROFILE_NAME}"
@@ -598,8 +602,9 @@ def stop_server(mode: str = "smart") -> None:
 
 def delete_server() -> None:
     """Remove the MFA server for the current profile"""
-    stop_server(mode="immediate")
     logger = logging.getLogger("mfa")
+    configure_cli_logger(logger)
+    stop_server(mode="immediate")
 
     db_directory = config.get_temporary_directory().joinpath(
         f"pg_mfa_{config.CURRENT_PROFILE_NAME}"
