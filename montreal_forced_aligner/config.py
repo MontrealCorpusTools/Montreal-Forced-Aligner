@@ -135,7 +135,7 @@ def update_command_history(command_data: Dict[str, Any]) -> None:
         yaml.dump(history, f, Dumper=MfaYamlDumper, allow_unicode=True)
 
 
-CLEAN = False
+CLEAN = True
 FINAL_CLEAN = False
 VERBOSE = False
 DEBUG = False

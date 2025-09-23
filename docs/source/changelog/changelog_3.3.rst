@@ -5,6 +5,11 @@
 3.3 Changelog
 *************
 
+3.3.6
+-----
+
+- Change default value of ``--clean`` to be enabled by default, the previous functionality can be restored via ``mfa configure --never_clean``
+
 3.3.5
 -----
 
