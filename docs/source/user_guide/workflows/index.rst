@@ -23,4 +23,4 @@ The primary workflow in MFA is forced alignment, where text is aligned to speech
    finding_oovs
    dictionary_generating
    g2p_train
-   remap_dictionary
+   remap

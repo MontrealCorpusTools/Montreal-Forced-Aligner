@@ -28,6 +28,10 @@ and logs any of the following issues:
 Phone confidence
 ================
 
+.. warning::
+
+   This functionality is deprecated and will be removed in MFA 4.0.
+
 The phone confidence functionality of the validation utility is similar to :ref:`phone_models` in that both are trying to represent the "goodness" of the phone label for the given interval.  Where phone models use the acoustic model in combination with a phone language model, phone confidence simply calculates the likelihoods of each phone for each frame
 
 .. _running_the_validator:

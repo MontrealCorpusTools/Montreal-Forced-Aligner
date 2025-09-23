@@ -14,7 +14,6 @@ from _kalpy.matrix import DoubleMatrix, FloatMatrix
 from _kalpy.util import SequentialBaseFloatVectorReader
 from kalpy.data import Segment
 from kalpy.decoder.training_graphs import TrainingGraphCompiler
-from kalpy.feat.cmvn import CmvnComputer
 from kalpy.feat.mfcc import MfccComputer
 from kalpy.feat.vad import VadComputer
 from kalpy.fstext.lexicon import LexiconCompiler
@@ -189,10 +188,6 @@ def segment_utterance_transcript(
         cmvn = read_kaldi_object(DoubleMatrix, utterance.cmvn_string)
     if utterance.fmllr_string:
         fmllr_trans = read_kaldi_object(FloatMatrix, utterance.fmllr_string)
-    if cmvn is None and acoustic_model.uses_cmvn:
-        utterance.generate_mfccs(acoustic_model.mfcc_computer)
-        cmvn_computer = CmvnComputer()
-        cmvn = cmvn_computer.compute_cmvn_from_features([utterance.mfccs])
     current_transcript = utterance.transcript
     segments = segment_utterance(
         utterance.segment, vad_model, segmentation_options, mfcc_options, vad_options
@@ -214,14 +209,10 @@ def segment_utterance_transcript(
         am.boost_silence(transition_model, lexicon_compiler.silence_symbols, boost_silence)
     for seg in segments:
         new_utt = KalpyUtterance(seg, current_transcript)
-        new_utt.generate_mfccs(acoustic_model.mfcc_computer)
-        if acoustic_model.uses_cmvn:
-            new_utt.apply_cmvn(cmvn)
         feats = new_utt.generate_features(
-            acoustic_model.mfcc_computer,
-            acoustic_model.pitch_computer,
-            lda_mat=acoustic_model.lda_mat,
+            acoustic_model,
             fmllr_trans=fmllr_trans,
+            cmvn=cmvn,
         )
         unknown_words = []
         unknown_word_index = 0

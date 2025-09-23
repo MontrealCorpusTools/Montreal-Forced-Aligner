@@ -8,6 +8,7 @@ import rich_click as click
 from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.utils import (
     common_options,
+    initialize_configuration,
     validate_corpus_directory,
     validate_ivector_extractor,
 )
@@ -95,9 +96,7 @@ def diarize_speakers_cli(context, **kwargs) -> None:
     When using SpeechBrain's speaker recognition model, the ``--cuda`` flag is available to perform computations on GPU, and
     the ``--num_jobs`` parameter will be used as a the batch size for any parallel computation.
     """
-    if kwargs.get("profile", None) is not None:
-        config.profile = kwargs.pop("profile")
-    config.update_configuration(kwargs)
+    initialize_configuration(context)
     if not config.USE_POSTGRES:
         raise DatabaseError(
             "Postgres is required for running diarization functionality via `--use_postgres true`."

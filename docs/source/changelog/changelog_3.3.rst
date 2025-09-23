@@ -5,6 +5,15 @@
 3.3 Changelog
 *************
 
+3.3.5
+-----
+
+- Added utility command for :ref:`remap_alignments`
+- Refactored command line utility set up into helper functions
+- Update finetuning algorithm to use Kalpy's interpolate boundary rather than a full realignment pass
+- Move fine tune functionality from :class:`~montreal_forced_aligner.alignment.AlignMixin` to :class:`~montreal_forced_aligner.alignment.PretrainedAligner`
+- Fixed a bug where phone duration deviation and speech log-likelihood metrics were not properly being saved after alignment :github_issue:`909`
+
 3.3.4
 -----
 
@@ -38,6 +47,7 @@
 
 - Added support for incorporating existing reference alignments into acoustic model training and adaptation
 - Added ReferencePhoneIntervals and ReferenceWordIntervals tables separate from those generated from alignments
+- Added utility command for :ref:`remap_dictionary`
 - Removed dependency on Biopython's pairwise2 module for evaluating alignments
 - Added signal-to-noise ratio calculation as part of alignment evaluation
 - Added filters in training and adaptation based on alignment evaluation metrics

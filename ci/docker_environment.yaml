@@ -13,7 +13,7 @@ dependencies:
   - dataclassy
   - kaldi=*=*cpu*
   - pynini
-  - openfst=1.8.3
+  - openfst
   - scikit-learn
   - hdbscan
   - baumwelch
@@ -39,7 +39,7 @@ dependencies:
   - sqlite
   - rich
   - rich-click
-  - kalpy>=0.7
+  - kalpy>=0.8
   - spacy
   - sudachipy
   - sudachidict-core

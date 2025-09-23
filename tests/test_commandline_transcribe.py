@@ -1,4 +1,5 @@
 import os
+import sys
 
 import click.testing
 import pytest
@@ -96,6 +97,8 @@ def test_transcribe_whisper_cuda(
         pytest.skip("whisperx not installed")
     if not CUDA_AVAILABLE:
         pytest.skip("CUDA not available")
+    if sys.platform == "win32":
+        pytest.skip("Win32 throwing access violations")
     output_path = generated_dir.joinpath("transcribe_test_whisper")
     command = [
         "transcribe_whisper",

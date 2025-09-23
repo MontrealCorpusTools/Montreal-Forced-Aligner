@@ -58,6 +58,8 @@ __all__ = [
     "Utterance",
     "PhoneInterval",
     "WordInterval",
+    "ReferencePhoneInterval",
+    "ReferenceWordInterval",
     "M2MSymbol",
     "Job",
     "Word2Job",

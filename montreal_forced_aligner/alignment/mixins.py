@@ -50,7 +50,6 @@ class AlignMixin(DictionaryMixin):
     retry_beam : int
         Size of the beam to use in decoding if it fails with the initial beam width, defaults to 40
 
-
     See Also
     --------
     :class:`~montreal_forced_aligner.dictionary.mixins.DictionaryMixin`
@@ -62,7 +61,6 @@ class AlignMixin(DictionaryMixin):
         Jobs to process
     """
 
-    logger: logging.Logger
     jobs: List[Job]
 
     def __init__(
@@ -73,7 +71,6 @@ class AlignMixin(DictionaryMixin):
         boost_silence: float = 1.0,
         beam: int = 10,
         retry_beam: int = 40,
-        fine_tune: bool = False,
         phone_confidence: bool = False,
         use_phone_model: bool = False,
         careful: bool = False,
@@ -86,7 +83,6 @@ class AlignMixin(DictionaryMixin):
         self.boost_silence = boost_silence
         self.beam = beam
         self.retry_beam = retry_beam
-        self.fine_tune = fine_tune
         self.phone_confidence = phone_confidence
         self.use_phone_model = use_phone_model
         if self.retry_beam <= self.beam:

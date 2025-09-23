@@ -298,6 +298,8 @@ def load_configuration():
 def update_configuration(data):
     for k, v in data.items():
         k = k.upper()
+        if k == 'PROFILE':
+            k = "CURRENT_PROFILE_NAME"
         if k in globals():
             if k == "TEMPORARY_DIRECTORY":
                 v = pathlib.Path(v)

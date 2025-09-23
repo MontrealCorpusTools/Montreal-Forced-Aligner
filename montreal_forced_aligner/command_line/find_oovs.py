@@ -8,6 +8,7 @@ import rich_click as click
 from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.utils import (
     common_options,
+    initialize_configuration,
     validate_corpus_directory,
     validate_dictionary,
     validate_output_directory,
@@ -56,11 +57,8 @@ def find_oovs_cli(context, **kwargs) -> None:
     """
     Check for OOVs in a corpus
     """
-    if kwargs.get("profile", None) is not None:
-        config.profile = kwargs.pop("profile")
     config.FINAL_CLEAN = True
-    config.update_configuration(kwargs)
-    kwargs["USE_THREADING"] = False
+    initialize_configuration(context)
 
     output_directory = kwargs.get("output_directory", None)
     config_path = kwargs.get("config_path", None)

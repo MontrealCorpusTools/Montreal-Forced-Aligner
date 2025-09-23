@@ -13,6 +13,7 @@ from queue import Empty, Queue
 import sqlalchemy
 from _kalpy.util import Int32VectorVectorWriter
 from kalpy.utils import generate_write_specifier
+from praatio import textgrid as tgio
 from sqlalchemy.orm import joinedload, subqueryload
 
 from montreal_forced_aligner.abc import KaldiFunction
@@ -31,6 +32,7 @@ from montreal_forced_aligner.db import (
 )
 from montreal_forced_aligner.exceptions import SoundFileError, TextGridParseError, TextParseError
 from montreal_forced_aligner.helper import mfa_open
+from montreal_forced_aligner.textgrid import Textgrid, load_textgrid
 from montreal_forced_aligner.utils import Counter
 
 if typing.TYPE_CHECKING:
@@ -53,6 +55,7 @@ __all__ = [
     "ExportKaldiFilesArguments",
     "NormalizeTextFunction",
     "NormalizeTextArguments",
+    "AlignmentRemapperWorker",
     "dictionary_ids_for_job",
 ]
 
@@ -221,7 +224,6 @@ class CorpusProcessWorker(threading.Thread):
                     text_path,
                     relative_path,
                     self.speaker_characters,
-                    self.sample_rate,
                 )
                 self.return_q.put(file)
             except TextParseError as e:
@@ -674,3 +676,142 @@ class ExportKaldiFilesFunction(KaldiFunction):
         """Run the function"""
         with self.session() as session:
             self.output_to_directory(session)
+
+
+class AlignmentRemapperWorker(threading.Thread):
+    """
+    Multiprocessing corpus loading worker
+
+    Attributes
+    ----------
+    job_q: :class:`~multiprocessing.Queue`
+        Job queue for files to process
+    return_dict: dict
+        Dictionary to catch errors
+    return_q: :class:`~multiprocessing.Queue`
+        Return queue for processed Files
+    stopped: :class:`~threading.Event`
+        Stop check for whether corpus loading should exit
+    finished_adding: :class:`~threading.Event`
+        Signal that the main thread has stopped adding new files to be processed
+    """
+
+    def __init__(
+        self,
+        name: int,
+        job_q: Queue,
+        return_q: Queue,
+        stopped: threading.Event,
+        finished_adding: threading.Event,
+        phone_remapping: typing.Dict[str, typing.List[str]],
+        split_percentage: float,
+        output_format: typing.Literal["short_textgrid", "long_textgrid", "json", "textgrid_json"],
+    ):
+        super().__init__()
+        self.name = str(name)
+        self.job_q = job_q
+        self.return_q = return_q
+        self.stopped = stopped
+        self.finished_adding = finished_adding
+        self.finished_processing = threading.Event()
+        self.phone_remapping = phone_remapping
+        self.split_percentage = split_percentage
+        self.output_format = output_format
+        self.max_merges = 0
+        for k in self.phone_remapping.keys():
+            space_count = k.count(" ")
+            if space_count > self.max_merges:
+                self.max_merges = space_count
+
+    def remap_file(
+        self,
+        input_path: Path,
+        output_path: Path,
+    ):
+        input_tg = load_textgrid(input_path)
+        output_tg = Textgrid()
+        output_tg.minTimestamp = 0
+        output_tg.maxTimestamp = input_tg.maxTimestamp
+        for tier_name in input_tg.tierNames:
+            ti = input_tg._tierDict[tier_name]
+            if not isinstance(ti, tgio.IntervalTier) or "phones" not in tier_name:
+                output_tg.addTier(ti)
+                continue
+            remapped_entries = []
+            for i, (begin, end, text) in enumerate(ti.entries):
+                text = text.strip()
+                if not text:
+                    continue
+                remapped_entries = self.remap_phone_tier(ti.entries)
+            output_tg.addTier(
+                tgio.IntervalTier(
+                    tier_name, remapped_entries, output_tg.minTimestamp, output_tg.maxTimestamp
+                )
+            )
+        output_tg.save(
+            str(output_path),
+            includeBlankSpaces=True,
+            format=self.output_format,
+            minimumIntervalLength=None,
+            reportingMode="silence",
+        )
+
+    def remap_phone_tier(
+        self,
+        tier_entries: typing.List[tgio.constants.Interval],
+    ):
+        remapped_entries = []
+        for i, (begin, end, text) in enumerate(tier_entries):
+            rp = text.strip()
+            if rp in self.phone_remapping:
+                new_phone = self.phone_remapping[rp]
+                if isinstance(new_phone, tuple):
+                    if len(new_phone) == 2:
+                        split_percentage = self.split_percentage
+                    else:
+                        split_percentage = 1 / len(new_phone)
+                    new_duration = (end - begin) * split_percentage
+                    b = begin
+                    for j, np in enumerate(new_phone):
+                        if j == len(new_phone) - 1:
+                            e = end
+                        else:
+                            e = begin + (j * new_duration)
+                        remapped_entries.append(tgio.constants.Interval(b, e, np))
+                        b = e
+                else:
+                    remapped_entries.append(tgio.constants.Interval(begin, end, new_phone))
+            else:
+                key = rp
+                for j in range(i + 1, min(len(tier_entries), i + self.max_merges)):
+                    e = tier_entries[j][1]
+                    key += " " + tier_entries[j][-1]
+                    if key in self.phone_remapping:
+                        new_phone = self.phone_remapping[key]
+                        remapped_entries.append(tgio.constants.Interval(begin, e, new_phone))
+                        break
+                else:
+                    remapped_entries.append(tgio.constants.Interval(begin, end, rp))
+        return remapped_entries
+
+    def run(self) -> None:
+        """
+        Run the corpus loading job
+        """
+        while True:
+            try:
+                input_path, output_path = self.job_q.get(timeout=1)
+            except Empty:
+                if self.finished_adding.is_set():
+                    break
+                continue
+            if self.stopped.is_set():
+                continue
+            try:
+                self.remap_file(input_path, output_path)
+                self.return_q.put(input_path)
+            except Exception as e:
+                self.stopped.set()
+                self.return_q.put(("error", e))
+        self.finished_processing.set()
+        return

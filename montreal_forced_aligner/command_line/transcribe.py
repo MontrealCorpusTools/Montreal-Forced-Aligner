@@ -7,9 +7,9 @@ from pathlib import Path
 import rich_click as click
 from kalpy.data import Segment
 
-from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.utils import (
     common_options,
+    initialize_configuration,
     validate_acoustic_model,
     validate_corpus_directory,
     validate_dictionary,
@@ -107,9 +107,7 @@ def transcribe_corpus_cli(context, **kwargs) -> None:
     """
     Transcribe utterances using an acoustic model, language model, and pronunciation dictionary.
     """
-    if kwargs.get("profile", None) is not None:
-        config.profile = kwargs.pop("profile")
-    config.update_configuration(kwargs)
+    initialize_configuration(context)
 
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"].absolute()
@@ -218,9 +216,7 @@ def transcribe_speechbrain_cli(context, **kwargs) -> None:
     """
     Transcribe utterances using an ASR model trained by SpeechBrain.
     """
-    if kwargs.get("profile", None) is not None:
-        config.profile = kwargs.pop("profile")
-    config.update_configuration(kwargs)
+    initialize_configuration(context)
 
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"].absolute()
@@ -318,9 +314,7 @@ def transcribe_whisper_cli(context, **kwargs) -> None:
     """
     Transcribe utterances using a Whisper ASR model via faster-whisper.
     """
-    if kwargs.get("profile", None) is not None:
-        config.profile = kwargs.pop("profile")
-    config.update_configuration(kwargs)
+    initialize_configuration(context)
 
     config_path = kwargs.get("config_path", None)
     incremental = kwargs.get("incremental", False)

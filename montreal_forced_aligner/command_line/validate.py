@@ -8,6 +8,7 @@ import rich_click as click
 from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.utils import (
     common_options,
+    initialize_configuration,
     validate_acoustic_model,
     validate_corpus_directory,
     validate_dictionary,
@@ -105,11 +106,9 @@ def validate_corpus_cli(context, **kwargs) -> None:
     """
     Validate a corpus for use in MFA.
     """
-    if kwargs.get("profile", None) is not None:
-        config.profile = kwargs.pop("profile")
+    config.CLEAN = True
     config.FINAL_CLEAN = True
-    config.update_configuration(kwargs)
-    kwargs["USE_THREADING"] = False
+    initialize_configuration(context)
 
     output_directory = kwargs.get("output_directory", None)
     config_path = kwargs.get("config_path", None)
@@ -178,14 +177,14 @@ def validate_corpus_cli(context, **kwargs) -> None:
 )
 @common_options
 @click.help_option("-h", "--help")
-def validate_dictionary_cli(*args, **kwargs) -> None:
+@click.pass_context
+def validate_dictionary_cli(context, **kwargs) -> None:
     """
     Validate a dictionary using a G2P model to detect unlikely pronunciations.
     """
-    if kwargs.get("profile", None) is not None:
-        config.profile = kwargs.pop("profile")
-        config.update_configuration(kwargs)
     config.CLEAN = True
+    config.FINAL_CLEAN = True
+    initialize_configuration(context)
     config_path = kwargs.get("config_path", None)
     g2p_model_path = kwargs["g2p_model_path"]
     dictionary_path = kwargs["dictionary_path"]
@@ -193,7 +192,7 @@ def validate_dictionary_cli(*args, **kwargs) -> None:
     validator = DictionaryValidator(
         g2p_model_path=g2p_model_path,
         dictionary_path=dictionary_path,
-        **DictionaryValidator.parse_parameters(config_path, kwargs, args),
+        **DictionaryValidator.parse_parameters(config_path, context.params, context.args),
     )
     try:
         validator.validate(output_path=output_path)

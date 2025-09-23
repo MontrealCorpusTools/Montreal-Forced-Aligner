@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pywrapfst
 import rich_click as click
+from kalpy.aligner import KalpyAligner
 from kalpy.feat.cmvn import CmvnComputer
 from kalpy.fstext.lexicon import HierarchicalCtm, LexiconCompiler
 from kalpy.utterance import Segment
@@ -14,6 +15,7 @@ from montreal_forced_aligner import config
 from montreal_forced_aligner.alignment import PretrainedAligner
 from montreal_forced_aligner.command_line.utils import (
     common_options,
+    initialize_configuration,
     validate_acoustic_model,
     validate_dictionary,
     validate_g2p_model,
@@ -34,7 +36,7 @@ from montreal_forced_aligner.dictionary.mixins import (
     DEFAULT_WORD_BREAK_MARKERS,
 )
 from montreal_forced_aligner.models import AcousticModel, G2PModel
-from montreal_forced_aligner.online.alignment import align_utterance_online
+from montreal_forced_aligner.online.alignment import tokenize_utterance_text
 from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
 from montreal_forced_aligner.tokenization.spacy import generate_language_tokenizer
 
@@ -92,9 +94,7 @@ def align_one_cli(context, **kwargs) -> None:
     """
     Align a single file with a pronunciation dictionary and a pretrained acoustic model.
     """
-    if kwargs.get("profile", None) is not None:
-        config.profile = kwargs.pop("profile")
-    config.update_configuration(kwargs)
+    initialize_configuration(context)
     config_path = kwargs.get("config_path", None)
     sound_file_path: Path = kwargs["sound_file_path"]
     text_file_path: Path = kwargs["text_file_path"]
@@ -168,7 +168,14 @@ def align_one_cli(context, **kwargs) -> None:
     cmvn_computer = CmvnComputer()
     for utterance in file.utterances:
         seg = Segment(sound_file_path, utterance.begin, utterance.end, utterance.channel)
-        utt = KalpyUtterance(seg, utterance.text)
+        normalized_text = tokenize_utterance_text(
+            utterance.text,
+            lexicon_compiler,
+            tokenizer,
+            g2p_model,
+            language=acoustic_model.language,
+        )
+        utt = KalpyUtterance(seg, normalized_text)
         utt.generate_mfccs(acoustic_model.mfcc_computer)
         utterances.append(utt)
 
@@ -186,16 +193,10 @@ def align_one_cli(context, **kwargs) -> None:
             "boost_silence",
         ]
     }
+    kalpy_aligner = KalpyAligner(acoustic_model, lexicon_compiler, **align_options)
     for utt in utterances:
         utt.apply_cmvn(cmvn)
-        ctm = align_utterance_online(
-            acoustic_model,
-            utt,
-            lexicon_compiler,
-            tokenizer=tokenizer,
-            g2p_model=g2p_model,
-            **align_options,
-        )
+        ctm = kalpy_aligner.align_utterance(utt)
         file_ctm.word_intervals.extend(ctm.word_intervals)
     if str(output_path) != "-":
         output_path.parent.mkdir(parents=True, exist_ok=True)

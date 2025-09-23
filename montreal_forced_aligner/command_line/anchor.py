@@ -7,6 +7,7 @@ import requests
 import rich_click as click
 
 from montreal_forced_aligner import config
+from montreal_forced_aligner.command_line.utils import initialize_configuration
 
 __all__ = ["anchor_cli"]
 
@@ -15,10 +16,12 @@ logger = logging.getLogger("mfa")
 
 @click.command(name="anchor", short_help="Launch Anchor")
 @click.help_option("-h", "--help")
-def anchor_cli(*args, **kwargs) -> None:  # pragma: no cover
+@click.pass_context
+def anchor_cli(context, **kwargs) -> None:  # pragma: no cover
     """
     Launch Anchor Annotator (if installed)
     """
+    initialize_configuration(context)
     from anchor.command_line import main  # noqa
 
     if config.VERBOSE:

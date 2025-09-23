@@ -13,20 +13,12 @@ import shutil
 import typing
 from pathlib import Path
 from shutil import copy, copyfile, make_archive, move, rmtree, unpack_archive
-from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Tuple, Union
 
 import pynini
 import pywrapfst
 import requests
 import yaml
-from _kalpy.gmm import AmDiagGmm
-from _kalpy.hmm import TransitionModel
-from _kalpy.matrix import FloatMatrix
-from kalpy.feat.mfcc import MfccComputer
-from kalpy.feat.pitch import PitchComputer
-from kalpy.fstext.lexicon import LexiconCompiler
-from kalpy.gmm.utils import read_gmm_model
-from kalpy.utils import read_kaldi_object
+from kalpy.models import AcousticModel as KalpyAcousticModel
 from rich.pretty import pprint
 
 from montreal_forced_aligner.abc import MfaModel, ModelExporterMixin
@@ -41,7 +33,7 @@ from montreal_forced_aligner.exceptions import (
 )
 from montreal_forced_aligner.helper import EnhancedJSONEncoder, mfa_open
 
-if TYPE_CHECKING:
+if typing.TYPE_CHECKING:
     from dataclasses import dataclass
 
     from montreal_forced_aligner.abc import MetaDict
@@ -70,7 +62,7 @@ __all__ = [
 ]
 
 
-def guess_model_type(path: Path) -> List[str]:
+def guess_model_type(path: Path) -> typing.List[str]:
     """
     Guess a model type given a path
 
@@ -117,7 +109,7 @@ class Archive(MfaModel):
     def __init__(
         self,
         source: typing.Union[str, Path],
-        root_directory: Optional[typing.Union[str, Path]] = None,
+        root_directory: typing.Optional[typing.Union[str, Path]] = None,
     ):
         from .config import get_temporary_directory
 
@@ -135,50 +127,27 @@ class Archive(MfaModel):
         self._meta = {}
         self.name = source.stem
         if os.path.isdir(source):
-            self.dirname = source
+            self.directory = source
         else:
-            self.dirname = root_directory.joinpath(f"{self.name}_{self.model_type}")
-            if self.dirname.exists():
-                shutil.rmtree(self.dirname, ignore_errors=True)
+            self.directory = root_directory.joinpath(f"{self.name}_{self.model_type}")
+            if self.directory.exists():
+                shutil.rmtree(self.directory, ignore_errors=True)
 
             os.makedirs(root_directory, exist_ok=True)
-            unpack_archive(source, self.dirname)
-            files = [x for x in self.dirname.iterdir()]
+            unpack_archive(source, self.directory)
+            files = [x for x in self.directory.iterdir()]
             old_dir_path = files[0]
             if len(files) == 1 and old_dir_path.is_dir():  # Backwards compatibility
                 for f in old_dir_path.iterdir():
                     f = f.relative_to(old_dir_path)
-                    move(old_dir_path.joinpath(f), self.dirname.joinpath(f))
+                    move(old_dir_path.joinpath(f), self.directory.joinpath(f))
                 old_dir_path.rmdir()
-
-    def parse_old_features(self) -> None:
-        """
-        Parse MFA model's features and ensure that they are up-to-date with current functionality
-        """
-        if "features" not in self._meta:
-            return
-        feature_key_remapping = {
-            "type": "feature_type",
-            "deltas": "uses_deltas",
-            "fmllr": "uses_speaker_adaptation",
-        }
-
-        for key, new_key in feature_key_remapping.items():
-            if key in self._meta["features"]:
-                self._meta["features"][new_key] = self._meta["features"][key]
-                del self._meta["features"][key]
-        if "uses_splices" not in self._meta["features"]:  # Backwards compatibility
-            self._meta["features"]["uses_splices"] = os.path.exists(
-                self.dirname.joinpath("lda.mat")
-            )
-        if "uses_speaker_adaptation" not in self._meta["features"]:
-            self._meta["features"]["uses_speaker_adaptation"] = os.path.exists(
-                self.dirname.joinpath("final.alimdl")
-            )
 
     def get_subclass_object(
         self,
-    ) -> Union[AcousticModel, G2PModel, LanguageModel, TokenizerModel, IvectorExtractorModel]:
+    ) -> typing.Union[
+        AcousticModel, G2PModel, LanguageModel, TokenizerModel, IvectorExtractorModel
+    ]:
         """
         Instantiate subclass models based on files contained in the archive
 
@@ -192,18 +161,18 @@ class Archive(MfaModel):
         :class:`~montreal_forced_aligner.exceptions.ModelLoadError`
             If the model type cannot be determined
         """
-        files = [x.name for x in self.dirname.iterdir()]
+        files = [x.name for x in self.directory.iterdir()]
 
         if "tree" in files:
-            return AcousticModel(self.dirname, self.root_directory)
+            return AcousticModel(self.directory, self.root_directory)
         if "phones.sym" in files or "phones.txt" in files:
-            return G2PModel(self.dirname, self.root_directory)
+            return G2PModel(self.directory, self.root_directory)
         if any(f.endswith(".arpa") for f in files):
-            return LanguageModel(self.dirname, self.root_directory)
+            return LanguageModel(self.directory, self.root_directory)
         if "final.ie" in files:
-            return IvectorExtractorModel(self.dirname, self.root_directory)
+            return IvectorExtractorModel(self.directory, self.root_directory)
         if "tokenizer.fst" in files:
-            return TokenizerModel(self.dirname, self.root_directory)
+            return TokenizerModel(self.directory, self.root_directory)
         raise ModelLoadError(self.source)
 
     @classmethod
@@ -228,7 +197,7 @@ class Archive(MfaModel):
     @classmethod
     def generate_path(
         cls, root: Path, name: str, enforce_existence: bool = True
-    ) -> Optional[Path]:
+    ) -> typing.Optional[Path]:
         """
         Generate a path for a given model from the root directory and the name of the model
 
@@ -254,27 +223,26 @@ class Archive(MfaModel):
 
     def pretty_print(self) -> None:
         """
-        Pretty print the archive's meta data using rich
+        Pretty print the archive's metadata using rich
         """
         pprint({"Archive": {"name": self.name, "data": self.meta}})
 
     @property
     def meta(self) -> dict:
         """
-        Get the meta data associated with the model
+        Get the metadata associated with the model
         """
         if not self._meta:
-            meta_path = self.dirname.joinpath("meta.json")
-            format = "json"
+            meta_path = self.directory.joinpath("meta.json")
+            file_format = "json"
             if not os.path.exists(meta_path):
-                meta_path = self.dirname.joinpath("meta.yaml")
-                format = "yaml"
+                meta_path = self.directory.joinpath("meta.yaml")
+                file_format = "yaml"
             with mfa_open(meta_path, "r") as f:
-                if format == "yaml":
+                if file_format == "yaml":
                     self._meta = yaml.load(f, Loader=yaml.Loader)
                 else:
                     self._meta = json.load(f)
-        self.parse_old_features()
         return self._meta
 
     def add_meta_file(self, trainer: ModelExporterMixin) -> None:
@@ -286,13 +254,13 @@ class Archive(MfaModel):
         trainer: :class:`~montreal_forced_aligner.abc.ModelExporterMixin`
             The trainer to construct the metadata from
         """
-        with mfa_open(self.dirname.joinpath("meta.json"), "w") as f:
+        with mfa_open(self.directory.joinpath("meta.json"), "w") as f:
             json.dump(trainer.meta, f, ensure_ascii=False)
 
     @classmethod
     def empty(
-        cls, head: str, root_directory: Optional[typing.Union[str, Path]] = None
-    ) -> Union[
+        cls, head: str, root_directory: typing.Optional[typing.Union[str, Path]] = None
+    ) -> typing.Union[
         Archive, IvectorExtractorModel, AcousticModel, G2PModel, TokenizerModel, LanguageModel
     ]:
         """
@@ -328,15 +296,15 @@ class Archive(MfaModel):
         source: str
             Path to file to copy into the directory
         """
-        copy(source, self.dirname)
+        copy(source, self.directory)
 
     def __repr__(self) -> str:
         """Representation string of a model"""
-        return f"{self.__class__.__name__}(dirname={self.dirname!r})"
+        return f"{self.__class__.__name__}(directory={self.directory!r})"
 
     def clean_up(self) -> None:
         """Remove temporary directory"""
-        rmtree(self.dirname)
+        rmtree(self.directory)
 
     def dump(self, path: Path, archive_fmt: str = FORMAT) -> str:
         """
@@ -354,10 +322,10 @@ class Archive(MfaModel):
         str
             Path of constructed archive
         """
-        return make_archive(os.path.splitext(path)[0], archive_fmt, *os.path.split(self.dirname))
+        return make_archive(os.path.splitext(path)[0], archive_fmt, *os.path.split(self.directory))
 
 
-class AcousticModel(Archive):
+class AcousticModel(Archive, KalpyAcousticModel):
     """
     Class for storing acoustic models in MFA, exported as zip files containing the necessary Kaldi files
     to be reused
@@ -369,7 +337,6 @@ class AcousticModel(Archive):
         "final.alimdl",
         "lda.mat",
         "phone_pdf.counts",
-        # "rules.yaml",
         "tokenizer.fst",
         "phone_lm.fst",
         "tree",
@@ -384,42 +351,18 @@ class AcousticModel(Archive):
     def __init__(
         self,
         source: typing.Union[str, Path],
-        root_directory: Optional[typing.Union[str, Path]] = None,
+        root_directory: typing.Optional[typing.Union[str, Path]] = None,
     ):
         if source in AcousticModel.get_available_models():
             source = AcousticModel.get_pretrained_path(source)
 
-        super().__init__(source, root_directory)
-        self._am = None
-        self._tm = None
+        Archive.__init__(self, source, root_directory)
+        KalpyAcousticModel.__init__(self, self.directory, validate=root_directory is None)
 
     @property
-    def version(self):
-        return self.meta["version"]
-
-    @property
-    def uses_cmvn(self):
-        return self.meta["features"]["uses_cmvn"]
-
-    @property
-    def language(self) -> Language:
-        return Language[self.meta.get("language", "unknown")]
-
-    def add_meta_file(self, trainer: ModelExporterMixin) -> None:
-        """
-        Add metadata file from a model trainer
-
-        Parameters
-        ----------
-        trainer: :class:`~montreal_forced_aligner.abc.ModelExporterMixin`
-            Trainer to supply metadata information about the acoustic model
-        """
-        with mfa_open(self.dirname.joinpath("meta.json"), "w") as f:
-            json.dump(trainer.meta, f, ensure_ascii=False)
-
-    @property
-    def parameters(self) -> MetaDict:
+    def parameters(self) -> typing.Dict[str, typing.Any]:
         """Parameters to pass to top-level workers"""
+        self._load_meta_data()
         params = {**self.meta["features"]}
         params["non_silence_phones"] = {x for x in self.meta["phones"]}
         params["oov_phone"] = self.meta["oov_phone"]
@@ -446,252 +389,31 @@ class AcousticModel(Archive):
         return params
 
     @property
-    def tree_path(self) -> Path:
-        """Current acoustic model path"""
-        return self.dirname.joinpath("tree")
+    def language(self) -> Language:
+        return Language[self.meta.get("language", "unknown")]
 
-    @property
-    def lda_mat_path(self) -> Path:
-        """Current acoustic model path"""
-        return self.dirname.joinpath("lda.mat")
+    def add_meta_file(self, trainer: ModelExporterMixin) -> None:
+        """
+        Add metadata file from a model trainer
 
-    @property
-    def model_path(self) -> Path:
-        """Current acoustic model path"""
-        return self.dirname.joinpath("final.mdl")
-
-    @property
-    def phone_symbol_path(self) -> Path:
-        """Path to phone symbol table"""
-        return self.dirname.joinpath("phones.txt")
+        Parameters
+        ----------
+        trainer: :class:`~montreal_forced_aligner.abc.ModelExporterMixin`
+            Trainer to supply metadata information about the acoustic model
+        """
+        with mfa_open(self.directory.joinpath("meta.json"), "w") as f:
+            json.dump(trainer.meta, f, ensure_ascii=False)
 
     @property
     def rules_path(self) -> Path:
         """Path to phone symbol table"""
-        return self.dirname.joinpath("rules.yaml")
-
-    @property
-    def alignment_model_path(self) -> Path:
-        """Alignment model path"""
-        path = self.model_path.with_suffix(".alimdl")
-        if os.path.exists(path):
-            return path
-        return self.model_path
-
-    @property
-    def acoustic_model(self) -> AmDiagGmm:
-        if self._am is None:
-            self._tm, self._am = read_gmm_model(self.alignment_model_path)
-        return self._am
-
-    @property
-    def transition_model(self) -> TransitionModel:
-        if self._tm is None:
-            self._tm, self._am = read_gmm_model(self.alignment_model_path)
-        return self._tm
-
-    @property
-    def lexicon_compiler(self):
-        lc = LexiconCompiler(
-            silence_probability=self.meta.get("silence_probability", 0.5),
-            initial_silence_probability=self.meta.get("initial_silence_probability", 0.5),
-            final_silence_correction=self.meta.get("final_silence_correction", None),
-            final_non_silence_correction=self.meta.get("final_non_silence_correction", None),
-            silence_phone=self.meta.get("optional_silence_phone", "sil"),
-            oov_phone=self.meta.get("oov_phone", "sil"),
-            position_dependent_phones=self.meta.get("position_dependent_phones", False),
-            phones={x for x in self.meta["phones"]},
-        )
-        if self.meta.get("phone_mapping", None):
-            lc.phone_table = pywrapfst.SymbolTable()
-            for k, v in self.meta["phone_mapping"].items():
-                lc.phone_table.add_symbol(k, v)
-        elif self.phone_symbol_path.exists():
-            lc.phone_table = pywrapfst.SymbolTable.read_text(self.phone_symbol_path)
-        return lc
-
-    @property
-    def mfcc_computer(self) -> MfccComputer:
-        return MfccComputer(**self.mfcc_options)
-
-    @property
-    def pitch_computer(self) -> typing.Optional[PitchComputer]:
-        if self.meta["features"].get("use_pitch", False):
-            return PitchComputer(**self.pitch_options)
-        return
-
-    @property
-    def lda_mat(self) -> FloatMatrix:
-        lda_mat_path = self.dirname.joinpath("lda.mat")
-        lda_mat = None
-        if lda_mat_path.exists():
-            lda_mat = read_kaldi_object(FloatMatrix, lda_mat_path)
-        return lda_mat
-
-    @property
-    def mfcc_options(self) -> MetaDict:
-        """Parameters to use in computing MFCC features."""
-        return {
-            "sample_frequency": self.meta["features"].get("sample_frequency", 16000),
-            "frame_shift": self.meta["features"].get("frame_shift", 10),
-            "frame_length": self.meta["features"].get("frame_length", 25),
-            "dither": self.meta["features"].get("dither", 0.0001),
-            "preemphasis_coefficient": self.meta["features"].get("preemphasis_coefficient", 0.97),
-            "snip_edges": self.meta["features"].get("snip_edges", True),
-            "num_mel_bins": self.meta["features"].get("num_mel_bins", 23),
-            "low_frequency": self.meta["features"].get("low_frequency", 20),
-            "high_frequency": self.meta["features"].get("high_frequency", 7800),
-            "num_coefficients": self.meta["features"].get("num_coefficients", 13),
-            "use_energy": self.meta["features"].get("use_energy", False),
-            "energy_floor": self.meta["features"].get("energy_floor", 1.0),
-            "raw_energy": self.meta["features"].get("raw_energy", True),
-            "cepstral_lifter": self.meta["features"].get("cepstral_lifter", 22),
-        }
-
-    @property
-    def pitch_options(self) -> MetaDict:
-        """Parameters to use in computing MFCC features."""
-        use_pitch = self.meta["features"].get("use_pitch", False)
-        use_voicing = self.meta["features"].get("use_voicing", False)
-        use_delta_pitch = self.meta["features"].get("use_delta_pitch", False)
-        normalize = self.meta["features"].get("normalize_pitch", True)
-        options = {
-            "frame_shift": self.meta["features"].get("frame_shift", 10),
-            "frame_length": self.meta["features"].get("frame_length", 25),
-            "min_f0": self.meta["features"].get("min_f0", 50),
-            "max_f0": self.meta["features"].get("max_f0", 800),
-            "sample_frequency": self.meta["features"].get("sample_frequency", 16000),
-            "penalty_factor": self.meta["features"].get("penalty_factor", 0.1),
-            "delta_pitch": self.meta["features"].get("delta_pitch", 0.005),
-            "snip_edges": self.meta["features"].get("snip_edges", True),
-            "add_normalized_log_pitch": False,
-            "add_delta_pitch": False,
-            "add_pov_feature": False,
-        }
-        if use_pitch:
-            options["add_normalized_log_pitch"] = normalize
-            options["add_raw_log_pitch"] = not normalize
-        options["add_delta_pitch"] = use_delta_pitch
-        options["add_pov_feature"] = use_voicing
-        return options
-
-    @property
-    def lda_options(self) -> MetaDict:
-        """Parameters to use in computing MFCC features."""
-        return {
-            "splice_left_context": self.meta["features"].get("splice_left_context", 3),
-            "splice_right_context": self.meta["features"].get("splice_right_context", 3),
-        }
-
-    @property
-    def meta(self) -> MetaDict:
-        """
-        Metadata information for the acoustic model
-        """
-        default_features = {
-            "feature_type": "mfcc",
-            "use_energy": False,
-            "frame_shift": 10,
-            "snip_edges": True,
-            "low_frequency": 20,
-            "high_frequency": 7800,
-            "sample_frequency": 16000,
-            "allow_downsample": True,
-            "allow_upsample": True,
-            "use_pitch": False,
-            "use_voicing": False,
-            "uses_cmvn": True,
-            "uses_deltas": True,
-            "uses_splices": False,
-            "uses_voiced": False,
-            "uses_speaker_adaptation": False,
-            "silence_weight": 0.0,
-            "fmllr_update_type": "full",
-            "splice_left_context": 3,
-            "splice_right_context": 3,
-        }
-        if not self._meta:
-            meta_path = self.dirname.joinpath("meta.json")
-            format = "json"
-            if not os.path.exists(meta_path):
-                meta_path = self.dirname.joinpath("meta.yaml")
-                format = "yaml"
-            if not os.path.exists(meta_path):
-                self._meta = {
-                    "version": "0.9.0",
-                    "architecture": "gmm-hmm",
-                    "features": default_features,
-                }
-            else:
-                with mfa_open(meta_path, "r") as f:
-                    if format == "yaml":
-                        self._meta = yaml.load(f, Loader=yaml.Loader)
-                    else:
-                        self._meta = json.load(f)
-                if self._meta["features"] == "mfcc+deltas":
-                    self._meta["features"] = default_features
-                    if "pitch" in self._meta["features"]:
-                        self._meta["features"]["use_pitch"] = self._meta["features"].pop("pitch")
-                if (
-                    self._meta["features"].get("use_pitch", False)
-                    and self._meta["version"] < "2.0.6"
-                ):
-                    self._meta["features"]["use_delta_pitch"] = True
-            if "phone_type" not in self._meta:
-                self._meta["phone_type"] = "triphone"
-            if "optional_silence_phone" not in self._meta:
-                self._meta["optional_silence_phone"] = "sil"
-            if "oov_phone" not in self._meta:
-                self._meta["oov_phone"] = "spn"
-            if format == "yaml":
-                self._meta["other_noise_phone"] = "sp"
-            if "phone_set_type" not in self._meta:
-                self._meta["phone_set_type"] = "UNKNOWN"
-            if "language" not in self._meta or self._meta["version"] < "3.0":
-                self._meta["language"] = "unknown"
-            self._meta["phones"] = set(self._meta.get("phones", []))
-            if (
-                "uses_speaker_adaptation" not in self._meta["features"]
-                or not self._meta["features"]["uses_speaker_adaptation"]
-            ):
-                self._meta["features"]["uses_speaker_adaptation"] = os.path.exists(
-                    self.dirname.joinpath("final.alimdl")
-                )
-            if self._meta["version"] in {"0.9.0", "1.0.0"}:
-                self._meta["features"]["uses_speaker_adaptation"] = True
-            if (
-                "uses_splices" not in self._meta["features"]
-                or not self._meta["features"]["uses_splices"]
-            ):
-                self._meta["features"]["uses_splices"] = os.path.exists(
-                    self.dirname.joinpath("lda.mat")
-                )
-                if self._meta["features"]["uses_splices"]:
-                    self._meta["features"]["uses_deltas"] = False
-            if (
-                self._meta["features"].get("use_pitch", False)
-                and "use_voicing" not in self._meta["features"]
-            ):
-                self._meta["features"]["use_voicing"] = True
-            if (
-                "dictionaries" in self._meta
-                and "position_dependent_phones" not in self._meta["dictionaries"]
-            ):
-                if self._meta["version"] < "2.0":
-                    default_value = True
-                else:
-                    default_value = False
-                self._meta["dictionaries"]["position_dependent_phones"] = self._meta.get(
-                    "position_dependent_phones", default_value
-                )
-        self.parse_old_features()
-        return self._meta
+        return self.directory.joinpath("rules.yaml")
 
     def pretty_print(self) -> None:
         """
         Prints the metadata information to the terminal
         """
-
+        self._load_meta_data()
         configuration_data = {"Acoustic model": {"name": self.name, "data": {}}}
         configuration_data["Acoustic model"]["data"]["Version"] = (self.meta["version"],)
 
@@ -725,7 +447,7 @@ class AcousticModel(Archive):
         """
         for f in self.files:
             source_path = source.joinpath(f)
-            dest_path = self.dirname.joinpath(f)
+            dest_path = self.directory.joinpath(f)
             if source_path.exists():
                 if f == "phones.txt":
                     with mfa_open(source_path, "r") as in_f, mfa_open(dest_path, "w") as out_f:
@@ -737,7 +459,7 @@ class AcousticModel(Archive):
                     copyfile(source_path, dest_path)
 
     def add_pronunciation_models(
-        self, source: Path, dictionary_base_names: Collection[str]
+        self, source: Path, dictionary_base_names: typing.Collection[str]
     ) -> None:
         """
         Add file into archive
@@ -752,7 +474,7 @@ class AcousticModel(Archive):
         for base_name in dictionary_base_names:
             for f in [f"{base_name}.fst", f"{base_name}_align.fst"]:
                 if source.joinpath(f).exists():
-                    copyfile(source.joinpath(f), self.dirname.joinpath(f))
+                    copyfile(source.joinpath(f), self.directory.joinpath(f))
 
     def export_model(self, destination: Path) -> None:
         """
@@ -765,8 +487,8 @@ class AcousticModel(Archive):
         """
         destination.mkdir(parents=True, exist_ok=True)
         for f in self.files:
-            if os.path.exists(self.dirname.joinpath(f)):
-                copyfile(self.dirname.joinpath(f), destination.joinpath(f))
+            if os.path.exists(self.directory.joinpath(f)):
+                copyfile(self.directory.joinpath(f), destination.joinpath(f))
 
     def log_details(self) -> None:
         """
@@ -775,10 +497,10 @@ class AcousticModel(Archive):
         logger.debug("")
         logger.debug("====ACOUSTIC MODEL INFO====")
         logger.debug("Acoustic model root directory: " + str(self.root_directory))
-        logger.debug("Acoustic model dirname: " + str(self.dirname))
-        meta_path = self.dirname.joinpath("meta.json")
+        logger.debug("Acoustic model directory: " + str(self.directory))
+        meta_path = self.directory.joinpath("meta.json")
         if not os.path.exists(meta_path):
-            meta_path = self.dirname.joinpath("meta.yaml")
+            meta_path = self.directory.joinpath("meta.yaml")
         logger.debug("Acoustic model meta path: " + str(meta_path))
         if not os.path.exists(meta_path):
             logger.debug("META.YAML DOES NOT EXIST, this may cause issues in validating the model")
@@ -835,7 +557,7 @@ class IvectorExtractorModel(Archive):
     def __init__(
         self,
         source: typing.Union[str, Path],
-        root_directory: Optional[typing.Union[str, Path]] = None,
+        root_directory: typing.Optional[typing.Union[str, Path]] = None,
     ):
         if source in IvectorExtractorModel.get_available_models():
             source = IvectorExtractorModel.get_pretrained_path(source)
@@ -861,7 +583,7 @@ class IvectorExtractorModel(Archive):
         """
         for filename in self.model_files:
             if os.path.exists(os.path.join(source, filename)):
-                copyfile(os.path.join(source, filename), self.dirname.joinpath(filename))
+                copyfile(os.path.join(source, filename), self.directory.joinpath(filename))
 
     def export_model(self, destination: str) -> None:
         """
@@ -874,8 +596,8 @@ class IvectorExtractorModel(Archive):
         """
         os.makedirs(destination, exist_ok=True)
         for filename in self.model_files:
-            if os.path.exists(self.dirname.joinpath(filename)):
-                copyfile(self.dirname.joinpath(filename), os.path.join(destination, filename))
+            if os.path.exists(self.directory.joinpath(filename)):
+                copyfile(self.directory.joinpath(filename), os.path.join(destination, filename))
 
     @property
     def mfcc_options(self) -> MetaDict:
@@ -946,12 +668,13 @@ class G2PModel(Archive):
     def __init__(
         self,
         source: typing.Union[str, Path],
-        root_directory: Optional[typing.Union[str, Path]] = None,
+        root_directory: typing.Optional[typing.Union[str, Path]] = None,
     ):
         if source in G2PModel.get_available_models():
             source = G2PModel.get_pretrained_path(source)
 
         super().__init__(source, root_directory)
+        self._rewriter = None
 
     @property
     def fst(self):
@@ -969,32 +692,33 @@ class G2PModel(Archive):
     def rewriter(self):
         if not self.grapheme_sym_path.exists():
             return None
-        if self.meta["architecture"] == "phonetisaurus":
-            from montreal_forced_aligner.g2p.generator import PhonetisaurusRewriter
+        if self._rewriter is None:
+            if self.meta["architecture"] == "phonetisaurus":
+                from montreal_forced_aligner.g2p.generator import PhonetisaurusRewriter
 
-            rewriter = PhonetisaurusRewriter(
-                self.fst,
-                self.grapheme_table,
-                self.phone_table,
-                num_pronunciations=1,
-                grapheme_order=self.meta["grapheme_order"],
-                graphemes=self.meta["graphemes"],
-                sequence_separator=self.meta["sequence_separator"],
-                strict=True,
-                unicode_decomposition=self.meta["unicode_decomposition"],
-            )
-        else:
-            from montreal_forced_aligner.g2p.generator import Rewriter
+                self._rewriter = PhonetisaurusRewriter(
+                    self.fst,
+                    self.grapheme_table,
+                    self.phone_table,
+                    num_pronunciations=1,
+                    grapheme_order=self.meta["grapheme_order"],
+                    graphemes=self.meta["graphemes"],
+                    sequence_separator=self.meta["sequence_separator"],
+                    strict=True,
+                    unicode_decomposition=self.meta["unicode_decomposition"],
+                )
+            else:
+                from montreal_forced_aligner.g2p.generator import Rewriter
 
-            rewriter = Rewriter(
-                self.fst,
-                self.grapheme_table,
-                self.phone_table,
-                num_pronunciations=1,
-                strict=True,
-                unicode_decomposition=self.meta["unicode_decomposition"],
-            )
-        return rewriter
+                self._rewriter = Rewriter(
+                    self.fst,
+                    self.grapheme_table,
+                    self.phone_table,
+                    num_pronunciations=1,
+                    strict=True,
+                    unicode_decomposition=self.meta["unicode_decomposition"],
+                )
+        return self._rewriter
 
     def add_meta_file(self, g2p_trainer: G2PTrainer) -> None:
         """
@@ -1006,17 +730,17 @@ class G2PModel(Archive):
             Trainer for the G2P model
         """
 
-        with mfa_open(self.dirname.joinpath("meta.json"), "w") as f:
+        with mfa_open(self.directory.joinpath("meta.json"), "w") as f:
             json.dump(g2p_trainer.meta, f, cls=EnhancedJSONEncoder)
 
     @property
     def meta(self) -> dict:
         """Metadata for the G2P model"""
         if not self._meta:
-            meta_path = self.dirname.joinpath("meta.json")
+            meta_path = self.directory.joinpath("meta.json")
             format = "json"
             if not os.path.exists(meta_path):
-                meta_path = self.dirname.joinpath("meta.yaml")
+                meta_path = self.directory.joinpath("meta.yaml")
                 format = "yaml"
             if not os.path.exists(meta_path):
                 self._meta = {"version": "0.9.0", "architecture": "phonetisaurus"}
@@ -1036,23 +760,23 @@ class G2PModel(Archive):
     @property
     def fst_path(self) -> Path:
         """G2P model's FST path"""
-        return self.dirname.joinpath("model.fst")
+        return self.directory.joinpath("model.fst")
 
     @property
     def sym_path(self) -> Path:
         """G2P model's symbols path"""
-        path = self.dirname.joinpath("phones.txt")
+        path = self.directory.joinpath("phones.txt")
         if path.exists():
             return path
-        return self.dirname.joinpath("phones.sym")
+        return self.directory.joinpath("phones.sym")
 
     @property
     def grapheme_sym_path(self) -> Path:
         """G2P model's grapheme symbols path"""
-        path = self.dirname.joinpath("graphemes.txt")
+        path = self.directory.joinpath("graphemes.txt")
         if path.exists():
             return path
-        return self.dirname.joinpath("graphemes.sym")
+        return self.directory.joinpath("graphemes.sym")
 
     def add_sym_path(self, source_directory: Path) -> None:
         """
@@ -1094,7 +818,7 @@ class G2PModel(Archive):
         os.makedirs(destination, exist_ok=True)
         copy(self.fst_path, destination)
 
-    def validate(self, word_list: Collection[str]) -> bool:
+    def validate(self, word_list: typing.Collection[str]) -> bool:
         """
         Validate the G2P model against a word list to ensure that all graphemes are known
 
@@ -1137,7 +861,7 @@ class TokenizerModel(Archive):
     def __init__(
         self,
         source: typing.Union[str, Path],
-        root_directory: Optional[typing.Union[str, Path]] = None,
+        root_directory: typing.Optional[typing.Union[str, Path]] = None,
     ):
         if source in TokenizerModel.get_available_models():
             source = TokenizerModel.get_pretrained_path(source)
@@ -1154,17 +878,17 @@ class TokenizerModel(Archive):
             Trainer for the G2P model
         """
 
-        with mfa_open(self.dirname.joinpath("meta.json"), "w") as f:
+        with mfa_open(self.directory.joinpath("meta.json"), "w") as f:
             json.dump(g2p_trainer.meta, f, cls=EnhancedJSONEncoder)
 
     @property
     def meta(self) -> dict:
         """Metadata for the G2P model"""
         if not self._meta:
-            meta_path = self.dirname.joinpath("meta.json")
+            meta_path = self.directory.joinpath("meta.json")
             format = "json"
             if not os.path.exists(meta_path):
-                meta_path = self.dirname.joinpath("meta.yaml")
+                meta_path = self.directory.joinpath("meta.yaml")
                 format = "yaml"
             if not os.path.exists(meta_path):
                 self._meta = {"version": "0.9.0", "architecture": "pynini"}
@@ -1181,34 +905,34 @@ class TokenizerModel(Archive):
     @property
     def fst_path(self) -> Path:
         """Tokenizer model's FST path"""
-        return self.dirname.joinpath("tokenizer.fst")
+        return self.directory.joinpath("tokenizer.fst")
 
     @property
     def sym_path(self) -> Path:
         """Tokenizer model's grapheme symbols path"""
-        path = self.dirname.joinpath("graphemes.txt")
+        path = self.directory.joinpath("graphemes.txt")
         if path.exists():
             return path
-        path = self.dirname.joinpath("graphemes.sym")
+        path = self.directory.joinpath("graphemes.sym")
         if path.exists():
             return path
-        return self.dirname.joinpath("graphemes.syms")
+        return self.directory.joinpath("graphemes.syms")
 
     @property
     def input_sym_path(self) -> Path:
         """Tokenizer model's input symbols path"""
-        path = self.dirname.joinpath("input.txt")
+        path = self.directory.joinpath("input.txt")
         if path.exists():
             return path
-        return self.dirname.joinpath("input.syms")
+        return self.directory.joinpath("input.syms")
 
     @property
     def output_sym_path(self) -> Path:
         """Tokenizer model's output symbols path"""
-        path = self.dirname.joinpath("output.txt")
+        path = self.directory.joinpath("output.txt")
         if path.exists():
             return path
-        return self.dirname.joinpath("output.syms")
+        return self.directory.joinpath("output.syms")
 
     def add_graphemes_path(self, source_directory: Path) -> None:
         """
@@ -1275,7 +999,7 @@ class LanguageModel(Archive):
     def __init__(
         self,
         source: typing.Union[str, Path],
-        root_directory: Optional[typing.Union[str, Path]] = None,
+        root_directory: typing.Optional[typing.Union[str, Path]] = None,
     ):
         if source in LanguageModel.get_available_models():
             source = LanguageModel.get_pretrained_path(source)
@@ -1294,9 +1018,9 @@ class LanguageModel(Archive):
             self.root_directory = root_directory
             self._meta = {}
             self.name = source.stem
-            self.dirname = root_directory.joinpath(f"{self.name}_{self.model_type}")
-            if not os.path.exists(self.dirname):
-                os.makedirs(self.dirname, exist_ok=True)
+            self.directory = root_directory.joinpath(f"{self.name}_{self.model_type}")
+            if not os.path.exists(self.directory):
+                os.makedirs(self.directory, exist_ok=True)
             copy(source, self.large_arpa_path)
         else:
             super().__init__(source, root_directory)
@@ -1324,30 +1048,30 @@ class LanguageModel(Archive):
     @property
     def small_arpa_path(self) -> Path:
         """Small arpa path"""
-        for path in self.dirname.iterdir():
+        for path in self.directory.iterdir():
             if path.name.endswith("_small" + self.arpa_extension):
                 return path
-        return self.dirname.joinpath(f"{self.name}_small{self.arpa_extension}")
+        return self.directory.joinpath(f"{self.name}_small{self.arpa_extension}")
 
     @property
     def medium_arpa_path(self) -> Path:
         """Medium arpa path"""
-        for path in self.dirname.iterdir():
+        for path in self.directory.iterdir():
             if path.name.endswith("_med" + self.arpa_extension):
                 return path
-        return self.dirname.joinpath(f"{self.name}_med{self.arpa_extension}")
+        return self.directory.joinpath(f"{self.name}_med{self.arpa_extension}")
 
     @property
     def large_arpa_path(self) -> Path:
         """Large arpa path"""
-        for path in self.dirname.iterdir():
+        for path in self.directory.iterdir():
             if (
                 path.name.endswith(self.arpa_extension)
                 and "_small" not in path.name
                 and "_med" not in path.name
             ):
                 return path
-        return self.dirname.joinpath(self.name + self.arpa_extension)
+        return self.directory.joinpath(self.name + self.arpa_extension)
 
     def add_arpa_file(self, arpa_path: Path) -> None:
         """
@@ -1385,7 +1109,7 @@ class DictionaryModel(MfaModel):
     def __init__(
         self,
         path: typing.Union[str, Path],
-        root_directory: Optional[typing.Union[str, Path]] = None,
+        root_directory: typing.Optional[typing.Union[str, Path]] = None,
         phone_set_type: typing.Union[str, PhoneSetType] = "UNKNOWN",
     ):
         if path in DictionaryModel.get_available_models():
@@ -1401,7 +1125,7 @@ class DictionaryModel(MfaModel):
         if isinstance(root_directory, str):
             root_directory = Path(root_directory)
         self.path = path
-        self.dirname = root_directory.joinpath(f"{self.name}_{self.model_type}")
+        self.directory = root_directory.joinpath(f"{self.name}_{self.model_type}")
         self.pronunciation_probabilities = True
         self.silence_probabilities = True
         self.oov_probabilities = True
@@ -1496,7 +1220,7 @@ class DictionaryModel(MfaModel):
         from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionary
 
         configuration_data = {"Dictionary": {"name": self.name, "data": self.meta}}
-        temp_directory = self.dirname.joinpath("temp")
+        temp_directory = self.directory.joinpath("temp")
         if temp_directory.exists():
             shutil.rmtree(temp_directory)
         dictionary = MultispeakerDictionary(self.path, phone_set_type=self.phone_set_type)
@@ -1547,7 +1271,7 @@ class DictionaryModel(MfaModel):
     @classmethod
     def generate_path(
         cls, root: Path, name: str, enforce_existence: bool = True
-    ) -> Optional[Path]:
+    ) -> typing.Optional[Path]:
         """
         Generate a path for a given model from the root directory and the name of the model
 
@@ -1581,7 +1305,9 @@ class DictionaryModel(MfaModel):
         """Name of the dictionary"""
         return self.path.stem
 
-    def load_dictionary_paths(self) -> Dict[str, Tuple[DictionaryModel, typing.Set[str]]]:
+    def load_dictionary_paths(
+        self,
+    ) -> typing.Dict[str, typing.Tuple[DictionaryModel, typing.Set[str]]]:
         """
         Load the pronunciation dictionaries
 
@@ -1644,7 +1370,7 @@ class ModelRelease:
     release_id: int = None
 
     @property
-    def release_link(self) -> Optional[str]:
+    def release_link(self) -> typing.Optional[str]:
         """Generate link pointing to the release on GitHub"""
         if not self.release_id:
             return None
@@ -1678,7 +1404,7 @@ class ModelManager:
         pretrained_dir = get_temporary_directory().joinpath("pretrained_models")
         pretrained_dir.mkdir(parents=True, exist_ok=True)
         self.local_models = {k: [] for k in MODEL_TYPES.keys()}
-        self.remote_models: Dict[str, Dict[str, Dict[str, ModelRelease]]] = {
+        self.remote_models: typing.Dict[str, typing.Dict[str, typing.Dict[str, ModelRelease]]] = {
             k: {} for k in MODEL_TYPES.keys()
         }
         self.token = token

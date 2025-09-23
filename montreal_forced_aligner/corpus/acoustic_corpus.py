@@ -1048,7 +1048,6 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                             transcription_path,
                             relative_path,
                             self.speaker_characters,
-                            self.sample_frequency,
                         )
                         import_data.add_objects(self.generate_import_objects(file))
                     except TextParseError as e:

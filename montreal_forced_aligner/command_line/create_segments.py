@@ -5,9 +5,9 @@ from pathlib import Path
 
 import rich_click as click
 
-from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.utils import (
     common_options,
+    initialize_configuration,
     validate_acoustic_model,
     validate_corpus_directory,
     validate_dictionary,
@@ -64,9 +64,7 @@ def create_segments_vad_cli(context, **kwargs) -> None:
     """
     Create segments based on SpeechBrain's voice activity detection (VAD) model or a basic energy-based algorithm
     """
-    if kwargs.get("profile", None) is not None:
-        config.profile = kwargs.pop("profile")
-    config.update_configuration(kwargs)
+    initialize_configuration(context)
 
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"].absolute()
@@ -126,9 +124,7 @@ def create_segments_cli(context, **kwargs) -> None:
     """
     Create segments based on SpeechBrain's voice activity detection (VAD) model or a basic energy-based algorithm
     """
-    if kwargs.get("profile", None) is not None:
-        config.profile = kwargs.pop("profile")
-    config.update_configuration(kwargs)
+    initialize_configuration(context)
 
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"].absolute()

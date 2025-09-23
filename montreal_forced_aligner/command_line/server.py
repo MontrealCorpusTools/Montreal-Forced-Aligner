@@ -1,10 +1,10 @@
 """Command line functionality for managing servers"""
 import rich_click as click
 
-from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.utils import (
     common_options,
     delete_server,
+    initialize_configuration,
     initialize_server,
     start_server,
     stop_server,
@@ -22,9 +22,7 @@ def server_cli():
 @common_options
 @click.pass_context
 def init_cli(context, **kwargs):
-    if kwargs.get("profile", None) is not None:
-        config.CURRENT_PROFILE_NAME = kwargs.pop("profile")
-    config.update_configuration(kwargs)
+    initialize_configuration(context)
     initialize_server()
 
 
@@ -33,9 +31,7 @@ def init_cli(context, **kwargs):
 @common_options
 @click.pass_context
 def start_cli(context, **kwargs):
-    if kwargs.get("profile", None) is not None:
-        config.CURRENT_PROFILE_NAME = kwargs.pop("profile")
-    config.update_configuration(kwargs)
+    initialize_configuration(context)
     start_server()
 
 
@@ -51,9 +47,7 @@ def start_cli(context, **kwargs):
 @common_options
 @click.pass_context
 def stop_cli(context, **kwargs):
-    if kwargs.get("profile", None) is not None:
-        config.CURRENT_PROFILE_NAME = kwargs.pop("profile")
-    config.update_configuration(kwargs)
+    initialize_configuration(context)
     stop_server(mode=kwargs.get("mode", "fast"))
 
 
@@ -62,7 +56,5 @@ def stop_cli(context, **kwargs):
 @common_options
 @click.pass_context
 def delete_cli(context, **kwargs):
-    if kwargs.get("profile", None) is not None:
-        config.CURRENT_PROFILE_NAME = kwargs.pop("profile")
-    config.update_configuration(kwargs)
+    initialize_configuration(context)
     delete_server()

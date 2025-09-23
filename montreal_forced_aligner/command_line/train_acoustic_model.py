@@ -5,10 +5,10 @@ from pathlib import Path
 
 import rich_click as click
 
-from montreal_forced_aligner import config
 from montreal_forced_aligner.acoustic_modeling import TrainableAligner
 from montreal_forced_aligner.command_line.utils import (
     common_options,
+    initialize_configuration,
     validate_corpus_directory,
     validate_dictionary,
     validate_g2p_model,
@@ -118,10 +118,7 @@ def train_acoustic_model_cli(context, **kwargs) -> None:
     """
     Train a new acoustic model on a corpus and optionally export alignments
     """
-    if kwargs.get("profile", None) is not None:
-        config.profile = kwargs.pop("profile")
-    kwargs["USE_THREADING"] = False
-    config.update_configuration(kwargs)
+    initialize_configuration(context)
     config_path = kwargs.get("config_path", None)
     output_model_path = kwargs.get("output_model_path", None)
     output_directory = kwargs.get("output_directory", None)

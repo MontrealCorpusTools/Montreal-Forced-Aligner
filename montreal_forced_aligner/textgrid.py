@@ -9,6 +9,8 @@ import csv
 import json
 import os
 import re
+import sys
+import traceback
 import typing
 from pathlib import Path
 from typing import Dict, List
@@ -22,19 +24,13 @@ from praatio.utilities import utils as tgio_utils
 from sqlalchemy.orm import Session
 
 from montreal_forced_aligner.data import PhoneType, TextFileType, TextgridFormats, WordType
-from montreal_forced_aligner.db import (
-    CorpusWorkflow,
-    Phone,
-    PhoneInterval,
-    Speaker,
-    Utterance,
-    Word,
-    WordInterval,
-)
+from montreal_forced_aligner.db import Phone, PhoneInterval, Speaker, Utterance, Word, WordInterval
 from montreal_forced_aligner.exceptions import AlignmentExportError, CtmError, TextGridParseError
 from montreal_forced_aligner.helper import mfa_open
 
 __all__ = [
+    "load_textgrid",
+    "Textgrid",
     "process_ctm_line",
     "export_textgrid",
     "construct_textgrid_output",
@@ -288,6 +284,34 @@ def output_textgrid_writing_errors(
             f.write(f"{str(result)}\n\n")
 
 
+def load_textgrid(path: typing.Union[Path, str]):
+    """
+    Load a TextGrid
+
+    Parameters
+    ----------
+    path: :class:`~pathlib.Path` or str
+        TextGrid file to parse
+
+    Returns
+    -------
+    :class:`~praatio.data_classes.textgrid.Textgrid`
+        Praatio TextGrid object
+    """
+    try:
+        tg = tgio.openTextgrid(str(path), includeEmptyIntervals=False)
+    except Exception:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        raise TextGridParseError(
+            path,
+            "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback)),
+        )
+    num_tiers = len(tg.tiers)
+    if num_tiers == 0:
+        raise TextGridParseError(path, "Number of tiers parsed was zero")
+    return tg
+
+
 def parse_aligned_textgrid(
     path: Path, root_speaker: typing.Optional[str] = None
 ) -> Dict[str, List[CtmInterval]]:
@@ -299,18 +323,15 @@ def parse_aligned_textgrid(
     path: :class:`~pathlib.Path`
         TextGrid file to parse
     root_speaker: str, optional
-        Optional speaker if the TextGrid has no speaker information
+        Speaker name if the TextGrid has no speaker information
 
     Returns
     -------
     dict[str, list[:class:`~kalpy.gmm.data.CtmInterval`]]
         Parsed phone tier
     """
-    tg = tgio.openTextgrid(path, includeEmptyIntervals=False, reportingMode="silence")
+    tg = load_textgrid(path)
     data = {}
-    num_tiers = len(tg.tiers)
-    if num_tiers == 0:
-        raise TextGridParseError(path, "Number of tiers parsed was zero")
     phone_tier_pattern = re.compile(r"(.*) ?- ?phones")
     for tier_name in tg.tierNames:
         ti = tg._tierDict[tier_name]
@@ -342,7 +363,6 @@ def parse_aligned_textgrid(
 def construct_textgrid_output(
     session: Session,
     file_batch: typing.Dict[int, typing.Tuple],
-    workflow: CorpusWorkflow,
     cleanup_textgrids: bool,
     clitic_marker: str,
     output_directory: Path,
@@ -479,9 +499,6 @@ def construct_textgrid_output(
         )
         export_textgrid(data, output_path, file_duration, frame_shift, output_format)
         yield output_path
-        # word_data = []
-        # phone_data = []
-        # utterance_data = []
 
 
 def construct_output_path(

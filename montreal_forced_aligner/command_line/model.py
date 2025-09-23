@@ -9,7 +9,11 @@ from pathlib import Path
 import rich_click as click
 
 from montreal_forced_aligner import config
-from montreal_forced_aligner.command_line.utils import common_options, validate_dictionary
+from montreal_forced_aligner.command_line.utils import (
+    common_options,
+    initialize_configuration,
+    validate_dictionary,
+)
 from montreal_forced_aligner.data import PhoneSetType
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionary
 from montreal_forced_aligner.exceptions import (
@@ -164,9 +168,7 @@ def add_words_cli(context, **kwargs) -> None:
     Add words from one pronunciation dictionary to another pronunciation dictionary,
     so long as the new pronunciations do not contain any new phones
     """
-    if kwargs.get("profile", None) is not None:
-        config.profile = kwargs.pop("profile")
-    config.update_configuration(kwargs)
+    initialize_configuration(context)
 
     config.CLEAN = True
     dictionary_path = kwargs.get("dictionary_path", None)

@@ -16,18 +16,7 @@ import sys
 import time
 import traceback
 import typing
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Dict,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Type,
-    Union,
-    get_type_hints,
-)
+from pathlib import Path
 
 import requests
 import sqlalchemy
@@ -35,18 +24,14 @@ import yaml
 from sqlalchemy.orm import scoped_session, sessionmaker
 
 from montreal_forced_aligner import config
+from montreal_forced_aligner.data import MfaArguments, WorkflowType
 from montreal_forced_aligner.db import CorpusWorkflow, MfaSqlBase
 from montreal_forced_aligner.exceptions import (
     DatabaseError,
     KaldiProcessingError,
     MultiprocessingError,
 )
-from montreal_forced_aligner.helper import comma_join, load_configuration, mfa_open, MfaYamlDumper
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
-    from montreal_forced_aligner.data import MfaArguments, WorkflowType
+from montreal_forced_aligner.helper import MfaYamlDumper, comma_join, load_configuration, mfa_open
 
 __all__ = [
     "MfaModel",
@@ -59,11 +44,12 @@ __all__ = [
     "TemporaryDirectoryMixin",
     "AdapterMixin",
     "TrainerMixin",
+    "PhoneRemapperMixin",
     "KaldiFunction",
 ]
 
 # Configuration types
-MetaDict = Dict[str, Any]
+MetaDict = typing.Dict[str, typing.Any]
 logger = logging.getLogger("mfa")
 
 
@@ -454,7 +440,9 @@ class MfaWorker(metaclass=abc.ABCMeta):
         self.dirty = False
 
     @classmethod
-    def extract_relevant_parameters(cls, config: MetaDict) -> Tuple[MetaDict, List[str]]:
+    def extract_relevant_parameters(
+        cls, config: MetaDict
+    ) -> typing.Tuple[MetaDict, typing.List[str]]:
         """
         Filter a configuration dictionary to just the relevant parameters for the current worker
 
@@ -480,7 +468,7 @@ class MfaWorker(metaclass=abc.ABCMeta):
         return new_config, skipped
 
     @classmethod
-    def get_configuration_parameters(cls) -> Dict[str, Type]:
+    def get_configuration_parameters(cls) -> typing.Dict[str, typing.Type]:
         """
         Get the types of parameters available to be configured
 
@@ -489,22 +477,22 @@ class MfaWorker(metaclass=abc.ABCMeta):
         dict[str, Type]
             Dictionary of parameter names and their types
         """
-        mapping = {Dict: dict, Tuple: tuple, List: list, Set: set}
+        mapping = {typing.Dict: dict, typing.Tuple: tuple, typing.List: list, typing.Set: set}
         configuration_params = {}
-        for t, ty in get_type_hints(cls.__init__).items():
+        for t, ty in typing.get_type_hints(cls.__init__).items():
             configuration_params[t] = ty
             try:
-                if ty.__origin__ == Union:
+                if ty.__origin__ == typing.Union:
                     configuration_params[t] = ty.__args__[0]
             except AttributeError:
                 pass
 
         for c in cls.mro():
             try:
-                for t, ty in get_type_hints(c.__init__).items():
+                for t, ty in typing.get_type_hints(c.__init__).items():
                     configuration_params[t] = ty
                     try:
-                        if ty.__origin__ == Union:
+                        if ty.__origin__ == typing.Union:
                             configuration_params[t] = ty.__args__[0]
                     except AttributeError:
                         pass
@@ -601,7 +589,9 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
 
     @classmethod
     def parse_args(
-        cls, args: Optional[Dict[str, Any]], unknown_args: Optional[List[str]]
+        cls,
+        args: typing.Optional[typing.Dict[str, typing.Any]],
+        unknown_args: typing.Optional[typing.List[str]],
     ) -> MetaDict:
         """
         Class method for parsing configuration parameters from command line arguments
@@ -659,9 +649,9 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
     @classmethod
     def parse_parameters(
         cls,
-        config_path: Optional[Path] = None,
-        args: Optional[Dict[str, Any]] = None,
-        unknown_args: Optional[typing.Iterable[str]] = None,
+        config_path: typing.Optional[Path] = None,
+        args: typing.Optional[typing.Dict[str, typing.Any]] = None,
+        unknown_args: typing.Optional[typing.Iterable[str]] = None,
     ) -> MetaDict:
         """
         Parse configuration parameters from a config file and command line arguments
@@ -887,11 +877,6 @@ class ModelExporterMixin(ExporterMixin, metaclass=abc.ABCMeta):
 class FileExporterMixin(ExporterMixin, metaclass=abc.ABCMeta):
     """
     Abstract mixin class for exporting TextGrid and text files
-
-    Parameters
-    ----------
-    cleanup_textgrids: bool
-        Flag for whether to clean up exported TextGrids
     """
 
     @abc.abstractmethod
@@ -965,7 +950,7 @@ class AdapterMixin(ModelExporterMixin):
 class MfaModel(abc.ABC):
     """Abstract class for MFA models"""
 
-    extensions: List[str]
+    extensions: typing.List[str]
     model_type = "base_model"
 
     @classmethod
@@ -978,7 +963,7 @@ class MfaModel(abc.ABC):
         return path
 
     @classmethod
-    def get_available_models(cls) -> List[str]:
+    def get_available_models(cls) -> typing.List[str]:
         """
         Get a list of available models for a given model type
 
@@ -1009,7 +994,6 @@ class MfaModel(abc.ABC):
 
         Returns
         -------
-        Path
             Path to model
         """
         return cls.generate_path(cls.pretrained_directory(), name, enforce_existence)
@@ -1024,7 +1008,7 @@ class MfaModel(abc.ABC):
     @abc.abstractmethod
     def generate_path(
         cls, root: Path, name: str, enforce_existence: bool = True
-    ) -> Optional[Path]:
+    ) -> typing.Optional[Path]:
         """Generate a path from a root directory"""
         ...
 
@@ -1043,3 +1027,25 @@ class MfaModel(abc.ABC):
     def add_meta_file(self, trainer: TrainerMixin) -> None:
         """Add metadata to the model"""
         ...
+
+
+class PhoneRemapperMixin(metaclass=abc.ABCMeta):
+    """
+    Abstract mixin class for remapping phones
+    """
+
+    def __init__(
+        self,
+        phone_mapping_path: Path,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.phone_mapping_path = phone_mapping_path
+        self.phone_remapping = {}
+
+    def load_mapping(self) -> None:
+        with mfa_open(self.phone_mapping_path, "r") as f:
+            self.phone_remapping = yaml.load(f, Loader=yaml.Loader)
+        for key, values in self.phone_remapping.items():
+            if not isinstance(values, list):
+                self.phone_remapping[key] = [values]

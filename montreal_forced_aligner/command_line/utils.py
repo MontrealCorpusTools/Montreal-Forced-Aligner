@@ -1,6 +1,7 @@
 """Utility functions for command line commands"""
 from __future__ import annotations
 
+import atexit
 import functools
 import logging
 import os
@@ -8,7 +9,10 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import typing
+import warnings
+from datetime import datetime
 from pathlib import Path
 
 import rich_click as click
@@ -23,8 +27,12 @@ from montreal_forced_aligner.exceptions import (
     ModelTypeNotSupportedError,
     PretrainedModelNotFoundError,
 )
-from montreal_forced_aligner.helper import mfa_open
+from montreal_forced_aligner.helper import mfa_open, configure_cli_logger
 from montreal_forced_aligner.models import MODEL_TYPES
+from montreal_forced_aligner.utils import check_third_party
+
+BEGIN = time.time()
+BEGIN_DATE = datetime.now()
 
 __all__ = [
     "cleanup_logger",
@@ -34,8 +42,15 @@ __all__ = [
     "validate_ivector_extractor",
     "validate_language_model",
     "validate_dictionary",
+    "validate_tokenizer_model",
+    "validate_output_directory",
     "check_databases",
     "common_options",
+    "initialize_configuration",
+    "delete_server",
+    "start_server",
+    "stop_server",
+    "initialize_server",
 ]
 
 
@@ -143,6 +158,62 @@ def common_options(f: typing.Callable) -> typing.Callable:
     ]
     options.reverse()
     return functools.reduce(lambda x, opt: opt(x), options, f)
+
+
+def initialize_configuration(ctx: click.Context):
+    parent_context = ctx
+    while parent_context.parent is not None:
+        parent_context = parent_context.parent
+    config.load_configuration()
+    if ctx.params.get("profile", None) is not None:
+        os.environ[config.MFA_PROFILE_VARIABLE] = ctx.params["profile"]
+    config.update_configuration(ctx.params)
+    auto_server = False
+    run_check = True
+    if parent_context.invoked_subcommand == "anchor":
+        config.CLEAN = False
+        config.USE_POSTGRES = True
+    if (
+        "--help" in sys.argv
+        or "-h" in sys.argv
+        or parent_context.invoked_subcommand
+        in [
+            "configure",
+            "version",
+            "history",
+            "server",
+            "align_one",
+        ]
+    ):
+        auto_server = False
+        run_check = False
+    elif parent_context.invoked_subcommand in ["model", "models"]:
+        if "add_words" in sys.argv or "inspect" in sys.argv:
+            config.CLEAN = True
+            config.USE_POSTGRES = False
+        else:
+            run_check = False
+    elif parent_context.invoked_subcommand == "g2p":
+        if len(sys.argv) > 2 and sys.argv[2] == "-":
+            run_check = False
+            auto_server = False
+    else:
+        auto_server = config.AUTO_SERVER
+    if not ctx.params.get("use_postgres", config.USE_POSTGRES):
+        run_check = False
+        auto_server = False
+    if auto_server:
+        start_server()
+    elif run_check:
+        check_server()
+    warnings.simplefilter("ignore")
+    check_third_party()
+    if parent_context.invoked_subcommand != "anchor":
+        hooks = ExitHooks()
+        hooks.hook()
+        atexit.register(hooks.history_save_handler)
+        if auto_server:
+            atexit.register(stop_server)
 
 
 def validate_model_arg(name: str, model_type: str) -> typing.Union[Path, str]:
@@ -350,6 +421,7 @@ def check_databases(db_name: str) -> None:
 def initialize_server() -> None:
     """Initialize the MFA server for the current profile"""
     logger = logging.getLogger("mfa")
+    configure_cli_logger(logger)
     logger.info(f"Initializing the {config.CURRENT_PROFILE_NAME} MFA database server...")
 
     db_directory = config.get_temporary_directory().joinpath(
@@ -408,6 +480,7 @@ def initialize_server() -> None:
 def check_server() -> None:
     """Check the status of the MFA server for the current profile"""
     logger = logging.getLogger("mfa")
+    configure_cli_logger(logger)
 
     db_directory = config.get_temporary_directory().joinpath(
         f"pg_mfa_{config.CURRENT_PROFILE_NAME}"
@@ -449,6 +522,7 @@ def check_server() -> None:
 def start_server() -> None:
     """Start the MFA server for the current profile"""
     logger = logging.getLogger("mfa")
+    configure_cli_logger(logger)
     try:
         check_server()
         logger.info(f"{config.CURRENT_PROFILE_NAME} MFA database server already running.")
@@ -501,6 +575,7 @@ def stop_server(mode: str = "smart") -> None:
         Mode to be passed to `pg_ctl`, defaults to "smart"
     """
     logger = logging.getLogger("mfa")
+    configure_cli_logger(logger)
 
     db_directory = config.get_temporary_directory().joinpath(
         f"pg_mfa_{config.CURRENT_PROFILE_NAME}"
@@ -527,8 +602,9 @@ def stop_server(mode: str = "smart") -> None:
 
 def delete_server() -> None:
     """Remove the MFA server for the current profile"""
-    stop_server(mode="immediate")
     logger = logging.getLogger("mfa")
+    configure_cli_logger(logger)
+    stop_server(mode="immediate")
 
     db_directory = config.get_temporary_directory().joinpath(
         f"pg_mfa_{config.CURRENT_PROFILE_NAME}"
@@ -539,3 +615,63 @@ def delete_server() -> None:
     else:
         logger.error(f"There was no database found at {db_directory}.")
         sys.exit(1)
+
+
+class ExitHooks(object):
+    """
+    Class for capturing exit information for MFA commands
+    """
+
+    def __init__(self):
+        self.exit_code = None
+        self.exception = None
+
+    def hook(self) -> None:
+        """Hook for capturing information about exit code and exceptions"""
+        self._orig_exit = sys.exit
+        sys.exit = self.exit
+        sys.excepthook = self.exc_handler
+
+    def exit(self, code=0) -> None:
+        """Actual exit for the program"""
+        self.exit_code = code
+        self._orig_exit(code)
+
+    def exc_handler(self, exc_type, exc, *args) -> None:
+        """Handle and save exceptions"""
+        self.exception = exc
+        logger = logging.getLogger("mfa")
+        import traceback
+
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        error_text = "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+        logger.debug(error_text)
+        self.exit_code = 1
+
+    def history_save_handler(self) -> None:
+        """
+        Handler for saving history on exit.  In addition to the command run, also saves exit code, whether
+        an exception was encountered, when the command was executed, and how long it took to run
+        """
+        from montreal_forced_aligner.utils import get_mfa_version
+
+        history_data = {
+            "command": " ".join(sys.argv),
+            "execution_time": time.time() - BEGIN,
+            "date": BEGIN_DATE,
+            "version": get_mfa_version(),
+        }
+        if "github_token" in history_data["command"]:
+            return
+        if self.exit_code is not None:
+            history_data["exit_code"] = self.exit_code
+            history_data["exception"] = ""
+        elif self.exception is not None:
+            history_data["exit_code"] = 1
+            history_data["exception"] = str(self.exception)
+        else:
+            history_data["exception"] = ""
+            history_data["exit_code"] = 0
+        config.update_command_history(history_data)
+        if self.exception:
+            raise self.exception

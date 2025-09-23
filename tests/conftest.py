@@ -888,6 +888,11 @@ def eval_mapping_path(config_directory):
 
 
 @pytest.fixture(scope="session")
+def english_arpa_remapping_path(config_directory):
+    return config_directory.joinpath("english_arpa_remapping.yaml")
+
+
+@pytest.fixture(scope="session")
 def basic_train_config_path(config_directory):
     return config_directory.joinpath("basic_train_config.yaml")
 
@@ -985,6 +990,7 @@ def sat_train_config_path(config_directory):
 @pytest.fixture(scope="session")
 def multispeaker_dictionary_config_path(generated_dir, basic_dict_path, english_dictionary):
     from montreal_forced_aligner.helper import MfaYamlDumper
+
     path = generated_dir.joinpath("multispeaker_dictionary.yaml")
     with mfa_open(path, "w") as f:
         yaml.dump(
@@ -999,6 +1005,7 @@ def multispeaker_dictionary_config_path(generated_dir, basic_dict_path, english_
 @pytest.fixture(scope="session")
 def mfa_speaker_dict_path(generated_dir, english_uk_mfa_dictionary, english_us_mfa_reduced_dict):
     from montreal_forced_aligner.helper import MfaYamlDumper
+
     path = generated_dir.joinpath("test_multispeaker_mfa_dictionary.yaml")
     with mfa_open(path, "w") as f:
         yaml.dump(
@@ -1211,4 +1218,20 @@ def pronunciation_variation_corpus(
         shutil.copyfile(wav_dir.joinpath(name + ".flac"), s_dir.joinpath(name + ".flac"))
         with mfa_open(s_dir.joinpath(name + ".lab"), "w") as f:
             f.write(reference_transcripts[name])
+    return path
+
+
+@pytest.fixture()
+def mfa_example_aligned_dir(corpus_root_dir, wav_dir, textgrid_dir):
+    path = corpus_root_dir.joinpath("mfa_michael_aligned")
+    path.mkdir(parents=True, exist_ok=True)
+    names = [("michael", ["mfa_michael"])]
+    for s, files in names:
+        s_dir = path.joinpath(s)
+        s_dir.mkdir(exist_ok=True)
+        for name in files:
+            shutil.copyfile(wav_dir.joinpath(name + ".flac"), s_dir.joinpath(name + ".flac"))
+            shutil.copyfile(
+                textgrid_dir.joinpath(name + ".TextGrid"), s_dir.joinpath(name + ".TextGrid")
+            )
     return path
