@@ -29,7 +29,7 @@ try:
 
         try:
             from speechbrain.pretrained import VAD
-        except ImportError:  # speechbrain 1.0
+        except (ImportError, ModuleNotFoundError):  # speechbrain 1.0
             from speechbrain.inference.VAD import VAD
 
     FOUND_SPEECHBRAIN = True

@@ -7,7 +7,7 @@ try:
     import sudachipy
 
     JA_AVAILABLE = True
-except ImportError:
+except (ImportError, ModuleNotFoundError):
     JA_AVAILABLE = False
     sudachipy = None
 

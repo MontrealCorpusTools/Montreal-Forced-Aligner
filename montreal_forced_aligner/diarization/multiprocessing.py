@@ -16,10 +16,9 @@ import dataclassy
 
 try:
     import hdbscan
-    import kneed
 
     HDBSCAN_ENABLED = True
-except ImportError:
+except (ImportError, ModuleNotFoundError):
     HDBSCAN_ENABLED = False
 
 import numpy as np
@@ -57,7 +56,7 @@ try:
         try:
             try:
                 from speechbrain.pretrained import EncoderClassifier, SpeakerRecognition
-            except ImportError:  # speechbrain 1.0
+            except (ImportError, ModuleNotFoundError):  # speechbrain 1.0
                 from speechbrain.inference.classifiers import EncoderClassifier
                 from speechbrain.inference.speaker import SpeakerRecognition
             from speechbrain.utils.metric_stats import EER
@@ -218,6 +217,7 @@ def calculate_distance_threshold(
     float
         Absolute distance threshold
     """
+    import kneed
     logger.debug(f"Calculating distance threshold from {min_samples} nearest neighbors...")
     nbrs = neighbors.NearestNeighbors(
         n_neighbors=min_samples,

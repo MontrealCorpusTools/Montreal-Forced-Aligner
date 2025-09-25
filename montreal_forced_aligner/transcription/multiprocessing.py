@@ -65,7 +65,7 @@ try:
         CUDA_AVAILABLE = torch.cuda.is_available()
         try:
             from speechbrain.pretrained import EncoderASR, WhisperASR
-        except ImportError:  # speechbrain 1.0
+        except (ImportError, ModuleNotFoundError):  # speechbrain 1.0
             from speechbrain.inference.ASR import EncoderASR, WhisperASR
     FOUND_SPEECHBRAIN = True
 except (ImportError, OSError):

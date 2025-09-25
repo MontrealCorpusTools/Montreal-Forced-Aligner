@@ -155,10 +155,6 @@ From here you can use this dictionary file as input to any MFA command that uses
    mfa align ~/mfa_data/my_corpus ~/mfa_data/new_dictionary.txt english_us_arpa ~/mfa_data/my_corpus_aligned
 
 
-.. note::
-
-   Please see :ref:`dict_generating_example` for an example using toy data.
-
 
 .. _first_steps_g2p_oovs:
 
@@ -342,11 +338,6 @@ Once the G2P model is trained, you should see the exported archive in the folder
    mfa g2p ~/mfa_data/my_new_word_list.txt ~/mfa_data/my_g2p_model.zip ~/mfa_data/my_new_dictionary.txt
 
 Take a look at :ref:`first_steps_g2p_pretrained` with this new model for a more detailed walk-through of generating a dictionary.
-
-.. note::
-
-   Please see :ref:`g2p_model_training_example` for an example using toy data.
-
 .. _first_steps_tokenize:
 
 Tokenize a corpus to add word boundaries

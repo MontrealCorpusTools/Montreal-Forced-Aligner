@@ -7,7 +7,7 @@ try:
     from mecab import MeCab
 
     KO_AVAILABLE = True
-except ImportError:
+except (ImportError, ModuleNotFoundError):
     KO_AVAILABLE = False
     MeCab = None
     jamo = None

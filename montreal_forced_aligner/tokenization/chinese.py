@@ -8,7 +8,7 @@ try:
     from dragonmapper.hanzi import to_pinyin
 
     ZH_AVAILABLE = True
-except ImportError:
+except (ImportError, ModuleNotFoundError):
     ZH_AVAILABLE = False
     spacy_pkuseg = None
     hanziconv = None
