@@ -22,8 +22,6 @@ Pronunciation dictionaries can also be generated from the orthographies of the w
 a trained G2P model.  This functionality should be reserved for languages with transparent orthographies, close to 1-to-1
 grapheme-to-phoneme mapping.
 
-See :ref:`dict_generating_example` for an example of how to use G2P functionality with a premade example.
-
 .. note::
 
    As of version 2.0.6, users on Windows can run this command natively without requiring :xref:`wsl`, see :ref:`installation` for more details.

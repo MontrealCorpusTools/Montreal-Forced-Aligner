@@ -72,7 +72,7 @@ def mfa_cli() -> None:
 def version_cli():
     try:
         from montreal_forced_aligner._version import version
-    except ImportError:
+    except (ImportError, ModuleNotFoundError):
         version = None
     click.echo(version)
 

@@ -6,7 +6,7 @@ try:
     from pythainlp.tokenize import word_tokenize
 
     TH_AVAILABLE = True
-except ImportError:
+except (ImportError, ModuleNotFoundError):
     TH_AVAILABLE = False
     word_tokenize = None
 

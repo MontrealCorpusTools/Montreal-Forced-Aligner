@@ -7,7 +7,7 @@ try:
     import spacy
 
     SPACY_AVAILABLE = True
-except ImportError:
+except (ImportError, ModuleNotFoundError):
     spacy = None
     SPACY_AVAILABLE = False
 
