@@ -1504,9 +1504,9 @@ class ModelManager:
             data_count = len(data)
             for d in data:
                 tag = d["tag_name"]
-                model_type, model_name, version = tag.split(
-                    "-"
-                )  # tag format "{model_type}-{model_name}-v{version}"
+                # tag format "{model_type}-{model_name}-v{version}"
+                model_type, remainder = tag.split("-", maxsplit=1)
+                model_name, version = remainder.rsplit("-", maxsplit=1)
                 if model_type not in self.remote_models:  # Other releases, archived, etc
                     continue
                 if not tag.startswith(model_type):
