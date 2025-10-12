@@ -1696,12 +1696,16 @@ class PhonetisaurusTrainer(
             num_words = session.query(Word.id).count()
             words_per_job = int(num_words / config.NUM_JOBS) + 1
             current_job = 1
-            words = session.query(Word.id).filter(Word.word_type.in_(WordType.speech_types()))
+            words = session.query(Word.id, Word.word).filter(
+                Word.word_type.in_(WordType.speech_types())
+            )
             mappings = []
-            for i, (w,) in enumerate(words):
+            for i, (w_id, w) in enumerate(words):
+                if len(w) == 1:  # Ignore single character words
+                    continue
                 if i >= (current_job) * words_per_job and current_job != config.NUM_JOBS + 1:
                     current_job += 1
-                mappings.append({"word_id": w, "job_id": current_job, "training": 1})
+                mappings.append({"word_id": w_id, "job_id": current_job, "training": 1})
             session.bulk_insert_mappings(Job, job_objs)
             session.flush()
             session.execute(sqlalchemy.insert(Word2Job.__table__), mappings)
