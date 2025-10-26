@@ -12,6 +12,7 @@ from montreal_forced_aligner.command_line.utils import (
     validate_acoustic_model,
     validate_corpus_directory,
     validate_dictionary,
+    validate_g2p_model,
 )
 from montreal_forced_aligner.validation.corpus_validator import (
     PretrainedValidator,
@@ -161,7 +162,7 @@ def validate_corpus_cli(context, **kwargs) -> None:
     help="Path to save the CSV file with the scored pronunciations.",
     type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
 )
-@click.option("--g2p_model_path", help="Pretrained G2P model path.", type=str)
+@click.option("--g2p_model_path", help="Pretrained G2P model path.", type=click.UNPROCESSED)
 @click.option(
     "--config_path",
     "-c",
@@ -187,6 +188,8 @@ def validate_dictionary_cli(context, **kwargs) -> None:
     initialize_configuration(context)
     config_path = kwargs.get("config_path", None)
     g2p_model_path = kwargs["g2p_model_path"]
+    if g2p_model_path:
+        g2p_model_path = validate_g2p_model(context, kwargs, g2p_model_path)
     dictionary_path = kwargs["dictionary_path"]
     output_path = kwargs["output_path"]
     validator = DictionaryValidator(

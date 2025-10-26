@@ -18,7 +18,7 @@ import yaml
 from dataclassy import dataclass
 
 from montreal_forced_aligner.exceptions import RootDirectoryError
-from montreal_forced_aligner.helper import mfa_open, MfaYamlDumper
+from montreal_forced_aligner.helper import MfaYamlDumper, mfa_open
 
 __all__ = [
     "generate_config_path",
@@ -34,6 +34,7 @@ __all__ = [
     "XVECTOR_DIMENSION",
     "PLDA_DIMENSION",
     "MEMORY",
+    "TEMPORARY_DIRECTORY",
 ]
 
 MFA_ROOT_ENVIRONMENT_VARIABLE = "MFA_ROOT_DIR"
@@ -298,7 +299,7 @@ def load_configuration():
 def update_configuration(data):
     for k, v in data.items():
         k = k.upper()
-        if k == 'PROFILE':
+        if k == "PROFILE":
             k = "CURRENT_PROFILE_NAME"
         if k in globals():
             if k == "TEMPORARY_DIRECTORY":

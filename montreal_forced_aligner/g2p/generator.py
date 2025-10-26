@@ -681,6 +681,9 @@ class PyniniGenerator(G2PTopLevelMixin):
         logger.debug(f"Maximum score: {max_score}")
         logger.debug(f"Processed {num_words} in {time.time() - begin:.3f} seconds")
 
+    def generate_dict_pronunciations(self):
+        return {k: [x[0] for x in v] for k, v in self.generate_pronunciations()}
+
 
 class PyniniConsoleGenerator(PyniniGenerator):
     @property

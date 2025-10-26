@@ -282,6 +282,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     )
                     .join(Utterance.file)
                     .join(Utterance.speaker)
+                    .order_by(
+                        sqlalchemy.desc(Utterance.duration_deviation)
+                    )
                 )
                 for row in utterances:
                     writer.writerow([*row])

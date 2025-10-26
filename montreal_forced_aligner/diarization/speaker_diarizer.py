@@ -116,6 +116,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         expected_num_speakers: int = 0,
         cluster: bool = True,
         evaluation_mode: bool = False,
+        show_visualization: bool = False,
         cuda: bool = False,
         use_pca: bool = True,
         metric: typing.Union[str, DistanceMetric] = "cosine",
@@ -154,6 +155,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         self.cluster = cluster
         self.metric = DistanceMetric[metric]
         self.cuda = cuda
+        self.show_visualization = show_visualization
         self.cluster_type = ClusterType[cluster_type]
         self.manifold_algorithm = ManifoldAlgorithm[manifold_algorithm]
         self.distance_threshold = distance_threshold
@@ -575,6 +577,8 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         return self.working_directory.joinpath("speaker_ivectors.ark")
 
     def visualize_clusters(self, ivectors, cluster_labels=None):
+        if not self.show_visualization:
+            return
         import seaborn as sns
         from matplotlib import pyplot as plt
 
@@ -1053,7 +1057,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             logger.info(f"Number of speakers: {self.num_speakers}")
             logger.info(f"Unclassified utterances: {uncategorized_count}")
         logger.debug(f"Found {self.num_speakers} clusters")
-        if config.DEBUG and self.num_utterances < 100000:
+        if self.show_visualization and self.num_utterances < 100000:
             self.visualize_current_clusters()
 
     def visualize_current_clusters(self):
@@ -1166,7 +1170,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             if self.stopped.is_set():
                 logger.debug("Stopping clustering early.")
                 return
-            if config.DEBUG:
+            if self.show_visualization:
                 self.visualize_clusters(ivectors, labels)
 
             utterance_clusters = collections.defaultdict(list)
@@ -1190,7 +1194,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                     else:
                         speaker_id = unknown_speaker_id
                 else:
-                    speaker_name = f"Cluster {cluster_id}"
+                    speaker_name = f"s{cluster_id}"
                     speaker_mapping.append({"id": next_speaker_id, "name": speaker_name})
                     speaker_id = next_speaker_id
                     next_speaker_id += 1
