@@ -927,7 +927,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                     num_pronunciations=1,
                                     strict_graphemes=True,
                                 )
-                                g2pped[dict_id] = gen.generate_pronunciations()
+                                g2pped[dict_id] = gen.generate_dict_pronunciations()
                         else:
                             gen = PyniniGenerator(
                                 g2p_model_path=g2p_model.source,
@@ -936,7 +936,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                 strict_graphemes=True,
                             )
                             dict_id = list(dictionaries.keys())[0]
-                            g2pped[dict_id] = gen.generate_pronunciations()
+                            g2pped[dict_id] = gen.generate_dict_pronunciations()
                         for dict_id, mapping in word_to_g2p_mapping.items():
                             log_file.write(f"For dictionary {dict_id}:\n")
                             for w, ps in mapping.items():

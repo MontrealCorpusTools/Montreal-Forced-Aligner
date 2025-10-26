@@ -85,7 +85,7 @@ __all__ = ["align_one_cli"]
     "--g2p_model_path",
     "g2p_model_path",
     help="Path to G2P model to use for OOV items.",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+    type=click.UNPROCESSED,
 )
 @common_options
 @click.help_option("-h", "--help")
