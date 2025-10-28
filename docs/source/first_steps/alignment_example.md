@@ -311,7 +311,7 @@ mfa align ~/mfa_data/librispeech-demo-1.0.0 english_us_mfa english_mfa ~/mfa_dat
 
 
 :::{code-block} bash
-mfa align ~/mfa_data/japanese-jvs-demo-1.0.0 japanese_mfa japanese_mfa ~/mfa_data/aligned_jva_demo_no_oovs --g2p_model_path japanese_mfa --clean
+mfa align ~/mfa_data/japanese-jvs-demo-1.0.0 japanese_mfa japanese_mfa ~/mfa_data/aligned_jvs_demo_no_oovs --g2p_model_path japanese_mfa --clean
 :::
 
 ::::

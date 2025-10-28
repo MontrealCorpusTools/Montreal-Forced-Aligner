@@ -67,4 +67,5 @@ Installation
    installation
    first_steps/index
    first_steps/alignment_example
+   first_steps/remapping_example
    first_steps/tutorials
