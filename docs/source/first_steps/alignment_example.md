@@ -29,7 +29,7 @@ Ensure you have installed MFA via {ref}`installation`.
 
 1. Ensure you have downloaded the pretrained model via {code}`mfa model download acoustic japanese_mfa`
 2. Ensure you have downloaded the pretrained Japanese dictionary via {code}`mfa model download dictionary japanese_mfa`
-3. Download the [Japanese JVS demo corpus](https://github.com/MontrealCorpusTools/japanaese-jvs-demo/archive/refs/tags/v1.0.0.tar.gz) and extract it to somewhere on your computer
+3. Download the [Japanese JVS demo corpus](https://github.com/MontrealCorpusTools/japanese-jvs-demo/archive/refs/tags/v1.0.0.tar.gz) and extract it to somewhere on your computer
 4. Install Japanese-specific dependencies via {code}`conda install -c conda-forge spacy sudachipy sudachidict-core`
 
 :::
