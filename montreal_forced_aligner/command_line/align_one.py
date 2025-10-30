@@ -1,6 +1,7 @@
 """Command line functions for aligning single files"""
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 import pywrapfst
@@ -74,6 +75,12 @@ __all__ = ["align_one_cli"]
     help="Format for aligned output files (default is long_textgrid).",
     default="long_textgrid",
     type=click.Choice(["long_textgrid", "short_textgrid", "json", "csv"]),
+)
+@click.option(
+    "--save_phone_confidence",
+    is_flag=True,
+    help="Flag to save phone confidence to a CSV file.",
+    default=False,
 )
 @click.option(
     "--no_tokenization",
@@ -203,3 +210,18 @@ def align_one_cli(context, **kwargs) -> None:
     file_ctm.export_textgrid(
         output_path, file_duration=file.wav_info.duration, output_format=output_format
     )
+    if kwargs.get("save_phone_confidence"):
+        phone_interval_path = output_path.with_name(output_path.stem + "_confidence.csv")
+        with open(phone_interval_path, "w", newline="", encoding="utf8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["begin", "end", "phone", "confidence"])
+            for word_interval in file_ctm.word_intervals:
+                for phone_interval in word_interval.phones:
+                    writer.writerow(
+                        [
+                            phone_interval.begin,
+                            phone_interval.end,
+                            phone_interval.label,
+                            phone_interval.confidence,
+                        ]
+                    )
