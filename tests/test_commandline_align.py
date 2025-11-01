@@ -444,6 +444,8 @@ def test_align_fine_tune(
         print(result.exc_info)
         raise result.exception
     assert not result.return_value
+    # Regression test for --fine_tune flag
+    assert "Fine tuning alignments..." in result.stderr
 
 
 def test_align_evaluation(

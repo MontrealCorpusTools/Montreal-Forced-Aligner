@@ -89,7 +89,7 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
         kw.update(kwargs)
         super().__init__(**kw)
         self.fine_tune = fine_tune
-        self.fine_tune = fine_tune_boundary_tolerance
+        self.fine_tune_boundary_tolerance = fine_tune_boundary_tolerance
         self.final_alignment = True
         self.kalpy_aligner = None
 
