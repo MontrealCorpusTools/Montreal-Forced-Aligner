@@ -177,7 +177,7 @@ class ValidationMixin:
         if self.oovs_found:
             self.save_oovs_found(output_directory)
             logger.warning(f"{len(self.oovs_found)} OOV word types")
-            logger.warning(f"{total_instances}total OOV tokens")
+            logger.warning(f"{total_instances} total OOV tokens")
             logger.warning(
                 f"For a full list of the word types, please see: {oov_path}. "
                 f"For a by-utterance breakdown of missing words, see: {utterance_oov_path}"
