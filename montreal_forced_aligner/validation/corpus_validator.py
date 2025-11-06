@@ -140,7 +140,15 @@ class ValidationMixin:
         if output_directory is None:
             output_directory = self.output_directory
         os.makedirs(output_directory, exist_ok=True)
-        oov_path = os.path.join(output_directory, "oovs_found.txt")
+        # Point users to the actual OOV files written by save_oovs_found()
+        if hasattr(self, "dictionary_base_names"):
+            if len(self.dictionary_base_names) == 1:
+                only_base = next(iter(self.dictionary_base_names.values()))
+                oov_path = os.path.join(output_directory, f"oovs_found_{only_base}.txt")
+            else:
+                oov_path = os.path.join(output_directory, "oovs_found_*.txt")
+        else:
+            oov_path = os.path.join(output_directory, "oovs_found.txt")
         utterance_oov_path = os.path.join(output_directory, "utterance_oovs.txt")
 
         total_instances = 0
