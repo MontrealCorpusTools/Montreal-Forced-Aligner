@@ -35,9 +35,7 @@ def test_align_one_lab(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -63,9 +61,7 @@ def test_align_one_lab(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -80,22 +76,23 @@ def test_align_one_lab(
 def test_align_one_tg(
     multilingual_ipa_tg_corpus_dir,
     generated_dir,
-    english_us_mfa_dictionary,
+    english_uk_mfa_dictionary,
+    english_uk_mfa_g2p_model,
     temp_dir,
     english_mfa_acoustic_model,
     db_setup,
 ):
     output_directory = generated_dir.joinpath("multilingual_align_one_output")
-    wav_path = multilingual_ipa_tg_corpus_dir.joinpath("speaker_two", "multilingual_ipa_us.flac")
+    wav_path = multilingual_ipa_tg_corpus_dir.joinpath("speaker_one", "multilingual_ipa_2.flac")
     lab_path = multilingual_ipa_tg_corpus_dir.joinpath(
-        "speaker_two", "multilingual_ipa_us.TextGrid"
+        "speaker_one", "multilingual_ipa_2.TextGrid"
     )
     output_path = output_directory.joinpath("align_one_output_tg.TextGrid")
     command = [
         "align_one",
         wav_path,
         lab_path,
-        english_us_mfa_dictionary,
+        english_uk_mfa_dictionary,
         english_mfa_acoustic_model,
         output_path,
         "-q",
@@ -106,9 +103,7 @@ def test_align_one_tg(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -117,26 +112,31 @@ def test_align_one_tg(
     assert not result.return_value
 
     assert os.path.exists(output_path)
+
+    tg = tgio.openTextgrid(output_path, includeEmptyIntervals=False)
+    assert len(tg.tierNames) == 2
+    phone_tier = tg.getTier("phones")
+    labels = {x.label for x in phone_tier.entries}
+    assert "spn" in labels
+
     command = [
         "align_one",
         wav_path,
         lab_path,
-        english_us_mfa_dictionary,
+        english_uk_mfa_dictionary,
         english_mfa_acoustic_model,
-        "-",
+        output_path,
         "-q",
         "--clean",
         "--debug",
         "--verbose",
-        "--output_format",
-        "json",
         "-p",
         "test",
+        "--g2p_model_path",
+        english_uk_mfa_g2p_model,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -144,8 +144,11 @@ def test_align_one_tg(
         raise result.exception
     assert not result.return_value
 
-    t = json.loads(result.stdout)
-    assert t
+    tg = tgio.openTextgrid(output_path, includeEmptyIntervals=False)
+    assert len(tg.tierNames) == 2
+    phone_tier = tg.getTier("phones")
+    labels = {x.label for x in phone_tier.entries}
+    assert "spn" not in labels
 
 
 def test_align_no_speaker_adaptation(
@@ -178,9 +181,7 @@ def test_align_no_speaker_adaptation(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -222,9 +223,7 @@ def test_align_single_speaker(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -272,9 +271,7 @@ def test_align_duplicated(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -296,18 +293,20 @@ def test_align_duplicated(
 def test_align_multilingual(
     multilingual_ipa_corpus_dir,
     english_uk_mfa_dictionary,
+    english_uk_mfa_g2p_model,
     generated_dir,
     temp_dir,
     basic_align_config_path,
     english_mfa_acoustic_model,
     db_setup,
 ):
+    output_dir = generated_dir.joinpath("multilingual")
     command = [
         "align",
         multilingual_ipa_corpus_dir,
         english_uk_mfa_dictionary,
         english_mfa_acoustic_model,
-        generated_dir.joinpath("multilingual"),
+        output_dir,
         "--config_path",
         basic_align_config_path,
         "-q",
@@ -318,17 +317,26 @@ def test_align_multilingual(
         "-p",
         "test",
         "--no_use_postgres",
+        "--g2p_model_path",
+        english_uk_mfa_g2p_model,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
         print(result.exc_info)
         raise result.exception
     assert not result.return_value
+    for d in output_dir.iterdir():
+        if not d.is_dir():
+            continue
+        for fn in d.iterdir():
+            tg = tgio.openTextgrid(fn, includeEmptyIntervals=False)
+            assert len(tg.tierNames) == 2
+            phone_tier = tg.getTier("phones")
+            labels = {x.label for x in phone_tier.entries}
+            assert "spn" not in labels
 
 
 def test_align_multilingual_speaker_dict(
@@ -358,9 +366,7 @@ def test_align_multilingual_speaker_dict(
         "--use_postgres",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -394,9 +400,7 @@ def test_align_multilingual_tg_speaker_dict(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -435,9 +439,7 @@ def test_align_fine_tune(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -481,9 +483,7 @@ def test_align_evaluation(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -522,9 +522,7 @@ def test_align_split(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -558,9 +556,7 @@ def test_align_stereo(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -599,9 +595,7 @@ def test_align_mp3s(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -613,6 +607,89 @@ def test_align_mp3s(
         os.path.join(output_dir, "common_voice_en_22058267.TextGrid"), includeEmptyIntervals=False
     )
     assert len(tg.tierNames) == 2
+
+
+def test_align_japanese(
+    japanese_cv_dir,
+    generated_dir,
+    reduced_japanese_mfa_dictionary,
+    temp_dir,
+    japanese_acoustic_model,
+):
+    output_dir = generated_dir.joinpath("japanese_output")
+    command = [
+        "align",
+        japanese_cv_dir,
+        str(reduced_japanese_mfa_dictionary),
+        japanese_acoustic_model,
+        output_dir,
+        "-q",
+        "--clean",
+        "--debug",
+        "-p",
+        "test",
+        "--no_use_postgres",
+    ]
+    command = [str(x) for x in command]
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+
+    tg = tgio.openTextgrid(
+        os.path.join(output_dir, "02a8841a00d", "common_voice_ja_24511055.TextGrid"),
+        includeEmptyIntervals=False,
+    )
+    assert len(tg.tierNames) == 2
+    phone_tier = tg.getTier("phones")
+    labels = {x.label for x in phone_tier.entries}
+    assert "spn" in labels
+
+
+def test_align_japanese_g2p(
+    japanese_cv_dir,
+    generated_dir,
+    reduced_japanese_mfa_dictionary,
+    temp_dir,
+    japanese_acoustic_model,
+    japanese_mfa_g2p_model,
+):
+    output_dir = generated_dir.joinpath("japanese_output_g2p")
+    command = [
+        "align",
+        japanese_cv_dir,
+        str(reduced_japanese_mfa_dictionary),
+        japanese_acoustic_model,
+        output_dir,
+        "-q",
+        "--clean",
+        "--debug",
+        "-p",
+        "test",
+        "--no_use_postgres",
+        "--g2p_model_path",
+        japanese_mfa_g2p_model,
+    ]
+    command = [str(x) for x in command]
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+
+    tg = tgio.openTextgrid(
+        os.path.join(output_dir, "02a8841a00d", "common_voice_ja_24511055.TextGrid"),
+        includeEmptyIntervals=False,
+    )
+    assert len(tg.tierNames) == 2
+    phone_tier = tg.getTier("phones")
+    labels = {x.label for x in phone_tier.entries}
+    assert "spn" not in labels
 
 
 def test_align_opus(
@@ -640,9 +717,7 @@ def test_align_opus(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -684,9 +759,7 @@ def test_swedish_cv(
         "--final_clean",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -735,9 +808,7 @@ def test_swedish_mfa(
         "1000",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:

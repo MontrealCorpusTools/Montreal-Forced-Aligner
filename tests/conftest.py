@@ -115,6 +115,13 @@ def english_acoustic_model(model_manager):
 
 
 @pytest.fixture(scope="session")
+def japanese_acoustic_model(model_manager):
+    if not model_manager.has_local_model("acoustic", "japanese_mfa"):
+        model_manager.download_model("acoustic", "japanese_mfa")
+    return "japanese_mfa"
+
+
+@pytest.fixture(scope="session")
 def english_dictionary(model_manager):
     if not model_manager.has_local_model("dictionary", "english_us_arpa"):
         model_manager.download_model("dictionary", "english_us_arpa")
@@ -147,6 +154,27 @@ def english_us_mfa_dictionary(model_manager):
     if not model_manager.has_local_model("dictionary", "english_us_mfa"):
         model_manager.download_model("dictionary", "english_us_mfa")
     return "english_us_mfa"
+
+
+@pytest.fixture(scope="session")
+def japanese_mfa_dictionary(model_manager):
+    if not model_manager.has_local_model("dictionary", "japanese_mfa"):
+        model_manager.download_model("dictionary", "japanese_mfa")
+    return "japanese_mfa"
+
+
+@pytest.fixture(scope="session")
+def reduced_japanese_mfa_dictionary(japanese_mfa_dictionary, generated_dir):
+    from montreal_forced_aligner.models import DictionaryModel
+
+    path = DictionaryModel.get_pretrained_path("japanese_mfa")
+    new_path = generated_dir.joinpath("reduced_japanese_mfa.dict")
+    with mfa_open(path) as f, mfa_open(new_path, "w") as out_f:
+        for line in f:
+            if line.startswith("電柱"):
+                continue
+            out_f.write(line)
+    return new_path
 
 
 @pytest.fixture(scope="session")
@@ -239,6 +267,20 @@ def english_us_mfa_g2p_model(model_manager):
     if not model_manager.has_local_model("g2p", "english_us_mfa"):
         model_manager.download_model("g2p", "english_us_mfa")
     return "english_us_mfa"
+
+
+@pytest.fixture(scope="session")
+def english_uk_mfa_g2p_model(model_manager):
+    if not model_manager.has_local_model("g2p", "english_uk_mfa"):
+        model_manager.download_model("g2p", "english_uk_mfa")
+    return "english_uk_mfa"
+
+
+@pytest.fixture(scope="session")
+def japanese_mfa_g2p_model(model_manager):
+    if not model_manager.has_local_model("g2p", "japanese_mfa"):
+        model_manager.download_model("g2p", "japanese_mfa")
+    return "japanese_mfa"
 
 
 @pytest.fixture(scope="session")
@@ -589,7 +631,7 @@ def japanese_cv_dir(corpus_root_dir, wav_dir, lab_dir):
     path.mkdir(parents=True, exist_ok=True)
     names = [
         (
-            "02a8841a00d762472a4797b56ee01643e8d9ece5a225f2e91c007ab1f94c49c99e50d19986ff3fefb18190257323f34238828114aa607f84fbe9764ecf5aaeaa",
+            "02a8841a00d",
             [
                 "common_voice_ja_24511055",
             ],

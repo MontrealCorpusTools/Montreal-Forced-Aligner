@@ -771,7 +771,7 @@ class TranscriptionSegmenter(
                         num_pronunciations=1,
                         strict_graphemes=True,
                     )
-                    g2pped = gen.generate_pronunciations()
+                    g2pped = gen.generate_dict_pronunciations()
                     for w, ps in word_to_g2p_mapping.items():
                         pronunciations = [g2pped[x][0] for x in ps if x in g2pped and g2pped[x]]
                         if not pronunciations:

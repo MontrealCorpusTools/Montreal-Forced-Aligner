@@ -38,6 +38,7 @@ if typing.TYPE_CHECKING:
 
     from montreal_forced_aligner.abc import MetaDict
     from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
+    from montreal_forced_aligner.g2p.generator import Rewriter
     from montreal_forced_aligner.g2p.trainer import G2PTrainer
     from montreal_forced_aligner.tokenization.trainer import TokenizerTrainer
 else:
@@ -689,7 +690,7 @@ class G2PModel(Archive):
         return pywrapfst.SymbolTable.read_text(self.grapheme_sym_path)
 
     @property
-    def rewriter(self):
+    def rewriter(self) -> typing.Optional[Rewriter]:
         if not self.grapheme_sym_path.exists():
             return None
         if self._rewriter is None:
