@@ -39,8 +39,9 @@ def tokenize_utterance_text(
                 if not lexicon_compiler.word_table.member(w):
                     pron = g2p_model.rewriter(w)
                     if pron:
+                        pronunciation = pron[0][0] if isinstance(pron[0], tuple) else pron[0]
                         lexicon_compiler.add_pronunciation(
-                            KalpyPronunciation(w, pron[0], None, None, None, None, None)
+                            KalpyPronunciation(w, pronunciation, None, None, None, None, None)
                         )
 
     else:
@@ -54,7 +55,7 @@ def tokenize_utterance_text(
                     pron = g2p_model.rewriter(w)
                     if not pron:
                         continue
-                    g2p_cache[w] = pron[0]
+                    g2p_cache[w] = pron[0][0] if isinstance(pron[0], tuple) else pron[0]
                 if w in g2p_cache and not lexicon_compiler.word_table.member(norm_w):
                     lexicon_compiler.add_pronunciation(
                         KalpyPronunciation(norm_w, g2p_cache[w], None, None, None, None, None)
