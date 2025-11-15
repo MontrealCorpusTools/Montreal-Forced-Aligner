@@ -957,7 +957,7 @@ class FineTuneFunction(KaldiFunction):
                     acoustic_model=self.acoustic_model,
                     lexicon_compiler=self.lexicon_compilers[d.id],
                 )
-                ali_path = job.construct_path(workflow.working_directory, "ali", ".ark", d.name)
+                ali_path = job.construct_path(workflow.working_directory, "ali", "ark", d.name)
                 alignment_archive = AlignmentArchive(ali_path)
                 utterance_query = (
                     session.query(Utterance, SoundFile.sound_file_path)
