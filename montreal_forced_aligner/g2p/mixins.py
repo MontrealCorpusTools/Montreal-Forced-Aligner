@@ -111,11 +111,11 @@ class G2PTopLevelMixin(MfaWorker, DictionaryMixin, G2PMixin):
             for orthography, pronunciations in results:
                 if not pronunciations:
                     continue
-                for p, score in pronunciations:
-                    if not p:
+                for p in pronunciations:
+                    if not p.pronunciation:
                         continue
                     if export_scores:
-                        f.write(f"{orthography}\t{p}\t{score}\n")
+                        f.write(f"{orthography}\t{p.pronunciation}\t{p.score}\n")
                     else:
-                        f.write(f"{orthography}\t{p}\n")
+                        f.write(f"{orthography}\t{p.pronunciation}\n")
                     f.flush()

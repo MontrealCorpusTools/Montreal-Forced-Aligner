@@ -1668,13 +1668,13 @@ class PhonetisaurusTrainer(
         hypotheses = {}
         with mfa_open(temp_dir.joinpath("validation_output.txt"), "w") as f:
             for orthography, pronunciations in output:
-                hypotheses[orthography] = [x[0] for x in pronunciations]
                 if not pronunciations:
                     continue
-                for p, score in pronunciations:
-                    if not p:
+                hypotheses[orthography] = [x.pronunciation for x in pronunciations]
+                for p in pronunciations:
+                    if not p.pronunciation:
                         continue
-                    f.write(f"{orthography}\t{p}\t{score}\n")
+                    f.write(f"{orthography}\t{p.pronunciation}\t{p.score}\n")
         gen.compute_validation_errors(validation_set, hypotheses)
 
     def initialize_training(self) -> None:

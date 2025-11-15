@@ -139,10 +139,7 @@ def align_one_cli(context, **kwargs) -> None:
         lexicon_compiler.phone_table = pywrapfst.SymbolTable.read_text(phones_path)
     else:
         lexicon_compiler.load_pronunciations(dictionary_path)
-        lexicon_compiler.fst.write(str(l_fst_path))
-        lexicon_compiler.align_fst.write(str(l_align_fst_path))
-        lexicon_compiler.word_table.write_text(words_path)
-        lexicon_compiler.phone_table.write_text(phones_path)
+        lexicon_compiler.create_fsts()
         lexicon_compiler.clear()
 
     if no_tokenization or acoustic_model.language is Language.unknown:
@@ -193,6 +190,11 @@ def align_one_cli(context, **kwargs) -> None:
             "boost_silence",
         ]
     }
+    if g2p_model is not None or not (l_fst_path.exists() and not config.CLEAN):
+        lexicon_compiler.fst.write(str(l_fst_path))
+        lexicon_compiler.align_fst.write(str(l_align_fst_path))
+        lexicon_compiler.word_table.write_text(words_path)
+        lexicon_compiler.phone_table.write_text(phones_path)
     kalpy_aligner = KalpyAligner(acoustic_model, lexicon_compiler, **align_options)
     for utt in utterances:
         utt.apply_cmvn(cmvn)

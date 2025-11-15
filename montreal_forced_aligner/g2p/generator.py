@@ -14,7 +14,6 @@ import typing
 import unicodedata
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 import pynini
 import pywrapfst
@@ -29,7 +28,13 @@ from tqdm.rich import tqdm
 from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import DatabaseMixin, KaldiFunction, TopLevelMfaWorker
 from montreal_forced_aligner.corpus.text_corpus import DictionaryTextCorpusMixin, TextCorpusMixin
-from montreal_forced_aligner.data import MfaArguments, TextgridFormats, WordType, WorkflowType
+from montreal_forced_aligner.data import (
+    GeneratedPronunciation,
+    MfaArguments,
+    TextgridFormats,
+    WordType,
+    WorkflowType,
+)
 from montreal_forced_aligner.db import File, Utterance, Word, bulk_update
 from montreal_forced_aligner.exceptions import PyniniGenerationError
 from montreal_forced_aligner.g2p.mixins import G2PTopLevelMixin
@@ -38,10 +43,10 @@ from montreal_forced_aligner.models import G2PModel
 from montreal_forced_aligner.textgrid import construct_output_path
 from montreal_forced_aligner.utils import run_kaldi_function
 
-if TYPE_CHECKING:
+if typing.TYPE_CHECKING:
     from dataclasses import dataclass
 
-    SpeakerCharacterType = Union[str, int]
+    SpeakerCharacterType = typing.Union[str, int]
 else:
     from dataclassy import dataclass
 
@@ -94,13 +99,13 @@ def threshold_lattice_to_dfa(
     return lattice
 
 
-def generate_scored_paths(lattice, output_token_type):
+def generate_scored_paths(lattice, output_token_type) -> typing.List[GeneratedPronunciation]:
     paths = lattice.paths(output_token_type=output_token_type)
     output = []
     while not paths.done():
         score = float(paths.weight())
         ostring = paths.ostring()
-        output.append((ostring, score))
+        output.append(GeneratedPronunciation(ostring, score))
         paths.next()
     return output
 
@@ -108,10 +113,10 @@ def generate_scored_paths(lattice, output_token_type):
 def optimal_rewrites(
     string: pynini.FstLike,
     rule: pynini.Fst,
-    input_token_type: Optional[TokenType] = None,
-    output_token_type: Optional[TokenType] = None,
+    input_token_type: typing.Optional[TokenType] = None,
+    output_token_type: typing.Optional[TokenType] = None,
     threshold: float = 1,
-) -> List[str]:
+) -> typing.List[GeneratedPronunciation]:
     """Returns all optimal rewrites.
     Args:
     string: Input string or FST.
@@ -131,9 +136,9 @@ def scored_top_rewrites(
     string: pynini.FstLike,
     rule: pynini.Fst,
     nshortest: int,
-    input_token_type: Optional[pynini.TokenType] = None,
-    output_token_type: Optional[pynini.TokenType] = None,
-) -> List[str]:
+    input_token_type: typing.Optional[pynini.TokenType] = None,
+    output_token_type: typing.Optional[pynini.TokenType] = None,
+) -> typing.List[GeneratedPronunciation]:
     """Returns the top n rewrites.
 
     Args:
@@ -176,7 +181,7 @@ class Rewriter:
         phone_symbol_table: SymbolTable,
         num_pronunciations: int = 0,
         threshold: float = 1,
-        graphemes: Set[str] = None,
+        graphemes: typing.Set[str] = None,
         strict: bool = False,
         unicode_decomposition: bool = False,
     ):
@@ -210,7 +215,7 @@ class Rewriter:
         fst = pynini.accep(word, token_type=self.grapheme_symbol_table)
         return fst
 
-    def __call__(self, graphemes: str) -> List[str]:  # pragma: no cover
+    def __call__(self, graphemes: str) -> typing.List[GeneratedPronunciation]:  # pragma: no cover
         """Call the rewrite function"""
         if self.unicode_decomposition:
             graphemes = unicodedata.normalize("NFKD", graphemes)
@@ -224,17 +229,19 @@ class Rewriter:
                 hypotheses.append(self.rewrite(w_fst))
             hypotheses = sorted(
                 (
-                    (" ".join([y[0] for y in x]), sum([y[1] for y in x]))
+                    GeneratedPronunciation(
+                        " ".join([y.pronunciation for y in x]), sum([y.score for y in x])
+                    )
                     for x in itertools.product(*hypotheses)
                 ),
-                key=lambda x: x[1],
+                key=lambda x: x.score,
             )
         else:
             fst = self.create_word_fst(graphemes)
             if not fst:
                 return []
             hypotheses = self.rewrite(fst)
-        return [x for x in hypotheses if x[0]]
+        return [x for x in hypotheses if x.pronunciation]
 
 
 class PhonetisaurusRewriter(Rewriter):
@@ -268,7 +275,7 @@ class PhonetisaurusRewriter(Rewriter):
         threshold: float = 1.5,
         grapheme_order: int = 2,
         sequence_separator: str = "|",
-        graphemes: Set[str] = None,
+        graphemes: typing.Set[str] = None,
         strict: bool = False,
         unicode_decomposition: bool = False,
     ):
@@ -313,10 +320,14 @@ class PhonetisaurusRewriter(Rewriter):
         fst.set_output_symbols(self.grapheme_symbol_table)
         return fst
 
-    def __call__(self, graphemes: str) -> List[str]:  # pragma: no cover
+    def __call__(self, graphemes: str) -> typing.List[GeneratedPronunciation]:  # pragma: no cover
         """Call the rewrite function"""
         hypotheses = super().__call__(graphemes)
-        return [(x.replace(self.sequence_separator, " "), score) for x, score in hypotheses if x]
+        return [
+            GeneratedPronunciation(x.pronunciation.replace(self.sequence_separator, " "), x.score)
+            for x in hypotheses
+            if x.pronunciation
+        ]
 
 
 class RewriterWorker(mp.Process):
@@ -387,12 +398,8 @@ class G2PArguments(MfaArguments):
         SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
-    tree_path: :class:`~pathlib.Path`
-        Path to tree file
-    model_path: :class:`~pathlib.Path`
-        Path to model file
-    use_g2p: bool
-        Flag for whether acoustic model uses g2p
+    rewriter: :class:`~montreal_forced_aligner.g2p.generator.Rewriter`
+        Callable function for rewriter graphemes to phones
     """
 
     rewriter: Rewriter
@@ -420,7 +427,7 @@ class G2PFunction(KaldiFunction):
                     log_file.write(f"Error on generating pronunciation for {text}\n")
 
 
-def clean_up_word(word: str, graphemes: Set[str]) -> Tuple[str, Set[str]]:
+def clean_up_word(word: str, graphemes: typing.Set[str]) -> typing.Tuple[str, typing.Set[str]]:
     """
     Clean up word by removing graphemes not in a specified set
 
@@ -460,7 +467,7 @@ class OrthographyGenerator(G2PTopLevelMixin):
 
     def generate_pronunciations(
         self,
-    ) -> typing.Generator[typing.Tuple[str, List[typing.Tuple[str, float]]]]:
+    ) -> typing.Generator[typing.Tuple[str, typing.List[typing.Tuple[str, float]]]]:
         """
         Generate pronunciations for the word set
 
@@ -497,7 +504,7 @@ class PyniniGenerator(G2PTopLevelMixin):
 
     def __init__(
         self,
-        word_list: List[str] = None,
+        word_list: typing.List[str] = None,
         g2p_model_path: Path = None,
         strict_graphemes: bool = False,
         **kwargs,
@@ -515,7 +522,7 @@ class PyniniGenerator(G2PTopLevelMixin):
         self.word_list = word_list
 
     @property
-    def words_to_g2p(self) -> List[str]:
+    def words_to_g2p(self) -> typing.List[str]:
         """Words to produce pronunciations"""
         return self.word_list
 
@@ -525,7 +532,7 @@ class PyniniGenerator(G2PTopLevelMixin):
         return "validation"
 
     @property
-    def working_directory(self) -> Path:
+    def working_directory(self) -> typing.Optional[Path]:
         """Data directory"""
         return None
 
@@ -567,7 +574,7 @@ class PyniniGenerator(G2PTopLevelMixin):
 
     def generate_pronunciations(
         self,
-    ) -> typing.Generator[typing.Tuple[str, List[typing.Tuple[str, float]]]]:
+    ) -> typing.Generator[typing.Tuple[str, typing.List[GeneratedPronunciation]]]:
         """
         Generate pronunciations
 
@@ -602,7 +609,7 @@ class PyniniGenerator(G2PTopLevelMixin):
                         prons = self.rewriter(w)
                     except rewrite.Error:
                         continue
-                    scores = [x[1] for x in prons]
+                    scores = [x.score for x in prons]
                     if min_score is not None:
                         scores.append(min_score)
                     if max_score is not None:
@@ -664,7 +671,7 @@ class PyniniGenerator(G2PTopLevelMixin):
                     if isinstance(result, Exception):
                         error_dict[word] = result
                         continue
-                    scores = [x[1] for x in result]
+                    scores = [x.score for x in result]
                     if min_score is not None:
                         scores.append(min_score)
                     if max_score is not None:
@@ -682,7 +689,7 @@ class PyniniGenerator(G2PTopLevelMixin):
         logger.debug(f"Processed {num_words} in {time.time() - begin:.3f} seconds")
 
     def generate_dict_pronunciations(self):
-        return {k: [x[0] for x in v] for k, v in self.generate_pronunciations()}
+        return {k: [x.pronunciation for x in v] for k, v in self.generate_pronunciations()}
 
 
 class PyniniConsoleGenerator(PyniniGenerator):
@@ -741,8 +748,8 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
 
     def compute_validation_errors(
         self,
-        gold_values: Dict[str, Set[str]],
-        hypothesis_values: Dict[str, List[str]],
+        gold_values: typing.Dict[str, typing.Set[str]],
+        hypothesis_values: typing.Dict[str, typing.List[str]],
     ):
         """
         Computes validation errors
@@ -858,7 +865,7 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
             f"Computation of errors for {len(gold_values)} words took {time.time() - begin:.3f} seconds"
         )
 
-    def evaluate_g2p_model(self, gold_pronunciations: Dict[str, Set[str]]) -> None:
+    def evaluate_g2p_model(self, gold_pronunciations: typing.Dict[str, typing.Set[str]]) -> None:
         """
         Evaluate a G2P model on the word list
 
@@ -867,7 +874,9 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
         gold_pronunciations: dict[str, set[str]]
             Gold pronunciations
         """
-        hypotheses = {w: [x[0] for x in prons] for w, prons in self.generate_pronunciations()}
+        hypotheses = {
+            w: [x.pronunciation for x in prons] for w, prons in self.generate_pronunciations()
+        }
         self.compute_validation_errors(gold_pronunciations, hypotheses)
 
 
@@ -956,7 +965,7 @@ class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker)
     def working_directory(self) -> Path:
         return self.output_directory.joinpath("g2p")
 
-    def g2p_arguments(self) -> List[G2PArguments]:
+    def g2p_arguments(self) -> typing.List[G2PArguments]:
         return [
             G2PArguments(
                 j.id,
@@ -988,10 +997,10 @@ class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker)
             self.setup()
         logger.info("Generating pronunciations...")
         update_mapping = []
-        for utt_id, (pronunciation, _) in run_kaldi_function(
+        for utt_id, (p) in run_kaldi_function(
             G2PFunction, self.g2p_arguments(), total_count=self.num_utterances
         ):
-            update_mapping.append({"id": utt_id, "transcription_text": pronunciation})
+            update_mapping.append({"id": utt_id, "transcription_text": p.pronunciation})
         with self.session() as session:
             bulk_update(session, Utterance, update_mapping)
             session.commit()
@@ -1048,7 +1057,7 @@ class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker)
                     tg.save(output_path, includeBlankSpaces=True, format=output_format)
 
     @property
-    def words_to_g2p(self) -> List[str]:
+    def words_to_g2p(self) -> typing.List[str]:
         """Words to produce pronunciations"""
         word_list = self.corpus_word_set
         if not self.include_bracketed:
@@ -1104,7 +1113,7 @@ class PyniniDictionaryCorpusGenerator(
         self.initialized = True
 
     @property
-    def words_to_g2p(self) -> List[str]:
+    def words_to_g2p(self) -> typing.List[str]:
         """Words to produce pronunciations"""
         if self._word_list is None:
             with self.session() as session:

@@ -14,32 +14,23 @@ concurrency:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            label: linux-64
-
-          #- os: macos-latest
-          #  label: osx-64
-          #  prefix: /Users/runner/miniconda3/envs/my-env
-
-          #- os: windows-latest
-          #  label: win-64
-          #  prefix: C:\Miniconda3\envs\my-env
-
-    name: ${{ matrix.label }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@main
         with:
           fetch-depth: 0
+
+      - name: Check disk usage
+        run: df -h
 
       - name: Install Conda environment with Micromamba
         uses: conda-incubator/setup-miniconda@v3
         with:
           environment-file: github_environment.yml
           miniforge-version: latest
+
+      - name: Check disk usage after environment install
+        run: df -h
 
       - name: Configure mfa
         shell: bash -l {0}
