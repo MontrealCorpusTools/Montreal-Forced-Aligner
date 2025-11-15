@@ -51,6 +51,3 @@ dependencies:
       - pythainlp
       - hanziconv
       - dragonmapper
-      - speechbrain
-      - transformers
-      - whisperx
