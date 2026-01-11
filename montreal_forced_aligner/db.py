@@ -1557,6 +1557,11 @@ class Utterance(MfaSqlBase):
     normalized_character_text = Column(String)
     transcription_text = Column(String)
     features = Column(String)
+    beam = Column(Float)
+    boost_silence = Column(Float)
+    initial_silence_probability = Column(Float)
+    final_silence_correction = Column(Float)
+    final_nonsilence_correction = Column(Float)
     ivector_ark = Column(String)
     vad_ark = Column(String)
     in_subset = Column(Boolean, nullable=False, default=False, index=True)
@@ -1567,7 +1572,8 @@ class Utterance(MfaSqlBase):
     duration_deviation = Column(Float, index=True)
     snr = Column(Float, index=True)
     phone_error_rate = Column(Float)
-    alignment_score = Column(Float)
+    edit_distance = Column(Float, index=True)
+    alignment_score = Column(Float, index=True)
     word_error_rate = Column(Float)
     character_error_rate = Column(Float)
     diarization_variance = Column(Float)
@@ -1890,7 +1896,11 @@ class PhoneInterval(MfaSqlBase):
             CTM interval object
         """
         return CtmInterval(
-            self.begin, self.end, self.phone.phone, self.phone.mapping_id, self.phone_goodness
+            self.begin,
+            self.end,
+            self.phone.phone,
+            self.phone.mapping_id,
+            self.phone_goodness if self.phone_goodness else 0.0,
         )
 
 
@@ -2131,7 +2141,7 @@ class ReferenceWordInterval(MfaSqlBase):
         Foreign key to :class:`~montreal_forced_aligner.db.Utterance`
     utterance: :class:`~montreal_forced_aligner.db.Utterance`
         Utterance of the interval
-    reference_phone_intervals: list[:class:`~montreal_forced_aligner.db.ReferencePhoneInterval`]
+    phone_intervals: list[:class:`~montreal_forced_aligner.db.ReferencePhoneInterval`]
         Phone intervals for the word interval
     """
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import collections
 import csv
-import functools
 import io
 import logging
 import math
@@ -14,17 +13,14 @@ import shutil
 import subprocess
 import time
 import typing
-from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from queue import Empty
-from typing import List, Optional
+from typing import List
 
 import sqlalchemy
-from kalpy.evaluation import align_phones
 from kalpy.gmm.align import GmmAligner
-from kalpy.gmm.data import CtmInterval
 from kalpy.gmm.utils import read_transition_model
-from sqlalchemy.orm import joinedload, subqueryload
+from sqlalchemy.orm import subqueryload
 from tqdm.rich import tqdm
 
 from montreal_forced_aligner import config
@@ -49,16 +45,13 @@ from montreal_forced_aligner.data import (
     WorkflowType,
 )
 from montreal_forced_aligner.db import (
-    Corpus,
     CorpusWorkflow,
     Dictionary,
     File,
     Phone,
     PhoneInterval,
-    PhoneMapping,
     PhonologicalRule,
     Pronunciation,
-    ReferencePhoneInterval,
     RuleApplication,
     SoundFile,
     Speaker,
@@ -1339,216 +1332,3 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 analysis_csv, self.export_output_directory.joinpath("alignment_analysis.csv")
             )
         self.export_textgrids(output_format, include_original_text)
-
-    def evaluate_alignments(
-        self,
-        output_directory: Optional[str] = None,
-        comparison_source=WorkflowType.alignment,
-        reference_source=WorkflowType.reference,
-    ) -> None:
-        """
-        Evaluate alignments against a reference directory
-
-        Parameters
-        ----------
-        mapping: dict[str, Union[str, list[str]]], optional
-            Mapping between phones that should be considered equal across different phone set types
-        output_directory: str, optional
-            Directory to save results, if not specified, it will be saved in the log directory
-        comparison_source: :class:`~montreal_forced_aligner.data.WorkflowType`
-            Workflow to compare to the reference intervals, defaults to :attr:`~montreal_forced_aligner.data.WorkflowType.alignment`
-        reference_source: :class:`~montreal_forced_aligner.data.WorkflowType`
-            Workflow to use as the reference intervals, defaults to :attr:`~montreal_forced_aligner.data.WorkflowType.reference`
-        """
-
-        all_begin = time.time()
-        if output_directory:
-            csv_path = os.path.join(
-                output_directory,
-                f"{comparison_source.name}_{reference_source.name}_evaluation.csv",
-            )
-            confusion_path = os.path.join(
-                output_directory,
-                f"{comparison_source.name}_{reference_source.name}_confusions.csv",
-            )
-        else:
-            self._current_workflow = "evaluation"
-            os.makedirs(self.working_log_directory, exist_ok=True)
-            csv_path = os.path.join(
-                self.working_log_directory,
-                f"{comparison_source.name}_{reference_source.name}_evaluation.csv",
-            )
-            confusion_path = os.path.join(
-                self.working_log_directory,
-                f"{comparison_source.name}_{reference_source.name}_confusions.csv",
-            )
-        csv_header = [
-            "file",
-            "begin",
-            "end",
-            "speaker",
-            "duration",
-            "normalized_text",
-            "oovs",
-            "reference_phone_count",
-            "alignment_score",
-            "phone_error_rate",
-            "alignment_log_likelihood",
-            "word_count",
-            "oov_count",
-        ]
-
-        score_count = 0
-        score_sum = 0
-        phone_edit_sum = 0
-        phone_length_sum = 0
-        phone_confusions = collections.Counter()
-        with self.session() as session:
-            # Set up
-            mapping = {}
-            for x in session.query(PhoneMapping).all():
-                if x.model_phone_string not in mapping:
-                    mapping[x.model_phone_string] = set()
-                mapping[x.model_phone_string].add(x.reference_phone_string)
-            logger.info("Evaluating alignments...")
-            logger.debug(f"Mapping: {mapping}")
-            update_mappings = []
-            indices = []
-            to_comp = []
-            score_func = functools.partial(
-                align_phones,
-                silence_phones={self.optional_silence_phone},
-                custom_mapping=mapping,
-                debug=config.DEBUG,
-            )
-            unaligned_utts = []
-            utterances: typing.List[Utterance] = session.query(Utterance).options(
-                joinedload(Utterance.file, innerjoin=True),
-                joinedload(Utterance.speaker, innerjoin=True),
-                subqueryload(Utterance.phone_intervals).options(
-                    joinedload(PhoneInterval.phone, innerjoin=True),
-                ),
-                subqueryload(Utterance.reference_phone_intervals).options(
-                    joinedload(ReferencePhoneInterval.phone, innerjoin=True),
-                ),
-                subqueryload(Utterance.word_intervals).options(
-                    joinedload(WordInterval.word, innerjoin=True),
-                ),
-            )
-            reference_phone_counts = {}
-            for u in utterances:
-                reference_phones = [x.as_ctm() for x in u.reference_phone_intervals]
-                comparison_phones = [x.as_ctm() for x in u.phone_intervals]
-                if self.use_cutoff_model:
-                    for wi in u.word_intervals:
-                        if wi.word.word_type is WordType.cutoff:
-                            comparison_phones = [
-                                x
-                                for x in comparison_phones
-                                if x.end <= wi.begin or x.begin >= wi.end
-                            ]
-                            comparison_phones.append(
-                                CtmInterval(begin=wi.begin, end=wi.end, label=self.oov_word)
-                            )
-                    comparison_phones = sorted(comparison_phones, key=lambda x: x.begin)
-
-                reference_phone_counts[u.id] = len(reference_phones)
-                if not reference_phone_counts[u.id]:
-                    continue
-                if not comparison_phones:  # couldn't be aligned
-                    phone_error_rate = reference_phone_counts[u.id]
-                    unaligned_utts.append(u)
-                    update_mappings.append(
-                        {
-                            "id": u.id,
-                            "alignment_score": None,
-                            "phone_error_rate": phone_error_rate,
-                        }
-                    )
-                    continue
-                indices.append(u)
-                to_comp.append((reference_phones, comparison_phones))
-            with ThreadPool(1) as pool:
-                gen = pool.starmap(score_func, to_comp)
-                for i, result in enumerate(gen):
-                    score, phone_error_rate, errors = result[:3]
-                    if score is None:
-                        continue
-                    u = indices[i]
-                    phone_confusions.update(errors)
-                    reference_phone_count = reference_phone_counts[u.id]
-                    update_mappings.append(
-                        {
-                            "id": u.id,
-                            "alignment_score": score,
-                            "phone_error_rate": phone_error_rate,
-                        }
-                    )
-                    score_count += 1
-                    score_sum += score
-                    phone_edit_sum += int(phone_error_rate * reference_phone_count)
-                    phone_length_sum += reference_phone_count
-            bulk_update(session, Utterance, update_mappings)
-            self.alignment_evaluation_done = True
-            session.query(Corpus).update({Corpus.alignment_evaluation_done: True})
-            session.commit()
-            logger.info("Exporting evaluation...")
-            with mfa_open(csv_path, "w") as f:
-                writer = csv.DictWriter(f, fieldnames=csv_header)
-                writer.writeheader()
-                utterances = (
-                    session.query(
-                        Utterance.id,
-                        File.name,
-                        Utterance.begin,
-                        Utterance.end,
-                        Speaker.name,
-                        Utterance.duration,
-                        Utterance.normalized_text,
-                        Utterance.oovs,
-                        Utterance.alignment_score,
-                        Utterance.phone_error_rate,
-                        Utterance.alignment_log_likelihood,
-                    )
-                    .join(Utterance.speaker)
-                    .join(Utterance.file)
-                )
-                for (
-                    u_id,
-                    file_name,
-                    begin,
-                    end,
-                    speaker_name,
-                    duration,
-                    normalized_text,
-                    oovs,
-                    alignment_score,
-                    phone_error_rate,
-                    alignment_log_likelihood,
-                ) in utterances:
-                    data = {
-                        "file": file_name,
-                        "begin": begin,
-                        "end": end,
-                        "duration": duration,
-                        "speaker": speaker_name,
-                        "normalized_text": normalized_text,
-                        "oovs": oovs,
-                        "reference_phone_count": reference_phone_counts[u_id],
-                        "alignment_score": alignment_score,
-                        "phone_error_rate": phone_error_rate,
-                        "alignment_log_likelihood": alignment_log_likelihood,
-                    }
-                    data["word_count"] = len(data["normalized_text"].split())
-                    data["oov_count"] = len(data["oovs"].split())
-                    if alignment_score is not None:
-                        score_count += 1
-                        score_sum += alignment_score
-                    writer.writerow(data)
-        with mfa_open(confusion_path, "w") as f:
-            f.write("reference,hypothesis,count\n")
-            for k, v in sorted(phone_confusions.items(), key=lambda x: -x[1]):
-                f.write(f"{k[0]},{k[1]},{v}\n")
-        logger.info(f"Average overlap score: {score_sum / score_count}")
-        logger.info(f"Average phone error rate: {phone_edit_sum / phone_length_sum}")
-        logger.debug(f"Alignment evaluation took {time.time() - all_begin} seconds")

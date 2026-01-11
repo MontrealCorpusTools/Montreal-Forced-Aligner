@@ -101,6 +101,10 @@ def mfa_open(
         file.close()
 
 
+def is_within_frame(time_point_one, time_point_two, frame_shift=0.01):
+    return abs(time_point_one - time_point_two) < frame_shift + 0.0001
+
+
 def load_configuration(config_path: typing.Union[str, Path]) -> typing.Dict[str, typing.Any]:
     """
     Load a configuration file

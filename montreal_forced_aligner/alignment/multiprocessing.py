@@ -611,9 +611,10 @@ class AlignFunction(KaldiFunction):
             ]
             aligner = GmmAligner(
                 self.model_path,
+                silence_phones=silence_phones,
                 **align_options,
             )
-            aligner.boost_silence(boost_silence, silence_phones)
+            aligner.boost_silence(boost_silence)
             for d in job.training_dictionaries:
                 align_logger.debug(f"Aligning for dictionary {d.name} ({d.id})")
                 align_logger.debug(f"Aligning with model: {aligner.acoustic_model_path}")
@@ -659,6 +660,17 @@ class AlignFunction(KaldiFunction):
                     likes_path = job.construct_path(
                         self.working_directory, "likelihoods_first_pass", "ark", d.name
                     )
+                query = (
+                    session.query(Utterance.kaldi_id, Utterance.boost_silence)
+                    .join(Utterance.speaker)
+                    .filter(Utterance.job_id == self.job_name, Speaker.dictionary_id == d.id)
+                    .filter(Utterance.ignored == False)  # noqa
+                    .filter(Utterance.boost_silence == None)  # noqa
+                    .order_by(Utterance.kaldi_id)
+                )
+                utterance_parameters = {}
+                for u_id, u_boost in query:
+                    utterance_parameters[u_id] = {"boost_silence": u_boost}
                 try:
                     aligner.export_alignments(
                         ali_path,
@@ -668,6 +680,7 @@ class AlignFunction(KaldiFunction):
                         word_file_name=words_path,
                         likelihood_file_name=likes_path,
                         callback=self.callback,
+                        utterance_parameters=utterance_parameters,
                     )
                 except Exception:
                     exc_type, exc_value, exc_traceback = sys.exc_info()
@@ -736,7 +749,6 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
 
     def _run(self):
         """Run the function"""
-
         with self.session() as session, thread_logger(
             "kalpy.align", self.log_path, job_name=self.job_name
         ) as extraction_logger:
@@ -824,10 +836,14 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
                         utterance_speech_log_likelihood = None
                         utterance_duration_deviation = None
                     try:
+                        if silence_frame_count == 0:
+                            raise ZeroDivisionError
                         silence_energy = silence_energy_sum / silence_frame_count
                     except ZeroDivisionError:
                         silence_energy = rms.min()
                     try:
+                        if nonsilence_frame_count == 0:
+                            raise ZeroDivisionError
                         nonsilence_energy = nonsilence_energy_sum / nonsilence_frame_count
                     except ZeroDivisionError:
                         nonsilence_energy = rms.max()
