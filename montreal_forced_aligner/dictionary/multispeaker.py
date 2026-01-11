@@ -92,6 +92,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         rules_path: typing.Union[str, Path] = None,
         phone_groups_path: typing.Union[str, Path] = None,
         topology_path: typing.Union[str, Path] = None,
+        skip_all_uppercase: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -111,6 +112,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         self._dictionary_base_names = None
         self.clitic_marker = None
         self.use_g2p = False
+        self.skip_all_uppercase = skip_all_uppercase
         if isinstance(rules_path, str):
             rules_path = Path(rules_path)
         if isinstance(phone_groups_path, str):
@@ -568,6 +570,8 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         silence_before_correct,
                         non_silence_before_correct,
                     ) in parse_dictionary_file(dictionary_model.path):
+                        if self.skip_all_uppercase and word.isupper():
+                            continue
                         if self.ignore_case:
                             word = word.lower()
                         if " " in word:
@@ -939,7 +943,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             if session.query(PhonologicalRule).first() is not None:
                 return
             dialect_ids = {d.name: d.id for d in session.query(Dialect).all()}
-            for rule in rule_data["rules"]:
+            for rule in rule_data.get("rules", []):
                 for d_id in dialect_ids.values():
                     r = PhonologicalRule(dialect_id=d_id, **rule)
                     session.add(r)

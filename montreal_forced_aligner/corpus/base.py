@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import collections
+import csv
+import functools
 import logging
 import os
 import re
@@ -9,10 +11,14 @@ import threading
 import time
 import typing
 from abc import ABCMeta, abstractmethod
+from multiprocessing.pool import ThreadPool
 from pathlib import Path
 
 import sqlalchemy.engine
+from kalpy.evaluation import align_phones
+from kalpy.gmm.data import CtmInterval
 from sqlalchemy.orm import Session, joinedload, selectinload, subqueryload
+from tqdm.rich import tqdm
 
 from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import DatabaseMixin, MfaWorker
@@ -40,6 +46,8 @@ from montreal_forced_aligner.db import (
     File,
     Job,
     Phone,
+    PhoneInterval,
+    PhoneMapping,
     Pronunciation,
     ReferencePhoneInterval,
     ReferenceWordInterval,
@@ -49,10 +57,12 @@ from montreal_forced_aligner.db import (
     TextFile,
     Utterance,
     Word,
+    WordInterval,
     bulk_update,
 )
 from montreal_forced_aligner.exceptions import CorpusError
-from montreal_forced_aligner.helper import mfa_open, output_mapping
+from montreal_forced_aligner.helper import load_evaluation_mapping, mfa_open, output_mapping
+from montreal_forced_aligner.textgrid import parse_aligned_textgrid
 from montreal_forced_aligner.utils import run_kaldi_function
 
 __all__ = ["CorpusMixin"]
@@ -106,6 +116,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         ignore_speakers: bool = False,
         oov_count_threshold: int = 0,
         language: Language = Language.unknown,
+        subcorpora: typing.Dict[str, typing.Dict[str, typing.Any]] = None,
         **kwargs,
     ):
         if not os.path.exists(corpus_directory):
@@ -119,6 +130,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         self.speaker_characters = speaker_characters
         self.ignore_speakers = ignore_speakers
         self.oov_count_threshold = oov_count_threshold
+        self.subcorpora = subcorpora
         self.stopped = threading.Event()
         self.decode_error_files = []
         self.textgrid_read_errors = []
@@ -176,6 +188,581 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     )
                 )
                 session.commit()
+
+    def _load_alignments(self, reference_directory: Path, workflow_type: WorkflowType):
+        self.create_new_current_workflow(workflow_type)
+        workflow = self.current_workflow
+        if workflow.alignments_collected:
+            logger.info(f"{str(workflow_type).title()} alignments already loaded!")
+            return
+        logger.info("Loading reference files...")
+        all_phone_intervals = []
+        all_word_intervals = []
+        if workflow_type is WorkflowType.reference:
+            phone_interval_class = ReferencePhoneInterval
+            word_interval_class = ReferenceWordInterval
+        else:
+            phone_interval_class = PhoneInterval
+            word_interval_class = WordInterval
+        with tqdm(total=self.num_files, disable=config.QUIET) as pbar, self.session() as session:
+            phone_interval_id = session.query(
+                sqlalchemy.func.max(phone_interval_class.id)
+            ).scalar()
+            if not phone_interval_id:
+                phone_interval_id = 0
+            word_interval_id = session.query(sqlalchemy.func.max(word_interval_class.id)).scalar()
+            if not word_interval_id:
+                word_interval_id = 0
+            phone_mapping = {}
+            max_phone_id = 0
+            for p, p_id in session.query(Phone.phone, Phone.id):
+                phone_mapping[p] = p_id
+                if p_id > max_phone_id:
+                    max_phone_id = p_id
+            new_phones = []
+            word_mapping = {}
+
+            new_words = []
+            max_word_id = 0
+            for word in session.query(Word).all():
+                word_mapping[word.word] = word.id
+                if word.id > max_word_id:
+                    max_word_id = word.id
+            max_word_id += 1
+            utterance_mapping = []
+            for root, _, files in os.walk(reference_directory, followlinks=True):
+                if root.startswith("."):  # Ignore hidden directories
+                    continue
+                root_speaker = os.path.basename(root)
+                for f in files:
+                    if f.startswith("."):  # Ignore hidden files
+                        continue
+                    if f.endswith(".TextGrid"):
+                        file_name = f.replace(".TextGrid", "")
+                        file_id = session.query(File.id).filter_by(name=file_name).scalar()
+                        if not file_id:
+                            continue
+                        phone_intervals, word_intervals = parse_aligned_textgrid(
+                            os.path.join(root, f), root_speaker
+                        )
+                        utterances = (
+                            session.query(
+                                Utterance.id, Speaker.name, Utterance.begin, Utterance.end
+                            )
+                            .join(Utterance.speaker)
+                            .filter(Utterance.file_id == file_id)
+                            .order_by(Utterance.begin)
+                        )
+                        for u_id, speaker_name, begin, end in utterances:
+                            if speaker_name not in phone_intervals:
+                                continue
+                            utterance_phone_intervals = []
+                            while phone_intervals[speaker_name]:
+                                interval = phone_intervals[speaker_name].pop(0)
+                                dur = interval.end - interval.begin
+                                mid_point = interval.begin + (dur / 2)
+                                if begin <= mid_point <= end:
+                                    if interval.label not in phone_mapping:
+                                        max_phone_id += 1
+                                        phone_mapping[interval.label] = max_phone_id
+                                        new_phones.append(
+                                            {
+                                                "id": max_phone_id,
+                                                "mapping_id": max_phone_id - 1,
+                                                "phone": interval.label,
+                                                "kaldi_label": interval.label,
+                                                "phone_type": PhoneType.extra,
+                                            }
+                                        )
+                                    if (
+                                        utterance_phone_intervals
+                                        and utterance_phone_intervals[-1]["end"] != interval.begin
+                                    ):
+                                        phone_interval_id += 1
+                                        utterance_phone_intervals.append(
+                                            {
+                                                "id": phone_interval_id,
+                                                "begin": utterance_phone_intervals[-1]["end"],
+                                                "end": interval.begin,
+                                                "phone_id": phone_mapping.get(
+                                                    getattr(self, "optional_silence_phone", "sil"),
+                                                    2,
+                                                ),
+                                                "utterance_id": u_id,
+                                            }
+                                        )
+                                    phone_interval_id += 1
+                                    utterance_phone_intervals.append(
+                                        {
+                                            "id": phone_interval_id,
+                                            "begin": interval.begin,
+                                            "end": interval.end,
+                                            "phone_id": phone_mapping[interval.label],
+                                            "utterance_id": u_id,
+                                        }
+                                    )
+                                if mid_point > end:
+                                    phone_intervals[speaker_name].insert(0, interval)
+                                    break
+                            if utterance_phone_intervals:
+                                if utterance_phone_intervals[0]["begin"] != begin:
+                                    phone_interval_id += 1
+                                    utterance_phone_intervals.insert(
+                                        0,
+                                        {
+                                            "id": phone_interval_id,
+                                            "begin": begin,
+                                            "end": utterance_phone_intervals[0]["begin"],
+                                            "phone_id": phone_mapping.get(
+                                                getattr(self, "optional_silence_phone", "sil"),
+                                                2,
+                                            ),
+                                            "utterance_id": u_id,
+                                        },
+                                    )
+                                if utterance_phone_intervals[-1]["end"] != end:
+                                    phone_interval_id += 1
+                                    utterance_phone_intervals.insert(
+                                        0,
+                                        {
+                                            "id": phone_interval_id,
+                                            "begin": utterance_phone_intervals[-1]["end"],
+                                            "end": end,
+                                            "phone_id": phone_mapping.get(
+                                                getattr(self, "optional_silence_phone", "sil"),
+                                                2,
+                                            ),
+                                            "utterance_id": u_id,
+                                        },
+                                    )
+                            if speaker_name not in word_intervals:
+                                continue
+                            utterance_word_intervals = []
+                            while word_intervals[speaker_name]:
+                                interval = word_intervals[speaker_name].pop(0)
+                                dur = interval.end - interval.begin
+                                mid_point = interval.begin + (dur / 2)
+                                if begin <= mid_point <= end:
+                                    if interval.label not in word_mapping:
+                                        max_word_id += 1
+                                        word_mapping[interval.label] = max_word_id
+                                        word_type = WordType.extra
+                                        if interval.label == "<eps>":
+                                            word_type = WordType.silence
+                                        elif interval.label == "<unk>":
+                                            word_type = WordType.oov
+
+                                        new_words.append(
+                                            {
+                                                "id": max_word_id,
+                                                "mapping_id": max_word_id - 1,
+                                                "word": interval.label,
+                                                "dictionary_id": 1,
+                                                "word_type": word_type,
+                                                "included": False,
+                                                "count": 0,
+                                            }
+                                        )
+                                    if (
+                                        utterance_word_intervals
+                                        and utterance_word_intervals[-1]["end"] != interval.begin
+                                    ):
+                                        word_interval_id += 1
+                                        utterance_word_intervals.append(
+                                            {
+                                                "id": word_interval_id,
+                                                "begin": utterance_word_intervals[-1]["end"],
+                                                "end": interval.begin,
+                                                "word_id": word_mapping.get(
+                                                    getattr(self, "silence_word", "<eps>"),
+                                                    1,
+                                                ),
+                                                "utterance_id": u_id,
+                                            }
+                                        )
+                                    word_interval_id += 1
+                                    utterance_word_intervals.append(
+                                        {
+                                            "id": word_interval_id,
+                                            "begin": interval.begin,
+                                            "end": interval.end,
+                                            "word_id": word_mapping[interval.label],
+                                            "utterance_id": u_id,
+                                        }
+                                    )
+                                if mid_point > end:
+                                    word_intervals[speaker_name].insert(0, interval)
+                                    break
+                            if utterance_word_intervals:
+                                if utterance_word_intervals[0]["begin"] != begin:
+                                    word_interval_id += 1
+                                    utterance_word_intervals.insert(
+                                        0,
+                                        {
+                                            "id": word_interval_id,
+                                            "begin": begin,
+                                            "end": utterance_word_intervals[0]["begin"],
+                                            "word_id": word_mapping.get(
+                                                getattr(self, "silence_word", "<eps>"),
+                                                1,
+                                            ),
+                                            "utterance_id": u_id,
+                                        },
+                                    )
+                                if utterance_word_intervals[-1]["end"] != end:
+                                    word_interval_id += 1
+                                    utterance_word_intervals.insert(
+                                        0,
+                                        {
+                                            "id": word_interval_id,
+                                            "begin": utterance_word_intervals[-1]["end"],
+                                            "end": end,
+                                            "word_id": word_mapping.get(
+                                                getattr(self, "silence_word", "<eps>"),
+                                                1,
+                                            ),
+                                            "utterance_id": u_id,
+                                        },
+                                    )
+                            all_phone_intervals.extend(utterance_phone_intervals)
+                            all_word_intervals.extend(utterance_word_intervals)
+                            if (
+                                utterance_phone_intervals
+                                and workflow_type is WorkflowType.reference
+                            ):
+                                utterance_mapping.append({"id": u_id, "manual_alignments": True})
+                        pbar.update(1)
+
+            if new_phones:
+                session.execute(sqlalchemy.insert(Phone.__table__), new_phones)
+                session.commit()
+
+            if new_words:
+                session.execute(sqlalchemy.insert(Word.__table__), new_words)
+                session.commit()
+            session.execute(sqlalchemy.insert(phone_interval_class.__table__), all_phone_intervals)
+            if utterance_mapping:
+                bulk_update(session, Utterance, utterance_mapping)
+            session.query(CorpusWorkflow).filter(CorpusWorkflow.id == workflow.id).update(
+                {CorpusWorkflow.done: True, CorpusWorkflow.alignments_collected: True}
+            )
+            session.query(Corpus).update({Corpus.has_reference_alignments: True})
+            session.commit()
+
+    def load_reference_alignments(self, reference_directory: Path) -> None:
+        """
+        Load reference alignments to use in alignment evaluation from a directory
+
+        Parameters
+        ----------
+        reference_directory: :class:`~pathlib.Path`
+            Directory containing reference alignments
+
+        """
+        self._load_alignments(reference_directory, WorkflowType.reference)
+
+    def load_test_alignments(self, directory: typing.Union[Path, str]) -> None:
+        """
+        Load alignments to use in alignment evaluation from a directory
+
+        Parameters
+        ----------
+        directory: :class:`~pathlib.Path`
+            Directory containing alignments
+
+        """
+        self._load_alignments(directory, WorkflowType.alignment)
+
+    def load_mapping(self, custom_mapping_path: typing.Union[Path, str]):
+        mapping = load_evaluation_mapping(custom_mapping_path)
+        with self.session() as session:
+            extra_phones = {
+                phone: p_id
+                for phone, p_id in session.query(Phone.phone, Phone.id).filter(
+                    Phone.phone_type == PhoneType.extra
+                )
+            }
+            phones = {
+                phone: p_id
+                for phone, p_id in session.query(Phone.phone, Phone.id).filter(
+                    Phone.phone_type == PhoneType.non_silence
+                )
+            }
+            phone_mappings = []
+            found_phones = set()
+            found_extra_phones = set()
+            for aligned_phones, ref_phones in mapping.items():
+                if isinstance(ref_phones, str):
+                    ref_phones = [ref_phones]
+                for rp in ref_phones:
+                    phone_mappings.append(
+                        {
+                            "model_phone_string": aligned_phones,
+                            "reference_phone_string": rp,
+                        }
+                    )
+                found_phones.update(aligned_phones.split())
+                found_extra_phones.update(ref_phones)
+            session.bulk_insert_mappings(PhoneMapping, phone_mappings)
+            session.commit()
+            unreferenced_phones = sorted(set(phones.keys()) - found_phones)
+            unreferenced_extra_phones = sorted(set(extra_phones.keys()) - found_extra_phones)
+            logger.debug(
+                f"Phones not referenced in mapping file: {', '.join(unreferenced_phones)}"
+            )
+            logger.debug(
+                f"Reference phones not referenced in mapping file: {', '.join(unreferenced_extra_phones)}"
+            )
+
+    def evaluate_alignments(
+        self,
+        output_directory: typing.Optional[str] = None,
+        comparison_source=WorkflowType.alignment,
+        reference_source=WorkflowType.reference,
+    ) -> None:
+        """
+        Evaluate alignments against a reference directory
+
+        Parameters
+        ----------
+        mapping: dict[str, Union[str, list[str]]], optional
+            Mapping between phones that should be considered equal across different phone set types
+        output_directory: str, optional
+            Directory to save results, if not specified, it will be saved in the log directory
+        comparison_source: :class:`~montreal_forced_aligner.data.WorkflowType`
+            Workflow to compare to the reference intervals, defaults to :attr:`~montreal_forced_aligner.data.WorkflowType.alignment`
+        reference_source: :class:`~montreal_forced_aligner.data.WorkflowType`
+            Workflow to use as the reference intervals, defaults to :attr:`~montreal_forced_aligner.data.WorkflowType.reference`
+        """
+
+        all_begin = time.time()
+        if output_directory:
+            os.makedirs(output_directory, exist_ok=True)
+            csv_path = os.path.join(
+                output_directory,
+                f"{comparison_source.name}_{reference_source.name}_evaluation.csv",
+            )
+            boundary_csv_path = os.path.join(
+                output_directory,
+                f"{comparison_source.name}_{reference_source.name}_evaluation_boundaries.csv",
+            )
+            confusion_path = os.path.join(
+                output_directory,
+                f"{comparison_source.name}_{reference_source.name}_confusions.csv",
+            )
+        else:
+            self._current_workflow = "evaluation"
+            os.makedirs(self.working_log_directory, exist_ok=True)
+            csv_path = os.path.join(
+                self.working_log_directory,
+                f"{comparison_source.name}_{reference_source.name}_evaluation.csv",
+            )
+            boundary_csv_path = os.path.join(
+                self.working_log_directory,
+                f"{comparison_source.name}_{reference_source.name}_evaluation_boundaries.csv",
+            )
+            confusion_path = os.path.join(
+                self.working_log_directory,
+                f"{comparison_source.name}_{reference_source.name}_confusions.csv",
+            )
+        csv_header = [
+            "file",
+            "begin",
+            "end",
+            "speaker",
+            "duration",
+            "normalized_text",
+            "oovs",
+            "reference_phone_count",
+            "edit_distance",
+            "alignment_score",
+            "phone_error_rate",
+            "alignment_log_likelihood",
+            "word_count",
+            "oov_count",
+        ]
+        boundary_csv_header = [
+            "file",
+            "utterance_begin",
+            "utterance_end",
+            "speaker",
+            "following_reference_phone",
+            "following_test_phone",
+            "previous_reference_phone",
+            "previous_test_phone",
+            "boundary_error",
+            "reference_boundary",
+            "test_boundary",
+        ]
+
+        score_count = 0
+        score_sum = 0
+        phone_edit_sum = 0
+        phone_length_sum = 0
+        phone_confusions = collections.Counter()
+        with self.session() as session:
+            # Set up
+            mapping = {}
+            for x in session.query(PhoneMapping).all():
+                if x.model_phone_string not in mapping:
+                    mapping[x.model_phone_string] = set()
+                mapping[x.model_phone_string].add(x.reference_phone_string)
+            logger.info("Evaluating alignments...")
+            logger.debug(f"Mapping: {mapping}")
+            update_mappings = []
+            indices = []
+            to_comp = []
+            score_func = functools.partial(
+                align_phones,
+                silence_phones=getattr(self, "optional_silence_phone", "sil"),
+                custom_mapping=mapping,
+                debug=config.DEBUG,
+            )
+            unaligned_utts = []
+            utterances: typing.List[Utterance] = session.query(Utterance).options(
+                joinedload(Utterance.file, innerjoin=True),
+                joinedload(Utterance.speaker, innerjoin=True),
+                subqueryload(Utterance.phone_intervals).options(
+                    joinedload(PhoneInterval.phone, innerjoin=True),
+                ),
+                subqueryload(Utterance.reference_phone_intervals).options(
+                    joinedload(ReferencePhoneInterval.phone, innerjoin=True),
+                ),
+                subqueryload(Utterance.word_intervals).options(
+                    joinedload(WordInterval.word, innerjoin=True),
+                ),
+            )
+            reference_phone_counts = {}
+            for u in utterances:
+                reference_phones = [x.as_ctm() for x in u.reference_phone_intervals]
+                comparison_phones = [x.as_ctm() for x in u.phone_intervals]
+                if getattr(self, "use_cutoff_model", False):
+                    for wi in u.word_intervals:
+                        if wi.word.word_type is WordType.cutoff:
+                            comparison_phones = [
+                                x
+                                for x in comparison_phones
+                                if x.end <= wi.begin or x.begin >= wi.end
+                            ]
+                            comparison_phones.append(
+                                CtmInterval(
+                                    begin=wi.begin,
+                                    end=wi.end,
+                                    label=getattr(self, "oov_word", "<unk>"),
+                                )
+                            )
+                    comparison_phones = sorted(comparison_phones, key=lambda x: x.begin)
+
+                reference_phone_counts[u.id] = len(reference_phones)
+                if not reference_phone_counts[u.id]:
+                    continue
+                if not comparison_phones:  # couldn't be aligned
+                    phone_error_rate = reference_phone_counts[u.id]
+                    unaligned_utts.append(u)
+                    update_mappings.append(
+                        {
+                            "id": u.id,
+                            "alignment_score": None,
+                            "phone_error_rate": phone_error_rate,
+                        }
+                    )
+                    continue
+                indices.append(u)
+                to_comp.append((reference_phones, comparison_phones))
+            boundary_errors = {}
+            with ThreadPool(1) as pool:
+                gen = pool.starmap(score_func, to_comp)
+                for i, results in enumerate(gen):
+                    score, phone_error_rate, errors = results[:3]
+                    edit_distance = None
+                    u = indices[i]
+                    if len(results) > 3:
+                        edit_distance = results[3]
+                        boundary_errors[u.id] = results[4]
+                    if score is None:
+                        continue
+                    phone_confusions.update(errors)
+                    reference_phone_count = reference_phone_counts[u.id]
+                    update_mappings.append(
+                        {
+                            "id": u.id,
+                            "alignment_score": score,
+                            "phone_error_rate": phone_error_rate,
+                            "edit_distance": edit_distance,
+                        }
+                    )
+                    score_count += 1
+                    score_sum += score
+                    phone_edit_sum += int(phone_error_rate * reference_phone_count)
+                    phone_length_sum += reference_phone_count
+            bulk_update(session, Utterance, update_mappings)
+            self.alignment_evaluation_done = True
+            session.query(Corpus).update({Corpus.alignment_evaluation_done: True})
+            session.commit()
+        with self.session() as session:
+            logger.info("Exporting evaluation...")
+            with mfa_open(csv_path, "w") as f, mfa_open(boundary_csv_path, "w") as boundary_f:
+                writer = csv.DictWriter(f, fieldnames=csv_header)
+                writer.writeheader()
+                boundary_writer = csv.DictWriter(boundary_f, fieldnames=boundary_csv_header)
+                boundary_writer.writeheader()
+                utterances = (
+                    session.query(
+                        Utterance,
+                        File.name,
+                        Speaker.name,
+                    )
+                    .join(Utterance.speaker)
+                    .join(Utterance.file)
+                ).order_by(
+                    sqlalchemy.desc(Utterance.edit_distance),
+                    sqlalchemy.desc(Utterance.alignment_score),
+                )
+                for (
+                    u,
+                    file_name,
+                    speaker_name,
+                ) in utterances:
+                    data = {
+                        "file": file_name,
+                        "begin": u.begin,
+                        "end": u.end,
+                        "duration": u.duration,
+                        "speaker": speaker_name,
+                        "normalized_text": u.normalized_text if u.normalized_text else u.text,
+                        "oovs": u.oovs,
+                        "reference_phone_count": reference_phone_counts[u.id],
+                        "edit_distance": u.edit_distance,
+                        "alignment_score": u.alignment_score,
+                        "phone_error_rate": u.phone_error_rate,
+                        "alignment_log_likelihood": u.alignment_log_likelihood,
+                    }
+                    data["word_count"] = len(data["normalized_text"].split())
+                    data["oov_count"] = len(data["oovs"].split())
+                    if u.alignment_score is not None:
+                        score_count += 1
+                        score_sum += u.alignment_score
+                    writer.writerow(data)
+                    b_data = boundary_errors.get(u.id, [])
+                    if not b_data:
+                        continue
+                    for b in b_data:
+                        b.update(
+                            {
+                                "file": file_name,
+                                "utterance_begin": u.begin,
+                                "utterance_end": u.end,
+                                "speaker": speaker_name,
+                            }
+                        )
+                        boundary_writer.writerow(b)
+        with mfa_open(confusion_path, "w") as f:
+            f.write("reference,hypothesis,count\n")
+            for k, v in sorted(phone_confusions.items(), key=lambda x: -x[1]):
+                f.write(f"{k[0]},{k[1]},{v}\n")
+        logger.info(f"Average overlap score: {score_sum / score_count}")
+        logger.info(f"Average phone error rate: {phone_edit_sum / phone_length_sum}")
+        logger.debug(f"Alignment evaluation took {time.time() - all_begin} seconds")
 
     def get_utterances(
         self,
@@ -715,6 +1302,24 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             self._num_speakers = None
         self._num_utterances = None  # Recalculate if already cached
         self._num_files = None
+        session.commit()
+        if self.subcorpora:
+            for subcorpus, parameters in self.subcorpora.items():
+                utterances = (
+                    session.query(Utterance.id)
+                    .join(Utterance.file)
+                    .filter(File.relative_path.like(f"{subcorpus}%"))
+                    .scalar_subquery()
+                )
+                query = (
+                    sqlalchemy.update(Utterance)
+                    .execution_options(synchronize_session="fetch")
+                    .values(**parameters)
+                    .where(Utterance.id.in_(utterances))
+                )
+                session.execute(query)
+                session.commit()
+
         session.commit()
 
     def get_tokenizers(self):
@@ -1566,16 +2171,14 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         larger_subset_query = (
                             session.query(Utterance.id)
                             .join(Utterance.speaker)
+                            .join(Utterance.file)
                             .filter(Speaker.dictionary_id == dict_id)
-                            .filter(Utterance.ignored == False)  # noqa
-                            .filter(
-                                sqlalchemy.or_(
-                                    Utterance.duration_deviation == None,  # noqa
-                                    Utterance.duration_deviation < 10,
-                                    Utterance.manual_alignments == True,  # noqa
-                                )
-                            )  # noqa
                         )
+                        larger_subset_query = add_filters(larger_subset_query)
+                        if speaker_ids:
+                            larger_subset_query = larger_subset_query.filter(
+                                Speaker.id.in_(speaker_ids)
+                            )
                         sq = larger_subset_query.subquery()
                         subset_utts = sqlalchemy.select(sq.c.id).scalar_subquery()
                         query = (
@@ -1680,28 +2283,26 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             log_dir = subset_directory.joinpath("log")
             os.makedirs(log_dir, exist_ok=True)
 
-            logger.debug(f"Setting subset flags took {time.time() - begin} seconds")
-            with self.session() as session:
-                jobs = (
-                    session.query(Job)
-                    .options(
-                        joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries)
-                    )
-                    .filter(Job.utterances.any(Utterance.in_subset == True))  # noqa
+        logger.debug(f"Setting subset flags took {time.time() - begin} seconds")
+        with self.session() as session:
+            jobs = (
+                session.query(Job)
+                .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
+                .filter(Job.utterances.any(Utterance.in_subset == True))  # noqa
+            )
+            self._jobs = jobs.all()
+            arguments = [
+                ExportKaldiFilesArguments(
+                    j.id,
+                    getattr(self, "session" if config.USE_THREADING else "db_string", ""),
+                    None,
+                    subset_directory,
+                    getattr(self, "export_frame_shift", 0.01),
                 )
-                self._jobs = jobs.all()
-                arguments = [
-                    ExportKaldiFilesArguments(
-                        j.id,
-                        getattr(self, "session" if config.USE_THREADING else "db_string", ""),
-                        None,
-                        subset_directory,
-                        getattr(self, "export_frame_shift", 0.01),
-                    )
-                    for j in self._jobs
-                ]
-            for _ in run_kaldi_function(ExportKaldiFilesFunction, arguments, total_count=subset):
-                pass
+                for j in self._jobs
+            ]
+        for _ in run_kaldi_function(ExportKaldiFilesFunction, arguments, total_count=subset):
+            pass
 
     @property
     def num_files(self) -> int:

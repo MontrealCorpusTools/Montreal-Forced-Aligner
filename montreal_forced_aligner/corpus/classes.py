@@ -199,6 +199,8 @@ class FileData:
                     speaker_name = tier_name.strip()
                 else:
                     speaker_name = root_speaker
+                if speaker_name in {"utterance", "text", "utterances", "texts"}:
+                    speaker_name = root_speaker
                 self.speaker_ordering.append(speaker_name)
                 channel = 0
                 if num_channels == 2 and i >= num_tiers / 2:
@@ -222,69 +224,77 @@ class FileData:
                     )
                     if not utt.text:
                         continue
-                    if speaker_name in phone_data:
-                        for pi in phone_data[speaker_name]:
-                            if pi.begin < utt.begin:
-                                continue
-                            if pi.end > utt.end:
-                                break
-                            if (
-                                len(utt.phone_intervals) > 0
-                                and pi.begin != utt.phone_intervals[-1].end
-                            ):
-                                utt.phone_intervals.append(
-                                    CtmInterval(utt.phone_intervals[-1].end, pi.begin, "sil")
-                                )
-                            utt.phone_intervals.append(pi)
-                        utt.manual_alignments = len(utt.phone_intervals) > 0
-                        if utt.manual_alignments:
-                            if utt.begin != utt.phone_intervals[0].begin:
-                                if (
-                                    abs(utt.phone_intervals[0].begin - utt.begin) < 0.02
-                                    or utt.phone_intervals[0].label == "sil"
-                                ):
-                                    utt.phone_intervals[0].begin = utt.begin
-                                else:
-                                    utt.phone_intervals.insert(
-                                        0,
-                                        CtmInterval(
-                                            utt.begin, utt.phone_intervals[0].begin, "sil"
-                                        ),
-                                    )
-                            if utt.phone_intervals[-1].end != utt.end:
-                                if (
-                                    abs(utt.phone_intervals[-1].end - utt.end) < 0.02
-                                    or utt.phone_intervals[-1].label == "sil"
-                                ):
-                                    utt.phone_intervals[-1].end = utt.end
-                                else:
-                                    utt.phone_intervals.append(
-                                        CtmInterval(utt.phone_intervals[-1].end, utt.end, "sil")
-                                    )
-                    if speaker_name in word_data:
-                        for wi in word_data[speaker_name]:
-                            if wi.begin < utt.begin:
-                                continue
-                            if wi.end > utt.end:
-                                break
-                            if (
-                                len(utt.word_intervals) > 0
-                                and wi.begin != utt.word_intervals[-1].end
-                            ):
-                                utt.word_intervals.append(
-                                    CtmInterval(utt.word_intervals[-1].end, wi.begin, "<eps>")
-                                )
-                            utt.word_intervals.append(wi)
-                        if utt.manual_alignments and len(utt.word_intervals) > 0:
-                            if utt.begin != utt.word_intervals[0].begin:
-                                utt.word_intervals.insert(
-                                    0, CtmInterval(utt.begin, utt.word_intervals[0].begin, "<eps>")
-                                )
-                            if utt.word_intervals[-1].end != utt.end:
-                                utt.word_intervals.append(
-                                    CtmInterval(utt.word_intervals[-1].end, utt.end, "<eps>")
-                                )
                     self.utterances.append(utt)
+
+            if not self.utterances and word_data:
+                for speaker_name, word_intervals in word_data.items():
+                    current_utt = UtteranceData(
+                        speaker_name=speaker_name,
+                        file_name=self.name,
+                        begin=0,
+                        end=duration,
+                        text=" ".join(wi.label for wi in word_intervals),
+                        channel=1,  # FIXME assuming channel
+                    )
+                    self.utterances.append(current_utt)
+            for utt in self.utterances:
+                if speaker_name in phone_data:
+                    for pi in phone_data[speaker_name]:
+                        if pi.begin < utt.begin:
+                            continue
+                        if pi.end > utt.end:
+                            break
+                        if (
+                            len(utt.phone_intervals) > 0
+                            and pi.begin != utt.phone_intervals[-1].end
+                        ):
+                            utt.phone_intervals.append(
+                                CtmInterval(utt.phone_intervals[-1].end, pi.begin, "sil")
+                            )
+                        utt.phone_intervals.append(pi)
+                    utt.manual_alignments = len(utt.phone_intervals) > 0
+                    if utt.manual_alignments:
+                        if utt.begin != utt.phone_intervals[0].begin:
+                            if (
+                                abs(utt.phone_intervals[0].begin - utt.begin) < 0.02
+                                or utt.phone_intervals[0].label == "sil"
+                            ):
+                                utt.phone_intervals[0].begin = utt.begin
+                            else:
+                                utt.phone_intervals.insert(
+                                    0,
+                                    CtmInterval(utt.begin, utt.phone_intervals[0].begin, "sil"),
+                                )
+                        if utt.phone_intervals[-1].end != utt.end:
+                            if (
+                                abs(utt.phone_intervals[-1].end - utt.end) < 0.02
+                                or utt.phone_intervals[-1].label == "sil"
+                            ):
+                                utt.phone_intervals[-1].end = utt.end
+                            else:
+                                utt.phone_intervals.append(
+                                    CtmInterval(utt.phone_intervals[-1].end, utt.end, "sil")
+                                )
+                if speaker_name in word_data:
+                    for wi in word_data[speaker_name]:
+                        if wi.begin < utt.begin:
+                            continue
+                        if wi.end > utt.end:
+                            break
+                        if len(utt.word_intervals) > 0 and wi.begin != utt.word_intervals[-1].end:
+                            utt.word_intervals.append(
+                                CtmInterval(utt.word_intervals[-1].end, wi.begin, "<eps>")
+                            )
+                        utt.word_intervals.append(wi)
+                    if utt.manual_alignments and len(utt.word_intervals) > 0:
+                        if utt.begin != utt.word_intervals[0].begin:
+                            utt.word_intervals.insert(
+                                0, CtmInterval(utt.begin, utt.word_intervals[0].begin, "<eps>")
+                            )
+                        if utt.word_intervals[-1].end != utt.end:
+                            utt.word_intervals.append(
+                                CtmInterval(utt.word_intervals[-1].end, utt.end, "<eps>")
+                            )
         else:
             if self.wav_info is not None:
                 duration = self.wav_info.duration

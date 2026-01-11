@@ -314,7 +314,7 @@ def load_textgrid(path: typing.Union[Path, str]):
 
 def parse_aligned_textgrid(
     path: Path, root_speaker: typing.Optional[str] = None
-) -> Dict[str, List[CtmInterval]]:
+) -> typing.Tuple[Dict[str, List[CtmInterval]], Dict[str, List[CtmInterval]]]:
     """
     Load a TextGrid as a dictionary of speaker's phone tiers
 
@@ -331,33 +331,53 @@ def parse_aligned_textgrid(
         Parsed phone tier
     """
     tg = load_textgrid(path)
-    data = {}
-    phone_tier_pattern = re.compile(r"(.*) ?- ?phones")
+    phone_intervals = {}
+    word_intervals = {}
+    phone_tier_pattern = re.compile(r"(.*) ?- ?phone")
+    word_tier_pattern = re.compile(r"(.*) ?- ?word")
     for tier_name in tg.tierNames:
         ti = tg._tierDict[tier_name]
         if not isinstance(ti, tgio.IntervalTier):
             continue
-        if "phones" not in tier_name:
-            continue
-        m = phone_tier_pattern.match(tier_name)
-        if m:
-            speaker_name = m.groups()[0].strip()
-        elif root_speaker:
-            speaker_name = root_speaker
-        else:
-            speaker_name = ""
-        if speaker_name not in data:
-            data[speaker_name] = []
-        for begin, end, text in ti.entries:
-            text = text.strip()
-            if not text:
-                continue
-            begin, end = round(begin, 4), round(end, 4)
-            if end - begin < 0.01:
-                continue
-            interval = CtmInterval(begin, end, text)
-            data[speaker_name].append(interval)
-    return data
+        if "phone" in tier_name:
+            m = phone_tier_pattern.match(tier_name)
+            if m:
+                speaker_name = m.groups()[0].strip()
+            elif root_speaker:
+                speaker_name = root_speaker
+            else:
+                speaker_name = ""
+            if speaker_name not in phone_intervals:
+                phone_intervals[speaker_name] = []
+            for begin, end, text in ti.entries:
+                text = text.strip()
+                if not text:
+                    continue
+                begin, end = round(begin, 4), round(end, 4)
+                if end - begin < 0.01:
+                    continue
+                interval = CtmInterval(begin, end, text)
+                phone_intervals[speaker_name].append(interval)
+        elif "word" in tier_name:
+            m = word_tier_pattern.match(tier_name)
+            if m:
+                speaker_name = m.groups()[0].strip()
+            elif root_speaker:
+                speaker_name = root_speaker
+            else:
+                speaker_name = ""
+            if speaker_name not in word_intervals:
+                word_intervals[speaker_name] = []
+            for begin, end, text in ti.entries:
+                text = text.strip()
+                if not text:
+                    continue
+                begin, end = round(begin, 4), round(end, 4)
+                if end - begin < 0.01:
+                    continue
+                interval = CtmInterval(begin, end, text)
+                word_intervals[speaker_name].append(interval)
+    return phone_intervals, word_intervals
 
 
 def construct_textgrid_output(

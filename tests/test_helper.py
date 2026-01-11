@@ -88,7 +88,7 @@ def test_align_phones(basic_corpus_dir, basic_dict_path, temp_dir, eval_mapping_
         "ɹ",
     ]
     comparison_sequence = [CtmInterval(i, i + 1, x) for i, x in enumerate(comparison_sequence)]
-    result = align_phones(
+    score, phone_errors, error_counts, edit_distance, _ = align_phones(
         reference_sequence,
         comparison_sequence,
         silence_phones={"sil"},
