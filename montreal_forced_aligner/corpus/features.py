@@ -221,6 +221,7 @@ class MfccFunction(KaldiFunction):
                     .join(Utterance.file)
                     .join(File.sound_file)
                     .filter(
+                        Utterance.ignored == False,
                         Utterance.job_id == self.job_name,
                         Utterance.duration >= min_length,
                     )
@@ -301,7 +302,7 @@ class FinalFeatureFunction(KaldiFunction):
             job: typing.Optional[Job] = session.get(Job, self.job_name)
             utterances = (
                 session.query(Utterance.kaldi_id, Utterance.speaker_id)
-                .filter(Utterance.job_id == self.job_name)
+                .filter(Utterance.job_id == self.job_name, Utterance.ignored == False)
                 .order_by(Utterance.kaldi_id)
             )
             spk2utt = KaldiMapping(list_mapping=True)
