@@ -8,6 +8,7 @@ import queue
 import threading
 import time
 import typing
+from dataclasses import dataclass
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from queue import Queue
@@ -34,11 +35,6 @@ from montreal_forced_aligner.helper import edit_distance, mfa_open
 from montreal_forced_aligner.models import TokenizerModel
 from montreal_forced_aligner.textgrid import construct_output_path
 from montreal_forced_aligner.utils import run_kaldi_function
-
-if typing.TYPE_CHECKING:
-    from dataclasses import dataclass
-else:
-    from dataclassy import dataclass
 
 __all__ = [
     "TokenizerRewriter",

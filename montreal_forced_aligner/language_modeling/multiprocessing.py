@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import subprocess
 import typing
+from dataclasses import dataclass
 from pathlib import Path
 
 import sqlalchemy
@@ -20,11 +21,7 @@ from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import thirdparty_binary
 
 if typing.TYPE_CHECKING:
-    from dataclasses import dataclass
-
     from montreal_forced_aligner.abc import MetaDict
-else:
-    from dataclassy import dataclass
 
 
 @dataclass

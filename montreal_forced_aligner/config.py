@@ -5,17 +5,17 @@ MFA configuration
 """
 from __future__ import annotations
 
+import dataclasses
 import os
 import pathlib
 import re
 import typing
+from dataclasses import dataclass
 from typing import Any, Dict, List, Union
 
-import dataclassy
 import joblib
 import rich_click as click
 import yaml
-from dataclassy import dataclass
 
 from montreal_forced_aligner.exceptions import RootDirectoryError
 from montreal_forced_aligner.helper import MfaYamlDumper, mfa_open
@@ -249,15 +249,17 @@ class MfaConfiguration:
         """Name of the current :class:`~montreal_forced_aligner.config.MfaProfile`"""
         if self.current_profile_name not in self.profiles:
             self.profiles[self.current_profile_name] = MfaProfile()
-            self.profiles[self.current_profile_name].update(dataclassy.asdict(self.global_profile))
+            self.profiles[self.current_profile_name].update(
+                dataclasses.asdict(self.global_profile)
+            )
         return self.profiles[self.current_profile_name]
 
     def save(self) -> None:
         """Save MFA configuration"""
         global_configuration_file = generate_config_path()
-        data = dataclassy.asdict(self.global_profile)
+        data = dataclasses.asdict(self.global_profile)
         data["profiles"] = {
-            k: dataclassy.asdict(v) for k, v in self.profiles.items() if k != "global"
+            k: dataclasses.asdict(v) for k, v in self.profiles.items() if k != "global"
         }
         with mfa_open(global_configuration_file, "w") as f:
             yaml.dump(data, f, Dumper=MfaYamlDumper)

@@ -12,8 +12,9 @@ import queue
 import threading
 import typing
 import warnings
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict
+from typing import Dict
 
 import numpy as np
 import sqlalchemy
@@ -41,11 +42,6 @@ from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
 from montreal_forced_aligner.transcription.models import MfaFasterWhisperPipeline, load_model
 from montreal_forced_aligner.utils import thread_logger
 from montreal_forced_aligner.vad.models import MfaVAD
-
-if TYPE_CHECKING:
-    from dataclasses import dataclass
-else:
-    from dataclassy import dataclass
 
 try:
     with warnings.catch_warnings():

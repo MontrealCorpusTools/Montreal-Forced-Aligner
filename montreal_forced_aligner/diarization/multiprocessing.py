@@ -10,9 +10,8 @@ import threading
 import time
 import traceback
 import typing
+from dataclasses import dataclass
 from pathlib import Path
-
-import dataclassy
 
 try:
     import hdbscan
@@ -100,7 +99,7 @@ logger = logging.getLogger("mfa")
 
 
 # noinspection PyUnresolvedReferences
-@dataclassy.dataclass(slots=True)
+@dataclass(slots=True)
 class PldaClassificationArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.diarization.multiprocessing.PldaClassificationFunction`"""
 
@@ -111,7 +110,7 @@ class PldaClassificationArguments(MfaArguments):
 
 
 # noinspection PyUnresolvedReferences
-@dataclassy.dataclass(slots=True)
+@dataclass(slots=True)
 class ComputeEerArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.diarization.multiprocessing.ComputeEerFunction`"""
 
@@ -123,7 +122,7 @@ class ComputeEerArguments(MfaArguments):
 
 
 # noinspection PyUnresolvedReferences
-@dataclassy.dataclass(slots=True)
+@dataclass(slots=True)
 class SpeechbrainArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.diarization.multiprocessing.SpeechbrainClassificationFunction`"""
 
@@ -218,6 +217,7 @@ def calculate_distance_threshold(
         Absolute distance threshold
     """
     import kneed
+
     logger.debug(f"Calculating distance threshold from {min_samples} nearest neighbors...")
     nbrs = neighbors.NearestNeighbors(
         n_neighbors=min_samples,

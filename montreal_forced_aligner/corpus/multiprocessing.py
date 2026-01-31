@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 import threading
 import typing
+from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Queue
 
@@ -36,8 +37,6 @@ from montreal_forced_aligner.textgrid import Textgrid, load_textgrid
 from montreal_forced_aligner.utils import Counter
 
 if typing.TYPE_CHECKING:
-    from dataclasses import dataclass
-
     from montreal_forced_aligner.models import G2PModel
     from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
 
@@ -45,8 +44,6 @@ if typing.TYPE_CHECKING:
         from spacy.language import Language as SpacyLanguage
     except ImportError:
         SpacyLanguage = None
-else:
-    from dataclassy import dataclass
 
 __all__ = [
     "AcousticDirectoryParser",

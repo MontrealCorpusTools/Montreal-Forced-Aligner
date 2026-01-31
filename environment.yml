@@ -9,7 +9,6 @@ dependencies:
   - tqdm
   - requests
   - pyyaml
-  - dataclassy
   - kaldi=*=*cpu*
   - scipy
   - pynini

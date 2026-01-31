@@ -5,19 +5,19 @@ Helper functions
 """
 from __future__ import annotations
 
+import dataclasses
 import itertools
 import json
 import logging
+import pathlib
 import re
 import typing
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import dataclassy
 import numpy
 import yaml
-import pathlib
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.theme import Theme
@@ -62,17 +62,21 @@ console = Console(
     stderr=True,
 )
 
+
 def path_representer(dumper, obj):
     return dumper.represent_str(str(obj))
 
+
 class MfaYamlDumper(yaml.dumper.SafeDumper):
     pass
+
 
 yaml.add_representer(
     type(pathlib.Path()),
     path_representer,
     MfaYamlDumper,
 )
+
 
 @contextmanager
 def mfa_open(
@@ -202,6 +206,7 @@ def configure_cli_logger(logger):
             handler.setLevel(logging.INFO)
         handler.setFormatter(logging.Formatter("%(message)s"))
         logger.addHandler(handler)
+
 
 def configure_logger(identifier: str, log_file: typing.Optional[Path] = None) -> None:
     """
@@ -521,11 +526,11 @@ class EnhancedJSONEncoder(json.JSONEncoder):
 
     def default(self, o: typing.Any) -> typing.Any:
         """Get the dictionary of a dataclass"""
-        if dataclassy.functions.is_dataclass_instance(o):
-            return dataclassy.asdict(o)
+        if dataclasses.functions.is_dataclass_instance(o):
+            return dataclasses.asdict(o)
         if isinstance(o, set):
             return list(o)
-        return dataclassy.asdict(o)
+        return dataclasses.asdict(o)
 
 
 def load_evaluation_mapping(custom_mapping_path):

@@ -6,6 +6,7 @@ Textgrid utilities
 from __future__ import annotations
 
 import csv
+import dataclasses
 import json
 import os
 import re
@@ -15,7 +16,6 @@ import typing
 from pathlib import Path
 from typing import Dict, List
 
-import dataclassy
 import sqlalchemy
 from kalpy.gmm.data import to_tg_interval
 from praatio import textgrid as tgio
@@ -40,7 +40,7 @@ __all__ = [
 
 
 # noinspection PyUnresolvedReferences
-@dataclassy.dataclass(slots=True)
+@dataclasses.dataclass(slots=True)
 class CtmInterval:
     """
     Data class for intervals derived from CTM files

@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
+import traceback
 import typing
 from abc import abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Union
-import traceback
-import sys
 
-import dataclassy
 from _kalpy.feat import paste_feats
 from _kalpy.matrix import CompressedMatrix, FloatVector
 from _kalpy.util import BaseFloatMatrixWriter, BaseFloatVectorWriter, CompressedMatrixWriter
@@ -57,7 +57,7 @@ logger = logging.getLogger("mfa")
 
 
 # noinspection PyUnresolvedReferences
-@dataclassy.dataclass(slots=True)
+@dataclass(slots=True)
 class VadArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.corpus.features.ComputeVadFunction`"""
 
@@ -65,7 +65,7 @@ class VadArguments(MfaArguments):
 
 
 # noinspection PyUnresolvedReferences
-@dataclassy.dataclass(slots=True)
+@dataclass(slots=True)
 class MfccArguments(MfaArguments):
     """
     Arguments for :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
@@ -77,7 +77,7 @@ class MfccArguments(MfaArguments):
 
 
 # noinspection PyUnresolvedReferences
-@dataclassy.dataclass(slots=True)
+@dataclass(slots=True)
 class FinalFeatureArguments(MfaArguments):
     """
     Arguments for :class:`~montreal_forced_aligner.corpus.features.FinalFeatureFunction`
@@ -91,7 +91,7 @@ class FinalFeatureArguments(MfaArguments):
 
 
 # noinspection PyUnresolvedReferences
-@dataclassy.dataclass(slots=True)
+@dataclass(slots=True)
 class PitchArguments(MfaArguments):
     """
     Arguments for :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
@@ -102,7 +102,7 @@ class PitchArguments(MfaArguments):
 
 
 # noinspection PyUnresolvedReferences
-@dataclassy.dataclass(slots=True)
+@dataclass(slots=True)
 class PitchRangeArguments(MfaArguments):
     """
     Arguments for :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
@@ -113,7 +113,7 @@ class PitchRangeArguments(MfaArguments):
 
 
 # noinspection PyUnresolvedReferences
-@dataclassy.dataclass(slots=True)
+@dataclass(slots=True)
 class CalcFmllrArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.corpus.features.CalcFmllrFunction`"""
 
@@ -124,7 +124,7 @@ class CalcFmllrArguments(MfaArguments):
 
 
 # noinspection PyUnresolvedReferences
-@dataclassy.dataclass(slots=True)
+@dataclass(slots=True)
 class ExtractIvectorsArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.corpus.features.ExtractIvectorsFunction`"""
 
@@ -135,7 +135,7 @@ class ExtractIvectorsArguments(MfaArguments):
 
 
 # noinspection PyUnresolvedReferences
-@dataclassy.dataclass(slots=True)
+@dataclass(slots=True)
 class ExportIvectorsArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.corpus.features.ExportIvectorsFunction`"""
 
@@ -236,12 +236,16 @@ class MfccFunction(KaldiFunction):
                     try:
                         mfccs = self.mfcc_computer.compute_mfccs_for_export(seg, compress=True)
                     except (ImportError, ModuleNotFoundError):
-                        raise Exception("If you're running on Python 3.13, please reinstall the environment with Python 3.12 "
-                                        "(conda create -n mfa python=3.12 montreal-forced-aligner) or "
-                                        "run `pip install standard-aifc standard-sunau` and retry.")
-                    except Exception as e:
+                        raise Exception(
+                            "If you're running on Python 3.13, please reinstall the environment with Python 3.12 "
+                            "(conda create -n mfa python=3.12 montreal-forced-aligner) or "
+                            "run `pip install standard-aifc standard-sunau` and retry."
+                        )
+                    except Exception:
                         exc_type, exc_value, exc_traceback = sys.exc_info()
-                        error_text = "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+                        error_text = "\n".join(
+                            traceback.format_exception(exc_type, exc_value, exc_traceback)
+                        )
 
                         mfcc_logger.warning(error_text)
                         num_error += 1

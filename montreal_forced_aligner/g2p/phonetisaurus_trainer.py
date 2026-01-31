@@ -9,10 +9,10 @@ import subprocess
 import threading
 import time
 import unicodedata
+from dataclasses import dataclass
 from pathlib import Path
 from queue import Queue
 
-import dataclassy
 import numpy
 import pynini
 import pywrapfst
@@ -45,7 +45,7 @@ __all__ = ["PhonetisaurusTrainerMixin", "PhonetisaurusTrainer"]
 logger = logging.getLogger("mfa")
 
 
-@dataclassy.dataclass(slots=True)
+@dataclass(slots=True)
 class MaximizationArguments:
     """Arguments for the MaximizationWorker"""
 
@@ -55,7 +55,7 @@ class MaximizationArguments:
     batch_size: int
 
 
-@dataclassy.dataclass(slots=True)
+@dataclass(slots=True)
 class ExpectationArguments:
     """Arguments for the ExpectationWorker"""
 
@@ -64,7 +64,7 @@ class ExpectationArguments:
     batch_size: int
 
 
-@dataclassy.dataclass(slots=True)
+@dataclass(slots=True)
 class AlignmentExportArguments:
     """Arguments for the AlignmentExportWorker"""
 
@@ -73,7 +73,7 @@ class AlignmentExportArguments:
     penalize: bool
 
 
-@dataclassy.dataclass(slots=True)
+@dataclass(slots=True)
 class NgramCountArguments:
     """Arguments for the NgramCountWorker"""
 
@@ -83,7 +83,7 @@ class NgramCountArguments:
     order: int
 
 
-@dataclassy.dataclass(slots=True)
+@dataclass(slots=True)
 class AlignmentInitArguments:
     """Arguments for the alignment initialization worker"""
 

@@ -9,7 +9,6 @@ dependencies:
   - requests
   - pyyaml
   - praatio>=6.0.0
-  - dataclassy
   - sqlalchemy>=2.0
   - pynini
   - pgvector

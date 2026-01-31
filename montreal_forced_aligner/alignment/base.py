@@ -282,9 +282,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     )
                     .join(Utterance.file)
                     .join(Utterance.speaker)
-                    .order_by(
-                        sqlalchemy.desc(Utterance.duration_deviation)
-                    )
+                    .order_by(sqlalchemy.desc(Utterance.duration_deviation))
                 )
                 for row in utterances:
                     writer.writerow([*row])
@@ -1080,7 +1078,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         self.db_path.as_posix(),
                         "--cmd",
                         ".mode csv",
-                        f".import {word_csv_path.as_posix()} word_interval_temp",
+                        f'.import "{word_csv_path.as_posix()}" word_interval_temp',
                     ]
                 )
             subprocess.check_call(
@@ -1089,7 +1087,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     self.db_path.as_posix(),
                     "--cmd",
                     ".mode csv",
-                    f".import {phone_csv_path.as_posix()} phone_interval_temp",
+                    f'.import "{phone_csv_path.as_posix()}" phone_interval_temp',
                 ]
             )
         with self.session() as session:
@@ -1419,7 +1417,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             to_comp = []
             score_func = functools.partial(
                 align_phones,
-                silence_phone=self.optional_silence_phone,
+                silence_phones={self.optional_silence_phone},
                 custom_mapping=mapping,
                 debug=config.DEBUG,
             )
@@ -1472,7 +1470,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 to_comp.append((reference_phones, comparison_phones))
             with ThreadPool(1) as pool:
                 gen = pool.starmap(score_func, to_comp)
-                for i, (score, phone_error_rate, errors) in enumerate(gen):
+                for i, result in enumerate(gen):
+                    score, phone_error_rate, errors = result[:3]
                     if score is None:
                         continue
                     u = indices[i]

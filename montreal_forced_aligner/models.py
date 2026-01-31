@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import typing
+from dataclasses import dataclass
 from pathlib import Path
 from shutil import copy, copyfile, make_archive, move, rmtree, unpack_archive
 
@@ -34,15 +35,11 @@ from montreal_forced_aligner.exceptions import (
 from montreal_forced_aligner.helper import EnhancedJSONEncoder, mfa_open
 
 if typing.TYPE_CHECKING:
-    from dataclasses import dataclass
-
     from montreal_forced_aligner.abc import MetaDict
     from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
     from montreal_forced_aligner.g2p.generator import Rewriter
     from montreal_forced_aligner.g2p.trainer import G2PTrainer
     from montreal_forced_aligner.tokenization.trainer import TokenizerTrainer
-else:
-    from dataclassy import dataclass
 
 # default format for output
 FORMAT = "zip"

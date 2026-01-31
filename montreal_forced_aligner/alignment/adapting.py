@@ -287,6 +287,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
                 "clitic_marker": self.clitic_marker,
                 "position_dependent_phones": self.position_dependent_phones,
             },
+            "language": str(self.language),
             "oov_phone": self.oov_phone,
             "optional_silence_phone": self.optional_silence_phone,
             "silence_probability": self.silence_probability,

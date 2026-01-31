@@ -1,10 +1,12 @@
 """Class definitions for Speakers, Files, Utterances and Jobs"""
 from __future__ import annotations
 
+import dataclasses
 import os
 import typing
 import unicodedata
-from typing import TYPE_CHECKING, Optional, Union
+from dataclasses import dataclass
+from typing import Optional, Union
 
 from kalpy.gmm.data import CtmInterval
 from praatio import textgrid
@@ -13,11 +15,6 @@ from montreal_forced_aligner.corpus.helper import get_wav_info, load_text
 from montreal_forced_aligner.data import SoundFileInformation, TextFileType
 from montreal_forced_aligner.exceptions import TextParseError
 from montreal_forced_aligner.textgrid import load_textgrid
-
-if TYPE_CHECKING:
-    from dataclasses import dataclass
-else:
-    from dataclassy import dataclass
 
 __all__ = ["FileData", "UtteranceData"]
 
@@ -51,8 +48,8 @@ class FileData:
     text_type: TextFileType
     relative_path: str
     wav_info: SoundFileInformation = None
-    speaker_ordering: typing.List[str] = []
-    utterances: typing.List[UtteranceData] = []
+    speaker_ordering: typing.List[str] = dataclasses.field(default_factory=list)
+    utterances: typing.List[UtteranceData] = dataclasses.field(default_factory=list)
 
     @classmethod
     def parse_file(
@@ -337,5 +334,5 @@ class UtteranceData:
     normalized_text: str = ""
     normalized_character_text: str = ""
     oovs: str = ""
-    phone_intervals: typing.List = []
-    word_intervals: typing.List = []
+    phone_intervals: typing.List = dataclasses.field(default_factory=list)
+    word_intervals: typing.List = dataclasses.field(default_factory=list)

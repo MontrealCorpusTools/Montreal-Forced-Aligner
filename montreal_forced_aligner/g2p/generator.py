@@ -12,6 +12,7 @@ import statistics
 import time
 import typing
 import unicodedata
+from dataclasses import dataclass
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 
@@ -44,11 +45,7 @@ from montreal_forced_aligner.textgrid import construct_output_path
 from montreal_forced_aligner.utils import run_kaldi_function
 
 if typing.TYPE_CHECKING:
-    from dataclasses import dataclass
-
     SpeakerCharacterType = typing.Union[str, int]
-else:
-    from dataclassy import dataclass
 
 
 __all__ = [

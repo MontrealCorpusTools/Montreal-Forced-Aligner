@@ -8,6 +8,7 @@ import os
 import shutil
 import time
 import typing
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -42,14 +43,10 @@ from montreal_forced_aligner.transcription.transcriber import TranscriberMixin
 from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
 
 if TYPE_CHECKING:
-    from dataclasses import dataclass
-
     from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
     from montreal_forced_aligner.acoustic_modeling.pronunciation_probabilities import (
         PronunciationProbabilityTrainer,
     )
-else:
-    from dataclassy import dataclass
 
 __all__ = ["TrainableAligner", "TransitionAccFunction", "TransitionAccArguments"]
 

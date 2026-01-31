@@ -16,6 +16,7 @@ import sys
 import time
 import traceback
 import typing
+from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty
 from typing import TYPE_CHECKING
@@ -73,11 +74,7 @@ from montreal_forced_aligner.textgrid import construct_textgrid_output
 from montreal_forced_aligner.utils import thread_logger
 
 if TYPE_CHECKING:
-    from dataclasses import dataclass
-
     from montreal_forced_aligner.abc import MetaDict
-else:
-    from dataclassy import dataclass
 
 
 __all__ = [

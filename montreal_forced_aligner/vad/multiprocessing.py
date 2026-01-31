@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import typing
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Union
 
@@ -30,11 +31,8 @@ from montreal_forced_aligner.vad.models import MfaVAD, get_initial_segmentation,
 
 if TYPE_CHECKING:
     SpeakerCharacterType = Union[str, int]
-    from dataclasses import dataclass
 
     from montreal_forced_aligner.abc import MetaDict
-else:
-    from dataclassy import dataclass
 
 __all__ = [
     "SegmentTranscriptArguments",
