@@ -526,7 +526,7 @@ class EnhancedJSONEncoder(json.JSONEncoder):
 
     def default(self, o: typing.Any) -> typing.Any:
         """Get the dictionary of a dataclass"""
-        if dataclasses.functions.is_dataclass_instance(o):
+        if dataclasses.is_dataclass(o):
             return dataclasses.asdict(o)
         if isinstance(o, set):
             return list(o)

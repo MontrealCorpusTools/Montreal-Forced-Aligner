@@ -1,6 +1,7 @@
 """Class definitions for LDA trainer"""
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 import shutil
@@ -35,6 +36,7 @@ __all__ = [
 logger = logging.getLogger("mfa")
 
 
+@dataclasses.dataclass(slots=True)
 class LdaAccStatsArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.LdaAccStatsFunction`"""
 
@@ -43,6 +45,7 @@ class LdaAccStatsArguments(MfaArguments):
     lda_options: MetaDict
 
 
+@dataclasses.dataclass(slots=True)
 class CalcLdaMlltArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.CalcLdaMlltFunction`"""
 

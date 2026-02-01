@@ -1,6 +1,7 @@
 """Class definitions for Monophone trainer"""
 from __future__ import annotations
 
+import dataclasses
 import logging
 import typing
 from pathlib import Path
@@ -27,6 +28,7 @@ __all__ = ["MonophoneTrainer", "MonoAlignEqualFunction", "MonoAlignEqualArgument
 logger = logging.getLogger("mfa")
 
 
+@dataclasses.dataclass(slots=True)
 class MonoAlignEqualArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.monophone.MonoAlignEqualFunction`"""
 

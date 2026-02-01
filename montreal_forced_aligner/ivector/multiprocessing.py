@@ -1,6 +1,7 @@
 """Multiprocessing functions for training ivector extractors"""
 from __future__ import annotations
 
+import dataclasses
 import os
 from pathlib import Path
 
@@ -29,6 +30,7 @@ __all__ = [
 ]
 
 
+@dataclasses.dataclass(slots=True)
 class GmmGselectArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.GmmGselectFunction`"""
 
@@ -37,6 +39,7 @@ class GmmGselectArguments(MfaArguments):
     ivector_options: MetaDict
 
 
+@dataclasses.dataclass(slots=True)
 class AccGlobalStatsArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.AccGlobalStatsFunction`"""
 
@@ -45,6 +48,7 @@ class AccGlobalStatsArguments(MfaArguments):
     ivector_options: MetaDict
 
 
+@dataclasses.dataclass(slots=True)
 class GaussToPostArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.GaussToPostFunction`"""
 
@@ -53,6 +57,7 @@ class GaussToPostArguments(MfaArguments):
     ivector_options: MetaDict
 
 
+@dataclasses.dataclass(slots=True)
 class AccIvectorStatsArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.AccIvectorStatsFunction`"""
 
@@ -131,12 +136,12 @@ class GmmGselectFunction(KaldiFunction):
                     ivector_logger.info(
                         f"For {num_done}'th utterance, "
                         f"average UBM log-likelihood over {tot_t_this_file} frames "
-                        f"is {tot_like_this_file/tot_t_this_file}."
+                        f"is {tot_like_this_file / tot_t_this_file}."
                     )
             gselect_writer.Close()
             ivector_logger.info(
                 f"Done {num_done} utterances, skipped {num_skipped}, "
-                f"average UBM log-likelihood over {tot_t} frames is {tot_like/tot_t}."
+                f"average UBM log-likelihood over {tot_t} frames is {tot_like / tot_t}."
             )
 
 
@@ -226,7 +231,7 @@ class GaussToPostFunction(KaldiFunction):
 
             ivector_logger.info(
                 f"Done {num_done} utterances, skipped {num_skipped}, "
-                f"average UBM log-likelihood over {tot_t} frames is {tot_like/tot_t}."
+                f"average UBM log-likelihood over {tot_t} frames is {tot_like / tot_t}."
             )
 
 

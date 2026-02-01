@@ -1,6 +1,7 @@
 """Class definitions for Speaker Adapted Triphone trainer"""
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 import shutil
@@ -36,6 +37,7 @@ __all__ = ["SatTrainer", "AccStatsTwoFeatsFunction", "AccStatsTwoFeatsArguments"
 logger = logging.getLogger("mfa")
 
 
+@dataclasses.dataclass(slots=True)
 class AccStatsTwoFeatsArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.sat.AccStatsTwoFeatsFunction`"""
 

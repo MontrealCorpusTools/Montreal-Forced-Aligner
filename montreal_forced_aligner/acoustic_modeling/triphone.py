@@ -1,6 +1,7 @@
 """Class definitions for TriphoneTrainer"""
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 import typing
@@ -34,6 +35,7 @@ __all__ = [
 logger = logging.getLogger("mfa")
 
 
+@dataclasses.dataclass(slots=True)
 class TreeStatsArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.triphone.tree_stats_func`"""
 
@@ -41,6 +43,7 @@ class TreeStatsArguments(MfaArguments):
     model_path: Path
 
 
+@dataclasses.dataclass(slots=True)
 class ConvertAlignmentsArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.triphone.ConvertAlignmentsFunction`"""
 
