@@ -155,11 +155,11 @@ def g2p_cli(context, **kwargs) -> None:
                             output.write(f"{word}\t\t\n")
                         else:
                             output.write(f"{word}\t\n")
-                    for p, score in pronunciations:
+                    for p in pronunciations:
                         if export_scores:
-                            output.write(f"{word}\t{p}\t{score}\n")
+                            output.write(f"{word}\t{p.pronunciation}\t{p.score}\n")
                         else:
-                            output.write(f"{word}\t{p}\n")
+                            output.write(f"{word}\t{p.pronunciation}\n")
                     output.flush()
             finally:
                 output.close()
