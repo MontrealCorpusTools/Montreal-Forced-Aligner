@@ -36,6 +36,8 @@ def test_validate_corpus(
         print(result.exc_info)
         raise result.exception
     assert not result.return_value
+    # Regression test for oovs_found_*.txt path
+    assert "oovs_found_english_us" in result.stderr
 
 
 def test_validate_training_corpus(
