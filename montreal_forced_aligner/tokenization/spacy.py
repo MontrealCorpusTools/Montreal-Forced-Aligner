@@ -76,9 +76,7 @@ def check_language_tokenizer_availability(language: Language):
             )
     elif language is Language.korean:
         if not KO_AVAILABLE:
-            raise ImportError(
-                "Please install Korean support via `pip install python-mecab-ko jamo`"
-            )
+            raise ImportError("Please install Korean support via `pip install python-mecab-ko`")
     elif language is Language.chinese:
         if not ZH_AVAILABLE:
             raise ImportError(

@@ -954,6 +954,8 @@ class AcousticCorpusPronunciationMixin(
         if self.dictionary_model is not None and not self.imported:
             self.dictionary_setup()
             logger.debug(f"Loaded dictionary in {time.time() - all_begin:.3f} seconds")
+        if hasattr(self, "g2p_model") and self.g2p_model is not None:
+            self.g2p_model.validate_phone_symbols(self)
 
         begin = time.time()
         self._load_corpus()

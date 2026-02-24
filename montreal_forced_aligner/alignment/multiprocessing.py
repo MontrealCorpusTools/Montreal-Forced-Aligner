@@ -454,7 +454,7 @@ class CompileTrainGraphsFunction(KaldiFunction):
                 )
                 if job.corpus.current_subset > 0:
                     query = query.filter(Utterance.in_subset == True)  # noqa
-                graph_logger.info(f"Compiling graphs for {d.name}")
+                graph_logger.info(f"Compiling {query.count()} graphs for {d.name}")
                 fst_ark_path = job.construct_path(
                     workflow.working_directory, "fsts", "ark", d.name
                 )

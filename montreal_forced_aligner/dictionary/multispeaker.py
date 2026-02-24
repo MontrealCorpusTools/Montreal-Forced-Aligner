@@ -1707,11 +1707,12 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         Pronunciation.non_silence_before_correction,
                     )
                     .join(Pronunciation.word)
-                    .filter(Word.dictionary_id == d.id)
+                    .filter(
+                        sqlalchemy.or_(Word.dictionary_id == d.id, Word.word.in_(d.special_set))
+                    )
                     .filter(Word.included == True)  # noqa
-                    .filter(Word.word_type != WordType.silence)
                     .filter(Word.word_type != WordType.extra)
-                    .order_by(Word.word)
+                    .order_by(Word.mapping_id)
                 )
             else:
                 query = (
@@ -1726,7 +1727,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     )
                     .join(Pronunciation.word)
                     .filter(Word.included == True)  # noqa
-                    .filter(Word.word_type != WordType.silence)
                     .filter(Word.word_type != WordType.extra)
                     .group_by(Word.mapping_id, Word.word, Pronunciation.pronunciation)
                     .order_by(Word.mapping_id)
@@ -1773,6 +1773,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 lexicon_compiler.align_fst.write(d.align_lexicon_path)
                 lexicon_compiler.fst.write(d.lexicon_fst_path)
             lexicon_compiler.clear()
+        d.word_table.write_text(d.words_symbol_path)
         return lexicon_compiler
 
     def write_training_information(self) -> None:

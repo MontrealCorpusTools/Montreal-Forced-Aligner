@@ -422,27 +422,11 @@ class Dictionary(MfaSqlBase):
 
     @property
     def word_table(self):
-        if not hasattr(self, "_word_table"):
+        if not hasattr(self, "_word_table") or self._word_table is None:
             if self.words_symbol_path.exists():
                 self._word_table = pywrapfst.SymbolTable.read_text(self.words_symbol_path)
                 return self._word_table
-            self.temp_directory.mkdir(parents=True, exist_ok=True)
-            session = sqlalchemy.orm.Session.object_session(self)
-            query = (
-                session.query(Word.word, Word.mapping_id)
-                .filter(Word.included == True)  # noqa
-                .order_by(Word.mapping_id)
-            )
-            if self.name != "default":
-                query = query.filter(
-                    sqlalchemy.or_(Word.dictionary_id == self.id, Word.word.in_(self.special_set))
-                )
-            else:
-                query = query.group_by(Word.word, Word.mapping_id)
             self._word_table = pywrapfst.SymbolTable()
-            for w, mapping_id in query:
-                self._word_table.add_symbol(w, mapping_id)
-            self._word_table.write_text(self.words_symbol_path)
         return self._word_table
 
     @property

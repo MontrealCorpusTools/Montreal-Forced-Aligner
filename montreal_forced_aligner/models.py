@@ -29,6 +29,7 @@ from montreal_forced_aligner.exceptions import (
     ModelLoadError,
     ModelsConnectionError,
     PronunciationAcousticMismatchError,
+    PronunciationG2PMismatchError,
     RemoteModelNotFoundError,
     RemoteModelVersionNotFoundError,
 )
@@ -753,6 +754,8 @@ class G2PModel(Archive):
             self._meta["evaluation"] = self._meta.get("evaluation", [])
             self._meta["training"] = self._meta.get("training", [])
             self._meta["unicode_decomposition"] = self._meta.get("unicode_decomposition", False)
+            if "_jamo" in self.source.stem:
+                self._meta["unicode_decomposition"] = True
         return self._meta
 
     @property
@@ -815,6 +818,26 @@ class G2PModel(Archive):
         """
         os.makedirs(destination, exist_ok=True)
         copy(self.fst_path, destination)
+
+    def validate_phone_symbols(self, dictionary: DictionaryMixin) -> None:
+        """
+        Validate this G2P model against a pronunciation dictionary to ensure their
+        phone sets are compatible (i.e., G2P model will not generate phones not in the dictionary)
+
+        Parameters
+        ----------
+        dictionary: :class:`~montreal_forced_aligner.dictionary.mixins.DictionaryMixin`
+            DictionaryMixin  to compare phone sets with
+
+        Raises
+        ------
+        :class:`~montreal_forced_aligner.exceptions.PronunciationAcousticMismatchError`
+            If there are phones missing from the acoustic model
+        """
+        missing_phones = set(self.meta["phones"]) - dictionary.non_silence_phones
+        missing_phones -= {"sp", "<eps>"}
+        if missing_phones:  # Compatibility
+            raise (PronunciationG2PMismatchError(missing_phones))
 
     def validate(self, word_list: typing.Collection[str]) -> bool:
         """

@@ -47,6 +47,5 @@ dependencies:
   - pip
   - pip:
       - speechbrain
-      - jamo
       - pythainlp
       - dragonmapper
