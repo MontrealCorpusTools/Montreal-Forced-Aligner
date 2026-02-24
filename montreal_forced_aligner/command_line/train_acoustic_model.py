@@ -1,6 +1,7 @@
 """Command line functions for training new acoustic models"""
 from __future__ import annotations
 
+import typing
 from pathlib import Path
 
 import rich_click as click
@@ -109,7 +110,7 @@ __all__ = ["train_acoustic_model_cli"]
     "--g2p_model_path",
     "g2p_model_path",
     help="Path to G2P model to use for OOV items.",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+    type=click.UNPROCESSED,
 )
 @common_options
 @click.help_option("-h", "--help")
@@ -124,7 +125,9 @@ def train_acoustic_model_cli(context, **kwargs) -> None:
     output_directory = kwargs.get("output_directory", None)
     corpus_directory = kwargs["corpus_directory"].absolute()
     dictionary_path = kwargs["dictionary_path"]
-    g2p_model_path = kwargs.get("g2p_model_path", None)
+    g2p_model_path: typing.Optional[Path] = kwargs.get("g2p_model_path", None)
+    if g2p_model_path:
+        g2p_model_path = validate_g2p_model(context, kwargs, g2p_model_path)
     if kwargs.get("phone_set_type", "UNKNOWN") != "UNKNOWN":
         import warnings
 

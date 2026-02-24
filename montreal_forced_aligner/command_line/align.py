@@ -7,8 +7,7 @@ from pathlib import Path
 import rich_click as click
 
 from montreal_forced_aligner.alignment import PretrainedAligner
-from montreal_forced_aligner.command_line.utils import (
-    AlternateArgListCmd,
+from montreal_forced_aligner.command_line.utils import (  # AlternateArgListCmd,
     common_options,
     initialize_configuration,
     validate_acoustic_model,
@@ -30,7 +29,6 @@ __all__ = ["align_corpus_cli", "align_corpus_cli_hf"]
         allow_interspersed_args=True,
     ),
     short_help="Align a corpus",
-    cls=AlternateArgListCmd,
 )
 @click.argument("corpus_directory", type=click.UNPROCESSED, callback=validate_corpus_directory)
 @click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
@@ -165,7 +163,15 @@ def align_corpus_cli(context, **kwargs) -> None:
         aligner.cleanup()
 
 
-@align_corpus_cli.alternate_arglist()
+@click.command(
+    name="align_hf",
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+        allow_interspersed_args=True,
+    ),
+    short_help="Align a corpus",
+)
 @click.argument("corpus_directory", type=click.UNPROCESSED, callback=validate_corpus_directory)
 @click.argument("model_id", type=click.UNPROCESSED, callback=validate_huggingface_model)
 @click.argument(

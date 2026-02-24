@@ -121,6 +121,7 @@ class DictionaryRemapper(MultispeakerDictionaryMixin, PhoneRemapperMixin, TopLev
                                 new_dictionary[w][pron_string][k] += data[k]
 
         logger.info(f"Skipped {skip_count} pronunciations for having unmapped phones")
+        output_dictionary_path.parent.mkdir(exist_ok=True, parents=True)
         with mfa_open(output_dictionary_path, "w") as f:
             for w, prons in sorted(new_dictionary.items(), key=lambda x: x[0]):
                 for pron, data in sorted(prons.items(), key=lambda x: x[0]):

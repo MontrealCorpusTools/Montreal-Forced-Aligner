@@ -616,6 +616,22 @@ class NoSuccessfulAlignments(AlignerError):
     pass
 
 
+class PronunciationG2PMismatchError(AlignerError):
+    """
+    Exception class for when an acoustic model and pronunciation dictionary have different phone sets
+
+    Parameters
+    ----------
+    missing_phones: Collection[str]
+        Phones that are not in the acoustic model
+    """
+
+    def __init__(self, missing_phones: Collection[str]):
+        super().__init__("There were phones in the G2P model that are not in the dictionary: ")
+        missing_phones = [f"{x}" for x in sorted(missing_phones)]
+        self.message_lines.append(comma_join(missing_phones))
+
+
 class PronunciationAcousticMismatchError(AlignerError):
     """
     Exception class for when an acoustic model and pronunciation dictionary have different phone sets

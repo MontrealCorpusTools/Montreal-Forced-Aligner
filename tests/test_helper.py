@@ -95,6 +95,5 @@ def test_align_phones(basic_corpus_dir, basic_dict_path, temp_dir, eval_mapping_
         custom_mapping=mapping,
         debug=True,
     )
-    score, phone_errors, error_counts = result[:3]
     assert score < 1
     assert phone_errors < 1

@@ -9,6 +9,10 @@ from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import TopLevelMfaWorker
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
 from montreal_forced_aligner.corpus.text_corpus import TextCorpusMixin
+from montreal_forced_aligner.data import PhoneType
+from montreal_forced_aligner.db import Phone, PhoneMapping
+from montreal_forced_aligner.exceptions import MFAError
+from montreal_forced_aligner.helper import load_evaluation_mapping
 
 logger = logging.getLogger("mfa")
 
@@ -50,6 +54,55 @@ class AlignmentComparer(TextCorpusMixin, AlignmentComparisonMixin):
         self.create_corpus_split()
         self.load_test_alignments(self.test_directory)
 
+    def load_mapping(self, custom_mapping_path: typing.Union[Path, str], strict=False):
+        mapping = load_evaluation_mapping(custom_mapping_path)
+        with self.session() as session:
+            reference_phones = {
+                phone: p_id
+                for phone, p_id in session.query(Phone.phone, Phone.id).filter(
+                    Phone.phone_type == PhoneType.non_silence
+                )
+            }
+            test_phones = {
+                phone: p_id
+                for phone, p_id in session.query(Phone.phone, Phone.id).filter(
+                    Phone.phone_type == PhoneType.extra
+                )
+            }
+            phone_mappings = []
+            found_reference_phones = set()
+            found_test_phones = set()
+            for aligned_phones, ref_phones in mapping.items():
+                if isinstance(ref_phones, str):
+                    ref_phones = [ref_phones]
+                for rp in ref_phones:
+                    phone_mappings.append(
+                        {
+                            "model_phone_string": aligned_phones,
+                            "reference_phone_string": rp,
+                        }
+                    )
+                    found_reference_phones.update(rp.split())
+                found_test_phones.update(aligned_phones.split())
+            session.bulk_insert_mappings(PhoneMapping, phone_mappings)
+            session.commit()
+            unreferenced_reference_phones = sorted(
+                set(reference_phones.keys()) - found_reference_phones
+            )
+            unreferenced_test_phones = sorted(set(test_phones.keys()) - found_test_phones)
+            if unreferenced_test_phones:
+                logger.warning(
+                    f"Phones not referenced in mapping file: {', '.join(unreferenced_test_phones)}"
+                )
+            if unreferenced_reference_phones:
+                logger.warning(
+                    f"Reference phones not referenced in mapping file: {', '.join(unreferenced_reference_phones)}"
+                )
+            if strict and (unreferenced_reference_phones or unreferenced_test_phones):
+                raise MFAError(
+                    "The mapping file was not fully specified, see warning messages above."
+                )
+
 
 class AlignmentAudioComparer(AcousticCorpusMixin, AlignmentComparisonMixin):
     """
@@ -66,3 +119,52 @@ class AlignmentAudioComparer(AcousticCorpusMixin, AlignmentComparisonMixin):
         self.initialize_jobs()
         self.create_corpus_split()
         self.load_test_alignments(self.test_directory)
+
+    def load_mapping(self, custom_mapping_path: typing.Union[Path, str], strict=False):
+        mapping = load_evaluation_mapping(custom_mapping_path)
+        with self.session() as session:
+            reference_phones = {
+                phone: p_id
+                for phone, p_id in session.query(Phone.phone, Phone.id).filter(
+                    Phone.phone_type == PhoneType.non_silence
+                )
+            }
+            test_phones = {
+                phone: p_id
+                for phone, p_id in session.query(Phone.phone, Phone.id).filter(
+                    Phone.phone_type == PhoneType.extra
+                )
+            }
+            phone_mappings = []
+            found_reference_phones = set()
+            found_test_phones = set()
+            for aligned_phones, ref_phones in mapping.items():
+                if isinstance(ref_phones, str):
+                    ref_phones = [ref_phones]
+                for rp in ref_phones:
+                    phone_mappings.append(
+                        {
+                            "model_phone_string": aligned_phones,
+                            "reference_phone_string": rp,
+                        }
+                    )
+                    found_reference_phones.update(rp.split())
+                found_test_phones.update(aligned_phones.split())
+            session.bulk_insert_mappings(PhoneMapping, phone_mappings)
+            session.commit()
+            unreferenced_reference_phones = sorted(
+                set(reference_phones.keys()) - found_reference_phones
+            )
+            unreferenced_test_phones = sorted(set(test_phones.keys()) - found_test_phones)
+            if unreferenced_test_phones:
+                logger.warning(
+                    f"Phones not referenced in mapping file: {', '.join(unreferenced_test_phones)}"
+                )
+            if unreferenced_reference_phones:
+                logger.warning(
+                    f"Reference phones not referenced in mapping file: {', '.join(unreferenced_reference_phones)}"
+                )
+            if strict and (unreferenced_reference_phones or unreferenced_test_phones):
+                raise MFAError(
+                    "The mapping file was not fully specified, see warning messages above."
+                )

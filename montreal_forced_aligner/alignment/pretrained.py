@@ -241,6 +241,12 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
                     f"trained acoustic model.  Please run `mfa validate` to get more details."
                 )
             self.acoustic_model.validate(self)
+            if self.g2p_model is not None:
+                if isinstance(self.g2p_model, dict):
+                    for v in self.g2p_model.values():
+                        v.validate_phone_symbols(self)
+                else:
+                    self.g2p_model.validate_phone_symbols(self)
             self.acoustic_model.log_details()
             self.kalpy_aligner = KalpyAligner(
                 self.acoustic_model,

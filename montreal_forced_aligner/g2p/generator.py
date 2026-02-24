@@ -424,7 +424,9 @@ class G2PFunction(KaldiFunction):
                     log_file.write(f"Error on generating pronunciation for {text}\n")
 
 
-def clean_up_word(word: str, graphemes: typing.Set[str]) -> typing.Tuple[str, typing.Set[str]]:
+def clean_up_word(
+    word: str, graphemes: typing.Set[str], unicode_decomposition: bool = False
+) -> typing.Tuple[str, typing.Set[str]]:
     """
     Clean up word by removing graphemes not in a specified set
 
@@ -444,12 +446,14 @@ def clean_up_word(word: str, graphemes: typing.Set[str]) -> typing.Tuple[str, ty
     """
     new_word = []
     missing_graphemes = set()
+    if unicode_decomposition:
+        word = unicodedata.normalize("NFKD", word)
     for c in word:
         if c not in graphemes:
             missing_graphemes.add(c)
         else:
             new_word.append(c)
-    return "".join(new_word), missing_graphemes
+    return unicodedata.normalize("NFKC", "".join(new_word)), missing_graphemes
 
 
 class OrthographyGenerator(G2PTopLevelMixin):
@@ -504,9 +508,11 @@ class PyniniGenerator(G2PTopLevelMixin):
         word_list: typing.List[str] = None,
         g2p_model_path: Path = None,
         strict_graphemes: bool = False,
+        unicode_decomposition: bool = False,
         **kwargs,
     ):
         self.strict_graphemes = strict_graphemes
+        self.unicode_decomposition = unicode_decomposition
         super().__init__(**kwargs)
         self.g2p_model = G2PModel(
             g2p_model_path, root_directory=getattr(self, "workflow_directory", None)
@@ -555,6 +561,7 @@ class PyniniGenerator(G2PTopLevelMixin):
                 threshold=self.g2p_threshold,
                 grapheme_order=self.g2p_model.meta["grapheme_order"],
                 graphemes=self.g2p_model.meta["graphemes"],
+                unicode_decomposition=self.g2p_model.meta["unicode_decomposition"],
             )
         else:
             if self.g2p_model.sym_path is not None and os.path.exists(self.g2p_model.sym_path):
@@ -567,6 +574,7 @@ class PyniniGenerator(G2PTopLevelMixin):
                 num_pronunciations=self.num_pronunciations,
                 threshold=self.g2p_threshold,
                 graphemes=self.g2p_model.meta["graphemes"],
+                unicode_decomposition=self.g2p_model.meta["unicode_decomposition"],
             )
 
     def generate_pronunciations(
@@ -593,7 +601,11 @@ class PyniniGenerator(G2PTopLevelMixin):
         if not config.USE_MP or num_words < 30 or config.NUM_JOBS == 1:
             with tqdm(total=num_words, disable=config.QUIET) as pbar:
                 for word in self.words_to_g2p:
-                    w, m = clean_up_word(word, self.g2p_model.meta["graphemes"])
+                    w, m = clean_up_word(
+                        word,
+                        self.g2p_model.meta["graphemes"],
+                        unicode_decomposition=self.g2p_model.meta["unicode_decomposition"],
+                    )
                     pbar.update(1)
                     missing_graphemes = missing_graphemes | m
                     if self.strict_graphemes and m:
@@ -635,7 +647,11 @@ class PyniniGenerator(G2PTopLevelMixin):
                 procs.append(p)
                 p.start()
             for word in self.words_to_g2p:
-                w, m = clean_up_word(word, self.g2p_model.meta["graphemes"])
+                w, m = clean_up_word(
+                    word,
+                    self.g2p_model.meta["graphemes"],
+                    unicode_decomposition=self.g2p_model.meta["unicode_decomposition"],
+                )
                 missing_graphemes = missing_graphemes | m
                 if self.strict_graphemes and m:
                     skipped_words += 1

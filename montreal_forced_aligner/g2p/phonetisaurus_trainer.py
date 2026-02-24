@@ -1658,6 +1658,8 @@ class PhonetisaurusTrainer(
                 .filter(Word2Job.training == False)  # noqa
             )
             for w, pron in query:
+                if self.unicode_decomposition:
+                    w = unicodedata.normalize("NFKC", w)
                 validation_set[w].add(pron)
         gen = PyniniValidator(
             g2p_model_path=temp_model_path,
@@ -1668,6 +1670,8 @@ class PhonetisaurusTrainer(
         hypotheses = {}
         with mfa_open(temp_dir.joinpath("validation_output.txt"), "w") as f:
             for orthography, pronunciations in output:
+                if self.unicode_decomposition:
+                    orthography = unicodedata.normalize("NFKC", orthography)
                 if not pronunciations:
                     continue
                 hypotheses[orthography] = [x.pronunciation for x in pronunciations]
@@ -1711,6 +1715,17 @@ class PhonetisaurusTrainer(
             session.execute(sqlalchemy.insert(Word2Job.__table__), mappings)
             session.commit()
 
+            if self.unicode_decomposition:
+                word_update_mapping = []
+                q = session.query(Word.id, Word.word).filter(
+                    Word.word_type.in_(WordType.speech_types())
+                )
+                for w_id, word in q:
+                    word = unicodedata.normalize("NFKD", word)
+                    word_update_mapping.append({"id": w_id, "word": word})
+                bulk_update(session, Word, word_update_mapping)
+                session.commit()
+
             if self.evaluation_mode:
                 validation_items = int(num_words * self.validation_proportion)
                 validation_words = (
@@ -1746,10 +1761,6 @@ class PhonetisaurusTrainer(
                     .filter(Word2Job.training == True)  # noqa
                 )
                 for pronunciation, word in query:
-                    if self.unicode_decomposition:
-                        word = unicodedata.normalize("NFKD", word)
-                    else:
-                        word = unicodedata.normalize("NFKC", word)
                     self.g2p_training_graphemes.update(word)
                     self.g2p_training_phones.update(pronunciation.split())
 
@@ -1818,10 +1829,6 @@ class PhonetisaurusTrainer(
                 self.working_directory.joinpath("output.txt"), "w"
             ) as phone_f:
                 for pronunciation, word in query:
-                    if self.unicode_decomposition:
-                        word = unicodedata.normalize("NFKD", word)
-                    else:
-                        word = unicodedata.normalize("NFKC", word)
                     grapheme_count += len(word)
                     self.g2p_training_graphemes.update(word)
                     self.g2p_num_training_pronunciations += 1

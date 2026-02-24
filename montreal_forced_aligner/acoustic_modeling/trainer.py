@@ -370,14 +370,14 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
     @property
     def configuration(self) -> MetaDict:
         """Configuration for the worker"""
-        config = super().configuration
-        config.update(
+        configuration = super().configuration
+        configuration.update(
             {
                 "dictionary_path": str(self.dictionary_model.path),
                 "corpus_directory": str(self.corpus_directory),
             }
         )
-        return config
+        return configuration
 
     @property
     def meta(self) -> MetaDict:

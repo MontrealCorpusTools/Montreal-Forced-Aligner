@@ -44,7 +44,6 @@ dependencies:
   - spacy
   - sudachipy
   - sudachidict-core
-  - jamo
   - pythainlp
   - python-build
   - twine
