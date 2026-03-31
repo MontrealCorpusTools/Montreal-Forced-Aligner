@@ -227,20 +227,45 @@ class ValidationMixin:
             output_directory = self.output_directory
         os.makedirs(output_directory, exist_ok=True)
         with self.session() as session:
-            utterances = (
+            # Utterances can be marked as ignored for multiple reasons. When --ignore_oovs is used,
+            # utterances containing OOVs are intentionally ignored and should not be reported as
+            # feature generation failures.
+            oov_ignored = (
                 session.query(File.name, File.relative_path, Utterance.begin, Utterance.end)
                 .join(Utterance.file)
                 .filter(Utterance.ignored == True)  # noqa
+                .filter(Utterance.oovs.isnot(None))
+                .filter(Utterance.oovs != "")
             )
-            if utterances.count():
+            other_ignored = (
+                session.query(File.name, File.relative_path, Utterance.begin, Utterance.end)
+                .join(Utterance.file)
+                .filter(Utterance.ignored == True)  # noqa
+                .filter(sqlalchemy.or_(Utterance.oovs.is_(None), Utterance.oovs == ""))
+            )
+            other_ignored_count = other_ignored.count()
+            if other_ignored_count:
                 path = os.path.join(output_directory, "missing_features.csv")
                 with mfa_open(path, "w") as f:
-                    for file_name, relative_path, begin, end in utterances:
+                    for file_name, relative_path, begin, end in other_ignored:
                         f.write(f"{relative_path.joinpath(file_name)},{begin},{end}\n")
 
                 logger.error(
-                    f"There were {utterances.count()} utterances missing features. "
+                    f"There were {other_ignored_count} utterances missing features. "
                     f"Please see {path} for a list."
+                )
+                return
+
+            oov_ignored_count = oov_ignored.count()
+            if oov_ignored_count:
+                path = os.path.join(output_directory, "ignored_oovs.csv")
+                with mfa_open(path, "w") as f:
+                    for file_name, relative_path, begin, end in oov_ignored:
+                        f.write(f"{relative_path.joinpath(file_name)},{begin},{end}\n")
+
+                logger.info(
+                    f"Skipped feature generation for {oov_ignored_count} utterances containing OOVs (--ignore_oovs). "
+                    f"A list of skipped utterances was written to {path}."
                 )
             else:
                 logger.info("There were no utterances missing features.")

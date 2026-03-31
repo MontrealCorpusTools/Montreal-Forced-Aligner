@@ -125,6 +125,13 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         self._num_speakers = None
         self._num_utterances = None
         self._num_files = None
+
+        # Optional: ignore any utterance (and its entire source file) that contains OOV tokens.
+        # This is opt-in via CLI flags (e.g. --ignore_oovs) and is meant to keep training/alignment sets clean.
+        # NOTE: This sets `Utterance.ignored = True` in the corpus database. If you want to revert, rerun with
+        # `--clean` or use a new output directory.
+        self.ignore_oovs = kwargs.pop("ignore_oovs", False)
+        self._ignore_oovs_applied = False
         super().__init__(**kwargs)
         os.makedirs(self.corpus_output_directory, exist_ok=True)
         self.imported = False
@@ -146,6 +153,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         if not self._jobs:
             with self.session() as session:
                 c: Corpus = session.query(Corpus).first()
+                self._apply_ignore_oovs(session)
                 jobs = session.query(Job).options(
                     joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries)
                 )
@@ -176,6 +184,54 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     )
                 )
                 session.commit()
+
+    def _apply_ignore_oovs(self, session: Session, *, force: bool = False) -> None:
+        """Mark utterances as ignored if their file contains OOV tokens.
+
+        This helper backs the CLI flag `--ignore_oovs`. It is intentionally **opt-in** and will not run
+        unless `self.ignore_oovs` is True.
+
+        By default (`force=False`), this will only run once text normalization has been completed
+        (i.e., after `Corpus.text_normalized` is True) so that `Utterance.oovs` is populated.
+        When called from within `normalize_text` itself, pass `force=True`.
+        """
+
+        if not self.ignore_oovs or self._ignore_oovs_applied:
+            return
+
+        if not force:
+            c = session.query(Corpus).first()
+            if c is None or not c.text_normalized:
+                # OOV lists are not reliably populated yet.
+                return
+
+        # Identify files that have any OOV tokens (Utterance.oovs is stored as a space-delimited string).
+        file_ids_sq = (
+            session.query(Utterance.file_id.label("file_id"))
+            .filter(Utterance.oovs.isnot(None))
+            .filter(sqlalchemy.func.trim(Utterance.oovs) != "")
+            .distinct()
+            .subquery()
+        )
+
+        num_files = session.query(sqlalchemy.func.count()).select_from(file_ids_sq).scalar() or 0
+        if not num_files:
+            logger.info("No utterances contained OOVs; nothing ignored (--ignore_oovs).")
+            self._ignore_oovs_applied = True
+            return
+
+        # Ignore all utterances from those files (dropping the entire file if any OOV occurs).
+        utts_ignored = (
+            session.query(Utterance)
+            .filter(Utterance.file_id.in_(session.query(file_ids_sq.c.file_id)))
+            .filter(Utterance.ignored == False)  # noqa
+            .update({Utterance.ignored: True}, synchronize_session=False)
+        )
+        session.commit()
+        logger.info(
+            f"Ignored {num_files} files ({utts_ignored} utterances) containing OOVs (--ignore_oovs)."
+        )
+        self._ignore_oovs_applied = True
 
     def get_utterances(
         self,
@@ -209,6 +265,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         """
         if session is None:
             session = self.session()
+        self._apply_ignore_oovs(session)
         if id is not None:
             utterance = session.get(Utterance, id)
             if not utterance:
@@ -1041,6 +1098,10 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         return_defaults=False,
                         render_nulls=True,
                     )
+
+                # If requested, mark any file containing OOV tokens as ignored before downstream stages.
+                self._apply_ignore_oovs(session, force=True)
+
                 self.text_normalized = True
                 session.query(Corpus).update({"text_normalized": True})
                 session.commit()
