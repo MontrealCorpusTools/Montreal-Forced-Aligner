@@ -34,10 +34,10 @@ from _kalpy.util import (
 from kalpy.aligner import KalpyAligner
 from kalpy.decoder.data import FstArchive
 from kalpy.decoder.training_graphs import TrainingGraphCompiler
-from kalpy.evaluation import align_words, fix_unk_words
+from kalpy.evaluation import align_intervals, align_words
 from kalpy.fstext.lexicon import LexiconCompiler
 from kalpy.gmm.align import GmmAligner
-from kalpy.gmm.data import AlignmentArchive, TranscriptionArchive
+from kalpy.gmm.data import AlignmentArchive, TranscriptionArchive, WordCtmInterval
 from kalpy.gmm.train import GmmStatsAccumulator
 from kalpy.gmm.utils import read_gmm_model
 from kalpy.utils import generate_read_specifier
@@ -75,6 +75,48 @@ from montreal_forced_aligner.utils import thread_logger
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
+
+
+def fix_unk_words(  # noqa: D103
+    ref: typing.List[str],
+    test: typing.List[WordCtmInterval],
+    lexicon_compiler: LexiconCompiler,
+) -> typing.List[WordCtmInterval]:
+    """
+    Replace `<unk>` tokens in aligned word intervals with their original labels from the reference text.
+
+    Note
+    ----
+    MFA 3.3.x depends on `kalpy.evaluation.fix_unk_words`, which has a mapping bug that can leave
+    long runs of `<unk>` in exported TextGrids. We implement the intended logic here so that
+    `mfa align ...` keeps the fast 3.3.x behavior but exports words like 3.2.3 (OOV tokens preserved).
+    """
+
+    oov_word = lexicon_compiler.oov_word
+    oov_id = lexicon_compiler.to_int(oov_word)
+
+    # Kalpy mapping semantics are `test_label -> {reference_labels}` (see `kalpy.evaluation.compare_labels`).
+    # Here: treat `<unk>` in the hypothesis as potentially matching any OOV label from the reference.
+    mapping: dict[str, set[str]] = {oov_word: set()}
+
+    ref_intervals: list[WordCtmInterval] = []
+    for w in ref:
+        wid = lexicon_compiler.to_int(w)
+        ref_intervals.append(WordCtmInterval(w, wid, []))
+        if wid == oov_id:
+            mapping[oov_word].add(w)
+
+    alignment = align_intervals(ref_intervals, test, lexicon_compiler.silence_word, mapping)
+    output_ctm: list[WordCtmInterval] = []
+    for sa, sb in alignment.alignment:
+        if sa.label == "-":
+            output_ctm.append(sb)
+        elif sb.label == "-":
+            continue
+        else:
+            sb.label = sa.label
+            output_ctm.append(sb)
+    return output_ctm
 
 
 __all__ = [
