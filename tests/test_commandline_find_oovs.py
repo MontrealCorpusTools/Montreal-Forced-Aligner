@@ -33,6 +33,17 @@ def test_validate_corpus(
         print(result.exc_info)
         raise result.exception
     assert not result.return_value
-    assert output_path.joinpath(f"oovs_found_{english_us_mfa_dictionary}.txt")
-    assert output_path.joinpath(f"oov_counts_{english_us_mfa_dictionary}.txt")
-    assert output_path.joinpath("utterance_oovs.txt")
+    oovs_path = output_path.joinpath(f"oovs_found_{english_us_mfa_dictionary}.txt")
+    oov_counts_path = output_path.joinpath(f"oov_counts_{english_us_mfa_dictionary}.txt")
+    utterance_oovs_path = output_path.joinpath("utterance_oovs.txt")
+    assert oovs_path.exists()
+    assert oov_counts_path.exists()
+    assert utterance_oovs_path.exists()
+    assert str(oovs_path) in result.stdout
+
+    oovs_found = set(oovs_path.read_text(encoding="utf8").splitlines())
+    utterance_oov_lines = utterance_oovs_path.read_text(encoding="utf8").splitlines()
+    assert utterance_oov_lines
+    for line in utterance_oov_lines:
+        reported_oovs = line.rsplit(": ", maxsplit=1)[1].split(", ")
+        assert set(reported_oovs).issubset(oovs_found)
