@@ -140,7 +140,10 @@ class ValidationMixin:
         if output_directory is None:
             output_directory = self.output_directory
         os.makedirs(output_directory, exist_ok=True)
-        oov_path = os.path.join(output_directory, "oovs_found.txt")
+        oov_paths = [
+            os.path.join(output_directory, f"oovs_found_{base_name}.txt")
+            for base_name in self.dictionary_base_names.values()
+        ]
         utterance_oov_path = os.path.join(output_directory, "utterance_oovs.txt")
 
         total_instances = 0
@@ -172,7 +175,7 @@ class ValidationMixin:
             logger.warning(f"{len(self.oovs_found)} OOV word types")
             logger.warning(f"{total_instances}total OOV tokens")
             logger.warning(
-                f"For a full list of the word types, please see: {oov_path}. "
+                f"For a full list of the word types, please see: {', '.join(oov_paths)}. "
                 f"For a by-utterance breakdown of missing words, see: {utterance_oov_path}"
             )
         else:

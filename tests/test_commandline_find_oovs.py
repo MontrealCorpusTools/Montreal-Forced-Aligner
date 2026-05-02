@@ -39,6 +39,7 @@ def test_validate_corpus(
     assert oovs_path.exists()
     assert oov_counts_path.exists()
     assert utterance_oovs_path.exists()
+    assert str(oovs_path) in result.stdout
 
     oovs_found = set(oovs_path.read_text(encoding="utf8").splitlines())
     utterance_oov_lines = utterance_oovs_path.read_text(encoding="utf8").splitlines()
