@@ -3,25 +3,29 @@ from __future__ import annotations
 
 import collections
 import csv
-import functools
 import logging
 import os
 import re
+import shutil
 import threading
 import time
 import typing
 from abc import ABCMeta, abstractmethod
-from multiprocessing.pool import ThreadPool
 from pathlib import Path
 
 import sqlalchemy.engine
-from kalpy.evaluation import align_phones, naive_boundary_f1
-from kalpy.gmm.data import CtmInterval
 from sqlalchemy.orm import Session, joinedload, selectinload, subqueryload
 from tqdm.rich import tqdm
 
 from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import DatabaseMixin, MfaWorker
+from montreal_forced_aligner.alignment.multiprocessing import (
+    AnalyzeAlignmentsArguments,
+    AnalyzeAlignmentsFunction,
+    AnalyzeIntensityDeviationFunction,
+    EvaluateAlignmentsArguments,
+    EvaluateAlignmentsFunction,
+)
 from montreal_forced_aligner.corpus.classes import FileData, UtteranceData
 from montreal_forced_aligner.corpus.multiprocessing import (
     ExportKaldiFilesArguments,
@@ -111,11 +115,14 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
 
     def __init__(
         self,
-        corpus_directory: str,
+        corpus_directory: typing.Union[str, Path],
         speaker_characters: typing.Union[int, str] = 0,
         ignore_speakers: bool = False,
+        output_analysis: bool = False,
+        analyze_intensity: bool = False,
         oov_count_threshold: int = 0,
         language: Language = Language.unknown,
+        tokenization: str = None,
         subcorpora: typing.Dict[str, typing.Dict[str, typing.Any]] = None,
         **kwargs,
     ):
@@ -152,6 +159,11 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         self.language = language
         if isinstance(language, str):
             self.language = Language[language.split(".")[-1]]
+        self.output_analysis = output_analysis
+        self.analyze_intensity = analyze_intensity
+        self.tokenization = tokenization
+        if self.tokenization is None:
+            self.tokenization = self.language.default_tokenization
 
     @property
     def jobs(self) -> typing.List[Job]:
@@ -426,11 +438,15 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                     )
                             all_phone_intervals.extend(utterance_phone_intervals)
                             all_word_intervals.extend(utterance_word_intervals)
-                            if (
-                                utterance_phone_intervals
-                                and workflow_type is WorkflowType.reference
-                            ):
-                                utterance_mapping.append({"id": u_id, "manual_alignments": True})
+                            if utterance_phone_intervals:
+                                if workflow_type is WorkflowType.reference:
+                                    utterance_mapping.append(
+                                        {"id": u_id, "manual_alignments": True}
+                                    )
+                                else:
+                                    utterance_mapping.append(
+                                        {"id": u_id, "alignment_log_likelihood": 0.0}
+                                    )
                         pbar.update(1)
 
             if new_phones:
@@ -520,6 +536,275 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     f"Reference phones not referenced in mapping file: {', '.join(unreferenced_extra_phones)}"
                 )
 
+    def analyze_alignments_arguments(self) -> typing.List[AnalyzeAlignmentsArguments]:
+        return [
+            AnalyzeAlignmentsArguments(
+                j.id,
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
+                self.working_log_directory.joinpath(f"alignment_analysis.{j.id}.log"),
+                self.analyze_intensity,
+            )
+            for j in self.jobs
+        ]
+
+    def evaluate_alignments_arguments(
+        self, naive=False
+    ) -> typing.List[EvaluateAlignmentsArguments]:
+        return [
+            EvaluateAlignmentsArguments(
+                j.id,
+                getattr(self, "session" if config.USE_THREADING else "db_string", ""),
+                self.working_log_directory.joinpath(f"alignment_evaluation.{j.id}.log"),
+                getattr(self, "use_cutoff_model", False),
+                naive,
+            )
+            for j in self.jobs
+        ]
+
+    def cleanup_alignments(self):
+        with self.session() as session:
+            if config.USE_POSTGRES:
+                session.execute(sqlalchemy.text("ALTER TABLE word_interval DISABLE TRIGGER all"))
+                session.execute(sqlalchemy.text("ALTER TABLE phone_interval DISABLE TRIGGER all"))
+                session.commit()
+            session.query(WordInterval).delete()
+            session.query(PhoneInterval).delete()
+            session.commit()
+            if config.USE_POSTGRES:
+                session.execute(sqlalchemy.text("ALTER TABLE word_interval ENABLE TRIGGER all"))
+                session.execute(sqlalchemy.text("ALTER TABLE phone_interval ENABLE TRIGGER all"))
+                session.commit()
+
+    def analyze_alignments(self, calculate_duration_statistics=True):
+        workflow = self.current_workflow
+        if not workflow.alignments_collected and hasattr(self, "collect_alignments"):
+            self.collect_alignments()
+        os.makedirs(self.working_log_directory, exist_ok=True)
+        logger.info("Analyzing alignment quality...")
+        begin = time.time()
+        with self.session() as session:
+            if calculate_duration_statistics:
+                query = session.query(Phone.phone, Phone.id)
+                id_mapping = {}
+                for p, p_id in query:
+                    if p not in id_mapping:
+                        id_mapping[p] = set()
+                    id_mapping[p].add(p_id)
+                update_mappings = []
+                if not config.USE_POSTGRES:
+                    import statistics
+
+                    query = (
+                        session.query(Phone.phone, PhoneInterval.duration)
+                        .join(PhoneInterval.phone)
+                        .filter(Phone.phone_type == PhoneType.non_silence)
+                    )
+                    phone_data = {}
+                    for p, duration in query:
+                        if p not in phone_data:
+                            phone_data[p] = []
+                        phone_data[p].append(duration)
+                    for p, durations in phone_data.items():
+                        mean_duration = statistics.mean(durations)
+                        try:
+                            sd_duration = statistics.stdev(durations)
+                        except statistics.StatisticsError:
+                            sd_duration = None
+                        for p_id in id_mapping[p]:
+                            update_mappings.append(
+                                {
+                                    "id": p_id,
+                                    "mean_duration": mean_duration,
+                                    "sd_duration": sd_duration,
+                                }
+                            )
+                else:
+                    query = (
+                        session.query(
+                            Phone.id,
+                            sqlalchemy.func.avg(PhoneInterval.duration),
+                            sqlalchemy.func.stddev_samp(PhoneInterval.duration),
+                        )
+                        .join(PhoneInterval.phone)
+                        .group_by(Phone.id)
+                    )
+                    for p_id, mean_duration, sd_duration in query:
+                        update_mappings.append(
+                            {
+                                "id": p_id,
+                                "mean_duration": mean_duration,
+                                "sd_duration": sd_duration,
+                            }
+                        )
+                bulk_update(session, Phone, update_mappings)
+                session.commit()
+
+            arguments = self.analyze_alignments_arguments()
+            update_mappings = []
+            total_count = self.num_utterances
+            if hasattr(self, "num_current_utterances"):
+                total_count = self.num_current_utterances
+            pi_update_mappings = []
+            for (
+                utt_id,
+                speech_log_likelihood,
+                duration_deviation,
+                snr,
+                pi_mappings,
+            ) in run_kaldi_function(AnalyzeAlignmentsFunction, arguments, total_count=total_count):
+                update_mappings.append(
+                    {
+                        "id": utt_id,
+                        "speech_log_likelihood": speech_log_likelihood,
+                        "duration_deviation": duration_deviation,
+                        "snr": snr,
+                    }
+                )
+                pi_update_mappings.extend(pi_mappings)
+                if len(update_mappings) > 100000:
+                    bulk_update(session, Utterance, update_mappings)
+                    session.commit()
+                    update_mappings = []
+                if len(pi_update_mappings) > 100000:
+                    bulk_update(session, PhoneInterval, pi_update_mappings)
+                    session.commit()
+                    pi_update_mappings = []
+
+            if update_mappings:
+                bulk_update(session, Utterance, update_mappings)
+                session.commit()
+            if config.USE_POSTGRES and self.analyze_intensity:
+                if pi_update_mappings:
+                    bulk_update(session, PhoneInterval, pi_update_mappings)
+                    session.commit()
+                query = (
+                    session.query(
+                        Phone.phone,
+                        sqlalchemy.func.avg(PhoneInterval.intensity),
+                        sqlalchemy.func.stddev_samp(PhoneInterval.intensity),
+                    )
+                    .join(PhoneInterval.phone)
+                    .group_by(Phone.phone)
+                )
+                update_mappings = []
+                for p, mean_intensity, sd_intensity in query:
+                    for p_id in id_mapping[p]:
+                        update_mappings.append(
+                            {
+                                "id": p_id,
+                                "mean_intensity": mean_intensity,
+                                "sd_intensity": sd_intensity,
+                            }
+                        )
+                bulk_update(session, Phone, update_mappings)
+                session.commit()
+
+                update_mappings = []
+                for utt_id, intensity_deviation in run_kaldi_function(
+                    AnalyzeIntensityDeviationFunction, arguments, total_count=total_count
+                ):
+                    update_mappings.append(
+                        {
+                            "id": utt_id,
+                            "intensity_deviation": intensity_deviation,
+                        }
+                    )
+                    if len(update_mappings) > 100000:
+                        bulk_update(session, Utterance, update_mappings)
+                        session.commit()
+                        update_mappings = []
+                if update_mappings:
+                    bulk_update(session, Utterance, update_mappings)
+                    session.commit()
+
+            if self.output_analysis:
+                csv_path = self.working_directory.joinpath("alignment_analysis.csv")
+                with mfa_open(csv_path, "w") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(
+                        [
+                            "file",
+                            "begin",
+                            "end",
+                            "speaker",
+                            "overall_log_likelihood",
+                            "speech_log_likelihood",
+                            "phone_duration_deviation",
+                            "snr",
+                            "intensity_deviation",
+                        ]
+                    )
+                    utterances = (
+                        session.query(
+                            File.name,
+                            Utterance.begin,
+                            Utterance.end,
+                            Speaker.name,
+                            Utterance.alignment_log_likelihood,
+                            Utterance.speech_log_likelihood,
+                            Utterance.duration_deviation,
+                            Utterance.snr,
+                            Utterance.intensity_deviation,
+                        )
+                        .join(Utterance.file)
+                        .join(Utterance.speaker)
+                        .order_by(sqlalchemy.desc(Utterance.duration_deviation))
+                    )
+                    for row in utterances:
+                        writer.writerow([*row])
+
+                csv_path = self.working_directory.joinpath("interval_analysis.csv")
+                with mfa_open(csv_path, "w") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(
+                        [
+                            "file",
+                            "utterance_begin",
+                            "utterance_end",
+                            "phone",
+                            "begin",
+                            "end",
+                            "speaker",
+                            "interval_duration",
+                            "mean_phone_duration",
+                            "sd_phone_duration",
+                            "phone_duration_deviation",
+                            "interval_intensity",
+                            "mean_phone_intensity",
+                            "sd_phone_intensity",
+                            "intensity_deviation",
+                        ]
+                    )
+                    intervals = (
+                        session.query(
+                            File.name,
+                            Utterance.begin,
+                            Utterance.end,
+                            Phone.phone,
+                            PhoneInterval.begin,
+                            PhoneInterval.end,
+                            Speaker.name,
+                            PhoneInterval.duration,
+                            Phone.mean_duration,
+                            Phone.sd_duration,
+                            (PhoneInterval.duration - Phone.mean_duration) / Phone.sd_duration,
+                            PhoneInterval.intensity,
+                            Phone.mean_intensity,
+                            Phone.sd_intensity,
+                            (PhoneInterval.intensity - Phone.mean_intensity) / Phone.sd_intensity,
+                        )
+                        .join(PhoneInterval.utterance)
+                        .join(PhoneInterval.phone)
+                        .join(Utterance.file)
+                        .join(Utterance.speaker)
+                        .filter(Phone.sd_intensity != None, Phone.sd_intensity > 0)  # noqa
+                        .order_by(File.name, Utterance.begin, PhoneInterval.begin)
+                    )
+                    for row in intervals:
+                        row = [*row]
+                        writer.writerow(row)
+        logger.debug(f"Analyzed alignment quality in {time.time() - begin:.3f} seconds")
+
     def evaluate_alignments(
         self,
         output_directory: typing.Optional[str] = None,
@@ -532,8 +817,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
 
         Parameters
         ----------
-        mapping: dict[str, Union[str, list[str]]], optional
-            Mapping between phones that should be considered equal across different phone set types
         output_directory: str, optional
             Directory to save results, if not specified, it will be saved in the log directory
         comparison_source: :class:`~montreal_forced_aligner.data.WorkflowType`
@@ -567,6 +850,12 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 output_directory,
                 f"{comparison_source.name}_{reference_source.name}_confusions.csv",
             )
+            interval_analysis_path = os.path.join(output_directory, "interval_analysis.csv")
+            if self.working_directory.joinpath("interval_analysis.csv").exists():
+                shutil.copyfile(
+                    self.working_directory.joinpath("interval_analysis.csv"),
+                    interval_analysis_path,
+                )
         else:
             self._current_workflow = "evaluation"
             os.makedirs(self.working_log_directory, exist_ok=True)
@@ -589,6 +878,9 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             confusion_path = os.path.join(
                 self.working_log_directory,
                 f"{comparison_source.name}_{reference_source.name}_confusions.csv",
+            )
+            interval_analysis_path = os.path.join(
+                self.working_log_directory, "interval_analysis.csv"
             )
         csv_header = [
             "file",
@@ -635,120 +927,60 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         phone_edit_sum = 0
         phone_length_sum = 0
         phone_confusions = collections.Counter()
+        arguments = self.evaluate_alignments_arguments(naive)
         with self.session() as session:
-            # Set up
-            mapping = {}
-            for x in session.query(PhoneMapping).all():
-                if x.model_phone_string not in mapping:
-                    mapping[x.model_phone_string] = set()
-                mapping[x.model_phone_string].add(x.reference_phone_string)
-            logger.info("Evaluating alignments...")
-            logger.debug(f"Mapping: {mapping}")
-            update_mappings = []
-            indices = []
-            to_comp = []
-            if not naive:
-                score_func = functools.partial(
-                    align_phones,
-                    silence_phones=getattr(self, "optional_silence_phone", "sil"),
-                    custom_mapping=mapping,
-                    debug=config.DEBUG,
-                )
-            else:
-                score_func = naive_boundary_f1
-            unaligned_utts = []
-            utterances: typing.List[Utterance] = session.query(Utterance).options(
-                joinedload(Utterance.file, innerjoin=True),
-                joinedload(Utterance.speaker, innerjoin=True),
-                subqueryload(Utterance.phone_intervals).options(
-                    joinedload(PhoneInterval.phone, innerjoin=True),
-                ),
-                subqueryload(Utterance.reference_phone_intervals).options(
-                    joinedload(ReferencePhoneInterval.phone, innerjoin=True),
-                ),
-                subqueryload(Utterance.word_intervals).options(
-                    joinedload(WordInterval.word, innerjoin=True),
-                ),
+            audio_check = (
+                session.query(Utterance.id).filter(Utterance.snr != None).first()  # noqa
+                is not None
             )
-            reference_phone_counts = {}
-            for u in utterances:
-                reference_phones = [x.as_ctm() for x in u.reference_phone_intervals]
-                comparison_phones = [x.as_ctm() for x in u.phone_intervals]
-                if getattr(self, "use_cutoff_model", False):
-                    for wi in u.word_intervals:
-                        if wi.word.word_type is WordType.cutoff:
-                            comparison_phones = [
-                                x
-                                for x in comparison_phones
-                                if x.end <= wi.begin or x.begin >= wi.end
-                            ]
-                            comparison_phones.append(
-                                CtmInterval(
-                                    begin=wi.begin,
-                                    end=wi.end,
-                                    label=getattr(self, "oov_word", "<unk>"),
-                                )
-                            )
-                    comparison_phones = sorted(comparison_phones, key=lambda x: x.begin)
-
-                reference_phone_counts[u.id] = len(reference_phones)
-                if not reference_phone_counts[u.id]:
-                    continue
-                if not comparison_phones and not naive:  # couldn't be aligned
-                    phone_error_rate = reference_phone_counts[u.id]
-                    unaligned_utts.append(u)
-                    update_mappings.append(
-                        {
-                            "id": u.id,
-                            "alignment_score": None,
-                            "phone_error_rate": phone_error_rate,
-                        }
-                    )
-                    continue
-                indices.append(u)
-                to_comp.append((reference_phones, comparison_phones))
+            if audio_check:
+                csv_header += ["phone_duration_deviation", "snr", "intensity_deviation"]
+            pi_update_mappings = []
+            update_mappings = []
             boundary_errors = {}
             recall = {}
             precision = {}
             naive_data = {}
-            with ThreadPool(1) as pool:
-                gen = pool.starmap(score_func, to_comp)
-                for i, results in enumerate(gen):
-                    u = indices[i]
-                    if not naive:
-                        score, phone_error_rate, errors = results[:3]
-                        edit_distance = None
-                        if len(results) > 3:
-                            edit_distance = results[3]
-                            boundary_errors[u.id] = results[4]
-                        if score is None:
-                            continue
-                        phone_confusions.update(errors)
-                        reference_phone_count = reference_phone_counts[u.id]
-                        update_mappings.append(
-                            {
-                                "id": u.id,
-                                "alignment_score": score,
-                                "phone_error_rate": phone_error_rate,
-                                "edit_distance": edit_distance,
-                            }
-                        )
+            reference_phone_counts = {}
+            confusion_examples = {}
+            logger.info("Evaluating alignments...")
+            total_count = self.num_utterances
+            if hasattr(self, "num_current_utterances"):
+                total_count = self.num_current_utterances
+            for results in run_kaldi_function(
+                EvaluateAlignmentsFunction, arguments, total_count=total_count
+            ):
+                u = results[0]
+                update_mappings.append(u)
+                if naive:
+                    p, r, f1, edit_distance, precision[u["id"]], recall[u["id"]] = results[1:]
+                    naive_data[u["id"]] = {"precision": p, "recall": r, "f1": f1}
+                else:
+                    (
+                        file_name,
+                        reference_phone_count,
+                        confusions,
+                        boundary_errors[u["id"]],
+                        pi_mappings,
+                    ) = results[1:]
+                    pi_update_mappings.extend(pi_mappings)
+                    reference_phone_counts[u["id"]] = reference_phone_count
+                    phone_edit_sum += int(u["phone_error_rate"] * reference_phone_count)
+                    phone_length_sum += reference_phone_count
+                    if u["alignment_score"] is not None:
                         score_count += 1
-                        score_sum += score
-                        phone_edit_sum += int(phone_error_rate * reference_phone_count)
-                        phone_length_sum += reference_phone_count
-                    else:
-                        p, r, f1, edit_distance, precision[u.id], recall[u.id] = results
-                        naive_data[u.id] = {"precision": p, "recall": r, "f1": f1}
-                        update_mappings.append(
-                            {
-                                "id": u.id,
-                                "edit_distance": edit_distance,
-                            }
-                        )
+                        score_sum += u["alignment_score"]
 
-            if update_mappings:
-                bulk_update(session, Utterance, update_mappings)
+                        phone_confusions.update(confusions)
+                        for c in confusions.keys():
+                            if c not in confusion_examples:
+                                confusion_examples[c] = [file_name]
+                            elif len(confusion_examples[c]) < 5:
+                                confusion_examples[c].append(file_name)
+
+            bulk_update(session, Utterance, update_mappings)
+            if pi_update_mappings:
+                bulk_update(session, PhoneInterval, pi_update_mappings)
             self.alignment_evaluation_done = True
             session.query(Corpus).update({Corpus.alignment_evaluation_done: True})
             session.commit()
@@ -791,6 +1023,10 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             "oovs": u.oovs,
                             "reference_phone_count": reference_phone_counts[u.id],
                         }
+                        if audio_check:
+                            data["snr"] = u.snr
+                            data["phone_duration_deviation"] = u.duration_deviation
+                            data["intensity_deviation"] = u.intensity_deviation
                         data["word_count"] = len(data["normalized_text"].split())
                         data["oov_count"] = len(data["oovs"].split())
                         data.update(naive_data[u.id])
@@ -835,6 +1071,8 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         file_name,
                         speaker_name,
                     ) in utterances:
+                        if u.id not in reference_phone_counts:
+                            continue
                         data = {
                             "file": file_name,
                             "begin": u.begin,
@@ -845,6 +1083,10 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             "oovs": u.oovs,
                             "reference_phone_count": reference_phone_counts[u.id],
                         }
+                        if audio_check:
+                            data["snr"] = u.snr
+                            data["phone_duration_deviation"] = u.duration_deviation
+                            data["intensity_deviation"] = u.intensity_deviation
                         data["word_count"] = len(data["normalized_text"].split())
                         data["oov_count"] = len(data["oovs"].split())
                         data.update(
@@ -873,12 +1115,65 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             boundary_writer.writerow(b)
                         writer.writerow(data)
                 with mfa_open(confusion_path, "w") as f:
-                    f.write("reference,hypothesis,count\n")
+                    f.write("reference,hypothesis,count,example_files\n")
                     for k, v in sorted(phone_confusions.items(), key=lambda x: -x[1]):
-                        f.write(f"{k[0]},{k[1]},{v}\n")
-        if not naive:
+                        f.write(f"{k[0]},{k[1]},{v}, {'|'.join(confusion_examples[k])}\n")
             logger.info(f"Average overlap score: {score_sum / score_count}")
             logger.info(f"Average phone error rate: {phone_edit_sum / phone_length_sum}")
+
+            with mfa_open(interval_analysis_path, "w") as f:
+                writer = csv.writer(f)
+                writer.writerow(
+                    [
+                        "file",
+                        "utterance_begin",
+                        "utterance_end",
+                        "phone",
+                        "begin",
+                        "end",
+                        "begin_error",
+                        "end_error",
+                        "speaker",
+                        "interval_duration",
+                        "mean_phone_duration",
+                        "sd_phone_duration",
+                        "phone_duration_deviation",
+                        "interval_intensity",
+                        "mean_phone_intensity",
+                        "sd_phone_intensity",
+                        "intensity_deviation",
+                    ]
+                )
+                intervals = (
+                    session.query(
+                        File.name,
+                        Utterance.begin,
+                        Utterance.end,
+                        Phone.phone,
+                        PhoneInterval.begin,
+                        PhoneInterval.end,
+                        PhoneInterval.begin_error,
+                        PhoneInterval.end_error,
+                        Speaker.name,
+                        PhoneInterval.duration,
+                        Phone.mean_duration,
+                        Phone.sd_duration,
+                        (PhoneInterval.duration - Phone.mean_duration) / Phone.sd_duration,
+                        PhoneInterval.intensity,
+                        Phone.mean_intensity,
+                        Phone.sd_intensity,
+                        (PhoneInterval.intensity - Phone.mean_intensity) / Phone.sd_intensity,
+                    )
+                    .join(PhoneInterval.utterance)
+                    .join(PhoneInterval.phone)
+                    .join(Utterance.file)
+                    .join(Utterance.speaker)
+                    .filter(Phone.sd_duration != None, Phone.sd_duration > 0)  # noqa
+                    .order_by(File.name, Utterance.begin, PhoneInterval.begin)
+                )
+                for row in intervals:
+                    row = [*row]
+                    writer.writerow(row)
         logger.debug(f"Alignment evaluation took {time.time() - all_begin} seconds")
 
     def get_utterances(
@@ -1442,7 +1737,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
     def get_tokenizers(self):
         from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 
-        if self.language is Language.unknown:
+        if self.language is Language.unknown or self.tokenization == "simple":
             tokenizers = getattr(self, "tokenizers", None)
         else:
             from montreal_forced_aligner.tokenization.spacy import (
@@ -1524,7 +1819,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             words = session.query(
                 Word.id, Word.mapping_id, Word.dictionary_id, Word.word, Word.word_type
             ).order_by(Word.mapping_id)
-            if not has_words or getattr(self, "use_g2p", False):
+            if not has_words:
                 word_insert_mappings[(1, "<eps>")] = {
                     "id": word_key,
                     "word": "<eps>",
@@ -1553,10 +1848,12 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     result, dict_id = result
                     if dict_id is None:
                         dict_id = list(dictionaries.keys())[0]
-                    if has_words and not getattr(self, "use_g2p", False) and g2p_model is not None:
+                    if has_words and g2p_model is not None:
                         oovs = set(result["oovs"].split())
                         pronunciation_text = result["normalized_character_text"].split()
                         for i, w in enumerate(result["normalized_text"].split()):
+                            if dictionaries[dict_id].name in ["default", "nonnative"]:
+                                continue
                             if (dict_id, w) not in word_indexes:
                                 if w in dictionaries[dict_id].special_set:
                                     continue
@@ -1672,6 +1969,8 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                                     pronunciations = [getattr(self, "oov_phone", "spn")]
                                 else:
                                     word_type = WordType.speech
+                                    if dict_id not in g2pped:
+                                        continue
                                     if isinstance(g2pped, dict):
                                         pronunciations = [
                                             g2pped[dict_id][x][0]
@@ -2126,22 +2425,18 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         subsetted += 1
                 remaining_subset = subset - sum(subsets_per_dictionary.values())
                 remaining_dicts = num_dictionaries - subsetted
-                remaining_subset_per_dictionary = int(remaining_subset / remaining_dicts)
                 for dict_name, num_utts in sorted(utts_per_dictionary.items(), key=lambda x: x[1]):
                     dict_id = dictionary_lookup[dict_name]
                     if dict_name in subsets_per_dictionary:
                         subset_per_dictionary = subsets_per_dictionary[dict_name]
                     else:
-                        subset_per_dictionary = remaining_subset_per_dictionary
+                        subset_per_dictionary = int(remaining_subset / remaining_dicts)
                         remaining_dicts -= 1
                         if remaining_dicts > 0:
                             if num_utts < subset_per_dictionary:
                                 remaining_subset -= num_utts
                             else:
                                 remaining_subset -= subset_per_dictionary
-                            remaining_subset_per_dictionary = int(
-                                remaining_subset / remaining_dicts
-                            )
                     logger.debug(
                         f"For {dict_name}, total number of utterances is {num_utts}, looking to get {subset_per_dictionary} utterances"
                     )

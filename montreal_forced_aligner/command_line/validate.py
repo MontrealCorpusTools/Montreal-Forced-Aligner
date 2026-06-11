@@ -114,8 +114,8 @@ def validate_corpus_cli(context, **kwargs) -> None:
     output_directory = kwargs.get("output_directory", None)
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"].absolute()
-    dictionary_path = kwargs["dictionary_path"]
-    acoustic_model_path = kwargs.get("acoustic_model_path", None)
+    dictionary = kwargs["dictionary_path"]
+    acoustic_model = kwargs.get("acoustic_model_path", None)
     if kwargs.get("phone_set_type", "UNKNOWN") != "UNKNOWN":
         import warnings
 
@@ -125,17 +125,17 @@ def validate_corpus_cli(context, **kwargs) -> None:
             "https://github.com/MontrealCorpusTools/mfa-models/tree/main/config/acoustic/phone_groups "
             "for example phone group configurations that have been used in training MFA models."
         )
-    if acoustic_model_path:
+    if acoustic_model:
         validator = PretrainedValidator(
             corpus_directory=corpus_directory,
-            dictionary_path=dictionary_path,
-            acoustic_model_path=acoustic_model_path,
+            dictionary=dictionary,
+            acoustic_model=acoustic_model,
             **PretrainedValidator.parse_parameters(config_path, context.params, context.args),
         )
     else:
         validator = TrainingValidator(
             corpus_directory=corpus_directory,
-            dictionary_path=dictionary_path,
+            dictionary=dictionary,
             **TrainingValidator.parse_parameters(config_path, context.params, context.args),
         )
     try:
@@ -156,7 +156,7 @@ def validate_corpus_cli(context, **kwargs) -> None:
     ),
     short_help="Validate dictionary",
 )
-@click.argument("dictionary_path", type=str)
+@click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
 @click.option(
     "--output_path",
     help="Path to save the CSV file with the scored pronunciations.",
@@ -188,13 +188,14 @@ def validate_dictionary_cli(context, **kwargs) -> None:
     initialize_configuration(context)
     config_path = kwargs.get("config_path", None)
     g2p_model_path = kwargs["g2p_model_path"]
+    g2p_model = None
     if g2p_model_path:
-        g2p_model_path = validate_g2p_model(context, kwargs, g2p_model_path)
-    dictionary_path = kwargs["dictionary_path"]
+        g2p_model = validate_g2p_model(context, kwargs, g2p_model_path)
+    dictionary = kwargs["dictionary_path"]
     output_path = kwargs["output_path"]
     validator = DictionaryValidator(
-        g2p_model_path=g2p_model_path,
-        dictionary_path=dictionary_path,
+        g2p_model=g2p_model,
+        dictionary=dictionary,
         **DictionaryValidator.parse_parameters(config_path, context.params, context.args),
     )
     try:

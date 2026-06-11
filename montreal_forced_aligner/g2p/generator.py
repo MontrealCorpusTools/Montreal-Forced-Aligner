@@ -506,6 +506,7 @@ class PyniniGenerator(G2PTopLevelMixin):
     def __init__(
         self,
         word_list: typing.List[str] = None,
+        g2p_model: G2PModel = None,
         g2p_model_path: Path = None,
         strict_graphemes: bool = False,
         unicode_decomposition: bool = False,
@@ -514,9 +515,11 @@ class PyniniGenerator(G2PTopLevelMixin):
         self.strict_graphemes = strict_graphemes
         self.unicode_decomposition = unicode_decomposition
         super().__init__(**kwargs)
-        self.g2p_model = G2PModel(
-            g2p_model_path, root_directory=getattr(self, "workflow_directory", None)
-        )
+        self.g2p_model = g2p_model
+        if not self.g2p_model and g2p_model_path:
+            self.g2p_model = G2PModel(
+                g2p_model_path, root_directory=getattr(self, "workflow_directory", None)
+            )
         self.output_token_type = "utf8"
         self.input_token_type = "utf8"
         self.rewriter = None

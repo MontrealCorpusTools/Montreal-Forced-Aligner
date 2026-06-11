@@ -1,0 +1,15 @@
+{
+    "name": "test_multilingual_tg",
+    "link": "N/A",
+    "dialects": "US, UK",
+    "license": "MIT",
+    "citation": "N/A",
+    "version": "N/A",
+    "num_utterances": 10,
+    "num_files": 10,
+    "num_speakers": 2,
+    "num_hours": 0.010025572916666668,
+    "num_female": 0,
+    "num_male": 0,
+    "num_unspecified": 0
+}

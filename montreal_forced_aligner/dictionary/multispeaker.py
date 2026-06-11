@@ -16,7 +16,7 @@ import pynini
 import pywrapfst
 import sqlalchemy.orm.session
 import yaml
-from kalpy.fstext.lexicon import G2PCompiler, LexiconCompiler
+from kalpy.fstext.lexicon import LexiconCompiler
 from kalpy.fstext.lexicon import Pronunciation as KalpyPronunciation
 from sqlalchemy.orm import selectinload
 from tqdm.rich import tqdm
@@ -88,6 +88,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
 
     def __init__(
         self,
+        dictionary: DictionaryModel = None,
         dictionary_path: typing.Union[str, Path] = None,
         rules_path: typing.Union[str, Path] = None,
         phone_groups_path: typing.Union[str, Path] = None,
@@ -96,8 +97,8 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.dictionary_model = None
-        if dictionary_path is not None:
+        self.dictionary_model = dictionary
+        if not self.dictionary_model and dictionary_path is not None:
             self.dictionary_model = DictionaryModel(
                 dictionary_path, phone_set_type=self.phone_set_type
             )
@@ -111,7 +112,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         self._default_dictionary_id = None
         self._dictionary_base_names = None
         self.clitic_marker = None
-        self.use_g2p = False
         self.skip_all_uppercase = skip_all_uppercase
         if isinstance(rules_path, str):
             rules_path = Path(rules_path)
@@ -122,7 +122,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         self.rules_path = rules_path
         self.phone_groups_path = phone_groups_path
         self.topology_path = topology_path
-        self.lexicon_compilers: typing.Dict[int, typing.Union[LexiconCompiler, G2PCompiler]] = {}
+        self.lexicon_compilers: typing.Dict[int, LexiconCompiler] = {}
         self._tokenizers = {}
 
     @property
@@ -155,7 +155,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         bracketed_word=self.bracketed_word,
                         cutoff_word=self.cutoff_word,
                         ignore_case=self.ignore_case,
-                        use_g2p=self.use_g2p or getattr(self, "g2p_model", None) is not None,
                         clitic_set=clitic_set,
                         grapheme_set=grapheme_set,
                     )
@@ -355,8 +354,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
     def dictionary_setup(self) -> Tuple[typing.Set[str], collections.Counter]:
         """Set up the dictionary for processing"""
         self.initialize_database()
-        if self.use_g2p:
-            return set(), collections.Counter()
         if getattr(self, "text_normalized", False):
             logger.debug(
                 "Skipping setup from original dictionary file due to text already normalized."
@@ -450,7 +447,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             if self.clitic_marker is not None
                             else "",
                             default=False,
-                            use_g2p=False,
                             max_disambiguation_symbol=0,
                             silence_word=self.silence_word,
                             oov_word=self.oov_word,
@@ -476,7 +472,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             self._current_speaker_index += 1
                     has_nonnative_speakers = True
                     continue
-                if dictionary_model.path not in dictionary_id_cache and not self.use_g2p:
+                if dictionary_model.path not in dictionary_id_cache:
                     word_cache = {}
                     pronunciation_cache = set()
                     if self.phone_set_type not in auto_set:
@@ -510,7 +506,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         position_dependent_phones=self.position_dependent_phones,
                         clitic_marker=self.clitic_marker if self.clitic_marker is not None else "",
                         default="default" in speakers,
-                        use_g2p=False,
                         max_disambiguation_symbol=0,
                         silence_word=self.silence_word,
                         oov_word=self.oov_word,
@@ -791,7 +786,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 position_dependent_phones=self.position_dependent_phones,
                 clitic_marker=self.clitic_marker if self.clitic_marker is not None else "",
                 default=True,
-                use_g2p=False,
                 max_disambiguation_symbol=0,
                 silence_word=self.silence_word,
                 oov_word=self.oov_word,
@@ -1199,13 +1193,13 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         fst.arcsort("olabel")
         return fst, group_table, phone_to_group_mapping
 
-    def export_trained_rules(self, output_directory: str) -> None:
+    def export_trained_rules(self, output_directory: typing.Union[str, Path]) -> None:
         """
         Export rules with pronunciation and silence probabilities calculated to an output directory
 
         Parameters
         ----------
-        output_directory: str
+        output_directory: [str, Path]
             Directory for export
         """
         with self.session() as session:
@@ -1642,24 +1636,11 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             dictionaries: typing.List[Dictionary] = session.query(Dictionary)
             for d in dictionaries:
                 d.temp_directory.mkdir(parents=True, exist_ok=True)
-                if self.use_g2p:
-                    fst = pynini.Fst.read(d.lexicon_fst_path)
-                    align_fst = pynini.Fst.read(d.align_lexicon_path)
-                    grapheme_table = pywrapfst.SymbolTable.read_text(d.grapheme_symbol_table_path)
-                    self.lexicon_compilers[d.id] = G2PCompiler(
-                        fst,
-                        grapheme_table,
-                        self.phone_table,
-                        align_fst=align_fst,
-                        silence_phone=self.optional_silence_phone,
-                    )
-
-                else:
-                    d.words_symbol_path.unlink(missing_ok=True)
-                    self.lexicon_compilers[d.id] = self.build_lexicon_compiler(
-                        d.id, disambiguation=write_disambiguation
-                    )
-                    self.lexicon_compilers[d.id].word_table.write_text(d.words_symbol_path)
+                d.words_symbol_path.unlink(missing_ok=True)
+                self.lexicon_compilers[d.id] = self.build_lexicon_compiler(
+                    d.id, disambiguation=write_disambiguation
+                )
+                self.lexicon_compilers[d.id].word_table.write_text(d.words_symbol_path)
 
     def load_lexicon_compilers(self):
         with self.session() as session:
@@ -1707,10 +1688,9 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         Pronunciation.non_silence_before_correction,
                     )
                     .join(Pronunciation.word)
-                    .filter(
-                        sqlalchemy.or_(Word.dictionary_id == d.id, Word.word.in_(d.special_set))
-                    )
+                    .filter(Word.dictionary_id == d.id)
                     .filter(Word.included == True)  # noqa
+                    .filter(Word.word_type != WordType.silence)
                     .filter(Word.word_type != WordType.extra)
                     .order_by(Word.mapping_id)
                 )
@@ -1728,6 +1708,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     .join(Pronunciation.word)
                     .filter(Word.included == True)  # noqa
                     .filter(Word.word_type != WordType.extra)
+                    .filter(Word.word_type != WordType.silence)
                     .group_by(Word.mapping_id, Word.word, Pronunciation.pronunciation)
                     .order_by(Word.mapping_id)
                 )
@@ -1773,7 +1754,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 lexicon_compiler.align_fst.write(d.align_lexicon_path)
                 lexicon_compiler.fst.write(d.lexicon_fst_path)
             lexicon_compiler.clear()
-        d.word_table.write_text(d.words_symbol_path)
         return lexicon_compiler
 
     def write_training_information(self) -> None:

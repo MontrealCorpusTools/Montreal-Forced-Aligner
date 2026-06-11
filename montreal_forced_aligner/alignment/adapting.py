@@ -19,7 +19,7 @@ from montreal_forced_aligner.alignment.pretrained import PretrainedAligner
 from montreal_forced_aligner.data import WorkflowType
 from montreal_forced_aligner.db import CorpusWorkflow
 from montreal_forced_aligner.exceptions import KaldiProcessingError
-from montreal_forced_aligner.models import AcousticModel
+from montreal_forced_aligner.models import AcousticModel, MfaAlignmentModel
 from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
 
 __all__ = ["AdaptingAligner"]
@@ -51,11 +51,11 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         Flag for whether adaptation is complete
     """
 
-    def __init__(self, mapping_tau: int = 20, **kwargs):
+    def __init__(self, mapping_tau: int = 20, use_reference_alignments: bool = True, **kwargs):
         self.initialized = False
         self.adaptation_done = False
-        self.use_reference_alignments = True
         super().__init__(**kwargs)
+        self.use_reference_alignments = use_reference_alignments
         self.mapping_tau = mapping_tau
 
     def map_acc_stats_arguments(self, alignment=False) -> List[AccStatsArguments]:
@@ -280,7 +280,6 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
                 "names": sorted(self.dictionary_base_names.values()),
                 "default": self.dictionary_base_names[self._default_dictionary_id],
                 "silence_word": self.silence_word,
-                "use_g2p": self.use_g2p,
                 "oov_word": self.oov_word,
                 "bracketed_word": self.bracketed_word,
                 "laughter_word": self.laughter_word,
@@ -303,17 +302,24 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
 
         Parameters
         ----------
-        output_model_path : str
+        output_model_path : :class:`pathlib.Path`
             Path to save adapted acoustic model
         """
-        directory = output_model_path.parent
+        combined_model_check = MfaAlignmentModel.valid_extension(output_model_path)
+        if not combined_model_check:
+            directory = output_model_path.parent
 
-        acoustic_model = AcousticModel.empty(
-            output_model_path.stem, root_directory=self.working_log_directory
-        )
-        acoustic_model.add_meta_file(self)
-        acoustic_model.add_model(self.working_directory)
-        acoustic_model.add_model(self.phones_dir)
-        if directory:
-            directory.mkdir(parents=True, exist_ok=True)
-        acoustic_model.dump(output_model_path)
+            acoustic_model = AcousticModel.empty(
+                output_model_path.stem, root_directory=self.working_log_directory
+            )
+            acoustic_model.add_meta_file(self)
+            acoustic_model.add_model(self.working_directory)
+            acoustic_model.add_model(self.phones_dir)
+            if directory:
+                directory.mkdir(parents=True, exist_ok=True)
+            acoustic_model.dump(output_model_path)
+        else:
+            model = MfaAlignmentModel(output_model_path.name, output_model_path)
+            model.add_acoustic_model(self.working_directory)
+            model.add_acoustic_model(self.phones_dir)
+            model.add_meta_file(self)

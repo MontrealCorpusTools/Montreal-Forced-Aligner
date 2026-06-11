@@ -38,7 +38,7 @@ from montreal_forced_aligner.db import (
 )
 from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
 from montreal_forced_aligner.helper import load_configuration, mfa_open, parse_old_features
-from montreal_forced_aligner.models import AcousticModel, DictionaryModel
+from montreal_forced_aligner.models import AcousticModel, DictionaryModel, MfaAlignmentModel
 from montreal_forced_aligner.transcription.transcriber import TranscriberMixin
 from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
 
@@ -174,6 +174,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             )
         self.phone_set_type = self.dictionary_model.phone_set_type
         os.makedirs(self.output_directory, exist_ok=True)
+        self.multiple_corpora = False
         self.training_configs: Dict[
             str, typing.Union[AcousticModelTrainingMixin, PronunciationProbabilityTrainer]
         ] = {}
@@ -458,6 +459,8 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             config = PronunciationProbabilityTrainer(
                 identifier=identifier, previous_trainer=previous_trainer, worker=self, **p
             )
+            if config.subset_folders:
+                self.multiple_corpora = True
         else:
             raise ConfigError(f"Invalid training type '{train_type}' in config file")
 
@@ -469,51 +472,36 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
 
         Parameters
         ----------
-        output_model_path : str
+        output_model_path : Path
             Path to save acoustic model
         """
-        if "pronunciation_probabilities" in self.training_configs:
-            export_directory = os.path.dirname(output_model_path)
-            if export_directory:
-                os.makedirs(export_directory, exist_ok=True)
-            self.export_trained_rules(
-                self.training_configs[self.final_identifier].working_directory
-            )
-            with self.session() as session:
-                for d in session.query(Dictionary).filter(
-                    ~Dictionary.name.in_(["default", "nonnative"])
-                ):
-                    base_name = self.dictionary_base_names[d.id]
-                    if d.use_g2p:
-                        shutil.copyfile(
-                            self.phone_symbol_table_path,
-                            os.path.join(
-                                self.training_configs[self.final_identifier].working_directory,
-                                "phones.txt",
-                            ),
+        combined_model_check = MfaAlignmentModel.valid_extension(output_model_path)
+        if "pronunciation_probabilities" in self.training_configs or combined_model_check:
+            if combined_model_check:
+                model = MfaAlignmentModel(output_model_path.name, output_model_path)
+                self.export_trained_rules(model.dictionary_directory)
+                with self.session() as session:
+                    for d in session.query(Dictionary).filter(
+                        ~Dictionary.name.in_(["default", "nonnative"])
+                    ):
+                        base_name = self.dictionary_base_names[d.id]
+                        self.export_lexicon(
+                            d.id,
+                            model.dictionary_directory / (base_name + ".dict"),
+                            probability=True,
                         )
-                        shutil.copyfile(
-                            self.grapheme_symbol_table_path,
-                            os.path.join(
-                                self.training_configs[self.final_identifier].working_directory,
-                                "graphemes.txt",
-                            ),
-                        )
-                        shutil.copyfile(
-                            d.lexicon_fst_path,
-                            os.path.join(
-                                self.training_configs[self.final_identifier].working_directory,
-                                self.dictionary_base_names[d.id] + ".fst",
-                            ),
-                        )
-                        shutil.copyfile(
-                            d.align_lexicon_path,
-                            os.path.join(
-                                self.training_configs[self.final_identifier].working_directory,
-                                self.dictionary_base_names[d.id] + "_align.fst",
-                            ),
-                        )
-                    else:
+            else:
+                export_directory = os.path.dirname(output_model_path)
+                if export_directory:
+                    os.makedirs(export_directory, exist_ok=True)
+                self.export_trained_rules(
+                    self.training_configs[self.final_identifier].working_directory
+                )
+                with self.session() as session:
+                    for d in session.query(Dictionary).filter(
+                        ~Dictionary.name.in_(["default", "nonnative"])
+                    ):
+                        base_name = self.dictionary_base_names[d.id]
                         output_dictionary_path = os.path.join(
                             export_directory, base_name + ".dict"
                         )
@@ -717,7 +705,6 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         self.compute_phone_pdf_counts()
         self.collect_alignments()
         self.analyze_alignments()
-        self.train_phone_lm()
 
     def export_files(
         self,

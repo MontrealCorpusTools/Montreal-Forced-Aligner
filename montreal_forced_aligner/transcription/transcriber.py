@@ -5,7 +5,6 @@ Transcription
 """
 from __future__ import annotations
 
-import collections
 import csv
 import gc
 import logging
@@ -13,23 +12,16 @@ import os
 import shutil
 import subprocess
 import sys
-import threading
 import time
 import typing
 import warnings
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from queue import Empty, Queue
 from typing import TYPE_CHECKING, Dict, List, Optional
 
-import pywrapfst
-from _kalpy.fstext import VectorFst
-from kalpy.decoder.decode_graph import DecodeGraphCompiler
 from kalpy.gmm.data import to_tg_interval
-from kalpy.utils import kalpy_logger
 from praatio import textgrid
 from sqlalchemy.orm import joinedload, selectinload
-from tqdm.rich import tqdm
 
 from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import FileExporterMixin, TopLevelMfaWorker
@@ -37,7 +29,6 @@ from montreal_forced_aligner.alignment.base import CorpusAligner
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
 from montreal_forced_aligner.data import (
     ISO_LANGUAGE_MAPPING,
-    ArpaNgramModel,
     Language,
     TextFileType,
     TextgridFormats,
@@ -47,7 +38,6 @@ from montreal_forced_aligner.db import (
     CorpusWorkflow,
     Dictionary,
     File,
-    Phone,
     SoundFile,
     Speaker,
     Utterance,
@@ -62,8 +52,6 @@ from montreal_forced_aligner.helper import (
     score_wer,
 )
 from montreal_forced_aligner.language_modeling.multiprocessing import (
-    TrainLmArguments,
-    TrainPhoneLmFunction,
     TrainSpeakerLmArguments,
     TrainSpeakerLmFunction,
 )
@@ -79,8 +67,6 @@ from montreal_forced_aligner.transcription.multiprocessing import (
     CreateHclgFunction,
     DecodeArguments,
     DecodeFunction,
-    DecodePhoneArguments,
-    DecodePhoneFunction,
     EncoderASR,
     FinalFmllrArguments,
     FinalFmllrFunction,
@@ -100,12 +86,7 @@ from montreal_forced_aligner.transcription.multiprocessing import (
     WhisperAsrFunction,
     WhisperCudaArguments,
 )
-from montreal_forced_aligner.utils import (
-    KaldiProcessWorker,
-    log_kaldi_errors,
-    run_kaldi_function,
-    thirdparty_binary,
-)
+from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
 from montreal_forced_aligner.vad.models import SpeechbrainSegmenterMixin
 
 if TYPE_CHECKING:
@@ -494,184 +475,9 @@ class TranscriberMixin(CorpusAligner, TranscriptionEvaluationMixin):
         ):
             pass
 
-    def train_phone_lm(self):
-        """Train a phone-based language model (i.e., not using words)."""
-        if not self.has_alignments():
-            logger.error("Cannot train phone LM without alignments")
-            return
-        if self.use_g2p:
-            return
-        phone_lm_path = self.phones_dir.joinpath("phone_lm.fst")
-        if phone_lm_path.exists():
-            return
-        logger.info("Beginning phone LM training...")
-        logger.info("Collecting training data...")
-
-        ngram_order = 4
-        num_ngrams = 20000
-        log_path = self.phones_dir.joinpath("phone_lm_training.log")
-        unigram_phones = set()
-        return_queue = Queue()
-        stopped = threading.Event()
-        error_dict = {}
-        procs = []
-        count_paths = []
-        allowed_bigrams = collections.defaultdict(set)
-        with self.session() as session, tqdm(
-            total=self.num_current_utterances, disable=config.QUIET
-        ) as pbar:
-            with mfa_open(self.phones_dir.joinpath("phone_boundaries.int"), "w") as f:
-                for p in session.query(Phone):
-                    f.write(f"{p.mapping_id} singleton\n")
-            for j in self.jobs:
-                args = TrainLmArguments(
-                    j.id,
-                    getattr(self, "session" if config.USE_THREADING else "db_string", ""),
-                    self.working_log_directory.joinpath(f"ngram_count.{j.id}.log"),
-                    self.phones_dir,
-                    self.phone_symbol_table_path,
-                    ngram_order,
-                    self.oov_word,
-                )
-                function = TrainPhoneLmFunction(args)
-                p = KaldiProcessWorker(j.id, return_queue, function, stopped)
-                procs.append(p)
-                p.start()
-                count_paths.append(self.phones_dir.joinpath(f"{j.id}.cnts"))
-            while True:
-                try:
-                    result = return_queue.get(timeout=1)
-                    if isinstance(result, Exception):
-                        error_dict[getattr(result, "job_name", 0)] = result
-                        continue
-                    if stopped.is_set():
-                        continue
-                    return_queue.task_done()
-                except Empty:
-                    for proc in procs:
-                        if not proc.finished.is_set():
-                            break
-                    else:
-                        break
-                    continue
-                _, phones = result
-                phones = phones.split()
-                unigram_phones.update(phones)
-                phones = ["<s>"] + phones + ["</s>"]
-                for i in range(len(phones) - 1):
-                    allowed_bigrams[phones[i]].add(phones[i + 1])
-
-                pbar.update(1)
-        for p in procs:
-            p.join()
-        if error_dict:
-            for v in error_dict.values():
-                raise v
-        logger.info("Training model...")
-        with mfa_open(log_path, "w") as log_file:
-            merged_file = self.phones_dir.joinpath("merged.cnts")
-            if len(count_paths) > 1:
-                ngrammerge_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("ngrammerge"),
-                        f"--ofile={merged_file}",
-                        *count_paths,
-                    ],
-                    stderr=log_file,
-                    env=os.environ,
-                )
-                ngrammerge_proc.communicate()
-            else:
-                os.rename(count_paths[0], merged_file)
-            ngrammake_proc = subprocess.Popen(
-                [thirdparty_binary("ngrammake"), "--v=2", "--method=kneser_ney", merged_file],
-                stderr=log_file,
-                stdout=subprocess.PIPE,
-                env=os.environ,
-            )
-            ngramshrink_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("ngramshrink"),
-                    "--v=2",
-                    "--method=relative_entropy",
-                    f"--target_number_of_ngrams={num_ngrams}",
-                ],
-                stderr=log_file,
-                stdin=ngrammake_proc.stdout,
-                stdout=subprocess.PIPE,
-                env=os.environ,
-            )
-            print_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("ngramprint"),
-                    "--ARPA",
-                    f"--symbols={self.phone_symbol_table_path}",
-                ],
-                stdin=ngramshrink_proc.stdout,
-                stderr=log_file,
-                encoding="utf8",
-                stdout=subprocess.PIPE,
-                env=os.environ,
-            )
-            model = ArpaNgramModel.read(print_proc.stdout)
-            phone_symbols = pywrapfst.SymbolTable()
-            for _, phone in sorted(self.reversed_phone_mapping.items()):
-                phone_symbols.add_symbol(phone)
-            log_file.write("Done training initial ngram model\n")
-            log_file.flush()
-            bigram_fst = model.construct_bigram_fst("#1", allowed_bigrams, phone_symbols)
-
-            bigram_fst.write(self.phones_dir.joinpath("bigram.fst"))
-            bigram_fst.project("output")
-            push_special_proc = subprocess.Popen(
-                [thirdparty_binary("fstpushspecial")],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=log_file,
-                env=os.environ,
-            )
-            minimize_proc = subprocess.Popen(
-                [thirdparty_binary("fstminimizeencoded")],
-                stdin=push_special_proc.stdout,
-                stdout=subprocess.PIPE,
-                stderr=log_file,
-                env=os.environ,
-            )
-            rm_syms_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("fstrmsymbols"),
-                    "--remove-from-output=true",
-                    self.disambiguation_symbols_int_path,
-                    "-",
-                    phone_lm_path,
-                ],
-                stdin=minimize_proc.stdout,
-                stderr=log_file,
-                env=os.environ,
-            )
-            push_special_proc.stdin.write(bigram_fst.write_to_string())
-            push_special_proc.stdin.flush()
-            push_special_proc.stdin.close()
-            rm_syms_proc.communicate()
-
-    def setup_phone_lm(self) -> None:
-        """Setup phone language model for phone-based transcription"""
-
-        self.train_phone_lm()
-        log_path = self.working_log_directory.joinpath("hclg.log")
-        with kalpy_logger("kalpy.decode_graph", log_path):
-            compiler = DecodeGraphCompiler(
-                self.model_path, self.tree_path, None, **self.hclg_options
-            )
-            compiler.lg_fst = VectorFst.Read(str(self.phones_dir.joinpath("phone_lm.fst")))
-            hclg_path = self.working_directory.joinpath("HCLG_phone.fst")
-            compiler.export_hclg(None, hclg_path)
-
     def transcribe(self, workflow_type: WorkflowType = WorkflowType.transcription):
         self.initialize_database()
         self.create_new_current_workflow(workflow_type)
-        if workflow_type is WorkflowType.phone_transcription:
-            self.setup_phone_lm()
         self.acoustic_model.export_model(self.working_directory)
         self.transcribe_utterances()
 
@@ -760,8 +566,6 @@ class TranscriberMixin(CorpusAligner, TranscriptionEvaluationMixin):
         log_likelihood_count = 0
         if workflow.workflow_type is WorkflowType.per_speaker_transcription:
             decode_function = PerSpeakerDecodeFunction
-        elif workflow.workflow_type is WorkflowType.phone_transcription:
-            decode_function = DecodePhoneFunction
         else:
             decode_function = DecodeFunction
         for _, log_likelihood in run_kaldi_function(
@@ -882,18 +686,6 @@ class TranscriberMixin(CorpusAligner, TranscriptionEvaluationMixin):
                         decode_options,
                         self.order,
                         self.method,
-                    )
-                )
-            elif workflow is WorkflowType.phone_transcription:
-                arguments.append(
-                    DecodePhoneArguments(
-                        j.id,
-                        getattr(self, "session" if config.USE_THREADING else "db_string", ""),
-                        self.working_log_directory.joinpath(f"decode.{j.id}.log"),
-                        self.working_directory,
-                        self.alignment_model_path,
-                        self.working_directory.joinpath("HCLG_phone.fst"),
-                        decode_options,
                     )
                 )
             else:
@@ -1066,15 +858,21 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
 
     def __init__(
         self,
-        acoustic_model_path: Path,
-        language_model_path: Path,
+        acoustic_model: AcousticModel = None,
+        acoustic_model_path: Path = None,
+        language_model: LanguageModel = None,
+        language_model_path: Path = None,
         output_type: str = "transcription",
         **kwargs,
     ):
-        self.acoustic_model = AcousticModel(acoustic_model_path)
+        self.acoustic_model = acoustic_model
+        if not self.acoustic_model and acoustic_model_path:
+            self.acoustic_model = AcousticModel(acoustic_model_path)
         kwargs.update(self.acoustic_model.parameters)
         super(Transcriber, self).__init__(**kwargs)
-        self.language_model = LanguageModel(language_model_path)
+        self.language_model = language_model
+        if not self.language_model and language_model_path:
+            self.language_model = LanguageModel(language_model_path)
         self.output_type = output_type
         self.ignore_empty_utterances = False
         self.transcriptions_required = False

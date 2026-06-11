@@ -12,7 +12,7 @@ from montreal_forced_aligner.command_line.utils import (
     validate_corpus_directory,
     validate_dictionary,
 )
-from montreal_forced_aligner.corpus.remapper import AlignmentRemapper
+from montreal_forced_aligner.corpus.remapper import AlignmentDictionaryRemapper, AlignmentRemapper
 from montreal_forced_aligner.dictionary.remapper import DictionaryRemapper
 
 __all__ = ["remap_cli", "remap_alignments_cli", "remap_dictionary_cli"]
@@ -50,6 +50,12 @@ def remap_cli() -> None:
     default="long_textgrid",
     type=click.Choice(["long_textgrid", "short_textgrid", "json", "csv"]),
 )
+@click.option(
+    "--dictionary_path",
+    help="Path to existing pronunciation dictionary to use in remapping pronunciations.",
+    type=click.UNPROCESSED,
+    callback=validate_dictionary,
+)
 @common_options
 @click.help_option("-h", "--help")
 @click.pass_context
@@ -63,11 +69,22 @@ def remap_alignments_cli(context: click.Context, **kwargs) -> None:
     phone_mapping_path = kwargs["phone_mapping_path"]
     output_directory = kwargs["output_directory"]
     output_format = kwargs["output_format"]
-    remapper = AlignmentRemapper(
-        corpus_directory=corpus_directory,
-        phone_mapping_path=phone_mapping_path,
-        **AlignmentRemapper.parse_parameters(config_path, context.params, context.args),
-    )
+    dictionary = kwargs.get("dictionary_path", None)
+    if dictionary is None:
+        remapper = AlignmentRemapper(
+            corpus_directory=corpus_directory,
+            phone_mapping_path=phone_mapping_path,
+            **AlignmentRemapper.parse_parameters(config_path, context.params, context.args),
+        )
+    else:
+        remapper = AlignmentDictionaryRemapper(
+            corpus_directory=corpus_directory,
+            phone_mapping_path=phone_mapping_path,
+            dictionary=dictionary,
+            **AlignmentDictionaryRemapper.parse_parameters(
+                config_path, context.params, context.args
+            ),
+        )
 
     try:
         remapper.setup()
@@ -106,13 +123,13 @@ def remap_dictionary_cli(context: click.Context, **kwargs) -> None:
     """
     initialize_configuration(context)
     config_path = kwargs.get("config_path", None)
-    dictionary_path = kwargs["dictionary_path"]
-    acoustic_model_path = kwargs["acoustic_model_path"]
+    dictionary = kwargs["dictionary_path"]
+    acoustic_model = kwargs["acoustic_model_path"]
     phone_mapping_path = kwargs["phone_mapping_path"]
     output_dictionary_path = kwargs["output_dictionary_path"]
     remapper = DictionaryRemapper(
-        dictionary_path=dictionary_path,
-        acoustic_model_path=acoustic_model_path,
+        dictionary=dictionary,
+        acoustic_model=acoustic_model,
         phone_mapping_path=phone_mapping_path,
         **DictionaryRemapper.parse_parameters(config_path, context.params, context.args),
     )

@@ -47,6 +47,8 @@ __all__ = [
     "load_evaluation_mapping",
     "configure_cli_logger",
     "MfaYamlDumper",
+    "voiced_variants",
+    "voiceless_variants",
 ]
 
 
@@ -201,6 +203,9 @@ def configure_cli_logger(logger):
 
     config = MfaConfiguration()
     if not config.current_profile.quiet:
+        for handler in logger.handlers:
+            if isinstance(handler, RichHandler):
+                return
         handler = RichHandler(
             rich_tracebacks=True, log_time_format="", console=console, show_path=False
         )
@@ -559,3 +564,39 @@ def format_correction(correction_value: float, positive_only=True) -> float:
     if correction_value <= 0 and positive_only:
         correction_value = 0.01
     return correction_value
+
+
+def voiceless_variants(base_phone) -> typing.Set[str]:
+    """
+    Generate variants of voiceless IPA phones
+
+    Parameters
+    ----------
+    base_phone: str
+        Voiceless IPA phone
+
+    Returns
+    -------
+    set[str]
+        Set of base_phone plus variants
+    """
+    return {base_phone + d for d in ["", "ʱ", "ʼ", "ʰ", "ʲ", "ʷ", "ˠ", "ˀ", "̚", "͈"]}
+
+
+def voiced_variants(base_phone) -> typing.Set[str]:
+    """
+    Generate variants of voiced IPA phones
+
+    Parameters
+    ----------
+    base_phone: str
+        Voiced IPA phone
+
+    Returns
+    -------
+    set[str]
+        Set of base_phone plus variants
+    """
+    return {base_phone + d for d in ["", "ʱ", "ʲ", "ʷ", "ⁿ", "ˠ", "̚"]} | {
+        d + base_phone for d in ["ⁿ"]
+    }

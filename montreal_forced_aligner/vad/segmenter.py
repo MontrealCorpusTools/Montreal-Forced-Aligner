@@ -584,8 +584,12 @@ class SpeechbrainVadSegmenter(
 class TranscriptionSegmenter(
     VadConfigMixin, TranscriberMixin, SpeechbrainSegmenterMixin, TopLevelMfaWorker
 ):
-    def __init__(self, acoustic_model_path: Path = None, **kwargs):
-        self.acoustic_model = AcousticModel(acoustic_model_path)
+    def __init__(
+        self, acoustic_model: AcousticModel = None, acoustic_model_path: Path = None, **kwargs
+    ):
+        self.acoustic_model = acoustic_model
+        if not self.acoustic_model and acoustic_model_path:
+            self.acoustic_model = AcousticModel(acoustic_model_path)
         kw = self.acoustic_model.parameters
         kw["apply_energy_vad"] = True
         kw.update(kwargs)

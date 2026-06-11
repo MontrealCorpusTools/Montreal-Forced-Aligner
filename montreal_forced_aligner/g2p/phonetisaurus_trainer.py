@@ -1573,7 +1573,10 @@ class PhonetisaurusTrainer(
         self,
         **kwargs,
     ):
-        self._data_source = kwargs["dictionary_path"].stem
+        if "dictionary_path" in kwargs:
+            self._data_source = kwargs["dictionary_path"].stem
+        else:
+            self._data_source = kwargs["dictionary"].path.stem
         super().__init__(**kwargs)
         self.ler = None
         self.wer = None

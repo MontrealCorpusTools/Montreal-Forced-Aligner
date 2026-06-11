@@ -111,17 +111,17 @@ def transcribe_corpus_cli(context, **kwargs) -> None:
 
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"].absolute()
-    acoustic_model_path = kwargs["acoustic_model_path"]
-    language_model_path = kwargs["language_model_path"]
-    dictionary_path = kwargs["dictionary_path"]
+    acoustic_model = kwargs["acoustic_model_path"]
+    language_model = kwargs["language_model_path"]
+    dictionary = kwargs["dictionary_path"]
     output_directory = kwargs["output_directory"]
     output_format = kwargs["output_format"]
     include_original_text = kwargs["include_original_text"]
     transcriber = Transcriber(
         corpus_directory=corpus_directory,
-        dictionary_path=dictionary_path,
-        acoustic_model_path=acoustic_model_path,
-        language_model_path=language_model_path,
+        dictionary=dictionary,
+        acoustic_model=acoustic_model,
+        language_model=language_model,
         **Transcriber.parse_parameters(config_path, context.params, context.args),
     )
     try:

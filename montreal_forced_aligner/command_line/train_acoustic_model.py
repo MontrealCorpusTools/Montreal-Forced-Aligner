@@ -15,6 +15,7 @@ from montreal_forced_aligner.command_line.utils import (
     validate_g2p_model,
 )
 from montreal_forced_aligner.data import Language
+from montreal_forced_aligner.models import DictionaryModel, MfaAlignmentModel
 
 __all__ = ["train_acoustic_model_cli"]
 
@@ -31,7 +32,7 @@ __all__ = ["train_acoustic_model_cli"]
 @click.argument("corpus_directory", type=click.UNPROCESSED, callback=validate_corpus_directory)
 @click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
 @click.argument(
-    "output_model_path", type=click.Path(file_okay=True, dir_okay=False, path_type=Path)
+    "output_model_path", type=click.Path(file_okay=True, dir_okay=True, path_type=Path)
 )
 @click.option(
     "--output_directory",
@@ -112,6 +113,11 @@ __all__ = ["train_acoustic_model_cli"]
     help="Path to G2P model to use for OOV items.",
     type=click.UNPROCESSED,
 )
+@click.option(
+    "--metadata_path",
+    help="Path to additional metadata json file to use for creating the model card.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+)
 @common_options
 @click.help_option("-h", "--help")
 @click.pass_context
@@ -121,13 +127,18 @@ def train_acoustic_model_cli(context, **kwargs) -> None:
     """
     initialize_configuration(context)
     config_path = kwargs.get("config_path", None)
+    metadata_path = kwargs.get("metadata_path", None)
     output_model_path = kwargs.get("output_model_path", None)
+    hf_train = False
+    if output_model_path is not None:
+        output_model_path = Path(output_model_path)
+        if not output_model_path.suffix:
+            hf_train = True
+
     output_directory = kwargs.get("output_directory", None)
     corpus_directory = kwargs["corpus_directory"].absolute()
-    dictionary_path = kwargs["dictionary_path"]
+    dictionary = kwargs["dictionary_path"]
     g2p_model_path: typing.Optional[Path] = kwargs.get("g2p_model_path", None)
-    if g2p_model_path:
-        g2p_model_path = validate_g2p_model(context, kwargs, g2p_model_path)
     if kwargs.get("phone_set_type", "UNKNOWN") != "UNKNOWN":
         import warnings
 
@@ -137,18 +148,53 @@ def train_acoustic_model_cli(context, **kwargs) -> None:
             "https://github.com/MontrealCorpusTools/mfa-models/tree/main/config/acoustic/phone_groups "
             "for example phone group configurations that have been used in training MFA models."
         )
+    g2p_model = None
     if g2p_model_path:
-        g2p_model_path = validate_g2p_model(context, kwargs, g2p_model_path)
+        g2p_model = validate_g2p_model(context, kwargs, g2p_model_path)
     trainer = TrainableAligner(
         corpus_directory=corpus_directory,
-        dictionary_path=dictionary_path,
-        g2p_model_path=g2p_model_path,
+        dictionary=dictionary,
+        g2p_model=g2p_model,
         **TrainableAligner.parse_parameters(config_path, context.params, context.args),
     )
     try:
         trainer.train()
         if output_model_path is not None:
             trainer.export_model(output_model_path)
+            if hf_train:
+                model = MfaAlignmentModel(output_model_path.name, output_model_path)
+                model.generate_model_card(trainer, metadata_path)
+                if trainer.g2p_model is None:
+                    from montreal_forced_aligner.g2p.phonetisaurus_trainer import (
+                        PhonetisaurusTrainer,
+                    )
+
+                    for d in trainer.dictionary_model.load_dictionary_paths():
+                        if not isinstance(d, DictionaryModel):
+                            continue
+                        name = Path(d.path).stem
+                        if model.g2p_model_directory.joinpath(name).exists():
+                            continue
+                        g2p_trainer = PhonetisaurusTrainer(
+                            dictionary=d,
+                            evaluation_mode=True,
+                            **PhonetisaurusTrainer.parse_parameters(
+                                config_path, context.params, context.args
+                            ),
+                        )
+                        g2p_trainer.setup()
+                        g2p_trainer.train()
+                        model.add_g2p_model(g2p_trainer.working_directory, g2p_trainer.meta, name)
+                else:
+                    if isinstance(trainer.g2p_model, dict):
+                        for k, v in trainer.g2p_model.items():
+                            name = Path(k).stem
+                            model.add_g2p_model(v.directory, v.meta, name)
+                    else:
+                        name = Path(g2p_model_path).stem
+                        model.add_g2p_model(
+                            trainer.g2p_model.directory, trainer.g2p_model.meta, name
+                        )
 
         if output_directory is not None:
             trainer.export_files(

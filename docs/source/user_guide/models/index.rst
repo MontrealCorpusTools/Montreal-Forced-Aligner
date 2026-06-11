@@ -25,3 +25,8 @@ Command reference
 .. click:: montreal_forced_aligner.command_line.model:model_cli
    :prog: mfa model
    :nested: full
+
+.. toctree::
+   :hidden:
+
+   model_versions

@@ -18,9 +18,9 @@ from pathlib import Path
 import rich_click as click
 import sqlalchemy
 import yaml
-from huggingface_hub import snapshot_download
 
 from montreal_forced_aligner import config
+from montreal_forced_aligner.abc import MfaModel
 from montreal_forced_aligner.exceptions import (
     DatabaseError,
     FileArgumentNotFoundError,
@@ -29,7 +29,7 @@ from montreal_forced_aligner.exceptions import (
     PretrainedModelNotFoundError,
 )
 from montreal_forced_aligner.helper import configure_cli_logger, mfa_open
-from montreal_forced_aligner.models import MODEL_TYPES
+from montreal_forced_aligner.models import MODEL_TYPES, MfaAlignmentModel
 from montreal_forced_aligner.utils import check_third_party
 
 BEGIN = time.time()
@@ -53,62 +53,6 @@ __all__ = [
     "stop_server",
     "initialize_server",
 ]
-
-
-class AlternateArgListCmd(click.Command):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.alternate_arglist_handlers = [(self, super())]
-        self.alternate_self = self
-
-    def alternate_arglist(self, *args, **kwargs):
-        from click.decorators import command as cmd_decorator
-
-        def decorator(f):
-            command = cmd_decorator(*args, **kwargs)(f)
-            self.alternate_arglist_handlers.append((command, command))
-
-            # verify we have no options defined and then copy options from base command
-            options = [o for o in command.params if isinstance(o, click.Option)]
-            if options:
-                raise click.ClickException(
-                    f"Options not allowed on {type(self).__name__}: {[o.name for o in options]}"
-                )
-            command.params.extend(o for o in self.params if isinstance(o, click.Option))
-            return command
-
-        return decorator
-
-    def make_context(self, info_name, args, parent=None, **extra):
-        """Attempt to build a context for each variant, use the first that succeeds"""
-        orig_args = list(args)
-        for handler, handler_super in self.alternate_arglist_handlers:
-            args[:] = list(orig_args)
-            self.alternate_self = handler
-            try:
-                return handler_super.make_context(info_name, args, parent, **extra)
-            except click.UsageError:
-                pass
-            except Exception:
-                raise
-
-        # if all alternates fail, return the error message for the first command defined
-        args[:] = orig_args
-        return super().make_context(info_name, args, parent, **extra)
-
-    def invoke(self, ctx):
-        """Use the callback for the appropriate variant"""
-        if self.alternate_self.callback is not None:
-            return ctx.invoke(self.alternate_self.callback, **ctx.params)
-        return super().invoke(ctx)
-
-    def format_usage(self, ctx, formatter):
-        """Build a Usage for each variant"""
-        prefix = "Usage: "
-        for _, handler_super in self.alternate_arglist_handlers:
-            pieces = handler_super.collect_usage_pieces(ctx)
-            formatter.write_usage(ctx.command_path, " ".join(pieces), prefix=prefix)
-            prefix = " " * len(prefix)
 
 
 def common_options(f: typing.Callable) -> typing.Callable:
@@ -276,7 +220,7 @@ def initialize_configuration(ctx: click.Context):
             atexit.register(stop_server)
 
 
-def validate_model_arg(name: str, model_type: str) -> typing.Union[Path, str]:
+def validate_model_arg(name: str, model_type: str) -> MfaModel:
     """
     Validate pretrained model name argument
 
@@ -336,7 +280,7 @@ def validate_model_arg(name: str, model_type: str) -> typing.Union[Path, str]:
             raise click.BadParameter(
                 str(PretrainedModelNotFoundError(name, model_type, available_models))
             )
-    return name
+    return model_class(name)
 
 
 def validate_corpus_directory(ctx, param, value):
@@ -377,38 +321,30 @@ def validate_output_directory(ctx, param, value):
         return value
 
 
-def validate_huggingface_model(ctx, param, value):
+def validate_huggingface_model(ctx, param, value) -> MfaAlignmentModel:
     """Validation callback for acoustic model paths"""
-    if value:
-        if value.count("/") == 0 and "mfa" in value:
-            value = "MontrealCorpusTools/" + value
-        saved_dir = snapshot_download(
-            repo_id=value,
-            cache_dir=os.path.join(config.TEMPORARY_DIRECTORY, "models", "hf_cache"),
-        )
-
-        return saved_dir
+    return MfaAlignmentModel.from_pretrained(value)
 
 
-def validate_acoustic_model(ctx, param, value):
+def validate_acoustic_model(ctx, param, value) -> MfaModel:
     """Validation callback for acoustic model paths"""
     if value:
         return validate_model_arg(value, "acoustic")
 
 
-def validate_dictionary(ctx, param, value):
+def validate_dictionary(ctx, param, value) -> MfaModel:
     """Validation callback for dictionary paths"""
     if value:
         return validate_model_arg(value, "dictionary")
 
 
-def validate_language_model(ctx, param, value):
+def validate_language_model(ctx, param, value) -> MfaModel:
     """Validation callback for language model paths"""
     if value:
         return validate_model_arg(value, "language_model")
 
 
-def validate_g2p_model(ctx, param, value: Path):
+def validate_g2p_model(ctx, param, value) -> typing.Union[MfaModel, typing.Dict[str, MfaModel]]:
     """Validation callback for G2P model paths"""
     if Path(value).suffix == ".yaml":
         with open(value, encoding="utf8") as f:
@@ -420,12 +356,12 @@ def validate_g2p_model(ctx, param, value: Path):
         return validate_model_arg(value, "g2p")
 
 
-def validate_tokenizer_model(ctx, param, value):
+def validate_tokenizer_model(ctx, param, value) -> MfaModel:
     """Validation callback for tokenizer model paths"""
     return validate_model_arg(value, "tokenizer")
 
 
-def validate_ivector_extractor(ctx, param, value):
+def validate_ivector_extractor(ctx, param, value) -> typing.Union[str, MfaModel]:
     """Validation callback for ivector extractor paths"""
     if value == "speechbrain":
         return value

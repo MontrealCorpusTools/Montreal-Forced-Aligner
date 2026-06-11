@@ -67,14 +67,14 @@ def train_dictionary_cli(context, **kwargs) -> None:
     """
     initialize_configuration(context)
     config_path = kwargs.get("config_path", None)
-    acoustic_model_path = kwargs["acoustic_model_path"]
+    acoustic_model = kwargs["acoustic_model_path"]
     corpus_directory = kwargs["corpus_directory"].absolute()
-    dictionary_path = kwargs["dictionary_path"]
+    dictionary = kwargs["dictionary_path"]
     output_directory = kwargs["output_directory"]
     trainer = DictionaryTrainer(
-        acoustic_model_path=acoustic_model_path,
+        acoustic_model=acoustic_model,
         corpus_directory=corpus_directory,
-        dictionary_path=dictionary_path,
+        dictionary=dictionary,
         **DictionaryTrainer.parse_parameters(config_path, context.params, context.args),
     )
 

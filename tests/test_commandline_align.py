@@ -73,6 +73,47 @@ def test_align_one_lab(
     assert t
 
 
+def test_align_one_hf(
+    basic_corpus_dir,
+    generated_dir,
+    english_us_mfa_dictionary,
+    temp_dir,
+    english_mfa_acoustic_model,
+    db_setup,
+):
+    wav_path = basic_corpus_dir.joinpath("michael", "acoustic_corpus.wav")
+    lab_path = basic_corpus_dir.joinpath("michael", "acoustic_corpus.lab")
+    command = [
+        "align_one_hf",
+        wav_path,
+        lab_path,
+        "english_mfa",
+        "-",
+        "-q",
+        "--clean",
+        "--debug",
+        "--verbose",
+        "--output_format",
+        "json",
+        "-p",
+        "test",
+        "--dialect",
+        "english_uk_mfa",
+        "--use_g2p",
+    ]
+    command = [str(x) for x in command]
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+
+    t = json.loads(result.stdout)
+    assert t
+
+
 def test_align_one_tg(
     multilingual_ipa_tg_corpus_dir,
     generated_dir,
@@ -319,6 +360,55 @@ def test_align_multilingual(
         "--no_use_postgres",
         "--g2p_model_path",
         english_uk_mfa_g2p_model,
+    ]
+    command = [str(x) for x in command]
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+    for d in output_dir.iterdir():
+        if not d.is_dir():
+            continue
+        for fn in d.iterdir():
+            tg = tgio.openTextgrid(fn, includeEmptyIntervals=False)
+            assert len(tg.tierNames) == 2
+            phone_tier = tg.getTier("phones")
+            labels = {x.label for x in phone_tier.entries}
+            assert "spn" not in labels
+
+
+def test_align_multilingual_hf(
+    multilingual_ipa_corpus_dir,
+    english_uk_mfa_dictionary,
+    english_uk_mfa_g2p_model,
+    generated_dir,
+    temp_dir,
+    basic_align_config_path,
+    english_mfa_acoustic_model,
+    db_setup,
+):
+    output_dir = generated_dir.joinpath("multilingual")
+    command = [
+        "align_hf",
+        multilingual_ipa_corpus_dir,
+        "english_mfa",
+        output_dir,
+        "--config_path",
+        basic_align_config_path,
+        "-q",
+        "--clean",
+        "--debug",
+        "--output_format",
+        "short_textgrid",
+        "-p",
+        "test",
+        "--no_use_postgres",
+        "--dialect",
+        "english_uk_mfa",
+        "--use_g2p",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)

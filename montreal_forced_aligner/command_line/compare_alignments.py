@@ -102,6 +102,7 @@ def compare_alignments_cli(context, **kwargs) -> None:
 
         if custom_mapping_path is not None:
             alignment_comparer.load_mapping(custom_mapping_path, strict=strict_mapping)
+        alignment_comparer.analyze_alignments()
         alignment_comparer.evaluate_alignments(
             output_directory=output_directory,
             reference_source=WorkflowType.reference,

@@ -43,6 +43,10 @@ class AlignmentComparer(TextCorpusMixin, AlignmentComparisonMixin):
     Standalone class for comparing two sets of alignments
     """
 
+    def __init__(self, load_textgrids: bool = True, **kwargs):
+        super().__init__(**kwargs)
+        self.load_textgrids = load_textgrids
+
     def load_corpus(self) -> None:
         """
         Load the corpus

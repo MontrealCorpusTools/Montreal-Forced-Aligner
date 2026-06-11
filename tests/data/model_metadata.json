@@ -1,0 +1,17 @@
+{
+  "model_id": "test_training_model",
+  "model_summary": "This is a test model.",
+  "developers": "Montreal Corpus Tools",
+  "funded_by": "N/A",
+  "language": "English",
+  "orthography": "Latin",
+  "phone_set": "MFA",
+  "preprocessing": "No preprocessing",
+  "testing_data": "N/A",
+  "testing_factors": "N/A",
+  "testing_metrics": "N/A",
+  "results": "N/A",
+  "citation_bibtex": "N/A",
+  "citation_apa": "N/A",
+  "contact_details": "N/A"
+}
