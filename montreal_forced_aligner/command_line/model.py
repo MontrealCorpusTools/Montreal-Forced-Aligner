@@ -24,7 +24,13 @@ from montreal_forced_aligner.exceptions import (
     PhoneMismatchError,
     PretrainedModelNotFoundError,
 )
-from montreal_forced_aligner.models import MODEL_TYPES, Archive, ModelManager, guess_model_type
+from montreal_forced_aligner.models import (
+    MODEL_TYPES,
+    Archive,
+    MfaAlignmentModel,
+    ModelManager,
+    guess_model_type,
+)
 
 __all__ = [
     "model_cli",
@@ -171,11 +177,11 @@ def add_words_cli(context, **kwargs) -> None:
     initialize_configuration(context)
 
     config.CLEAN = True
-    dictionary_path = kwargs.get("dictionary_path", None)
-    new_pronunciations_path = kwargs.get("new_pronunciations_path", None)
-    base_dictionary = MultispeakerDictionary(dictionary_path=dictionary_path)
+    dictionary = kwargs.get("dictionary_path", None)
+    new_pronunciations = kwargs.get("new_pronunciations_path", None)
+    base_dictionary = MultispeakerDictionary(dictionary=dictionary)
     base_dictionary.dictionary_setup()
-    new_pronunciations = MultispeakerDictionary(dictionary_path=new_pronunciations_path)
+    new_pronunciations = MultispeakerDictionary(dictionary=new_pronunciations)
     new_pronunciations.dictionary_setup()
     new_phones = set()
     for phone in new_pronunciations.non_silence_phones:
@@ -234,3 +240,33 @@ def save_model_cli(path: Path, model_type: str, name: str, overwrite: bool) -> N
     logger.info(
         f"Saved model to {name}, you can now use {name} in place of paths in mfa commands."
     )
+
+
+@model_cli.command(name="upload", short_help="Upload a model to Hugging Face Hub")
+@click.argument(
+    "local_path", type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path)
+)
+@click.argument("repo_id", type=str)
+@click.option(
+    "--version",
+    help="Version to tag upload with.",
+    type=str,
+    default=None,
+)
+@click.help_option("-h", "--help")
+def upload_model_cli(local_path: Path, repo_id: str, version: typing.Optional[str]) -> None:
+    """
+    Upload an alignment model to Hugging Face Hub
+
+    Parameters
+    ----------
+    local_path: :class:`~pathlib.Path`
+        Path to model
+    repo_id: str
+        Repo id on Hugging Face Hub
+    """
+    logger = logging.getLogger("mfa")
+    model_name = local_path.stem
+    model = MfaAlignmentModel(model_name, local_path)
+    model.upload_model(repo_id, version=version)
+    logger.info(f"Uploaded model successfully to {repo_id}!")

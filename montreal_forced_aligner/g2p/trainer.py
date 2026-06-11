@@ -675,7 +675,10 @@ class PyniniTrainer(
         self,
         **kwargs,
     ):
-        self._data_source = os.path.splitext(os.path.basename(kwargs["dictionary_path"]))[0]
+        if "dictionary_path" in kwargs:
+            self._data_source = os.path.splitext(os.path.basename(kwargs["dictionary_path"]))[0]
+        else:
+            self._data_source = os.path.splitext(os.path.basename(kwargs["dictionary"].path))[0]
         super().__init__(**kwargs)
         self._fst_path = None
         self._sym_path = None

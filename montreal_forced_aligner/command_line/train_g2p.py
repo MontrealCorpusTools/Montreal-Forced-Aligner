@@ -59,18 +59,18 @@ def train_g2p_cli(context, **kwargs) -> None:
     """
     initialize_configuration(context)
     config_path = kwargs.get("config_path", None)
-    dictionary_path = kwargs["dictionary_path"]
+    dictionary = kwargs["dictionary_path"]
     phonetisaurus = kwargs["phonetisaurus"]
     output_model_path = kwargs["output_model_path"]
     if phonetisaurus:
         trainer = PhonetisaurusTrainer(
-            dictionary_path=dictionary_path,
+            dictionary=dictionary,
             **PhonetisaurusTrainer.parse_parameters(config_path, context.params, context.args),
         )
 
     else:
         trainer = PyniniTrainer(
-            dictionary_path=dictionary_path,
+            dictionary=dictionary,
             **PyniniTrainer.parse_parameters(config_path, context.params, context.args),
         )
 

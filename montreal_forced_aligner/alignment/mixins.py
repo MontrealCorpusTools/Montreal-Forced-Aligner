@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime
 import logging
 import os
+import sys
 import time
 import typing
 from abc import abstractmethod
@@ -72,7 +73,6 @@ class AlignMixin(DictionaryMixin):
         beam: int = 10,
         retry_beam: int = 40,
         phone_confidence: bool = False,
-        use_phone_model: bool = False,
         careful: bool = False,
         **kwargs,
     ):
@@ -84,7 +84,6 @@ class AlignMixin(DictionaryMixin):
         self.beam = beam
         self.retry_beam = retry_beam
         self.phone_confidence = phone_confidence
-        self.use_phone_model = use_phone_model
         if self.retry_beam <= self.beam:
             self.retry_beam = self.beam * 4
         self.unaligned_files = set()
@@ -113,9 +112,7 @@ class AlignMixin(DictionaryMixin):
         """
 
         args = []
-        lexicon_compilers = {}
-        if getattr(self, "use_g2p", False):
-            lexicon_compilers = getattr(self, "lexicon_compilers", {})
+        lexicon_compilers = getattr(self, "lexicon_compilers", {})
         for j in self.jobs:
             args.append(
                 CompileTrainGraphsArguments(
@@ -126,7 +123,6 @@ class AlignMixin(DictionaryMixin):
                     lexicon_compilers,
                     self.working_directory.joinpath("tree"),
                     self.alignment_model_path,
-                    getattr(self, "use_g2p", False),
                 )
             )
         return args
@@ -237,8 +233,15 @@ class AlignMixin(DictionaryMixin):
         os.makedirs(log_directory, exist_ok=True)
         logger.info("Compiling training graphs...")
         arguments = self.compile_train_graphs_arguments()
+        use_threading = config.USE_THREADING
+
+        # FIXME: Workaround for inconsistent bug in pickling pywrapfst.SymbolTable on Windows
+        if sys.platform == "win32":
+            config.USE_THREADING = True
         for _ in run_kaldi_function(CompileTrainGraphsFunction, arguments):
             pass
+        if sys.platform == "win32":
+            config.USE_THREADING = use_threading
         logger.debug(f"Compiling training graphs took {time.time() - begin:.3f} seconds")
 
     def get_phone_confidences(self):

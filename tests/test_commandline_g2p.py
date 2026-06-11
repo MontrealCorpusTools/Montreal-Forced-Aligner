@@ -24,9 +24,7 @@ def test_generate_pretrained(
         "False",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -35,7 +33,7 @@ def test_generate_pretrained(
     assert not result.return_value
     assert os.path.exists(output_path)
     sqlalchemy.orm.close_all_sessions()
-    d = MultispeakerDictionary(output_path)
+    d = MultispeakerDictionary(dictionary_path=output_path)
     d.dictionary_setup()
     assert d.num_speech_words > 0
     d.cleanup_connections()
@@ -58,9 +56,7 @@ def test_generate_pretrained_dictionary(
         "1",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -85,9 +81,7 @@ def test_generate_pretrained_threshold(
         "0.95",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -96,7 +90,7 @@ def test_generate_pretrained_threshold(
     assert not result.return_value
     assert os.path.exists(output_path)
     sqlalchemy.orm.close_all_sessions()
-    d = MultispeakerDictionary(output_path)
+    d = MultispeakerDictionary(dictionary_path=output_path)
     d.dictionary_setup()
 
     assert d.num_speech_words > 0
@@ -118,9 +112,7 @@ def test_generate_pretrained_corpus(
         "2",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -161,9 +153,7 @@ def test_train_g2p(
         train_g2p_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -192,9 +182,7 @@ def test_train_g2p_phonetisaurus(
         train_g2p_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -224,9 +212,7 @@ def test_generate_dict(
         g2p_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -261,9 +247,7 @@ def test_generate_dict_phonetisaurus(
         g2p_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -299,9 +283,7 @@ def test_generate_dict_text_only(
         g2p_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
@@ -337,9 +319,7 @@ def test_generate_dict_textgrid(
         g2p_config_path,
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:

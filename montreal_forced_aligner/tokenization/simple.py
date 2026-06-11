@@ -1,3 +1,5 @@
+#!/usr/bin/env Python
+# coding=utf-8
 from __future__ import annotations
 
 import re
@@ -324,7 +326,6 @@ class SimpleTokenizer:
         bracketed_word: str = BRACKETED_WORD,
         cutoff_word: str = CUTOFF_WORD,
         ignore_case: bool = True,
-        use_g2p: bool = False,
         clitic_set: typing.Iterable = None,
         grapheme_set: typing.Iterable = None,
         word_table: pywrapfst.SymbolTable = None,
@@ -343,7 +344,6 @@ class SimpleTokenizer:
         final_brackets = re.escape("".join(x[1] for x in self.brackets))
         self.cutoff_identifier = re.sub(rf"[{initial_brackets}{final_brackets}]", "", cutoff_word)
         self.ignore_case = ignore_case
-        self.use_g2p = use_g2p
         self.clitic_set = set()
         if clitic_set is not None:
             self.clitic_set.update(clitic_set)
@@ -393,7 +393,7 @@ class SimpleTokenizer:
             self.non_speech_regexes,
             self.oov_word,
             self.grapheme_set,
-            always_split_compounds=self.use_g2p,
+            always_split_compounds=False,
         )
 
     def _compile_regexes(self) -> None:

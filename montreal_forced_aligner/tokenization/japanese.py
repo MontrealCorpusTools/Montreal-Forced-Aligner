@@ -1,3 +1,5 @@
+#!/usr/bin/env Python
+# coding=utf-8
 from __future__ import annotations
 
 import pathlib
@@ -42,7 +44,7 @@ class JapaneseTokenizer:
         original_pos_tags = []
         pos_tags = []
         for morph in self.morphemes:
-            normalized = morph.surface()
+            normalized = morph.surface().replace(" ", "_")
             if (
                 morph.part_of_speech()[0] == "補助記号"
                 and normalized

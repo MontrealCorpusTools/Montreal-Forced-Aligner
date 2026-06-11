@@ -63,10 +63,10 @@ def find_oovs_cli(context, **kwargs) -> None:
     output_directory = kwargs.get("output_directory", None)
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"].absolute()
-    dictionary_path = kwargs["dictionary_path"]
+    dictionary = kwargs["dictionary_path"]
     validator = TrainingValidator(
         corpus_directory=corpus_directory,
-        dictionary_path=dictionary_path,
+        dictionary=dictionary,
         **TrainingValidator.parse_parameters(config_path, context.params, context.args),
     )
     try:

@@ -4,7 +4,6 @@ from __future__ import annotations
 import datetime
 import logging
 import os
-import shutil
 import time
 import typing
 from pathlib import Path
@@ -24,28 +23,20 @@ from montreal_forced_aligner.alignment.multiprocessing import (
     FineTuneArguments,
     FineTuneFunction,
 )
-from montreal_forced_aligner.data import PhoneType, WorkflowType
+from montreal_forced_aligner.data import WorkflowType
 from montreal_forced_aligner.db import (
     Corpus,
     CorpusWorkflow,
     Dictionary,
-    Grapheme,
     Job,
-    Phone,
     PhoneInterval,
-    Speaker,
     Utterance,
     WordInterval,
     bulk_update,
 )
 from montreal_forced_aligner.exceptions import KaldiProcessingError
-from montreal_forced_aligner.helper import (
-    load_configuration,
-    mfa_open,
-    parse_old_features,
-    split_phone_position,
-)
-from montreal_forced_aligner.models import AcousticModel
+from montreal_forced_aligner.helper import load_configuration, parse_old_features
+from montreal_forced_aligner.models import AcousticModel, MfaAlignmentModel
 from montreal_forced_aligner.online.alignment import update_utterance_intervals
 from montreal_forced_aligner.transcription.transcriber import TranscriberMixin
 from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
@@ -64,8 +55,8 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
 
     Parameters
     ----------
-    acoustic_model_path : str
-        Path to acoustic model
+    acoustic_model: :class:`~montreal_forced_aligner.models.classes.AcousticModel`, :class:`~montreal_forced_aligner.models.classes.MfaAlignmentModel`
+        Acoustic model to use
 
     See Also
     --------
@@ -77,13 +68,16 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
 
     def __init__(
         self,
+        acoustic_model: typing.Union[AcousticModel, MfaAlignmentModel] = None,
         acoustic_model_path: Path = None,
         use_reference_alignments: bool = False,
         fine_tune: bool = False,
         fine_tune_boundary_tolerance: typing.Optional[float] = None,
         **kwargs,
     ):
-        self.acoustic_model = AcousticModel(acoustic_model_path)
+        self.acoustic_model = acoustic_model
+        if not self.acoustic_model and acoustic_model_path is not None:
+            self.acoustic_model = AcousticModel(acoustic_model_path)
         self.use_reference_alignments = use_reference_alignments
         kw = self.acoustic_model.parameters
         kw.update(kwargs)
@@ -108,105 +102,9 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
         self.oov_word = dict_info["oov_word"]
         self.silence_word = dict_info["silence_word"]
         self.bracketed_word = dict_info["bracketed_word"]
-        self.use_g2p = dict_info["use_g2p"]
         self.laughter_word = dict_info["laughter_word"]
         self.clitic_marker = dict_info["clitic_marker"]
         self.position_dependent_phones = dict_info["position_dependent_phones"]
-        if not self.use_g2p:
-            return
-        dictionary_id_cache = {}
-        with self.session() as session:
-            for speaker_id, speaker_name, dictionary_id, dict_name, path in (
-                session.query(
-                    Speaker.id, Speaker.name, Dictionary.id, Dictionary.name, Dictionary.path
-                )
-                .outerjoin(Speaker.dictionary)
-                .filter(Dictionary.default == False)  # noqa
-            ):
-                if speaker_id is not None:
-                    self._speaker_ids[speaker_name] = speaker_id
-                dictionary_id_cache[path] = dictionary_id
-                self.dictionary_lookup[dict_name] = dictionary_id
-            dictionary = (
-                session.query(Dictionary).filter(Dictionary.default == True).first()  # noqa
-            )
-            if dictionary:
-                self._default_dictionary_id = dictionary.id
-                dictionary_id_cache[dictionary.path] = self._default_dictionary_id
-                self.dictionary_lookup[dictionary.name] = dictionary.id
-            for dict_name in dict_info["names"]:
-                dictionary = Dictionary(
-                    name=dict_name,
-                    path=dict_name,
-                    phone_set_type=self.phone_set_type,
-                    root_temp_directory=self.dictionary_output_directory,
-                    position_dependent_phones=self.position_dependent_phones,
-                    clitic_marker=self.clitic_marker,
-                    default=dict_name == dict_info["default"],
-                    use_g2p=self.use_g2p,
-                    max_disambiguation_symbol=0,
-                    silence_word=self.silence_word,
-                    oov_word=self.oov_word,
-                    bracketed_word=self.bracketed_word,
-                    laughter_word=self.laughter_word,
-                    optional_silence_phone=self.optional_silence_phone,
-                )
-                session.add(dictionary)
-                session.flush()
-                dictionary_id_cache[dict_name] = dictionary.id
-                if dictionary.default:
-                    self._default_dictionary_id = dictionary.id
-                fst_path = os.path.join(self.acoustic_model.dirname, dict_name + ".fst")
-                if os.path.exists(fst_path):
-                    os.makedirs(dictionary.temp_directory, exist_ok=True)
-                    shutil.copyfile(fst_path, dictionary.lexicon_fst_path)
-                fst_path = os.path.join(self.acoustic_model.dirname, dict_name + "_align.fst")
-                if os.path.exists(fst_path):
-                    os.makedirs(dictionary.temp_directory, exist_ok=True)
-                    shutil.copyfile(fst_path, dictionary.align_lexicon_path)
-            phone_objs = []
-            duration_information = self.acoustic_model.meta.get("duration_information", {})
-            with mfa_open(self.phone_symbol_table_path, "r") as f:
-                for line in f:
-                    line = line.strip()
-                    phone_label, mapping_id = line.split()
-                    mapping_id = int(mapping_id)
-                    phone_type = PhoneType.non_silence
-                    if phone_label.startswith("#"):
-                        phone_type = PhoneType.disambiguation
-                    elif phone_label in self.kaldi_silence_phones:
-                        phone_type = PhoneType.silence
-                    phone, pos = split_phone_position(phone_label)
-                    phone_objs.append(
-                        {
-                            "id": mapping_id + 1,
-                            "mapping_id": mapping_id,
-                            "phone": phone,
-                            "position": pos,
-                            "kaldi_label": phone_label,
-                            "phone_type": phone_type,
-                        }
-                    )
-                    if phone_label in duration_information:
-                        mean_duration, sd_duration = duration_information[phone_label]
-                        phone_objs[-1]["mean_duration"] = mean_duration
-                        phone_objs[-1]["sd_duration"] = sd_duration
-            grapheme_objs = []
-            with mfa_open(self.grapheme_symbol_table_path, "r") as f:
-                for line in f:
-                    line = line.strip()
-                    grapheme, mapping_id = line.split()
-                    mapping_id = int(mapping_id)
-                    grapheme_objs.append(
-                        {"id": mapping_id + 1, "mapping_id": mapping_id, "grapheme": grapheme}
-                    )
-            session.bulk_insert_mappings(
-                Grapheme, grapheme_objs, return_defaults=False, render_nulls=True
-            )
-            session.bulk_insert_mappings(
-                Phone, phone_objs, return_defaults=False, render_nulls=True
-            )
-            session.commit()
 
     def analyze_alignments(self, calculate_duration_statistics=True):
         super().analyze_alignments(calculate_duration_statistics=calculate_duration_statistics)
@@ -247,9 +145,13 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
                         v.validate_phone_symbols(self)
                 else:
                     self.g2p_model.validate_phone_symbols(self)
-            self.acoustic_model.log_details()
+            if isinstance(self.acoustic_model, AcousticModel):
+                self.acoustic_model.log_details()
+                kalpy_acoustic_model = self.acoustic_model
+            else:
+                kalpy_acoustic_model = self.acoustic_model.acoustic_model
             self.kalpy_aligner = KalpyAligner(
-                self.acoustic_model,
+                kalpy_acoustic_model,
                 self.lexicon_compilers,
                 **self.align_options,
             )
@@ -348,8 +250,6 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
         if fmllr_string:
             fmllr_trans = read_kaldi_object(FloatMatrix, fmllr_string)
         text = utterance.normalized_text
-        if self.use_g2p:
-            text = utterance.normalized_character_text
         utterance_data = KalpyUtterance(segment, text, cmvn_string, fmllr_string)
         ctm = self.kalpy_aligner.align_utterance(
             utterance_data, cmvn, fmllr_trans, dictionary_id=dictionary_id

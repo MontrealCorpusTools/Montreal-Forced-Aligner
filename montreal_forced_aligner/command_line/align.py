@@ -7,7 +7,7 @@ from pathlib import Path
 import rich_click as click
 
 from montreal_forced_aligner.alignment import PretrainedAligner
-from montreal_forced_aligner.command_line.utils import (  # AlternateArgListCmd,
+from montreal_forced_aligner.command_line.utils import (
     common_options,
     initialize_configuration,
     validate_acoustic_model,
@@ -17,8 +17,9 @@ from montreal_forced_aligner.command_line.utils import (  # AlternateArgListCmd,
     validate_huggingface_model,
 )
 from montreal_forced_aligner.data import WorkflowType
+from montreal_forced_aligner.models import MfaAlignmentModel
 
-__all__ = ["align_corpus_cli", "align_corpus_cli_hf"]
+__all__ = ["align_corpus_cli", "align_corpus_hf_cli"]
 
 
 @click.command(
@@ -111,8 +112,8 @@ def align_corpus_cli(context, **kwargs) -> None:
     reference_directory: typing.Optional[Path] = kwargs.get("reference_directory", None)
     custom_mapping_path: typing.Optional[Path] = kwargs.get("custom_mapping_path", None)
     corpus_directory = kwargs["corpus_directory"].absolute()
-    dictionary_path = kwargs["dictionary_path"]
-    acoustic_model_path = kwargs["acoustic_model_path"]
+    dictionary = kwargs["dictionary_path"]
+    acoustic_model = kwargs["acoustic_model_path"]
     output_directory = kwargs["output_directory"]
     output_format = kwargs["output_format"]
     include_original_text = kwargs["include_original_text"]
@@ -121,13 +122,14 @@ def align_corpus_cli(context, **kwargs) -> None:
     if no_tokenization:
         extra_kwargs["language"] = "unknown"
     g2p_model_path: typing.Optional[Path] = kwargs.get("g2p_model_path", None)
+    g2p_model = None
     if g2p_model_path:
-        g2p_model_path = validate_g2p_model(context, kwargs, g2p_model_path)
+        g2p_model = validate_g2p_model(context, kwargs, g2p_model_path)
     aligner = PretrainedAligner(
         corpus_directory=corpus_directory,
-        dictionary_path=dictionary_path,
-        acoustic_model_path=acoustic_model_path,
-        g2p_model_path=g2p_model_path,
+        dictionary=dictionary,
+        acoustic_model=acoustic_model,
+        g2p_model=g2p_model,
         **extra_kwargs,
     )
     try:
@@ -247,7 +249,7 @@ def align_corpus_cli(context, **kwargs) -> None:
 @common_options
 @click.help_option("-h", "--help")
 @click.pass_context
-def align_corpus_cli_hf(context, **kwargs) -> None:
+def align_corpus_hf_cli(context, **kwargs) -> None:
     """
     Align a corpus with a pronunciation dictionary and a pretrained acoustic model.
     """
@@ -256,7 +258,7 @@ def align_corpus_cli_hf(context, **kwargs) -> None:
     reference_directory: typing.Optional[Path] = kwargs.get("reference_directory", None)
     custom_mapping_path: typing.Optional[Path] = kwargs.get("custom_mapping_path", None)
     corpus_directory = kwargs["corpus_directory"].absolute()
-    model_id = kwargs["model_id"]
+    model: MfaAlignmentModel = kwargs["model_id"]
     output_directory = kwargs["output_directory"]
     output_format = kwargs["output_format"]
     include_original_text = kwargs["include_original_text"]
@@ -266,11 +268,15 @@ def align_corpus_cli_hf(context, **kwargs) -> None:
     use_g2p = kwargs["use_g2p"]
     if no_tokenization:
         extra_kwargs["language"] = "unknown"
+    dictionary = model.get_dictionary_model(dialect)
+    g2p_model = None
+    if use_g2p:
+        g2p_model = model.get_g2p_model(dialect)
     aligner = PretrainedAligner(
         corpus_directory=corpus_directory,
-        model_id=model_id,
-        dialect=dialect,
-        use_g2p=use_g2p,
+        acoustic_model=model.acoustic_model,
+        dictionary=dictionary,
+        g2p_model=g2p_model,
         **extra_kwargs,
     )
     try:

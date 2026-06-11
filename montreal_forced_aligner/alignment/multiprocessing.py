@@ -34,10 +34,10 @@ from _kalpy.util import (
 from kalpy.aligner import KalpyAligner
 from kalpy.decoder.data import FstArchive
 from kalpy.decoder.training_graphs import TrainingGraphCompiler
-from kalpy.evaluation import align_words, fix_unk_words
+from kalpy.evaluation import align_phones, align_words, fix_unk_words, naive_boundary_f1
 from kalpy.fstext.lexicon import LexiconCompiler
 from kalpy.gmm.align import GmmAligner
-from kalpy.gmm.data import AlignmentArchive, TranscriptionArchive
+from kalpy.gmm.data import AlignmentArchive, CtmInterval, TranscriptionArchive
 from kalpy.gmm.train import GmmStatsAccumulator
 from kalpy.gmm.utils import read_gmm_model
 from kalpy.utils import generate_read_specifier
@@ -59,6 +59,7 @@ from montreal_forced_aligner.db import (
     Job,
     Phone,
     PhoneInterval,
+    PhoneMapping,
     ReferencePhoneInterval,
     SoundFile,
     Speaker,
@@ -166,7 +167,6 @@ class AlignmentExtractionArguments(MfaArguments):
     score_options: MetaDict
     confidence: bool
     transcription: bool
-    use_g2p: bool
 
 
 @dataclass
@@ -223,15 +223,12 @@ class CompileTrainGraphsArguments(MfaArguments):
         Path to tree file
     model_path: :class:`~pathlib.Path`
         Path to model file
-    use_g2p: bool
-        Flag for whether acoustic model uses g2p
     """
 
     working_directory: Path
     lexicon_compilers: typing.Dict[int, LexiconCompiler]
     tree_path: Path
     model_path: Path
-    use_g2p: bool
 
 
 @dataclass
@@ -277,14 +274,28 @@ class AnalyzeAlignmentsArguments(MfaArguments):
         SqlAlchemy scoped session or string for database connections
     log_path: :class:`~pathlib.Path`
         Path to save logging information during the run
-    model_path: :class:`~pathlib.Path`
-        Path to model file
-    align_options: dict[str, Any]
-        Alignment options
     """
 
-    model_path: Path
-    align_options: MetaDict
+    analyze_intensity: bool
+
+
+@dataclass
+class EvaluateAlignmentsArguments(MfaArguments):
+    """
+    Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AnalyzeAlignmentsFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    session: :class:`sqlalchemy.orm.scoped_session` or str
+        SqlAlchemy scoped session or string for database connections
+    log_path: :class:`~pathlib.Path`
+        Path to save logging information during the run
+    """
+
+    use_cutoff_model: bool
+    naive: bool
 
 
 @dataclass
@@ -387,7 +398,6 @@ class CompileTrainGraphsFunction(KaldiFunction):
         self.tree_path = args.tree_path
         self.lexicon_compilers = args.lexicon_compilers
         self.model_path = args.model_path
-        self.use_g2p = args.use_g2p
 
     def _run(self):
         """Run the function"""
@@ -421,10 +431,6 @@ class CompileTrainGraphsFunction(KaldiFunction):
                             count = 0.01
                         cost = max_count / count
                         interjection_costs[w.word] = cost
-            if self.use_g2p:
-                text_column = Utterance.normalized_character_text
-            else:
-                text_column = Utterance.normalized_text
             for d in job.training_dictionaries:
                 begin = time.time()
                 if self.lexicon_compilers and d.id in self.lexicon_compilers:
@@ -439,14 +445,13 @@ class CompileTrainGraphsFunction(KaldiFunction):
                     self.model_path,
                     self.tree_path,
                     lexicon,
-                    use_g2p=self.use_g2p,
                     batch_size=500
                     if workflow.workflow_type is not WorkflowType.transcript_verification
                     else 250,
                 )
                 graph_logger.debug(f"Set up took {time.time() - begin} seconds")
                 query = (
-                    session.query(Utterance.kaldi_id, text_column)
+                    session.query(Utterance.kaldi_id, Utterance.normalized_text)
                     .join(Utterance.speaker)
                     .filter(Utterance.job_id == self.job_name, Speaker.dictionary_id == d.id)
                     .filter(Utterance.ignored == False)  # noqa
@@ -537,8 +542,10 @@ class AccStatsFunction(KaldiFunction):
                     train_logger.debug(
                         f"Ignoring {len(ignored_keys)} utterances due to likely alignment errors"
                     )
-
-                feature_archive = job.construct_feature_archive(self.working_directory, d.name)
+                try:
+                    feature_archive = job.construct_feature_archive(self.working_directory, d.name)
+                except OSError:
+                    continue
                 ali_path = job.construct_path(self.working_directory, "ali", "ark", d.name)
                 if not ali_path.exists():
                     continue
@@ -620,8 +627,10 @@ class AlignFunction(KaldiFunction):
                 align_logger.debug(f"Aligning with model: {aligner.acoustic_model_path}")
                 fst_path = job.construct_path(self.working_directory, "fsts", "ark", d.name)
                 align_logger.debug(f"Training graph archive: {fst_path}")
-                feature_archive = job.construct_feature_archive(self.working_directory, d.name)
-
+                try:
+                    feature_archive = job.construct_feature_archive(self.working_directory, d.name)
+                except OSError:
+                    continue
                 align_logger.debug("Feature Archive information:")
                 align_logger.debug(f"Archive: {feature_archive.file_name}")
                 align_logger.debug(f"CMVN: {feature_archive.cmvn_read_specifier}")
@@ -665,7 +674,7 @@ class AlignFunction(KaldiFunction):
                     .join(Utterance.speaker)
                     .filter(Utterance.job_id == self.job_name, Speaker.dictionary_id == d.id)
                     .filter(Utterance.ignored == False)  # noqa
-                    .filter(Utterance.boost_silence == None)  # noqa
+                    .filter(Utterance.boost_silence != None)  # noqa
                     .order_by(Utterance.kaldi_id)
                 )
                 utterance_parameters = {}
@@ -721,6 +730,188 @@ class AlignFunction(KaldiFunction):
                         )
 
 
+class EvaluateAlignmentsFunction(KaldiFunction):
+    """
+    Multiprocessing function for analyzing alignments.
+
+    See Also
+    --------
+    :meth:`.CorpusAligner.analyze_alignments`
+        Main function that calls this function in parallel
+    :meth:`.CorpusAligner.calculate_speech_post_arguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`lattice-to-post`
+        Relevant Kaldi binary
+    :kaldi_src:`weight-silence-post`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.alignment.multiprocessing.CalculateSpeechPostArguments`
+        Arguments for the function
+    """
+
+    def __init__(self, args: EvaluateAlignmentsArguments):
+        super().__init__(args)
+        self.use_cutoff_model = args.use_cutoff_model
+        self.naive = args.naive
+
+    def _run(self):
+        """Run the function"""
+        from montreal_forced_aligner import config
+
+        with self.session() as session, thread_logger(
+            "kalpy.evaluate", self.log_path, job_name=self.job_name
+        ) as evaluation_logger:
+            # Set up
+            mapping = {}
+            for x in session.query(PhoneMapping).all():
+                if x.model_phone_string not in mapping:
+                    mapping[x.model_phone_string] = set()
+                mapping[x.model_phone_string].add(x.reference_phone_string)
+            evaluation_logger.debug(f"Mapping: {mapping}")
+            silence_phones = {
+                x[0]
+                for x in session.query(Phone.phone).filter(Phone.phone_type == PhoneType.silence)
+            }
+            oov_phone = (
+                session.query(Phone.phone)
+                .filter(sqlalchemy.or_(Phone.phone_type == PhoneType.oov, Phone.phone == "spn"))
+                .first()
+            )
+            if oov_phone is not None:
+                oov_phone = oov_phone[0]
+            utterances: typing.List[Utterance] = (
+                session.query(Utterance)
+                .join(Utterance.file)
+                .filter(Utterance.job_id == self.job_name)
+                .options(
+                    joinedload(Utterance.file, innerjoin=True),
+                    joinedload(Utterance.speaker, innerjoin=True),
+                    subqueryload(Utterance.phone_intervals).options(
+                        joinedload(PhoneInterval.phone, innerjoin=True),
+                    ),
+                    subqueryload(Utterance.reference_phone_intervals).options(
+                        joinedload(ReferencePhoneInterval.phone, innerjoin=True),
+                    ),
+                    subqueryload(Utterance.word_intervals).options(
+                        joinedload(WordInterval.word, innerjoin=True),
+                    ),
+                )
+            )
+            for u in utterances:
+                reference_phones = [x.as_ctm() for x in u.reference_phone_intervals]
+                reference_phone_count = len(reference_phones)
+                if reference_phone_count == 0:
+                    continue
+                comparison_intervals = u.phone_intervals
+                comparison_phones = [x.as_ctm() for x in comparison_intervals]
+                if self.use_cutoff_model:
+                    for wi in u.word_intervals:
+                        if wi.word.word_type is WordType.cutoff:
+                            comparison_phones = [
+                                x
+                                for x in comparison_phones
+                                if x.end <= wi.begin or x.begin >= wi.end
+                            ]
+                            comparison_phones.append(
+                                CtmInterval(
+                                    begin=wi.begin,
+                                    end=wi.end,
+                                    label=oov_phone,
+                                )
+                            )
+                    comparison_phones = sorted(comparison_phones, key=lambda x: x.begin)
+                if not self.naive:
+                    results = align_phones(
+                        reference_phones,
+                        comparison_phones,
+                        silence_phones=silence_phones,
+                        custom_mapping=mapping,
+                        debug=config.DEBUG,
+                    )
+                    score, phone_error_rate, confusions = results[:3]
+                    if score is None:
+                        self.callback(
+                            (
+                                {
+                                    "id": u.id,
+                                    "alignment_score": None,
+                                    "phone_error_rate": 1.0,
+                                    "edit_distance": reference_phone_count,
+                                },
+                                u.file.name,
+                                reference_phone_count,
+                                {},
+                                [],
+                                [],
+                            )
+                        )
+                        continue
+                    edit_distance = None
+                    boundary_errors = None
+                    pi_update_mappings = []
+                    if len(results) > 3:
+                        alignment = results[3]
+                        edit_distance = alignment.score
+                        boundary_errors = results[4]
+                        interval_index = 0
+                        for i, (sa, sb) in enumerate(alignment.alignment):
+                            if (
+                                interval_index < len(comparison_phones)
+                                and sb.label == comparison_phones[interval_index].label
+                            ):
+                                if sa.label == "-":
+                                    pi_update_mappings.append(
+                                        {
+                                            "id": comparison_intervals[interval_index].id,
+                                            "begin_error": None,
+                                            "end_error": None,
+                                        }
+                                    )
+                                else:
+                                    pi_update_mappings.append(
+                                        {
+                                            "id": comparison_intervals[interval_index].id,
+                                            "begin_error": sb.begin - sa.begin,
+                                            "end_error": sb.end - sa.end,
+                                        }
+                                    )
+                                interval_index += 1
+                    self.callback(
+                        (
+                            {
+                                "id": u.id,
+                                "alignment_score": score,
+                                "phone_error_rate": phone_error_rate,
+                                "edit_distance": edit_distance,
+                            },
+                            u.file.name,
+                            reference_phone_count,
+                            confusions,
+                            boundary_errors,
+                            pi_update_mappings,
+                        )
+                    )
+                else:
+                    p, r, f1, edit_distance, precision, recall = naive_boundary_f1(
+                        reference_phones, comparison_phones
+                    )
+                    self.callback(
+                        (
+                            {
+                                "id": u.id,
+                                "edit_distance": edit_distance,
+                            },
+                            p,
+                            r,
+                            f1,
+                            precision,
+                            recall,
+                        )
+                    )
+
+
 class AnalyzeAlignmentsFunction(KaldiFunction):
     """
     Multiprocessing function for analyzing alignments.
@@ -744,8 +935,7 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
 
     def __init__(self, args: AnalyzeAlignmentsArguments):
         super().__init__(args)
-        self.model_path = args.model_path
-        self.align_options = args.align_options
+        self.analyze_intensity = args.analyze_intensity
 
     def _run(self):
         """Run the function"""
@@ -763,106 +953,199 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
                 for k, m, sd in session.query(
                     Phone.id, Phone.mean_duration, Phone.sd_duration
                 ).filter(
-                    Phone.phone_type == PhoneType.non_silence,
+                    Phone.phone_type.in_([PhoneType.non_silence, PhoneType.extra]),
                     Phone.sd_duration != None,  # noqa
                     Phone.sd_duration != 0,
                 )
             }
-            for d in job.training_dictionaries:
-                query = (
-                    session.query(Utterance)
-                    .join(Utterance.speaker)
+            extraction_logger.debug(f"Phone stats: {phones}")
+            query = (
+                session.query(Utterance)
+                .join(Utterance.speaker)
+                .filter(
+                    Utterance.job_id == job.id,
+                    Utterance.alignment_log_likelihood != None,  # noqa
+                )
+                .options(
+                    joinedload(Utterance.speaker, innerjoin=True),
+                    joinedload(Utterance.file, innerjoin=True).joinedload(
+                        File.sound_file, innerjoin=True
+                    ),
+                )
+            )
+            silence_phone_ids = [
+                x[0] for x in session.query(Phone.id).filter(Phone.phone_type == PhoneType.silence)
+            ]
+            for utterance in query:
+                phone_intervals = (
+                    session.query(PhoneInterval)
+                    .join(PhoneInterval.phone)
                     .filter(
-                        Utterance.job_id == job.id,
-                        Speaker.dictionary_id == d.id,
-                        Utterance.alignment_log_likelihood != None,  # noqa
+                        PhoneInterval.utterance_id == utterance.id,
                     )
-                    .options(
-                        joinedload(Utterance.speaker, innerjoin=True),
-                        joinedload(Utterance.file, innerjoin=True).joinedload(
-                            File.sound_file, innerjoin=True
-                        ),
-                    )
+                    .all()
                 )
-                silence_phone_id = (
-                    session.query(Phone.id)
-                    .filter(Phone.phone == d.optional_silence_phone)
-                    .first()[0]
-                )
-                for utterance in query:
-                    phone_intervals = (
-                        session.query(PhoneInterval)
-                        .join(PhoneInterval.phone)
-                        .filter(
-                            PhoneInterval.utterance_id == utterance.id,
-                        )
-                        .all()
-                    )
-                    if not phone_intervals:
-                        continue
-                    audio = utterance.segment.load_audio()
-                    sr = 16_000
-                    rms = librosa.feature.rms(
-                        y=audio, frame_length=int(0.025 * sr), hop_length=int(0.01 * sr)
-                    )[0, ...]
-                    interval_count = 0
-                    log_like_sum = 0
-                    duration_zscore_max = 0
-                    silence_energy_sum = 0
-                    silence_frame_count = 0
-                    nonsilence_energy_sum = 0
-                    nonsilence_frame_count = 0
-                    for pi in phone_intervals:
-                        begin_index = int((pi.begin - utterance.begin) / 0.01)
-                        end_index = int((pi.end - utterance.begin) / 0.01)
-                        if pi.phone_id == silence_phone_id:
-                            silence_frame_count += end_index - begin_index
-                            silence_energy_sum += rms[begin_index:end_index].sum()
-                        elif pi.phone_id in phones:
-                            nonsilence_frame_count += end_index - begin_index
-                            nonsilence_energy_sum += rms[begin_index:end_index].sum()
-                        if pi.phone_id not in phones:
-                            continue
-                        interval_count += 1
-                        log_like_sum += pi.phone_goodness
-                        m, sd = phones[pi.phone_id]
-                        duration_zscore = abs((pi.duration - m) / sd)
-                        if duration_zscore > duration_zscore_max:
-                            duration_zscore_max = duration_zscore
-                    try:
-                        utterance_speech_log_likelihood = log_like_sum / interval_count
-                        utterance_duration_deviation = duration_zscore_max
-                    except ZeroDivisionError:
-                        utterance_speech_log_likelihood = None
-                        utterance_duration_deviation = None
-                    try:
-                        if silence_frame_count == 0:
-                            raise ZeroDivisionError
-                        silence_energy = silence_energy_sum / silence_frame_count
-                    except ZeroDivisionError:
-                        silence_energy = rms.min()
-                    try:
-                        if nonsilence_frame_count == 0:
-                            raise ZeroDivisionError
-                        nonsilence_energy = nonsilence_energy_sum / nonsilence_frame_count
-                    except ZeroDivisionError:
-                        nonsilence_energy = rms.max()
-                    nonsilence_energy = 10 * math.log10(
-                        max(nonsilence_energy, sys.float_info.epsilon)
-                    )
-                    silence_energy = 10 * math.log10(max(silence_energy, sys.float_info.epsilon))
-                    snr = nonsilence_energy - silence_energy
+                if not phone_intervals:
                     extraction_logger.debug(
-                        f"{utterance.id}: Energy shape: {rms.shape}, Nonsilence energy: {nonsilence_energy} ({nonsilence_frame_count}), Silence energy: {silence_energy} ({silence_frame_count}), SNR: {snr}"
+                        f"Skipping {utterance.kaldi_id} due to missing phone intervals"
                     )
-                    self.callback(
-                        (
-                            utterance.id,
-                            utterance_speech_log_likelihood,
-                            utterance_duration_deviation,
-                            snr,
+                    continue
+                audio = utterance.segment.load_audio()
+                sr = 16_000
+                rms = librosa.feature.rms(
+                    S=librosa.magphase(librosa.stft(audio, hop_length=int(0.01 * sr)))[0]
+                )[0, ...]
+                rms[rms == 0] = sys.float_info.epsilon
+                intensity = 10 * np.log10(rms)
+                interval_count = 0
+                log_like_sum = 0
+                duration_zscore_max = 0
+                silence_energy_sum = 0
+                silence_frame_count = 0
+                nonsilence_energy_sum = 0
+                nonsilence_frame_count = 0
+                pi_update_mappings = []
+                for pi in phone_intervals:
+                    begin_index = int((pi.begin - utterance.begin) / 0.01)
+                    end_index = int((pi.end - utterance.begin) / 0.01)
+                    if self.analyze_intensity:
+                        pi_update_mappings.append(
+                            {
+                                "id": pi.id,
+                                "intensity": float(
+                                    intensity[begin_index:end_index].sum()
+                                    / (end_index - begin_index)
+                                ),
+                            }
                         )
+                    if pi.phone_id in silence_phone_ids:
+                        silence_frame_count += end_index - begin_index
+                        silence_energy_sum += rms[begin_index:end_index].sum()
+                    else:
+                        nonsilence_frame_count += end_index - begin_index
+                        nonsilence_energy_sum += rms[begin_index:end_index].sum()
+                    if pi.phone_id not in phones:
+                        continue
+                    interval_count += 1
+                    if pi.phone_goodness is not None:
+                        log_like_sum += pi.phone_goodness
+                    m, sd = phones[pi.phone_id]
+                    duration_zscore = abs((pi.duration - m) / sd)
+                    if duration_zscore > duration_zscore_max:
+                        duration_zscore_max = duration_zscore
+                utterance_duration_deviation = duration_zscore_max
+                utterance_speech_log_likelihood = None
+                try:
+                    if log_like_sum != 0:
+                        utterance_speech_log_likelihood = log_like_sum / interval_count
+                except ZeroDivisionError:
+                    pass
+                if silence_frame_count == 0:
+                    silence_energy = rms.min()
+                else:
+                    silence_energy = silence_energy_sum / silence_frame_count
+                if nonsilence_frame_count == 0:
+                    nonsilence_energy = rms.max()
+                else:
+                    nonsilence_energy = nonsilence_energy_sum / nonsilence_frame_count
+                nonsilence_energy = 10 * math.log10(max(nonsilence_energy, sys.float_info.epsilon))
+                silence_energy = 10 * math.log10(max(silence_energy, sys.float_info.epsilon))
+                snr = nonsilence_energy - silence_energy
+                extraction_logger.debug(
+                    f"{utterance.id}: Energy shape: {rms.shape}, Nonsilence energy: {nonsilence_energy} ({nonsilence_frame_count}), Silence energy: {silence_energy} ({silence_frame_count}), SNR: {snr}"
+                )
+                self.callback(
+                    (
+                        utterance.id,
+                        utterance_speech_log_likelihood,
+                        utterance_duration_deviation,
+                        snr,
+                        pi_update_mappings,
                     )
+                )
+
+
+class AnalyzeIntensityDeviationFunction(KaldiFunction):
+    """
+    Multiprocessing function for analyzing alignments.
+
+    See Also
+    --------
+    :meth:`.CorpusAligner.analyze_alignments`
+        Main function that calls this function in parallel
+    :meth:`.CorpusAligner.calculate_speech_post_arguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`lattice-to-post`
+        Relevant Kaldi binary
+    :kaldi_src:`weight-silence-post`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.alignment.multiprocessing.CalculateSpeechPostArguments`
+        Arguments for the function
+    """
+
+    def __init__(self, args: AnalyzeAlignmentsArguments):
+        super().__init__(args)
+
+    def _run(self):
+        """Run the function"""
+        with self.session() as session, thread_logger(
+            "kalpy.align", self.log_path, job_name=self.job_name
+        ) as extraction_logger:
+            job: Job = (
+                session.query(Job)
+                .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
+                .filter(Job.id == self.job_name)
+                .first()
+            )
+            phones = {
+                k: (m, sd)
+                for k, m, sd in session.query(
+                    Phone.id, Phone.mean_intensity, Phone.sd_intensity
+                ).filter(
+                    Phone.phone_type.in_([PhoneType.non_silence, PhoneType.extra]),
+                    Phone.sd_intensity != None,  # noqa
+                    Phone.sd_intensity != 0,
+                )
+            }
+            extraction_logger.debug(f"Phone stats: {phones}")
+            query = (
+                session.query(Utterance)
+                .join(Utterance.speaker)
+                .filter(
+                    Utterance.job_id == job.id,
+                    Utterance.alignment_log_likelihood != None,  # noqa
+                )
+            )
+            for utterance in query:
+                phone_intervals = (
+                    session.query(PhoneInterval)
+                    .join(PhoneInterval.phone)
+                    .filter(
+                        PhoneInterval.utterance_id == utterance.id,
+                    )
+                    .all()
+                )
+                if not phone_intervals:
+                    extraction_logger.debug(
+                        f"Skipping {utterance.kaldi_id} due to missing phone intervals"
+                    )
+                    continue
+                max_deviation = 0
+                for pi in phone_intervals:
+                    if pi.phone_id not in phones:
+                        continue
+                    m, sd = phones[pi.phone_id]
+                    intensity_zscore = abs((pi.intensity - m) / sd)
+                    max_deviation = max(max_deviation, intensity_zscore)
+                self.callback(
+                    (
+                        utterance.id,
+                        max_deviation,
+                    )
+                )
 
 
 class AnalyzeTranscriptsFunction(KaldiFunction):
@@ -888,8 +1171,6 @@ class AnalyzeTranscriptsFunction(KaldiFunction):
 
     def __init__(self, args: AnalyzeAlignmentsArguments):
         super().__init__(args)
-        self.model_path = args.model_path
-        self.align_options = args.align_options
 
     def _run(self):
         """Run the function"""
@@ -1096,7 +1377,10 @@ class PhoneConfidenceFunction(KaldiFunction):
             utterances = {u.id: (u.begin, u.phone_intervals) for u in utterances}
 
             for d in job.dictionaries:
-                feature_archive = job.construct_feature_archive(self.working_directory, d.name)
+                try:
+                    feature_archive = job.construct_feature_archive(self.working_directory, d.name)
+                except OSError:
+                    continue
                 interval_mappings = []
 
                 for utterance_id, feats in feature_archive:
@@ -1300,7 +1584,6 @@ class AlignmentExtractionFunction(KaldiFunction):
         self.confidence = args.confidence
         self.transcription = args.transcription
         self.score_options = args.score_options
-        self.use_g2p = args.use_g2p
 
     def _run(self) -> None:
         """Run the function"""
@@ -1322,34 +1605,17 @@ class AlignmentExtractionFunction(KaldiFunction):
             for d in job.dictionaries:
                 utterance_times = {}
                 utterance_texts = {}
-                if self.use_g2p:
-                    utts = (
-                        session.query(
-                            Utterance.id,
-                            Utterance.begin,
-                            Utterance.end,
-                            Utterance.normalized_character_text,
-                        )
-                        .join(Utterance.speaker)
-                        .filter(Utterance.job_id == self.job_name)
-                        .filter(Speaker.dictionary_id == d.id)
+                utts = (
+                    session.query(
+                        Utterance.id, Utterance.begin, Utterance.end, Utterance.normalized_text
                     )
-                    for u_id, begin, end, text in utts:
-                        utterance_times[u_id] = (begin, end)
-                        utterance_texts[u_id] = text
-
-                else:
-                    utts = (
-                        session.query(
-                            Utterance.id, Utterance.begin, Utterance.end, Utterance.normalized_text
-                        )
-                        .join(Utterance.speaker)
-                        .filter(Utterance.job_id == self.job_name)
-                        .filter(Speaker.dictionary_id == d.id)
-                    )
-                    for u_id, begin, end, text in utts:
-                        utterance_times[u_id] = (begin, end)
-                        utterance_texts[u_id] = text
+                    .join(Utterance.speaker)
+                    .filter(Utterance.job_id == self.job_name)
+                    .filter(Speaker.dictionary_id == d.id)
+                )
+                for u_id, begin, end, text in utts:
+                    utterance_times[u_id] = (begin, end)
+                    utterance_texts[u_id] = text
                 if self.lexicon_compilers and d.id in self.lexicon_compilers:
                     lexicon_compiler = self.lexicon_compilers[d.id]
                 else:

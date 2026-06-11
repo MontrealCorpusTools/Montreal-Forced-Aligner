@@ -24,7 +24,7 @@ from montreal_forced_aligner.corpus.features import FeatureConfigMixin
 from montreal_forced_aligner.data import PhoneType
 from montreal_forced_aligner.db import CorpusWorkflow, Phone, Utterance
 from montreal_forced_aligner.exceptions import KaldiProcessingError
-from montreal_forced_aligner.models import AcousticModel
+from montreal_forced_aligner.models import AcousticModel, MfaAlignmentModel
 from montreal_forced_aligner.utils import log_kaldi_errors, parse_logs, run_kaldi_function
 
 if TYPE_CHECKING:
@@ -474,10 +474,6 @@ class AcousticModelTrainingMixin(
         raise NotImplementedError
 
     @property
-    def use_g2p(self):
-        return self.worker.use_g2p
-
-    @property
     def meta(self) -> MetaDict:
         """Generate metadata for the acoustic model that was trained"""
         from datetime import datetime
@@ -498,12 +494,15 @@ class AcousticModelTrainingMixin(
         try:
             default_dict = self.worker.dictionary_base_names[self.worker._default_dictionary_id]
         except KeyError:
-            from montreal_forced_aligner.db import Dictionary
+            from montreal_forced_aligner.db import Dictionary, Speaker
 
             with self.session() as session:
                 default_dict = (
-                    session.query(Dictionary.name)
-                    .filter(Dictionary.default == True)  # noqa
+                    session.query(Dictionary.name, sqlalchemy.func.count(Speaker.id))
+                    .join(Speaker.dictionary)
+                    .filter(Dictionary.name.not_in(["default", "nonnative"]))
+                    .group_by(Dictionary.name)
+                    .order_by(sqlalchemy.desc(sqlalchemy.func.count(Speaker.id)))
                     .first()[0]
                 )
         non_silence_phones = self.non_silence_phones
@@ -535,10 +534,13 @@ class AcousticModelTrainingMixin(
                 "average_log_likelihood": average_log_likelihood,
             },
             "dictionaries": {
-                "names": sorted(self.worker.dictionary_base_names.values()),
+                "names": sorted(
+                    x
+                    for x in self.worker.dictionary_base_names.values()
+                    if x not in ["default", "nonnative"]
+                ),
                 "default": default_dict,
                 "silence_word": self.worker.silence_word,
-                "use_g2p": self.worker.use_g2p,
                 "oov_word": self.worker.oov_word,
                 "bracketed_word": self.worker.bracketed_word,
                 "laughter_word": self.worker.laughter_word,
@@ -546,6 +548,7 @@ class AcousticModelTrainingMixin(
                 "position_dependent_phones": self.worker.position_dependent_phones,
             },
             "language": str(self.worker.language),
+            "tokenization": self.worker.tokenization,
             "features": self.feature_options,
             "oov_phone": self.worker.oov_phone,
             "optional_silence_phone": self.worker.optional_silence_phone,
@@ -563,20 +566,26 @@ class AcousticModelTrainingMixin(
 
         Parameters
         ----------
-        output_model_path : str
+        output_model_path : Path
             Path to save acoustic model
         """
-        directory = output_model_path.parent
+        if AcousticModel.valid_extension(output_model_path):
+            directory = output_model_path.parent
 
-        acoustic_model = AcousticModel.empty(
-            output_model_path.stem, root_directory=self.working_log_directory
-        )
-        acoustic_model.add_meta_file(self.worker)
-        acoustic_model.add_model(self.working_directory)
-        acoustic_model.add_model(self.worker.phones_dir)
-        acoustic_model.add_pronunciation_models(
-            self.working_directory, self.worker.dictionary_base_names.values()
-        )
-        if directory:
-            directory.mkdir(parents=True, exist_ok=True)
-        acoustic_model.dump(output_model_path)
+            acoustic_model = AcousticModel.empty(
+                output_model_path.stem, root_directory=self.working_log_directory
+            )
+            acoustic_model.add_meta_file(self.worker)
+            acoustic_model.add_model(self.working_directory)
+            acoustic_model.add_model(self.worker.phones_dir)
+            if directory:
+                directory.mkdir(parents=True, exist_ok=True)
+            acoustic_model.dump(output_model_path)
+        else:
+            model = MfaAlignmentModel(output_model_path.name, output_model_path)
+            model.add_acoustic_model(self.working_directory)
+            model.add_acoustic_model(self.worker.phones_dir)
+            model.add_meta_file(self.worker)
+            rules_path = self.working_directory / "rules.yaml"
+            if rules_path.exists():
+                model.add_dictionary_file(rules_path)

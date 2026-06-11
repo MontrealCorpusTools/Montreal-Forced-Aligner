@@ -164,7 +164,10 @@ class TreeStatsFunction(KaldiFunction):
             for d in job.training_dictionaries:
                 train_logger.debug(f"Accumulating stats for dictionary {d.name} ({d.id})")
                 train_logger.debug(f"Accumulating stats for model: {self.model_path}")
-                feature_archive = job.construct_feature_archive(self.working_directory, d.name)
+                try:
+                    feature_archive = job.construct_feature_archive(self.working_directory, d.name)
+                except OSError:
+                    continue
                 ali_path = job.construct_path(self.working_directory, "ali", "ark", d.name)
                 if not ali_path.exists():
                     continue

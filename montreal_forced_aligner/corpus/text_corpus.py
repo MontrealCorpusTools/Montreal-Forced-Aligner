@@ -33,8 +33,9 @@ class TextCorpusMixin(CorpusMixin):
         For corpus parsing parameters
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, load_textgrids: bool = False, **kwargs):
         super().__init__(**kwargs)
+        self.load_textgrids = load_textgrids
 
     def _load_corpus_from_source_mp(self) -> None:
         """
@@ -77,13 +78,12 @@ class TextCorpusMixin(CorpusMixin):
                         if self.stopped.is_set():
                             break
                         wav_path = None
-                        if file_name in exts.lab_files:
-                            lab_name = exts.lab_files[file_name]
-                            transcription_path = os.path.join(root, lab_name)
-
+                        if self.load_textgrids and file_name in exts.textgrid_files:
+                            transcription_path = os.path.join(root, exts.textgrid_files[file_name])
+                        elif file_name in exts.lab_files:
+                            transcription_path = os.path.join(root, exts.lab_files[file_name])
                         elif file_name in exts.textgrid_files:
-                            tg_name = exts.textgrid_files[file_name]
-                            transcription_path = os.path.join(root, tg_name)
+                            transcription_path = os.path.join(root, exts.textgrid_files[file_name])
                         else:
                             continue
                         job_queue.put((file_name, wav_path, transcription_path, relative_path))

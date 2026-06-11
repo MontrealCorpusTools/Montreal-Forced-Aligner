@@ -477,7 +477,6 @@ class MfaWorker(metaclass=abc.ABCMeta):
         dict[str, Type]
             Dictionary of parameter names and their types
         """
-        mapping = {typing.Dict: dict, typing.Tuple: tuple, typing.List: list, typing.Set: set}
         configuration_params = {}
         for t, ty in typing.get_type_hints(cls.__init__).items():
             configuration_params[t] = ty
@@ -499,7 +498,7 @@ class MfaWorker(metaclass=abc.ABCMeta):
             except AttributeError:
                 pass
         for t, ty in configuration_params.items():
-            for v in mapping.values():
+            for v in [dict, tuple, list, set]:
                 try:
                     if ty.__origin__ == v:
                         configuration_params[t] = v
@@ -955,6 +954,25 @@ class MfaModel(abc.ABC):
     extensions: typing.List[str]
     model_type = "base_model"
 
+    def __init__(
+        self,
+        source: typing.Union[str, Path],
+        root_directory: typing.Optional[typing.Union[str, Path]] = None,
+    ):
+        from montreal_forced_aligner.config import get_temporary_directory
+
+        if isinstance(source, str):
+            source = Path(source)
+        source = source.resolve()
+        if root_directory is None:
+            root_directory = get_temporary_directory().joinpath(
+                "extracted_models", self.model_type
+            )
+        if isinstance(root_directory, str):
+            root_directory = Path(root_directory)
+        self.root_directory = root_directory
+        self.source = source
+
     @classmethod
     def pretrained_directory(cls) -> Path:
         """Directory that pretrained models are saved in"""
@@ -983,7 +1001,19 @@ class MfaModel(abc.ABC):
         return available
 
     @classmethod
-    def get_pretrained_path(cls, name: str, enforce_existence: bool = True) -> Path:
+    def from_pretrained(
+        cls,
+        name: typing.Union[str, Path],
+        root_directory: typing.Optional[typing.Union[str, Path]] = None,
+    ) -> MfaModel:
+        if isinstance(name, str) and name.count("/") == 0:
+            name = cls.get_pretrained_path(name, enforce_existence=True)
+        return cls(name, root_directory)
+
+    @classmethod
+    def get_pretrained_path(
+        cls, name: str, enforce_existence: bool = True
+    ) -> typing.Optional[Path]:
         """
         Generate a path to a pretrained model based on its name and model type
 
@@ -1016,7 +1046,7 @@ class MfaModel(abc.ABC):
 
     @abc.abstractmethod
     def pretty_print(self) -> None:
-        """Print the model's meta data"""
+        """Print the model's metadata"""
         ...
 
     @property
