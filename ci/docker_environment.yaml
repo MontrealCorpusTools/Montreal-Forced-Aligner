@@ -44,6 +44,7 @@ dependencies:
   - sudachidict-core
   - spacy-pkuseg
   - sentencepiece
+  - huggingface_hub
   - pip
   - pip:
       - speechbrain
