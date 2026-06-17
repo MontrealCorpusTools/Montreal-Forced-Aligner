@@ -251,7 +251,7 @@ def align_corpus_cli(context, **kwargs) -> None:
 @click.pass_context
 def align_corpus_hf_cli(context, **kwargs) -> None:
     """
-    Align a corpus with a pronunciation dictionary and a pretrained acoustic model.
+    Align a corpus with an MFA model hosted on Hugging Face.
     """
     initialize_configuration(context)
     config_path = kwargs.get("config_path", None)

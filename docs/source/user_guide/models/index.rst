@@ -4,6 +4,10 @@
 Pretrained models
 *****************
 
+.. deprecated:: 3.4
+
+   With the shift towards models that can be distributed on Hugging Face, the model functionality related to download and saving models will be deprecated in 3.4, with a scheduled removal in MFA 5.0 (sometime in 2027).  See :ref:`mfa_model_versions` for more details on the changes to models and distribution.
+
 The command for interacting with MFA models is :code:`mfa model`.  The subcommands allow for inspecting currently saved pretrained models, downloading ones from MFA's model repo, and saving models you have trained to be used with a simple name rather than the full path each time.
 
 Following installation of MFA, :code:`mfa model list acoustic` will not list any models.  If you want to download the default English model trained on LibriSpeech, you can run :code:`mfa model download acoustic english_us_arpa`.  At which point, the previous ``list`` command will output "english_us_arpa" as an option.  When referring to an acoustic model in another MFA command, rather than the full path to the acoustic model, you can now supply just ``english_us_arpa`` and MFA will resolve it to the saved path.

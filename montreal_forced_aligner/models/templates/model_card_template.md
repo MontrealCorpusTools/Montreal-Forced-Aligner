@@ -1,6 +1,6 @@
 ---
 language:
-- {{ language_code | default("", true) }}
+- {{ language_code | default("und", true) }}
 pipeline_tag: other
 library_name: montreal-forced-aligner
 tags:

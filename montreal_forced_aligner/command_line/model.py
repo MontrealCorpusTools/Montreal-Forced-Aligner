@@ -253,8 +253,14 @@ def save_model_cli(path: Path, model_type: str, name: str, overwrite: bool) -> N
     type=str,
     default=None,
 )
+@click.option(
+    "--overwrite_version",
+    help="Flag to overwrite update version tag to the latest commit.",
+    type=str,
+    default=None,
+)
 @click.help_option("-h", "--help")
-def upload_model_cli(local_path: Path, repo_id: str, version: typing.Optional[str]) -> None:
+def upload_model_cli(local_path: Path, repo_id: str, version: typing.Optional[str], overwrite_version: bool) -> None:
     """
     Upload an alignment model to Hugging Face Hub
 
@@ -268,5 +274,5 @@ def upload_model_cli(local_path: Path, repo_id: str, version: typing.Optional[st
     logger = logging.getLogger("mfa")
     model_name = local_path.stem
     model = MfaAlignmentModel(model_name, local_path)
-    model.upload_model(repo_id, version=version)
+    model.upload_model(repo_id, version=version, overwrite_version=overwrite_version)
     logger.info(f"Uploaded model successfully to {repo_id}!")

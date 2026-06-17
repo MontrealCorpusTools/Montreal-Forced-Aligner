@@ -34,7 +34,11 @@ from _kalpy.util import (
 from kalpy.aligner import KalpyAligner
 from kalpy.decoder.data import FstArchive
 from kalpy.decoder.training_graphs import TrainingGraphCompiler
-from kalpy.evaluation import align_phones, align_words, fix_unk_words, naive_boundary_f1
+try:
+    from kalpy.evaluation import align_phones, align_words, fix_unk_words, naive_boundary_f1
+except ImportError:
+    from kalpy.evaluation import align_phones, align_words, fix_unk_words
+    naive_boundary_f1 = None
 from kalpy.fstext.lexicon import LexiconCompiler
 from kalpy.gmm.align import GmmAligner
 from kalpy.gmm.data import AlignmentArchive, CtmInterval, TranscriptionArchive

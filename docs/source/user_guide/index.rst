@@ -99,12 +99,33 @@ Contributors
 * :xref:`wagner`
 * :xref:`sonderegger`
 
+.. _citing_mfa:
+
 Citation
 ========
 
+MFA 3.0
+-------
+
+McAuliffe, Michael, Kaylynn Gunter, Michael Wagner, and Morgan Sonderegger (2026).
+Montreal Forced Aligner and the state of speech-to-text alignment in 2026. In
+*Proceedings of Interspeech 2026*.
+
+.. code-block:: bibtex
+
+   @inproceedings{mcauliffe26_interspeech,
+     author={McAuliffe, Michael and Gunter, Kaylynn and Wagner, Michael and Sonderegger, Morgan},
+     title={{Montreal Forced Aligner and the state of speech-to-text alignment in 2026}},
+     year=2026,
+     booktitle={Proc. Interspeech 2026}
+   }
+
+MFA 1.0
+-------
+
 McAuliffe, Michael, Michaela Socolof, Sarah Mihuc, Michael Wagner, and Morgan Sonderegger (2017).
 Montreal Forced Aligner: trainable text-speech alignment using Kaldi. In
-*Proceedings of the 18th Conference of the International Speech Communication Association*. :download:`Paper PDF <../_static/MFA_paper_Interspeech2017.pdf>`
+*Proceedings of Interspeech 2017*. :download:`Paper PDF <../_static/MFA_paper_Interspeech2017.pdf>`
 
 .. code-block:: bibtex
 
