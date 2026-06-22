@@ -274,7 +274,7 @@ def align_one_cli(context, **kwargs) -> None:
 @click.pass_context
 def align_one_hf_cli(context, **kwargs) -> None:
     """
-    Align a single file with a pronunciation dictionary and a pretrained acoustic model.
+    Align a single file with an MFA model hosted on Hugging Face.
     """
     initialize_configuration(context)
     dialect = kwargs["dialect"]

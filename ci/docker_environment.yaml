@@ -29,8 +29,8 @@ dependencies:
   - postgresql
   - psycopg2
   - click
-  - pytorch
-  - torchaudio
+  - pytorch<2.9
+  - torchaudio<2.9
   - setuptools_scm
   - kneed
   - matplotlib
@@ -44,6 +44,7 @@ dependencies:
   - sudachidict-core
   - spacy-pkuseg
   - sentencepiece
+  - huggingface_hub
   - pip
   - pip:
       - speechbrain

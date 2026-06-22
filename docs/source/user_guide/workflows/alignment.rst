@@ -4,9 +4,9 @@
 Align with an acoustic model ``(mfa align)``
 ============================================
 
-.. deprecated::
+.. deprecated:: 3.4
 
-   Beginning with MFA 4.0, the default signature of ``mfa align`` will be changed to the signature of :ref:`_pretrained_alignment_hf` and the signature for use with legacy models will be deprecated. See :ref:`mfa_model_versions` for more details on the difference
+   Beginning with MFA 4.0 (currently scheduled for end of 2026), the default signature of ``mfa align`` will be changed to the signature of :ref:`pretrained_alignment_hf` and the signature for use with legacy models will be deprecated (this version of the command will become ``mfa align_legacy``. The ``mfa align_legacy`` command will be removed in MFA 5.0 (currently scheduled for some time in 2027). See :ref:`mfa_model_versions` for more details on the difference.
 
 This is the primary workflow of MFA, where you can use pretrained :term:`acoustic models` to align your dataset.  There are a number of :xref:`pretrained_acoustic_models` to use, but you can also adapt a pretrained model to your data (see :ref:`adapt_acoustic_model`) or train an acoustic model from scratch using your dataset (see :ref:`train_acoustic_model`).
 
@@ -45,7 +45,11 @@ API reference
 Align with a model hosted on Hugging Face ``(mfa align_hf)``
 ============================================================
 
-Beginning with MFA 3.4, a new format for MFA models will be available for distribution through :xref:`hf`, with a new signature for align commands.  The key change is removing the need to explicitly set the dictionary name or path, as dictionaries and G2P models will be distributed alongside acoustic models. If the model contains multiple dictionaries and you want to use a different one than the default, then it can be specified with the ``--dialect`` flag (``mfa align CORPUS english_mfa OUTPUT --dialect english_india_mfa``.  Additionally, you can use the ``--use_g2p`` flag to use the pretrained G2P models to generate pronunciations for words not in the dictionary.
+Beginning with MFA 3.4, a new format for MFA models will be available for distribution through :xref:`hf`, with a new signature for align commands.  The key change is removing the need to explicitly set the dictionary name or path, as dictionaries and G2P models will be distributed alongside acoustic models. If the model contains multiple dictionaries and you want to use a different one than the default, then it can be specified with the ``--dialect`` flag (``mfa align_hf CORPUS english_mfa OUTPUT --dialect english_india_mfa``.  Additionally, you can use the ``--use_g2p`` flag to use the pretrained G2P models to generate pronunciations for words not in the dictionary.
+
+.. deprecated:: 3.4
+
+   Beginning with MFA 4.0, the ``mfa align_hf`` command will become the default ``mfa align`` command and the legacy version of the command changed to ``mfa align_legacy``. See :ref:`mfa_model_versions` for more details on the difference.
 
 .. seealso::
 
@@ -55,8 +59,8 @@ Beginning with MFA 3.4, a new format for MFA models will be available for distri
 Command reference
 -----------------
 
-.. click:: montreal_forced_aligner.command_line.align:align_corpus_cli
-   :prog: mfa align
+.. click:: montreal_forced_aligner.command_line.align:align_corpus_hf_cli
+   :prog: mfa align_hf
    :nested: full
 
 Configuration reference
@@ -80,6 +84,10 @@ API reference
 Align a single file ``(mfa align_one)``
 =======================================
 
+.. deprecated:: 3.4
+
+   Beginning with MFA 4.0 (currently scheduled for end of 2026), the default signature of ``mfa align_one`` will be changed to the signature of :ref:`align_one_hf` and the signature for use with legacy models will be deprecated (this version of the command will become ``mfa align_one_legacy``. The ``mfa align_one_legacy`` command will be removed in MFA 5.0 (currently scheduled for some time in 2027). See :ref:`mfa_model_versions` for more details on the difference.
+
 This workflow is identical to :ref:`pretrained_alignment`, but rather than aligning a full dataset, it only aligns a single file.
 Because only a single file is used, many of the optimizations for larger datasets are skipped resulting in faster alignment times,
 but features like speaker adaptation are not employed.
@@ -92,6 +100,29 @@ Command reference
 
 .. click:: montreal_forced_aligner.command_line.align_one:align_one_cli
    :prog: mfa align_one
+   :nested: full
+
+Configuration reference
+-----------------------
+
+- :ref:`configuration_global`
+
+.. _align_one_hf:
+
+Align a single file with Hugging Face model ``(mfa align_one_hf)``
+==================================================================
+
+Beginning with MFA 3.4, a new format for MFA models will be available for distribution through :xref:`hf`, with a new signature for align commands.  The key change is removing the need to explicitly set the dictionary name or path, as dictionaries and G2P models will be distributed alongside acoustic models. If the model contains multiple dictionaries and you want to use a different one than the default, then it can be specified with the ``--dialect`` flag (``mfa align_one_hf SOUND_FILE TRANSCRIPTION_FILE english_mfa OUTPUTPATH --dialect english_india_mfa``.  Additionally, you can use the ``--use_g2p`` flag to use the pretrained G2P models to generate pronunciations for words not in the dictionary.
+
+.. deprecated:: 3.4
+
+   Beginning with MFA 4.0, the ``mfa align_one_hf`` command will become the default ``mfa align_one`` command and the legacy version of the command changed to ``mfa align_one_legacy``. See :ref:`mfa_model_versions` for more details on the difference.
+
+Command reference
+-----------------
+
+.. click:: montreal_forced_aligner.command_line.align_one:align_one_hf_cli
+   :prog: mfa align_one_hf
    :nested: full
 
 Configuration reference

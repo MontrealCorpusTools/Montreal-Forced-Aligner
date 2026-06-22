@@ -38,3 +38,4 @@ dependencies:
   - kaldi =*=cpu*
   - kalpy>=0.8
   - compilers
+  - huggingface_hub

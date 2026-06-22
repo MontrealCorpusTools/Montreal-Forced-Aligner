@@ -12,6 +12,45 @@ Please see the documentation http://montreal-forced-aligner.readthedocs.io for i
 
 If you run into any issues, please check the [mailing list](https://groups.google.com/forum/#!forum/mfa-users) for fixes/workarounds or to post a [new issue](https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/issues).
 
+## Citation
+
+### MFA 3.0
+
+For citing the latest version of MFA and its pretrained models, please use:
+
+McAuliffe, Michael, Kaylynn Gunter, Michael Wagner, and Morgan Sonderegger (2026).
+Montreal Forced Aligner and the state of speech-to-text alignment in 2026. In
+*Proceedings of Interspeech 2026*.
+
+
+```
+@inproceedings{mcauliffe26_interspeech,
+ author={McAuliffe, Michael and Gunter, Kaylynn and Wagner, Michael and Sonderegger, Morgan},
+ title={{Montreal Forced Aligner and the state of speech-to-text alignment in 2026}},
+ year=2026,
+ booktitle={Proc. Interspeech 2026}
+}
+```
+
+### MFA 1.0
+
+For citing the original software and models (upgrading to the MFA 3.X is recommended!), please use:
+
+McAuliffe, Michael, Michaela Socolof, Sarah Mihuc, Michael Wagner, and Morgan Sonderegger (2017).
+Montreal Forced Aligner: trainable text-speech alignment using Kaldi. In
+*Proceedings of Interspeech 2017*.
+
+```
+@inproceedings{mcauliffe17_interspeech,
+ author={McAuliffe, Michael and Socolof, Michaela and Mihuc, Sarah and Wagner, Michael and Sonderegger, Morgan},
+ title={{Montreal Forced Aligner: Trainable Text-Speech Alignment Using Kaldi}},
+ year=2017,
+ booktitle={Proc. Interspeech 2017},
+ pages={498--502},
+ doi={10.21437/Interspeech.2017-1386}
+}
+```
+
 ## Installation
 
 You can install MFA either entirely through [conda](https://docs.conda.io/en/latest/) or a mix of conda for Kaldi and Pynini dependencies and Python packaging for MFA itself

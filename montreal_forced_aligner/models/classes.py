@@ -163,7 +163,9 @@ class MfaAlignmentModel(MfaModel):
             return path
         return None
 
-    def upload_model(self, repo_id: str, version: typing.Optional[str] = None) -> None:
+    def upload_model(
+        self, repo_id: str, version: typing.Optional[str] = None, overwrite_version: bool = False
+    ) -> None:
         """
         Upload model to Hugging Face Hub
 
@@ -173,6 +175,8 @@ class MfaAlignmentModel(MfaModel):
             Repository ID
         version: str, optional
             Version ID to create tag
+        overwrite_version: bool
+            Flag to update version tag if specified, defaults to false
         """
         api = HfApi()
         if "/" not in repo_id:
@@ -194,7 +198,11 @@ class MfaAlignmentModel(MfaModel):
             try:
                 api.create_tag(repo_id=repo_id, tag=version)
             except HfHubHTTPError:
-                logger.info(f"The version {version} already exists, not creating tag.")
+                if overwrite_version:
+                    api.delete_tag(repo_id=repo_id, tag=version)
+                    api.create_tag(repo_id=repo_id, tag=version)
+                else:
+                    logger.info(f"The version {version} already exists, not creating tag.")
 
     def pretty_print(self) -> None:
         """

@@ -53,6 +53,8 @@
 :hidden:
 :maxdepth: 1
 
+news_3.4.rst
+changelog_3.4.rst
 changelog_3.3.rst
 changelog_3.2.rst
 changelog_3.1.rst
