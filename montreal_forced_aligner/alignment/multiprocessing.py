@@ -982,6 +982,8 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
             silence_phone_ids = [
                 x[0] for x in session.query(Phone.id).filter(Phone.phone_type == PhoneType.silence)
             ]
+            max_running_short_interval = 0
+            running_short_interval_count = 0
             for utterance in query:
                 phone_intervals = (
                     session.query(PhoneInterval)
@@ -1039,6 +1041,12 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
                     duration_zscore = abs((pi.duration - m) / sd)
                     if duration_zscore > duration_zscore_max:
                         duration_zscore_max = duration_zscore
+                    if pi.duration < 0.011:
+                        running_short_interval_count += 1
+                    else:
+                        if running_short_interval_count > max_running_short_interval:
+                            max_running_short_interval = running_short_interval_count
+                            running_short_interval_count = 0
                 utterance_duration_deviation = duration_zscore_max
                 utterance_speech_log_likelihood = None
                 try:
@@ -1066,6 +1074,7 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
                         utterance_speech_log_likelihood,
                         utterance_duration_deviation,
                         snr,
+                        max_running_short_interval,
                         pi_update_mappings,
                     )
                 )

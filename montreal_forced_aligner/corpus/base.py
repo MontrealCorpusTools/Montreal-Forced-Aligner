@@ -13,6 +13,7 @@ import typing
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
 
+import numpy as np
 import sqlalchemy.engine
 from sqlalchemy.orm import Session, joinedload, selectinload, subqueryload
 from tqdm.rich import tqdm
@@ -603,7 +604,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     for p, duration in query:
                         if p not in phone_data:
                             phone_data[p] = []
-                        phone_data[p].append(duration)
+                        phone_data[p].append(float(np.log(duration)))
                     for p, durations in phone_data.items():
                         mean_duration = statistics.mean(durations)
                         try:
@@ -622,10 +623,13 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     query = (
                         session.query(
                             Phone.id,
-                            sqlalchemy.func.avg(PhoneInterval.duration),
-                            sqlalchemy.func.stddev_samp(PhoneInterval.duration),
+                            sqlalchemy.func.avg(sqlalchemy.func.ln(PhoneInterval.duration)),
+                            sqlalchemy.func.stddev_samp(
+                                sqlalchemy.func.ln(PhoneInterval.duration)
+                            ),
                         )
                         .join(PhoneInterval.phone)
+                        .filter(Phone.phone_type == PhoneType.non_silence)
                         .group_by(Phone.id)
                     )
                     for p_id, mean_duration, sd_duration in query:
@@ -650,6 +654,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 speech_log_likelihood,
                 duration_deviation,
                 snr,
+                max_running_short_interval,
                 pi_mappings,
             ) in run_kaldi_function(AnalyzeAlignmentsFunction, arguments, total_count=total_count):
                 update_mappings.append(
@@ -657,6 +662,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                         "id": utt_id,
                         "speech_log_likelihood": speech_log_likelihood,
                         "duration_deviation": duration_deviation,
+                        "max_running_short_interval": max_running_short_interval,
                         "snr": snr,
                     }
                 )
@@ -730,6 +736,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             "overall_log_likelihood",
                             "speech_log_likelihood",
                             "phone_duration_deviation",
+                            "max_running_short_interval",
                             "snr",
                             "intensity_deviation",
                         ]
@@ -743,6 +750,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                             Utterance.alignment_log_likelihood,
                             Utterance.speech_log_likelihood,
                             Utterance.duration_deviation,
+                            Utterance.max_running_short_interval,
                             Utterance.snr,
                             Utterance.intensity_deviation,
                         )

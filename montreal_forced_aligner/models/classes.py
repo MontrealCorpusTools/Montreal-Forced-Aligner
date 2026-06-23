@@ -401,12 +401,14 @@ class MfaAlignmentModel(MfaModel):
     def validate_g2p_models(self):
         missing = {}
         for model_directory in self.g2p_model_directory.iterdir():
-            mising_files = []
+            missing_files = []
             for f in self._g2p_files:
                 if not model_directory.joinpath(f).exists():
-                    mising_files.append(f)
-            if mising_files:
-                missing[model_directory.name] = mising_files
+                    missing_files.append(f)
+            if all(x.endswith(".sym") for x in missing_files):
+                missing_files = []
+            if missing_files:
+                missing[model_directory.name] = missing_files
         if missing:
             msg = "The following files were missing for G2P Models:"
             for k, v in missing.items():

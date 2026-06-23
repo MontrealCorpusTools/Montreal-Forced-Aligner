@@ -1764,6 +1764,7 @@ class Utterance(MfaSqlBase):
     duration_deviation = Column(Float, index=True)
     intensity_deviation = Column(Float, index=True)
     snr = Column(Float, index=True)
+    max_running_short_interval = Column(Integer, index=True)
     phone_error_rate = Column(Float)
     edit_distance = Column(Float, index=True)
     alignment_score = Column(Float, index=True)

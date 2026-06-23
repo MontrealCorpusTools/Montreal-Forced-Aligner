@@ -265,7 +265,7 @@ class FileData:
                                     0,
                                     CtmInterval(utt.begin, utt.phone_intervals[0].begin, "sil"),
                                 )
-                        if utt.phone_intervals[-1].end != utt.end:
+                        if utt.phone_intervals[-1].end < utt.end:
                             if (
                                 abs(utt.phone_intervals[-1].end - utt.end) < 0.02
                                 or utt.phone_intervals[-1].label == "sil"
