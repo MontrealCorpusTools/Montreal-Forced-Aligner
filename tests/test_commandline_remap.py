@@ -24,7 +24,7 @@ def test_remap_dictionary(
         "--clean",
         "--debug",
         "--no_use_mp",
-        "--no_use_postgres",
+        "--use_postgres",
         "-v",
     ]
     command = [str(x) for x in command]
@@ -57,7 +57,7 @@ def test_remap_alignments(
         "--clean",
         "--debug",
         "--no_use_mp",
-        "--no_use_postgres",
+        "--use_postgres",
         "-v",
     ]
     command = [str(x) for x in command]

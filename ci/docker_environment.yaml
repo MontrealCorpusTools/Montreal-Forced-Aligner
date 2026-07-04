@@ -45,6 +45,7 @@ dependencies:
   - spacy-pkuseg
   - sentencepiece
   - huggingface_hub
+  - jinja2
   - pip
   - pip:
       - speechbrain

@@ -21,6 +21,7 @@ import requests
 import yaml
 from huggingface_hub import HfApi
 from huggingface_hub.errors import HfHubHTTPError, RepositoryNotFoundError
+from jinja2 import Environment, PackageLoader, select_autoescape
 from kalpy.models import AcousticModel as KalpyAcousticModel
 from rich.pretty import pprint
 
@@ -264,7 +265,7 @@ class MfaAlignmentModel(MfaModel):
             json.dump(trainer.meta, f, ensure_ascii=False)
 
     def add_acoustic_model(self, input_directory: Path) -> None:
-        for f in self._acoustic_files:
+        for f in self._acoustic_files + ["meta.json"]:
             source_path = input_directory / f
             dest_path = self.acoustic_model_directory / f
             if source_path.exists():
@@ -310,8 +311,8 @@ class MfaAlignmentModel(MfaModel):
         with mfa_open(output_directory.joinpath("meta.json"), "w") as f:
             json.dump(metadata, f, cls=EnhancedJSONEncoder)
 
-    def generate_model_card(self, trainer: TrainableAligner, metadata_path: Path = None):
-        from jinja2 import Environment, PackageLoader, select_autoescape
+    def generate_model_card(self, trainer: TrainableAligner, metadata_path: Path = None, **kwargs):
+        from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 
         env = Environment(
             loader=PackageLoader("montreal_forced_aligner.models"), autoescape=select_autoescape()
@@ -324,13 +325,22 @@ class MfaAlignmentModel(MfaModel):
         if metadata_path is not None and metadata_path.exists():
             with mfa_open(metadata_path) as f:
                 metadata.update(json.load(f))
-        corpus_data = create_corpus_information(trainer, multiple_corpora=trainer.multiple_corpora)
-        training_details = []
-        for d in corpus_data.values():
-            kwargs = {}
-            kwargs.update(metadata)
-            kwargs.update(d)
-            training_details.append(corpus_template.render(**kwargs))
+        if isinstance(trainer, TrainableAligner):
+            corpus_data = create_corpus_information(
+                trainer, multiple_corpora=trainer.multiple_corpora
+            )
+            training_details = []
+            for d in corpus_data.values():
+                template_kwargs = {}
+                template_kwargs.update(metadata)
+                template_kwargs.update(d)
+                template_kwargs.update(kwargs)
+                training_details.append(corpus_template.render(**template_kwargs))
+        else:
+            template_kwargs = {}
+            template_kwargs.update(metadata)
+            template_kwargs.update(kwargs)
+            training_details = [corpus_template.render(**template_kwargs)]
         metadata["training_data_details"] = "\n\n".join(training_details)
         phone_set_type = None
         if "phone_set" in metadata:
@@ -344,10 +354,11 @@ class MfaAlignmentModel(MfaModel):
             )
             dictionary_details = []
             for d in dictionaries:
-                kwargs = {"dialect": d.name}
-                kwargs.update(metadata)
-                kwargs.update(analyze_dictionary(d, phone_set_type))
-                dictionary_details.append(dictionary_template.render(**kwargs))
+                template_kwargs = {"dialect": d.name}
+                template_kwargs.update(metadata)
+                template_kwargs.update(analyze_dictionary(d, phone_set_type))
+                template_kwargs.update(kwargs)
+                dictionary_details.append(dictionary_template.render(**template_kwargs))
             metadata["dictionary_details"] = "\n\n".join(dictionary_details)
         with mfa_open(self.model_card_path, "w") as f:
             f.write(template.render(**metadata))

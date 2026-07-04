@@ -42,6 +42,7 @@ dependencies:
   - rich-click
   - kalpy>=0.8
   - huggingface_hub
+  - jinja2
     # Tokenization dependencies
   - spacy
   - sudachipy

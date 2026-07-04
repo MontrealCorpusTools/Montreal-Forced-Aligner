@@ -41,6 +41,7 @@ dependencies:
   - kalpy>=0.8
   - pip
   - huggingface_hub
+  - jinja2
   - spacy
   - sudachipy
   - sudachidict-core

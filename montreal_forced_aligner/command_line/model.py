@@ -12,7 +12,9 @@ from montreal_forced_aligner import config
 from montreal_forced_aligner.command_line.utils import (
     common_options,
     initialize_configuration,
+    validate_acoustic_model,
     validate_dictionary,
+    validate_g2p_model,
 )
 from montreal_forced_aligner.data import PhoneSetType
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionary
@@ -278,3 +280,83 @@ def upload_model_cli(
     model = MfaAlignmentModel(model_name, local_path)
     model.upload_model(repo_id, version=version, overwrite_version=overwrite_version)
     logger.info(f"Uploaded model successfully to {repo_id}!")
+
+
+@model_cli.command(
+    name="create_hf_model", short_help="Create a Hugging Face compatible model from legacy models"
+)
+@click.argument("acoustic_model_path", type=click.UNPROCESSED, callback=validate_acoustic_model)
+@click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
+@click.argument(
+    "output_model_path", type=click.Path(file_okay=True, dir_okay=True, path_type=Path)
+)
+@click.option(
+    "--g2p_model_path",
+    "g2p_model_path",
+    help="Path to G2P model to include.",
+    type=click.UNPROCESSED,
+)
+@click.option(
+    "--metadata_path",
+    help="Path to additional metadata json file to use for creating the model card.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "--config_path",
+    "-c",
+    help="Path to config file to use for training. See "
+    "https://github.com/MontrealCorpusTools/mfa-models/tree/main/config/acoustic for examples.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+)
+@click.help_option("-h", "--help")
+@common_options
+@click.pass_context
+def create_hf_model_cli(context, **kwargs) -> None:
+    """
+    Create a Hugging Face-compatible model from legacy models
+    """
+    initialize_configuration(context)
+    config_path = kwargs.get("config_path", None)
+    metadata_path = kwargs.get("metadata_path", None)
+    output_model_path = kwargs.get("output_model_path", None)
+    dictionary = kwargs["dictionary_path"]
+    acoustic_model = kwargs["acoustic_model_path"]
+    g2p_model_path: typing.Optional[Path] = kwargs.get("g2p_model_path", None)
+    g2p_model = None
+    if g2p_model_path:
+        g2p_model = validate_g2p_model(context, kwargs, g2p_model_path)
+    from montreal_forced_aligner.g2p.phonetisaurus_trainer import PhonetisaurusTrainer
+
+    logger = logging.getLogger("mfa")
+    model_name = output_model_path.stem
+    model = MfaAlignmentModel(model_name, output_model_path)
+
+    name = Path(dictionary.path).stem
+    g2p_trainer = PhonetisaurusTrainer(
+        dictionary=dictionary,
+        evaluation_mode=True,
+        **PhonetisaurusTrainer.parse_parameters(config_path, context.params, context.args),
+    )
+    g2p_trainer.setup()
+    model.add_acoustic_model(acoustic_model.directory)
+    model.add_dictionary_file(dictionary.path)
+    if g2p_model is None:
+        g2p_trainer.train()
+        model.add_g2p_model(g2p_trainer.working_directory, g2p_trainer.meta, name)
+    else:
+        name = Path(g2p_model_path).stem
+        model.add_g2p_model(g2p_model.directory, g2p_model.meta, name)
+    name = acoustic_model.name
+    training_data = acoustic_model.meta.get("training", {})
+    corpus_data = {
+        "name": name,
+        "num_speakers": training_data.get("num_speakers", 0),
+        "num_male": training_data.get("num_male", 0),
+        "num_female": training_data.get("num_female", 0),
+        "num_unspecified": training_data.get("num_unspecified", 0),
+        "num_utterances": training_data.get("num_utterances", 0),
+    }
+    if "audio_duration" in training_data:
+        corpus_data["num_hours"] = training_data["audio_duration"] / 3600
+    model.generate_model_card(g2p_trainer, metadata_path, **corpus_data)
+    logger.info(f"Created model successfully at {output_model_path}!")

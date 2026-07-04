@@ -39,3 +39,4 @@ dependencies:
   - kalpy>=0.8
   - compilers
   - huggingface_hub
+  - jinja2

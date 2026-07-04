@@ -286,3 +286,29 @@ def test_expected_errors():
 
     with pytest.raises(RemoteModelNotFoundError):
         click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
+
+
+def test_combine_legacy_model(
+    english_mfa_acoustic_model,
+    english_us_mfa_dictionary,
+    english_us_mfa_g2p_model,
+    generated_dir,
+    db_setup,
+):
+    output_path = os.path.join(generated_dir, "hf_model")
+    command = [
+        "model",
+        "create_hf_model",
+        str(english_mfa_acoustic_model),
+        str(english_us_mfa_dictionary),
+        output_path,
+        "--g2p_model_path",
+        str(english_us_mfa_g2p_model),
+    ]
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value

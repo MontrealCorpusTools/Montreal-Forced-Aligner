@@ -124,6 +124,18 @@ The metadata JSON can take the following fields:
 
    The :xref:`mfa_models_repo` has the metadata JSON files used to train MFA models `here <https://github.com/MontrealCorpusTools/mfa-models/tree/main/config/acoustic/metadata>`_.
 
+Converting a legacy model to be compatible with Hugging Face
+------------------------------------------------------------
+
+MFA 3.4 adds a helper command to migrate legacy acoustic model and dictionaries (and G2P models) to the new model format:
+
+.. code-block:: bash
+
+   mfa model create_hf_model ACOUSTIC_MODEL_PATH DICTIONARY_PATH OUTPUT_MODEL_PATH --g2p_model_path G2P_MODEL_PATH
+
+This command will create a new directory that you can upload with the acoustic model folder, the dictionary folder, and a G2P model specified.  If a G2P model is not specified, one will be trained (you can pass a config file via ``--config_path`` or keyword arguments the same as for :ref:`g2p_model_training`.  You can pass a metadata JSON file as above that will be used to fill out the generated ``README.md`` file, which will do some inspection of the acoustic model for model training details (though these are much reduced from the details available when training from scratch) and the dictionary for filling out an IPA chart.
+
+
 Uploading the model to Hugging Face
 -----------------------------------
 
