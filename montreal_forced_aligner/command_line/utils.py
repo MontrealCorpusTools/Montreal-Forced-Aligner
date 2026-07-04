@@ -192,7 +192,7 @@ def initialize_configuration(ctx: click.Context):
         auto_server = False
         run_check = False
     elif parent_context.invoked_subcommand in ["model", "models"]:
-        if "add_words" in sys.argv or "inspect" in sys.argv:
+        if "add_words" in sys.argv or "inspect" in sys.argv or "create_hf_model" in sys.argv:
             config.CLEAN = True
             config.USE_POSTGRES = False
         else:
