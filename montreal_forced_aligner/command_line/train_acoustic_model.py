@@ -111,6 +111,12 @@ __all__ = ["train_acoustic_model_cli"]
     help="Path to G2P model to use for OOV items.",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
 )
+@click.option(
+    "--ignore_oovs",
+    is_flag=True,
+    help="Ignore any file that contains OOV tokens by marking its utterances as ignored.",
+    default=False,
+)
 @common_options
 @click.help_option("-h", "--help")
 @click.pass_context
@@ -136,11 +142,13 @@ def train_acoustic_model_cli(context, **kwargs) -> None:
         )
     if g2p_model_path:
         g2p_model_path = validate_g2p_model(context, kwargs, g2p_model_path)
+    extra_kwargs = TrainableAligner.parse_parameters(config_path, context.params, context.args)
+    extra_kwargs["ignore_oovs"] = kwargs.get("ignore_oovs", False)
     trainer = TrainableAligner(
         corpus_directory=corpus_directory,
         dictionary_path=dictionary_path,
         g2p_model_path=g2p_model_path,
-        **TrainableAligner.parse_parameters(config_path, context.params, context.args),
+        **extra_kwargs,
     )
     try:
         trainer.train()

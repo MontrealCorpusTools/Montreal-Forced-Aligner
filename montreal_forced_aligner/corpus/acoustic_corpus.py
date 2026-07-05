@@ -447,8 +447,14 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         log_directory = self.split_directory.joinpath("log")
         os.makedirs(log_directory, exist_ok=True)
         arguments = self.final_feature_arguments()
+        with self.session() as session:
+            total_count = (
+                session.query(sqlalchemy.func.count(Utterance.id))
+                .filter(Utterance.ignored == False)
+                .scalar()
+            )
         for _ in run_kaldi_function(
-            FinalFeatureFunction, arguments, total_count=self.num_utterances
+            FinalFeatureFunction, arguments, total_count=total_count
         ):
             pass
         with self.session() as session:
@@ -480,30 +486,25 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 raise FeatureGenerationError(
                     f"No utterances had features, please check the logs in {log_directory} for errors."
                 )
-            ignored_utterances = (
-                session.query(
-                    SoundFile.sound_file_path,
-                    Speaker.name,
-                    Utterance.begin,
-                    Utterance.end,
-                    Utterance.text,
-                )
-                .join(Utterance.speaker)
-                .join(Utterance.file)
-                .join(File.sound_file)
+            ignored_oov_count = (
+                session.query(sqlalchemy.func.count(Utterance.id))
                 .filter(Utterance.ignored == True)  # noqa
+                .filter(Utterance.oovs.isnot(None), Utterance.oovs != "")
+                .scalar()
             )
-            ignored_count = 0
-            for sound_file_path, speaker_name, begin, end, text in ignored_utterances:
-                logger.debug(f"  - Ignored File: {sound_file_path}")
-                logger.debug(f"    - Speaker: {speaker_name}")
-                logger.debug(f"    - Begin: {begin}")
-                logger.debug(f"    - End: {end}")
-                logger.debug(f"    - Text: {text}")
-                ignored_count += 1
-            if ignored_count:
+            ignored_other_count = (
+                session.query(sqlalchemy.func.count(Utterance.id))
+                .filter(Utterance.ignored == True)  # noqa
+                .filter(sqlalchemy.or_(Utterance.oovs.is_(None), Utterance.oovs == ""))
+                .scalar()
+            )
+            if ignored_oov_count:
+                logger.info(
+                    f"Skipped feature generation for {ignored_oov_count} utterances containing OOVs (--ignore_oovs)."
+                )
+            if ignored_other_count:
                 logger.warning(
-                    f"There were {ignored_count} utterances ignored due to an issue in feature generation, see the log file for full "
+                    f"There were {ignored_other_count} utterances ignored due to an issue in feature generation, see the log file for full "
                     "details or run `mfa validate` on the corpus."
                 )
         logger.debug(f"Generating final features took {time.time() - time_begin:.3f} seconds")
@@ -659,8 +660,14 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         log_directory = self.split_directory.joinpath("log")
         os.makedirs(log_directory, exist_ok=True)
         arguments = self.mfcc_arguments()
+        with self.session() as session:
+            total_count = (
+                session.query(sqlalchemy.func.count(Utterance.id))
+                .filter(Utterance.ignored == False)
+                .scalar()
+            )
         update_mapping = []
-        for result in run_kaldi_function(MfccFunction, arguments, total_count=self.num_utterances):
+        for result in run_kaldi_function(MfccFunction, arguments, total_count=total_count):
             if isinstance(result, tuple):
                 utt_id, num_frames = result
                 update_mapping.append(

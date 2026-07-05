@@ -100,6 +100,12 @@ __all__ = ["validate_corpus_cli", "validate_dictionary_cli"]
     help="Use per-speaker language models to test accuracy of transcriptions.",
     default=False,
 )
+@click.option(
+    "--ignore_oovs",
+    is_flag=True,
+    help="Ignore any file that contains OOV tokens by marking its utterances as ignored.",
+    default=False,
+)
 @common_options
 @click.help_option("-h", "--help")
 @click.pass_context
@@ -126,17 +132,21 @@ def validate_corpus_cli(context, **kwargs) -> None:
             "for example phone group configurations that have been used in training MFA models."
         )
     if acoustic_model_path:
+        extra_kwargs = PretrainedValidator.parse_parameters(config_path, context.params, context.args)
+        extra_kwargs["ignore_oovs"] = kwargs.get("ignore_oovs", False)
         validator = PretrainedValidator(
             corpus_directory=corpus_directory,
             dictionary_path=dictionary_path,
             acoustic_model_path=acoustic_model_path,
-            **PretrainedValidator.parse_parameters(config_path, context.params, context.args),
+            **extra_kwargs,
         )
     else:
+        extra_kwargs = TrainingValidator.parse_parameters(config_path, context.params, context.args)
+        extra_kwargs["ignore_oovs"] = kwargs.get("ignore_oovs", False)
         validator = TrainingValidator(
             corpus_directory=corpus_directory,
             dictionary_path=dictionary_path,
-            **TrainingValidator.parse_parameters(config_path, context.params, context.args),
+            **extra_kwargs,
         )
     try:
         validator.validate(output_directory=output_directory)
