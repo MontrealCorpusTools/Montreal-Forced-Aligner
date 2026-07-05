@@ -60,7 +60,7 @@ dependencies:
   - av<16.0.0
   - onnxruntime<1.20.0
   - pip:
-      - speechbrain =1.0.3
+      - speechbrain==1.0.3
       - whisperx
       # Tokenization dependencies
       - python-mecab-ko
