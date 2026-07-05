@@ -1478,7 +1478,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         Parameters
         ----------
         directory : str
-            Path to directory to save ``oovs_found.txt``
+            Path to directory to save ``oovs_found_*.txt`` files.
         """
         with self.session() as session:
             for dict_id, base_name in self.dictionary_base_names.items():
