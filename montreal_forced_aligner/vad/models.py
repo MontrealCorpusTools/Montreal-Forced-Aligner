@@ -544,7 +544,7 @@ class SpeechbrainSegmenterMixin(SegmenterMixin):
     ):
         if not FOUND_SPEECHBRAIN:
             logger.error(
-                "Could not import speechbrain, please ensure it is installed via `pip install speechbrain`"
+                "Could not import speechbrain, please ensure it is installed via `pip install speechbrain==1.0.3`"
             )
             sys.exit(1)
         super().__init__(**kwargs)

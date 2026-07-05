@@ -48,6 +48,6 @@ dependencies:
   - jinja2
   - pip
   - pip:
-      - speechbrain
+      - speechbrain==1.0.3
       - pythainlp
       - dragonmapper

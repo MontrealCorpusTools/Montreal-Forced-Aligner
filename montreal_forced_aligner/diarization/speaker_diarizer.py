@@ -142,7 +142,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         if ivector_extractor_path == "speechbrain":
             if not FOUND_SPEECHBRAIN:
                 logger.error(
-                    "Could not import speechbrain, please ensure it is installed via `pip install speechbrain`"
+                    "Could not import speechbrain, please ensure it is installed via `pip install speechbrain==1.0.3`"
                 )
                 sys.exit(1)
             self.use_xvector = True

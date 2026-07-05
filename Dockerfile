@@ -7,7 +7,7 @@ RUN chown -R mfauser /mfa
 COPY . /pkg
 RUN mamba env create -p /env -f docker_environment.yaml && conda clean -afy && \
  chown -R mfauser /env
-RUN conda run -p /env python -m pip install speechbrain && \
+RUN conda run -p /env python -m pip install speechbrain==1.0.3 && \
  conda run -p /env python -m pip install --no-deps /pkg
 USER mfauser
 ENV MFA_ROOT_DIR=/mfa

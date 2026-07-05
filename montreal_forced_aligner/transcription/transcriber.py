@@ -1392,7 +1392,7 @@ class SpeechbrainTranscriber(HuggingFaceTranscriber):
     def __init__(self, architecture: str = "whisper-medium", **kwargs):
         if not FOUND_SPEECHBRAIN:
             logger.error(
-                "Could not import speechbrain, please ensure it is installed via `pip install speechbrain`"
+                "Could not import speechbrain, please ensure it is installed via `pip install speechbrain==1.0.3`"
             )
             sys.exit(1)
         if architecture not in self.ARCHITECTURES:
