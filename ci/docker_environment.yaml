@@ -46,7 +46,7 @@ dependencies:
   - sentencepiece
   - pip
   - pip:
-      - speechbrain
+      - speechbrain==1.0.3
       - jamo
       - pythainlp
       - dragonmapper

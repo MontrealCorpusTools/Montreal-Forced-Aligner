@@ -46,7 +46,7 @@ Installing SpeechBrain
    a. CPU: :code:`conda install pytorch torchvision torchaudio cpuonly -c pytorch`
    b. GPU: :code:`conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia`
 
-3. Install Speechbrain via pip: :code:`pip install speechbrain`
+3. Install Speechbrain via pip: :code:`pip install speechbrain==1.0.3`
 
 .. _older_installation:
 
