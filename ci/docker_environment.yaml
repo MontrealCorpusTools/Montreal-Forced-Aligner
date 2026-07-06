@@ -38,12 +38,14 @@ dependencies:
   - sqlite
   - rich
   - rich-click
-  - kalpy>=0.8
+  - kalpy>=0.10
   - spacy
   - sudachipy
   - sudachidict-core
   - spacy-pkuseg
   - sentencepiece
+  - huggingface_hub
+  - jinja2
   - pip
   - pip:
       - speechbrain==1.0.3

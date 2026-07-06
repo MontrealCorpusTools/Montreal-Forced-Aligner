@@ -82,10 +82,6 @@ There are several broad use cases that you might want to use MFA for.  Take a lo
    #. Use the trained G2P model in :ref:`first_steps_g2p_pretrained` to generate a pronunciation dictionary
    #. Use the generated pronunciation dictionary in :ref:`first_steps_align_train_acoustic_model` to generate aligned TextGrids
 
-#. **Use case 6:** You have a :ref:`speech corpus <corpus_structure>` and the language has a :xref:`pretrained acoustic model <pretrained_acoustic_models>`, but the language does not mark word boundaries in its orthography (and the language has a :xref:`pretrained tokenizer model <pretrained_tokenizer_models>`).
-
-   #. Follow :ref:`first_steps_tokenize` to tokenize the corpus
-   #. Use the tokenized transcripts and follow :ref:`first_steps_align_pretrained`
 
 .. _first_steps_align_pretrained:
 
@@ -337,36 +333,4 @@ Once the G2P model is trained, you should see the exported archive in the folder
 
    mfa g2p ~/mfa_data/my_new_word_list.txt ~/mfa_data/my_g2p_model.zip ~/mfa_data/my_new_dictionary.txt
 
-Take a look at :ref:`first_steps_g2p_pretrained` with this new model for a more detailed walk-through of generating a dictionary.
-.. _first_steps_tokenize:
-
-Tokenize a corpus to add word boundaries
-----------------------------------------
-
-For the purposes of this example, we'll also assume that you have done nothing else with MFA other than follow the :ref:`installation` instructions and you have the :code:`mfa` command working.  Finally, we'll assume that your corpus is in Japanese and is stored in the folder :code:`~/mfa_data/my_corpus`, so when working with your data, this will be the main thing to update.
-
-To tokenize the Japanese text to add spaces, first download the Japanese tokenizer model via:
-
-
-.. code-block::
-
-   mfa model download tokenizer japanese_mfa
-
-Once you have the model downloaded, you can tokenize your corpus via:
-
-.. code-block::
-
-   mfa tokenize ~/mfa_data/my_corpus japanese_mfa ~/mfa_data/tokenized_version
-
-You can check the tokenized text in :code:`~/mfa_data/tokenized_version`, verify that it looks good, and copy the files to replace the untokenized files in :code:`~/mfa_data/my_corpus` for use in alignment.
-
-.. warning::
-
-   MFA's tokenizer models are nowhere near state of the art, and I recommend using other tokenizers as they make sense:
-
-   * Japanese: `nagisa <https://nagisa.readthedocs.io/en/latest/>`_
-   * Chinese: `spacy-pkuseg <https://github.com/explosion/spacy-pkuseg/blob/master/readme/readme_english.md>`_
-   * Thai: `sertiscorp/thai-word-segmentation <https://github.com/sertiscorp/thai-word-segmentation>`_
-
-   The above were used in the initial construction of the training corpora for MFA, though the training segmentations for Japanese have begun to diverge from :code:`nagisa`, as they break up phonological words into morphological parses where for the purposes of acoustic model training and alignment it makes more sense to not split (nagisa: :ipa_inline:`使っ て [ts ɨ k a Q t e]` vs mfa: :ipa_inline:`使って [ts ɨ k a tː e]`). The MFA tokenizer models are provided as an easy start up path as the ones listed above may have extra dependencies and platform restrictions.
-
+Take a look at :ref:`first_steps_g2p_oovs` with this new model for a more detailed walk-through of generating a dictionary.

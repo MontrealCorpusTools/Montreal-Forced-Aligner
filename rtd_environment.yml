@@ -36,5 +36,7 @@ dependencies:
   - rich
   - rich-click
   - kaldi =*=cpu*
-  - kalpy>=0.8
+  - kalpy>=0.10
   - compilers
+  - huggingface_hub
+  - jinja2

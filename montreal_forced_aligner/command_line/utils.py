@@ -20,6 +20,7 @@ import sqlalchemy
 import yaml
 
 from montreal_forced_aligner import config
+from montreal_forced_aligner.abc import MfaModel
 from montreal_forced_aligner.exceptions import (
     DatabaseError,
     FileArgumentNotFoundError,
@@ -27,8 +28,8 @@ from montreal_forced_aligner.exceptions import (
     ModelTypeNotSupportedError,
     PretrainedModelNotFoundError,
 )
-from montreal_forced_aligner.helper import mfa_open, configure_cli_logger
-from montreal_forced_aligner.models import MODEL_TYPES
+from montreal_forced_aligner.helper import configure_cli_logger, mfa_open
+from montreal_forced_aligner.models import MODEL_TYPES, MfaAlignmentModel
 from montreal_forced_aligner.utils import check_third_party
 
 BEGIN = time.time()
@@ -167,12 +168,15 @@ def initialize_configuration(ctx: click.Context):
     config.load_configuration()
     if ctx.params.get("profile", None) is not None:
         os.environ[config.MFA_PROFILE_VARIABLE] = ctx.params["profile"]
+    if parent_context.invoked_subcommand in {"compare_alignments", "validate"}:
+        config.CLEAN = True
+        config.FINAL_CLEAN = True
     config.update_configuration(ctx.params)
-    auto_server = False
-    run_check = True
     if parent_context.invoked_subcommand == "anchor":
         config.CLEAN = False
         config.USE_POSTGRES = True
+    auto_server = False
+    run_check = True
     if (
         "--help" in sys.argv
         or "-h" in sys.argv
@@ -188,7 +192,7 @@ def initialize_configuration(ctx: click.Context):
         auto_server = False
         run_check = False
     elif parent_context.invoked_subcommand in ["model", "models"]:
-        if "add_words" in sys.argv or "inspect" in sys.argv:
+        if "add_words" in sys.argv or "inspect" in sys.argv or "create_hf_model" in sys.argv:
             config.CLEAN = True
             config.USE_POSTGRES = False
         else:
@@ -216,7 +220,7 @@ def initialize_configuration(ctx: click.Context):
             atexit.register(stop_server)
 
 
-def validate_model_arg(name: str, model_type: str) -> typing.Union[Path, str]:
+def validate_model_arg(name: str, model_type: str) -> MfaModel:
     """
     Validate pretrained model name argument
 
@@ -276,7 +280,7 @@ def validate_model_arg(name: str, model_type: str) -> typing.Union[Path, str]:
             raise click.BadParameter(
                 str(PretrainedModelNotFoundError(name, model_type, available_models))
             )
-    return name
+    return model_class(name)
 
 
 def validate_corpus_directory(ctx, param, value):
@@ -317,25 +321,30 @@ def validate_output_directory(ctx, param, value):
         return value
 
 
-def validate_acoustic_model(ctx, param, value):
+def validate_huggingface_model(ctx, param, value) -> MfaAlignmentModel:
+    """Validation callback for acoustic model paths"""
+    return MfaAlignmentModel.from_pretrained(value)
+
+
+def validate_acoustic_model(ctx, param, value) -> MfaModel:
     """Validation callback for acoustic model paths"""
     if value:
         return validate_model_arg(value, "acoustic")
 
 
-def validate_dictionary(ctx, param, value):
+def validate_dictionary(ctx, param, value) -> MfaModel:
     """Validation callback for dictionary paths"""
     if value:
         return validate_model_arg(value, "dictionary")
 
 
-def validate_language_model(ctx, param, value):
+def validate_language_model(ctx, param, value) -> MfaModel:
     """Validation callback for language model paths"""
     if value:
         return validate_model_arg(value, "language_model")
 
 
-def validate_g2p_model(ctx, param, value: Path):
+def validate_g2p_model(ctx, param, value) -> typing.Union[MfaModel, typing.Dict[str, MfaModel]]:
     """Validation callback for G2P model paths"""
     if Path(value).suffix == ".yaml":
         with open(value, encoding="utf8") as f:
@@ -347,12 +356,12 @@ def validate_g2p_model(ctx, param, value: Path):
         return validate_model_arg(value, "g2p")
 
 
-def validate_tokenizer_model(ctx, param, value):
+def validate_tokenizer_model(ctx, param, value) -> MfaModel:
     """Validation callback for tokenizer model paths"""
     return validate_model_arg(value, "tokenizer")
 
 
-def validate_ivector_extractor(ctx, param, value):
+def validate_ivector_extractor(ctx, param, value) -> typing.Union[str, MfaModel]:
     """Validation callback for ivector extractor paths"""
     if value == "speechbrain":
         return value

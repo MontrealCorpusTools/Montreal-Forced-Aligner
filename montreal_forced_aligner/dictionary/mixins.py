@@ -1,3 +1,5 @@
+#!/usr/bin/env Python
+# coding=utf-8
 """Mixins for dictionary parsing capabilities"""
 
 from __future__ import annotations

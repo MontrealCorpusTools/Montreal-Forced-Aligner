@@ -106,6 +106,8 @@ class LdaAccStatsFunction(KaldiFunction):
                 feat_path = job.construct_path(
                     job.corpus.current_subset_directory, "feats", "scp", dictionary_id=d.name
                 )
+                if not feat_path.exists():
+                    continue
                 feature_archive = FeatureArchive(
                     feat_path,
                     deltas=False,
@@ -172,7 +174,10 @@ class CalcLdaMlltFunction(KaldiFunction):
                 if not ali_path.exists():
                     continue
                 lda_logger.debug(f"Processing {ali_path}")
-                feature_archive = job.construct_feature_archive(self.working_directory, d.name)
+                try:
+                    feature_archive = job.construct_feature_archive(self.working_directory, d.name)
+                except OSError:
+                    continue
                 alignment_archive = AlignmentArchive(ali_path)
                 accumulator = MlltStatsAccumulator(
                     self.model_path, silence_phones, rand_prune=self.lda_options["random_prune"]

@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import time
+import warnings
 from pathlib import Path
 
 import pynini
@@ -205,6 +206,10 @@ class TokenizerMixin(AcousticCorpusMixin, G2PTrainer, DictionaryMixin, TopLevelM
         self.insertions = True
         self.num_training_utterances = 0
         self.num_validation_utterances = 0
+        warnings.warn(
+            "Tokenizer MFA model training and usage is deprecated and slated to be removed in 4.0",
+            DeprecationWarning,
+        )
 
     def setup(self) -> None:
         super().setup()
@@ -539,7 +544,6 @@ class TokenizerTrainer(PyniniTrainerMixin, TokenizerMixin):
             )
             com.append("--unknown_symbol=<unk>")
             com.extend([input_path, self.input_far_path])
-            print(" ".join(map(str, com)), file=log_file)
             subprocess.check_call(com, env=os.environ, stderr=log_file, stdout=log_file)
             com = [
                 thirdparty_binary("farcompilestrings"),
@@ -549,7 +553,6 @@ class TokenizerTrainer(PyniniTrainerMixin, TokenizerMixin):
                 output_path,
                 self.output_far_path,
             ]
-            print(" ".join(map(str, com)), file=log_file)
             subprocess.check_call(com, env=os.environ, stderr=log_file, stdout=log_file)
             cg = pywrapfst.VectorFst()
             state = cg.add_state()

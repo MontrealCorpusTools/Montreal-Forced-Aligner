@@ -94,9 +94,9 @@ def g2p_cli(context, **kwargs) -> None:
 
     config_path = kwargs.get("config_path", None)
     input_path = kwargs["input_path"]
-    g2p_model_path = kwargs["g2p_model_path"]
+    g2p_model = kwargs["g2p_model_path"]
     output_path = kwargs["output_path"]
-    dictionary_path = kwargs.get("dictionary_path", None)
+    dictionary = kwargs.get("dictionary_path", None)
     use_stdin = input_path == pathlib.Path("-")
     use_stdout = output_path == pathlib.Path("-")
     export_scores = kwargs.get("export_scores", False)
@@ -105,11 +105,11 @@ def g2p_cli(context, **kwargs) -> None:
         per_utterance = False
         if not output_path.suffix:
             per_utterance = True
-        if dictionary_path is not None:
+        if dictionary is not None:
             g2p = PyniniDictionaryCorpusGenerator(
                 corpus_directory=input_path,
-                dictionary_path=dictionary_path,
-                g2p_model_path=g2p_model_path,
+                dictionary=dictionary,
+                g2p_model=g2p_model,
                 **PyniniDictionaryCorpusGenerator.parse_parameters(
                     config_path, context.params, context.args
                 ),
@@ -117,7 +117,7 @@ def g2p_cli(context, **kwargs) -> None:
         else:
             g2p = PyniniCorpusGenerator(
                 corpus_directory=input_path,
-                g2p_model_path=g2p_model_path,
+                g2p_model=g2p_model,
                 per_utterance=per_utterance,
                 **PyniniCorpusGenerator.parse_parameters(
                     config_path, context.params, context.args
@@ -127,13 +127,13 @@ def g2p_cli(context, **kwargs) -> None:
                 g2p.num_pronunciations = 1
     elif use_stdin:
         g2p = PyniniConsoleGenerator(
-            g2p_model_path=g2p_model_path,
+            g2p_model=g2p_model,
             **PyniniWordListGenerator.parse_parameters(config_path, context.params, context.args),
         )
     else:
         g2p = PyniniWordListGenerator(
             word_list_path=input_path,
-            g2p_model_path=g2p_model_path,
+            g2p_model=g2p_model,
             **PyniniWordListGenerator.parse_parameters(config_path, context.params, context.args),
         )
 

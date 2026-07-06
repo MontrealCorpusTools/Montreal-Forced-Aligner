@@ -1,6 +1,7 @@
 """Database classes"""
 from __future__ import annotations
 
+import collections
 import logging
 import os
 import re
@@ -33,7 +34,7 @@ from montreal_forced_aligner.data import (
     WordType,
     WorkflowType,
 )
-from montreal_forced_aligner.helper import mfa_open
+from montreal_forced_aligner.helper import mfa_open, voiced_variants, voiceless_variants
 
 if typing.TYPE_CHECKING:
     from montreal_forced_aligner.corpus.classes import UtteranceData
@@ -373,7 +374,6 @@ class Dictionary(MfaSqlBase):
     cutoff_word = Column(String, nullable=True)
     laughter_word = Column(String, nullable=True)
 
-    use_g2p = Column(Boolean, nullable=False, default=False)
     max_disambiguation_symbol = Column(Integer, default=0, nullable=False)
     silence_probability = Column(Float, default=0.5, nullable=False)
     initial_silence_probability = Column(Float, default=0.5, nullable=False)
@@ -444,6 +444,198 @@ class Dictionary(MfaSqlBase):
                 self._word_table.add_symbol(w, mapping_id)
             self._word_table.write_text(self.words_symbol_path)
         return self._word_table
+
+    @property
+    def word_count(self):
+        session = sqlalchemy.orm.Session.object_session(self)
+        return session.query(Word.id).filter(Word.dictionary_id == self.id).count()
+
+    @property
+    def grapheme_count(self):
+        session = sqlalchemy.orm.Session.object_session(self)
+        graphemes = set()
+        query = session.query(Word.word).filter(Word.dictionary_id == self.id)
+        for (w,) in query:
+            graphemes.update(w)
+        return len(graphemes)
+
+    @property
+    def ipa_chart_data(self):
+        from montreal_forced_aligner.models.hf_functions import check_phone
+
+        session = sqlalchemy.orm.Session.object_session(self)
+        phone_set = self.phone_set_type
+        if phone_set is PhoneSetType.ARPA:
+            super_segmentals = {"stress": re.compile(r"[0-2]+")}
+            ipa_mapping = {
+                "stops": phone_set.stops,
+                "voiced": phone_set.voiced_obstruents,
+                "voiceless": phone_set.voiceless_obstruents,
+                "fricative": phone_set.fricatives,
+                "affricates": phone_set.affricates,
+                "sibilant": phone_set.sibilants,
+                "lateral": phone_set.laterals,
+                "nasal": phone_set.nasals,
+                "approximant": phone_set.approximants,
+                "labial": phone_set.labials,
+                "labiodental": phone_set.labiodental,
+                "dental": phone_set.dental,
+                "alveolar": phone_set.alveolar,
+                "alveopalatal": phone_set.alveopalatal,
+                "velar": phone_set.velar,
+                "glottal": phone_set.glottal,
+                "implosive": set(),
+                "lateral_tap": set(),
+                "tap": set(),
+                "palatal": phone_set.palatal,
+                "trill": set(),
+                "pharyngeal": set(),
+                "epiglottal": set(),
+                "uvular": set(),
+                "retroflex": set(),
+                "lateral_fricative": set(),
+                "close": phone_set.close_vowels,
+                "close-mid": phone_set.close_mid_vowels,
+                "open-mid": phone_set.open_mid_vowels,
+                "open": phone_set.open_vowels,
+                "front": phone_set.front_vowels - {"IH"},
+                "near-front": {"IH"},
+                "central": phone_set.central_vowels,
+                "back": phone_set.back_vowels - {"UH"},
+                "near-back": {"UH"},
+                "rounded": phone_set.rounded_vowels,
+                "unrounded": phone_set.unrounded_vowels,
+                "lax": {"IH", "UH", "AH", "AE", "ER"},
+                "other": set(),
+            }
+        else:
+            ipa_mapping = {
+                "stops": phone_set.stops,
+                "voiced": phone_set.voiced_obstruents,
+                "voiceless": phone_set.voiceless_obstruents,
+                "implosive": phone_set.implosive_obstruents,
+                "fricative": phone_set.fricatives,
+                "sibilant": phone_set.sibilants,
+                "lateral": phone_set.laterals,
+                "lateral_fricative": phone_set.lateral_fricatives,
+                "nasal": phone_set.nasals,
+                "nasal_approximants": phone_set.nasal_approximants,
+                "trill": phone_set.trills,
+                "tap": phone_set.taps,
+                "lateral_tap": phone_set.lateral_taps,
+                "approximant": phone_set.approximants - phone_set.nasal_approximants,
+                "labial": phone_set.labials,
+                "labiodental": phone_set.labiodental,
+                "dental": phone_set.dental,
+                "alveolar": phone_set.alveolar,
+                "retroflex": phone_set.retroflex,
+                "alveopalatal": phone_set.alveopalatal,
+                "palatal": phone_set.palatal,
+                "velar": phone_set.velar,
+                "uvular": phone_set.uvular,
+                "pharyngeal": phone_set.pharyngeal,
+                "epiglottal": phone_set.epiglottal,
+                "glottal": phone_set.glottal,
+                "close": phone_set.close_vowels,
+                "close-mid": phone_set.close_mid_vowels,
+                "open-mid": phone_set.open_mid_vowels,
+                "open": phone_set.open_vowels,
+                "front": phone_set.front_vowels - {"ɪ", "ʏ", "ɛ̈", "ʏ̈"},
+                "near-front": {"ɪ", "ʏ", "ɛ̈", "ʏ̈"},
+                "central": phone_set.central_vowels,
+                "back": phone_set.back_vowels - {"ʊ", "ɔ̈"},
+                "near-back": {"ʊ", "ɔ̈"},
+                "rounded": phone_set.rounded_vowels,
+                "unrounded": phone_set.unrounded_vowels,
+                "lax": {"ɪ", "ʏ", "ʊ", "ə", "ɐ", "æ", "ɚ"},
+                "nasalized": {"ã", "õ", "ĩ", "ũ", "ẽ"},
+                "other": {"kp", "ɧ", "ŋm"},
+            }
+            super_segmentals = {"tones": re.compile(r"[˩˨˧˦˥ˀ]+")}
+        for k, v in ipa_mapping.items():
+            voiceless = [x for x in v if x in ipa_mapping["voiceless"]]
+            voiced = [x for x in v if x not in ipa_mapping["voiceless"]]
+            mod_phones = set()
+            for p in voiceless:
+                mod_phones |= voiceless_variants(p)
+            for p in voiced:
+                mod_phones |= voiced_variants(p)
+            ipa_mapping[k] = mod_phones | v
+        query = (
+            session.query(Pronunciation.pronunciation)
+            .join(Pronunciation.word)
+            .filter(Word.dictionary_id == self.id, Word.word_type == WordType.speech)
+            .distinct()
+        )
+        phones = set()
+        for (p,) in query:
+            phones.update(p.split())
+
+        triphthongs = phone_set.triphthong_phones
+        diphthongs = phone_set.diphthong_phones
+        dictionary_mapping = collections.defaultdict(set)
+        for phone in phones:
+            for super_seg, pattern in super_segmentals.items():
+                phone_m = pattern.search(phone)
+                if phone_m:
+                    dictionary_mapping[super_seg].add(phone_m.group(0))
+                    phone = phone.replace(phone_m.group(0), "")
+                    break
+            base_phone = phone_set.get_base_phone(phone)
+            query_set = {phone, base_phone}
+            if base_phone in ipa_mapping["other"]:
+                dictionary_mapping["other"].add(phone)
+                continue
+            if "ʲ" in phone:
+                dictionary_mapping["palatalized"].add(phone)
+            if "ʷ" in phone:
+                dictionary_mapping["labialized"].add(phone)
+            if "̃" in phone:
+                dictionary_mapping["nasalized"].add(phone)
+                base_phone = base_phone.replace("̃", "")
+            if "͈" in phone:
+                dictionary_mapping["tense"].add(phone)
+                dictionary_mapping["voiceless"].add(phone)
+            if "̪" in phone:
+                dictionary_mapping["dental"].add(phone)
+            if any(x in phone for x in ["ⁿ", "ᵑ", "ᵐ"]):
+                dictionary_mapping["prenasalized"].add(phone)
+                dictionary_mapping["voiced"].add(phone)
+            elif "ʱ" in phone or "̤" in phone:
+                dictionary_mapping["aspirated"].add(phone)
+                dictionary_mapping["voiced"].add(phone)
+            elif check_phone(phone, ipa_mapping["voiced"], phone_set):
+                dictionary_mapping["voiced"].add(phone)
+            elif check_phone(phone, ipa_mapping["implosive"], phone_set):
+                dictionary_mapping["implosive"].add(phone)
+                dictionary_mapping["voiced"].add(phone)
+            elif "ʰ" in phone:
+                dictionary_mapping["aspirated"].add(phone)
+                dictionary_mapping["voiceless"].add(phone)
+            elif "ʼ" in phone:
+                dictionary_mapping["ejective"].add(phone)
+                dictionary_mapping["voiceless"].add(phone)
+            elif check_phone(phone, ipa_mapping["voiceless"], phone_set):
+                dictionary_mapping["voiceless"].add(phone)
+            if "̚" in phone:
+                dictionary_mapping["unreleased"].add(phone)
+            if any(x in diphthongs for x in query_set):
+                dictionary_mapping["diphthong"].add(phone)
+            elif any(x in triphthongs for x in query_set):
+                dictionary_mapping["triphthong"].add(phone)
+            elif any(x in phone_set.affricates for x in query_set):
+                dictionary_mapping["affricate"].add(phone)
+            elif any(x in phone_set.stops for x in query_set):
+                dictionary_mapping["stop"].add(phone)
+            for k, v in ipa_mapping.items():
+                if base_phone in v:
+                    dictionary_mapping[k].add(phone)
+            for v in dictionary_mapping.values():
+                if phone in v:
+                    break
+            else:
+                dictionary_mapping["other"].add(phone)
+        return dictionary_mapping
 
     @property
     def phone_table(self):
@@ -657,6 +849,8 @@ class Phone(MfaSqlBase):
     phone_type = Column(Enum(PhoneType), nullable=False, index=True)
     mean_duration = Column(Float, nullable=True)
     sd_duration = Column(Float, nullable=True)
+    mean_intensity = Column(Float, nullable=True)
+    sd_intensity = Column(Float, nullable=True)
 
     phone_intervals = relationship(
         "PhoneInterval",
@@ -1390,7 +1584,7 @@ class SoundFile(MfaSqlBase):
 
     def normalized_waveform(
         self, begin: float = 0, end: typing.Optional[float] = None
-    ) -> typing.Tuple[np.array, np.array]:
+    ) -> typing.Tuple[np.ndarray, np.ndarray]:
         """
         Load a normalized waveform for acoustic processing/visualization
 
@@ -1403,9 +1597,9 @@ class SoundFile(MfaSqlBase):
 
         Returns
         -------
-        numpy.array
+        numpy.ndarray
             Time points
-        numpy.array
+        numpy.ndarray
             Sample values
         """
         if end is None or end > self.duration:
@@ -1426,7 +1620,7 @@ class SoundFile(MfaSqlBase):
 
     def load_audio(
         self, begin: float = 0, end: typing.Optional[float] = None
-    ) -> typing.Tuple[np.array, np.array]:
+    ) -> typing.Tuple[np.ndarray, np.ndarray]:
         """
         Load a normalized waveform for acoustic processing/visualization
 
@@ -1557,6 +1751,9 @@ class Utterance(MfaSqlBase):
     normalized_character_text = Column(String)
     transcription_text = Column(String)
     features = Column(String)
+    beam = Column(Float)
+    boost_silence = Column(Float)
+    surrounding_silence = Column(Boolean, nullable=True)
     ivector_ark = Column(String)
     vad_ark = Column(String)
     in_subset = Column(Boolean, nullable=False, default=False, index=True)
@@ -1565,9 +1762,12 @@ class Utterance(MfaSqlBase):
     alignment_log_likelihood = Column(Float, index=True)
     speech_log_likelihood = Column(Float, index=True)
     duration_deviation = Column(Float, index=True)
+    intensity_deviation = Column(Float, index=True)
     snr = Column(Float, index=True)
+    max_running_short_interval = Column(Integer, index=True)
     phone_error_rate = Column(Float)
-    alignment_score = Column(Float)
+    edit_distance = Column(Float, index=True)
+    alignment_score = Column(Float, index=True)
     word_error_rate = Column(Float)
     character_error_rate = Column(Float)
     diarization_variance = Column(Float)
@@ -1818,6 +2018,9 @@ class PhoneInterval(MfaSqlBase):
     begin = Column(Float, nullable=False, index=True)
     end = Column(Float, nullable=False)
     phone_goodness = Column(Float, nullable=True, index=True)
+    begin_error = Column(Float, nullable=True)
+    end_error = Column(Float, nullable=True)
+    intensity = Column(Float, nullable=True)
     _duration = sqlalchemy.orm.deferred(
         Column("duration", Float, sqlalchemy.Computed('"end" - "begin"'), index=True)
     )
@@ -1890,7 +2093,11 @@ class PhoneInterval(MfaSqlBase):
             CTM interval object
         """
         return CtmInterval(
-            self.begin, self.end, self.phone.phone, self.phone.mapping_id, self.phone_goodness
+            self.begin,
+            self.end,
+            self.phone.phone,
+            self.phone.mapping_id,
+            self.phone_goodness if self.phone_goodness else 0.0,
         )
 
 
@@ -2131,7 +2338,7 @@ class ReferenceWordInterval(MfaSqlBase):
         Foreign key to :class:`~montreal_forced_aligner.db.Utterance`
     utterance: :class:`~montreal_forced_aligner.db.Utterance`
         Utterance of the interval
-    reference_phone_intervals: list[:class:`~montreal_forced_aligner.db.ReferencePhoneInterval`]
+    phone_intervals: list[:class:`~montreal_forced_aligner.db.ReferencePhoneInterval`]
         Phone intervals for the word interval
     """
 
@@ -2399,7 +2606,11 @@ class Job(MfaSqlBase):
         return paths
 
     def construct_path(
-        self, directory: Path, identifier: str, extension: str, dictionary_id: int = None
+        self,
+        directory: Path,
+        identifier: str,
+        extension: str,
+        dictionary_id: typing.Union[int, str] = None,
     ) -> Path:
         """
         Helper function for constructing dictionary-dependent paths for the Job

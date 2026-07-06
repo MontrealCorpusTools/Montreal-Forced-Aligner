@@ -514,9 +514,11 @@ def multilingual_ipa_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
 
 
 @pytest.fixture()
-def multilingual_ipa_tg_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
+def multilingual_ipa_tg_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir, test_dir):
+    corpus_data_path = test_dir / "corpus_data.json"
     path = corpus_root_dir.joinpath("test_multilingual_tg")
     os.makedirs(path, exist_ok=True)
+    shutil.copyfile(corpus_data_path, path / "corpus_data.json")
     names = [
         (
             "speaker_one",
@@ -792,6 +794,11 @@ def shortsegments_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
     shutil.copyfile(wav_dir.joinpath("dummy.wav"), path.joinpath(name + ".wav"))
     shutil.copyfile(textgrid_dir.joinpath(name + ".TextGrid"), path.joinpath(name + ".TextGrid"))
     return path
+
+
+@pytest.fixture(scope="session")
+def train_metadata_path(test_dir):
+    return test_dir.joinpath("model_metadata.json")
 
 
 @pytest.fixture(scope="session")

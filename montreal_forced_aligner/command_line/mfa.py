@@ -4,10 +4,11 @@ from __future__ import annotations
 import rich_click as click
 from click import Command, Context
 
-from montreal_forced_aligner.command_line.adapt import adapt_model_cli
-from montreal_forced_aligner.command_line.align import align_corpus_cli
-from montreal_forced_aligner.command_line.align_one import align_one_cli
+from montreal_forced_aligner.command_line.adapt import adapt_model_cli, adapt_model_hf_cli
+from montreal_forced_aligner.command_line.align import align_corpus_cli, align_corpus_hf_cli
+from montreal_forced_aligner.command_line.align_one import align_one_cli, align_one_hf_cli
 from montreal_forced_aligner.command_line.anchor import anchor_cli
+from montreal_forced_aligner.command_line.compare_alignments import compare_alignments_cli
 from montreal_forced_aligner.command_line.configure import configure_cli
 from montreal_forced_aligner.command_line.create_segments import (
     create_segments_cli,
@@ -79,10 +80,14 @@ def version_cli():
 
 _commands = [
     adapt_model_cli,
+    adapt_model_hf_cli,
     align_corpus_cli,
+    align_corpus_hf_cli,
     align_one_cli,
+    align_one_hf_cli,
     anchor_cli,
     diarize_speakers_cli,
+    compare_alignments_cli,
     create_segments_cli,
     create_segments_vad_cli,
     configure_cli,

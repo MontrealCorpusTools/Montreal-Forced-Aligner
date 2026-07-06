@@ -691,10 +691,6 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
         if self.phone_confidence:
             self.get_phone_confidences()
 
-        if self.use_phone_model:
-            self.create_new_current_workflow(WorkflowType.phone_transcription)
-            self.transcribe()
-            self.collect_alignments()
         if self.test_transcriptions:
             self.test_utterance_transcriptions(output_directory=output_directory)
             self.collect_alignments()

@@ -20,12 +20,18 @@ __all__ = ["DictionaryRemapper"]
 class DictionaryRemapper(MultispeakerDictionaryMixin, PhoneRemapperMixin, TopLevelMfaWorker):
     def __init__(
         self,
-        acoustic_model_path: str,
+        acoustic_model: AcousticModel = None,
+        acoustic_model_path: str = None,
         **kwargs,
     ):
-        self._data_source = kwargs["dictionary_path"].stem
+        if "dictionary_path" in kwargs:
+            self._data_source = kwargs["dictionary_path"].stem
+        else:
+            self._data_source = kwargs["dictionary"].path.stem
         super().__init__(**kwargs)
-        self.acoustic_model = AcousticModel(acoustic_model_path)
+        self.acoustic_model = acoustic_model
+        if not self.acoustic_model and acoustic_model_path:
+            self.acoustic_model = AcousticModel(acoustic_model_path)
 
     @property
     def data_source_identifier(self) -> str:
@@ -121,6 +127,7 @@ class DictionaryRemapper(MultispeakerDictionaryMixin, PhoneRemapperMixin, TopLev
                                 new_dictionary[w][pron_string][k] += data[k]
 
         logger.info(f"Skipped {skip_count} pronunciations for having unmapped phones")
+        output_dictionary_path.parent.mkdir(exist_ok=True, parents=True)
         with mfa_open(output_dictionary_path, "w") as f:
             for w, prons in sorted(new_dictionary.items(), key=lambda x: x[0]):
                 for pron, data in sorted(prons.items(), key=lambda x: x[0]):

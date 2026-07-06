@@ -48,12 +48,12 @@ def tokenize_cli(context, **kwargs) -> None:
 
     config_path = kwargs.get("config_path", None)
     input_path = kwargs["input_path"]
-    tokenizer_model_path = kwargs["tokenizer_model_path"]
+    tokenizer_model = kwargs["tokenizer_model_path"]
     output_directory = kwargs["output_directory"]
 
     tokenizer = CorpusTokenizer(
         corpus_directory=input_path,
-        tokenizer_model_path=tokenizer_model_path,
+        tokenizer_model=tokenizer_model,
         **CorpusTokenizer.parse_parameters(config_path, context.params, context.args),
     )
 

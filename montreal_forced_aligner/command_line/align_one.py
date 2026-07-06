@@ -1,6 +1,7 @@
 """Command line functions for aligning single files"""
 from __future__ import annotations
 
+import typing
 from pathlib import Path
 
 import pywrapfst
@@ -19,6 +20,7 @@ from montreal_forced_aligner.command_line.utils import (
     validate_acoustic_model,
     validate_dictionary,
     validate_g2p_model,
+    validate_huggingface_model,
 )
 from montreal_forced_aligner.corpus.classes import FileData
 from montreal_forced_aligner.data import (
@@ -35,7 +37,12 @@ from montreal_forced_aligner.dictionary.mixins import (
     DEFAULT_PUNCTUATION,
     DEFAULT_WORD_BREAK_MARKERS,
 )
-from montreal_forced_aligner.models import AcousticModel, G2PModel
+from montreal_forced_aligner.models import (
+    AcousticModel,
+    DictionaryModel,
+    G2PModel,
+    MfaAlignmentModel,
+)
 from montreal_forced_aligner.online.alignment import tokenize_utterance_text
 from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
 from montreal_forced_aligner.tokenization.spacy import generate_language_tokenizer
@@ -43,78 +50,24 @@ from montreal_forced_aligner.tokenization.spacy import generate_language_tokeniz
 __all__ = ["align_one_cli"]
 
 
-@click.command(
-    name="align_one",
-    context_settings=dict(
-        ignore_unknown_options=True,
-        allow_extra_args=True,
-        allow_interspersed_args=True,
-    ),
-    short_help="Align a single file",
-)
-@click.argument(
-    "sound_file_path",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
-)
-@click.argument(
-    "text_file_path",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
-)
-@click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
-@click.argument("acoustic_model_path", type=click.UNPROCESSED, callback=validate_acoustic_model)
-@click.argument("output_path", type=click.Path(file_okay=True, dir_okay=True, path_type=Path))
-@click.option(
-    "--config_path",
-    "-c",
-    help="Path to config file to use for aligning.",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
-)
-@click.option(
-    "--output_format",
-    help="Format for aligned output files (default is long_textgrid).",
-    default="long_textgrid",
-    type=click.Choice(["long_textgrid", "short_textgrid", "json", "csv"]),
-)
-@click.option(
-    "--no_tokenization",
-    is_flag=True,
-    help="Flag to disable any pretrained tokenization.",
-    default=False,
-)
-@click.option(
-    "--g2p_model_path",
-    "g2p_model_path",
-    help="Path to G2P model to use for OOV items.",
-    type=click.UNPROCESSED,
-)
-@common_options
-@click.help_option("-h", "--help")
-@click.pass_context
-def align_one_cli(context, **kwargs) -> None:
-    """
-    Align a single file with a pronunciation dictionary and a pretrained acoustic model.
-    """
-    initialize_configuration(context)
+def align_one_function(
+    context,
+    kwargs: typing.Dict[str, typing.Any],
+    acoustic_model: typing.Union[AcousticModel],
+    dictionary: DictionaryModel,
+    g2p_model: typing.Optional[G2PModel],
+):
     config_path = kwargs.get("config_path", None)
     sound_file_path: Path = kwargs["sound_file_path"]
     text_file_path: Path = kwargs["text_file_path"]
-    dictionary_path: Path = kwargs["dictionary_path"]
-    acoustic_model_path = kwargs["acoustic_model_path"]
     output_path: Path = kwargs["output_path"]
     if output_path.is_dir():
         output_path = output_path.joinpath(sound_file_path.stem + ".TextGrid")
     output_format = kwargs["output_format"]
     no_tokenization = kwargs["no_tokenization"]
-    g2p_model_path = kwargs.get("g2p_model_path", None)
-
-    acoustic_model = AcousticModel(acoustic_model_path)
-    g2p_model = None
-    if g2p_model_path:
-        g2p_model_path = validate_g2p_model(context, kwargs, g2p_model_path)
-        g2p_model = G2PModel(g2p_model_path)
     c = PretrainedAligner.parse_parameters(config_path, context.params, context.args)
     extracted_models_dir = config.TEMPORARY_DIRECTORY.joinpath("extracted_models", "dictionary")
-    dictionary_directory = extracted_models_dir.joinpath(dictionary_path.stem)
+    dictionary_directory = extracted_models_dir.joinpath(dictionary.path.stem)
     dictionary_directory.mkdir(parents=True, exist_ok=True)
     lexicon_compiler = LexiconCompiler(
         disambiguation=False,
@@ -138,7 +91,7 @@ def align_one_cli(context, **kwargs) -> None:
         lexicon_compiler.word_table = pywrapfst.SymbolTable.read_text(words_path)
         lexicon_compiler.phone_table = pywrapfst.SymbolTable.read_text(phones_path)
     else:
-        lexicon_compiler.load_pronunciations(dictionary_path)
+        lexicon_compiler.load_pronunciations(dictionary.path)
         lexicon_compiler.create_fsts()
         lexicon_compiler.clear()
 
@@ -205,3 +158,130 @@ def align_one_cli(context, **kwargs) -> None:
     file_ctm.export_textgrid(
         output_path, file_duration=file.wav_info.duration, output_format=output_format
     )
+
+
+@click.command(
+    name="align_one",
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+        allow_interspersed_args=True,
+    ),
+    short_help="Align a single file",
+)
+@click.argument(
+    "sound_file_path",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+)
+@click.argument(
+    "text_file_path",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+)
+@click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
+@click.argument("acoustic_model_path", type=click.UNPROCESSED, callback=validate_acoustic_model)
+@click.argument("output_path", type=click.Path(file_okay=True, dir_okay=True, path_type=Path))
+@click.option(
+    "--config_path",
+    "-c",
+    help="Path to config file to use for aligning.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "--output_format",
+    help="Format for aligned output files (default is long_textgrid).",
+    default="long_textgrid",
+    type=click.Choice(["long_textgrid", "short_textgrid", "json", "csv"]),
+)
+@click.option(
+    "--no_tokenization",
+    is_flag=True,
+    help="Flag to disable any pretrained tokenization.",
+    default=False,
+)
+@click.option(
+    "--g2p_model_path",
+    "g2p_model_path",
+    help="Path to G2P model to use for OOV items.",
+    type=click.UNPROCESSED,
+)
+@common_options
+@click.help_option("-h", "--help")
+@click.pass_context
+def align_one_cli(context, **kwargs) -> None:
+    """
+    Align a single file with a pronunciation dictionary and a pretrained acoustic model.
+    """
+    initialize_configuration(context)
+    acoustic_model: AcousticModel = kwargs["acoustic_model_path"]
+    dictionary: DictionaryModel = kwargs["dictionary_path"]
+    g2p_model_path = kwargs.get("g2p_model_path", None)
+
+    g2p_model = None
+    if g2p_model_path:
+        g2p_model = validate_g2p_model(context, kwargs, g2p_model_path)
+    align_one_function(context, kwargs, acoustic_model, dictionary, g2p_model)
+
+
+@click.command(
+    name="align_one_hf",
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+        allow_interspersed_args=True,
+    ),
+    short_help="Align a single file",
+)
+@click.argument(
+    "sound_file_path",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+)
+@click.argument(
+    "text_file_path",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+)
+@click.argument("model_id", type=click.UNPROCESSED, callback=validate_huggingface_model)
+@click.argument("output_path", type=click.Path(file_okay=True, dir_okay=True, path_type=Path))
+@click.option(
+    "--config_path",
+    "-c",
+    help="Path to config file to use for aligning.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "--output_format",
+    help="Format for aligned output files (default is long_textgrid).",
+    default="long_textgrid",
+    type=click.Choice(["long_textgrid", "short_textgrid", "json", "csv"]),
+)
+@click.option(
+    "--no_tokenization",
+    is_flag=True,
+    help="Flag to disable any pretrained tokenization.",
+    default=False,
+)
+@click.option(
+    "--dialect",
+    "dialect",
+    help="Dialect specifier for to use for pronunciations.",
+    type=str,
+    default=None,
+)
+@click.option(
+    "--use_g2p", is_flag=True, help="Flag for using G2P model for OOV items.", default=False
+)
+@common_options
+@click.help_option("-h", "--help")
+@click.pass_context
+def align_one_hf_cli(context, **kwargs) -> None:
+    """
+    Align a single file with an MFA model hosted on Hugging Face.
+    """
+    initialize_configuration(context)
+    dialect = kwargs["dialect"]
+    use_g2p = kwargs["use_g2p"]
+    model: MfaAlignmentModel = kwargs["model_id"]
+    dictionary = model.get_dictionary_model(dialect)
+    g2p_model = None
+    if use_g2p:
+        g2p_model = model.get_g2p_model(dialect)
+    align_one_function(context, kwargs, model.acoustic_model, dictionary, g2p_model)

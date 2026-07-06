@@ -113,6 +113,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
     def __init__(
         self,
         ivector_extractor_path: typing.Union[str, Path] = "speechbrain",
+        ivector_extractor: typing.Union[str, IvectorExtractorModel] = None,
         expected_num_speakers: int = 0,
         cluster: bool = True,
         evaluation_mode: bool = False,
@@ -129,14 +130,19 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         linkage: str = "average",
         **kwargs,
     ):
+        if isinstance(ivector_extractor, str):
+            ivector_extractor_path = ivector_extractor
+            ivector_extractor = None
+        if ivector_extractor is not None:
+            ivector_extractor_path = None
         self.sliding_cmvn = True
         self.use_xvector = False
-        self.ivector_extractor = None
+        self.ivector_extractor = ivector_extractor
         self.ivector_extractor_path = ivector_extractor_path
         if ivector_extractor_path == "speechbrain":
             if not FOUND_SPEECHBRAIN:
                 logger.error(
-                    "Could not import speechbrain, please ensure it is installed via `pip install speechbrain`"
+                    "Could not import speechbrain, please ensure it is installed via `pip install speechbrain==1.0.3`"
                 )
                 sys.exit(1)
             self.use_xvector = True
@@ -147,8 +153,9 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 )
                 sys.exit(1)
             self.use_xvector = True
-        else:
+        elif self.ivector_extractor is None:
             self.ivector_extractor = IvectorExtractorModel(ivector_extractor_path)
+        if isinstance(self.ivector_extractor, IvectorExtractorModel):
             kwargs.update(self.ivector_extractor.parameters)
         super().__init__(**kwargs)
         self.expected_num_speakers = expected_num_speakers

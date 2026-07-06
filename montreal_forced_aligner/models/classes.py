@@ -19,23 +19,35 @@ import pynini
 import pywrapfst
 import requests
 import yaml
+from huggingface_hub import HfApi
+from huggingface_hub.errors import HfHubHTTPError, RepositoryNotFoundError
+from jinja2 import Environment, PackageLoader, select_autoescape
 from kalpy.models import AcousticModel as KalpyAcousticModel
 from rich.pretty import pprint
 
 from montreal_forced_aligner.abc import MfaModel, ModelExporterMixin
 from montreal_forced_aligner.data import Language, PhoneSetType
+from montreal_forced_aligner.db import Dictionary
 from montreal_forced_aligner.exceptions import (
     LanguageModelNotFoundError,
+    MFAError,
     ModelLoadError,
     ModelsConnectionError,
     PronunciationAcousticMismatchError,
+    PronunciationG2PMismatchError,
     RemoteModelNotFoundError,
     RemoteModelVersionNotFoundError,
 )
 from montreal_forced_aligner.helper import EnhancedJSONEncoder, mfa_open
+from montreal_forced_aligner.models.hf_functions import (
+    DEFAULT_METADATA,
+    analyze_dictionary,
+    create_corpus_information,
+)
 
 if typing.TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
+    from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
     from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
     from montreal_forced_aligner.g2p.generator import Rewriter
     from montreal_forced_aligner.g2p.trainer import G2PTrainer
@@ -50,6 +62,7 @@ __all__ = [
     "Archive",
     "LanguageModel",
     "AcousticModel",
+    "MfaAlignmentModel",
     "IvectorExtractorModel",
     "DictionaryModel",
     "G2PModel",
@@ -58,6 +71,433 @@ __all__ = [
     "MODEL_TYPES",
     "guess_model_type",
 ]
+
+
+class MfaAlignmentModel(MfaModel):
+    extensions = [""]
+
+    model_type = "mfa_alignment_model"
+
+    _g2p_files = [
+        "model.fst",
+        "phones.txt",
+        "phones.sym",
+        "graphemes.txt",
+        "graphemes.sym",
+    ]
+
+    _acoustic_files = [
+        "final.mdl",
+        "final.alimdl",
+        "lda.mat",
+        "tree",
+        "phones.txt",
+    ]
+
+    def __init__(self, name: str, directory: typing.Union[str, Path]):
+        super().__init__(directory)
+        self.name = name
+        self.directory = Path(directory)
+        self._meta = {}
+
+    @classmethod
+    def from_pretrained(cls, model_id: str, version: str = None) -> MfaAlignmentModel:
+        if os.path.exists(model_id):
+            return cls(model_id.split("/")[-1], Path(model_id))
+        try:
+            from huggingface_hub import snapshot_download
+        except ImportError:
+            raise ImportError(
+                "Model is hosted on the Hugging Face Hub. "
+                "Please install huggingface_hub by running `conda install huggingface_hub` or `pip install huggingface_hub`."
+            )
+        if "@" in model_id:
+            model_id, version = model_id.split("@")
+        if "/" not in model_id:
+            model_id = "MontrealCorpusTools/" + model_id
+        directory = snapshot_download(repo_id=model_id, revision=version)
+        return cls(model_id.split("/")[-1], directory)
+
+    @classmethod
+    def valid_extension(cls, filename: Path) -> bool:
+        """
+        Check whether a file has a valid extension for an MFA alignment model
+
+        Parameters
+        ----------
+        filename: :class:`~pathlib.Path`
+            File name to check
+
+        Returns
+        -------
+        bool
+            True if the extension matches the models allowed extensions
+        """
+        if filename.is_dir() or filename.suffix == "":
+            return True
+        return False
+
+    @classmethod
+    def generate_path(
+        cls, root: Path, name: str, enforce_existence: bool = True
+    ) -> typing.Optional[Path]:
+        """
+        Generate a path for a given model from the root directory and the name of the model
+
+        Parameters
+        ----------
+        root: :class:`~pathlib.Path`
+            Root directory for the full path
+        name: str
+            Name of the model
+        enforce_existence: bool
+            Flag to return None if the path doesn't exist, defaults to True
+
+        Returns
+        -------
+        Path
+           Full path in the root directory for the model
+        """
+        model_name = name.split("/")[-1]
+        path = root.joinpath(model_name)
+        if path.exists() or not enforce_existence:
+            return path
+        return None
+
+    def upload_model(
+        self, repo_id: str, version: typing.Optional[str] = None, overwrite_version: bool = False
+    ) -> None:
+        """
+        Upload model to Hugging Face Hub
+
+        Parameters
+        ----------
+        repo_id: str
+            Repository ID
+        version: str, optional
+            Version ID to create tag
+        overwrite_version: bool
+            Flag to update version tag if specified, defaults to false
+        """
+        api = HfApi()
+        if "/" not in repo_id:
+            repo_id = f"{repo_id}/{self.name}"
+        try:
+            api.upload_folder(
+                folder_path=self.directory,
+                repo_id=repo_id,
+                repo_type="model",
+            )
+        except RepositoryNotFoundError:
+            api.create_repo(repo_id=repo_id, repo_type="model")
+            api.upload_folder(
+                folder_path=self.directory,
+                repo_id=repo_id,
+                repo_type="model",
+            )
+        if version is not None:
+            try:
+                api.create_tag(repo_id=repo_id, tag=version)
+            except HfHubHTTPError:
+                if overwrite_version:
+                    api.delete_tag(repo_id=repo_id, tag=version)
+                    api.create_tag(repo_id=repo_id, tag=version)
+                else:
+                    logger.info(f"The version {version} already exists, not creating tag.")
+
+    def pretty_print(self) -> None:
+        """
+        Pretty print the archive's metadata using rich
+        """
+        pprint({"MFA Alignment Model": {"name": self.name, "data": self.meta}})
+
+    @property
+    def meta(self) -> dict:
+        """
+        Get the metadata associated with the model
+        """
+        if not self._meta:
+            meta_path = self.acoustic_model_directory.joinpath("meta.json")
+            with mfa_open(meta_path, "r") as f:
+                self._meta = json.load(f)
+        return self._meta
+
+    @property
+    def parameters(self) -> typing.Dict[str, typing.Any]:
+        """Parameters to pass to top-level workers"""
+        params = {**self.meta["features"]}
+        params["non_silence_phones"] = {x for x in self.meta["phones"]}
+        params["oov_phone"] = self.meta["oov_phone"]
+        params["language"] = self.meta["language"]
+        if "tokenization" in self.meta:
+            params["tokenization"] = self.meta["tokenization"]
+        params["optional_silence_phone"] = self.meta["optional_silence_phone"]
+        params["phone_set_type"] = self.meta["phone_set_type"]
+        params["silence_probability"] = self.meta.get("silence_probability", 0.5)
+        params["initial_silence_probability"] = self.meta.get("initial_silence_probability", 0.5)
+        params["final_non_silence_correction"] = self.meta.get(
+            "final_non_silence_correction", None
+        )
+        params["final_silence_correction"] = self.meta.get("final_silence_correction", None)
+        if "other_noise_phone" in self.meta:
+            params["other_noise_phone"] = self.meta["other_noise_phone"]
+        if (
+            "dictionaries" in self.meta
+            and "position_dependent_phones" in self.meta["dictionaries"]
+        ):
+            params["position_dependent_phones"] = self.meta["dictionaries"][
+                "position_dependent_phones"
+            ]
+        else:
+            params["position_dependent_phones"] = self.meta.get("position_dependent_phones", True)
+        return params
+
+    def add_meta_file(self, trainer: ModelExporterMixin) -> None:
+        """
+        Add a metadata file from a given trainer to the model
+
+        Parameters
+        ----------
+        trainer: :class:`~montreal_forced_aligner.abc.ModelExporterMixin`
+            The trainer to construct the metadata from
+        """
+        with mfa_open(self.acoustic_model_directory.joinpath("meta.json"), "w") as f:
+            json.dump(trainer.meta, f, ensure_ascii=False)
+
+    def add_acoustic_model(self, input_directory: Path) -> None:
+        for f in self._acoustic_files + ["meta.json"]:
+            source_path = input_directory / f
+            dest_path = self.acoustic_model_directory / f
+            if source_path.exists():
+                if f == "phones.txt":
+                    with mfa_open(source_path, "r") as in_f, mfa_open(dest_path, "w") as out_f:
+                        for line in in_f:
+                            if re.match(r"#\d+", line):
+                                continue
+                            out_f.write(line)
+                else:
+                    copyfile(source_path, dest_path)
+
+    def export_model(self, destination: Path) -> None:
+        """
+        Extract the model files to a new directory
+
+        Parameters
+        ----------
+        destination: Path
+            Destination directory to extract files to
+        """
+        destination.mkdir(parents=True, exist_ok=True)
+        for f in self._acoustic_files:
+            if os.path.exists(self.directory.joinpath(f)):
+                copyfile(self.directory.joinpath(f), destination.joinpath(f))
+
+    def add_dictionary_file(self, input_path: Path) -> None:
+        dest_path = self.dictionary_directory.joinpath(input_path.name)
+        copyfile(input_path, dest_path)
+
+    def add_g2p_model(
+        self, input_directory: Path, metadata: MetaDict, identifier: str = None
+    ) -> None:
+        if identifier is None:
+            identifier = self.name
+        output_directory = self.g2p_model_directory / identifier
+        output_directory.mkdir(exist_ok=True, parents=True)
+        for f in self._g2p_files:
+            source_path = input_directory / f
+            dest_path = output_directory / f
+            if source_path.exists():
+                copyfile(source_path, dest_path)
+        with mfa_open(output_directory.joinpath("meta.json"), "w") as f:
+            json.dump(metadata, f, cls=EnhancedJSONEncoder)
+
+    def generate_model_card(self, trainer: TrainableAligner, metadata_path: Path = None, **kwargs):
+        from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
+
+        env = Environment(
+            loader=PackageLoader("montreal_forced_aligner.models"), autoescape=select_autoescape()
+        )
+        template = env.get_template("model_card_template.md")
+        corpus_template = env.get_template("corpus_template.md")
+        dictionary_template = env.get_template("dictionary_template.md")
+        metadata = {}
+        metadata.update(DEFAULT_METADATA)
+        if metadata_path is not None and metadata_path.exists():
+            with mfa_open(metadata_path) as f:
+                metadata.update(json.load(f))
+        if isinstance(trainer, TrainableAligner):
+            corpus_data = create_corpus_information(
+                trainer, multiple_corpora=trainer.multiple_corpora
+            )
+            training_details = []
+            for d in corpus_data.values():
+                template_kwargs = {}
+                template_kwargs.update(metadata)
+                template_kwargs.update(d)
+                template_kwargs.update(kwargs)
+                training_details.append(corpus_template.render(**template_kwargs))
+        else:
+            template_kwargs = {}
+            template_kwargs.update(metadata)
+            template_kwargs.update(kwargs)
+            training_details = [corpus_template.render(**template_kwargs)]
+        metadata["training_data_details"] = "\n\n".join(training_details)
+        phone_set_type = None
+        if "phone_set" in metadata:
+            phone_set_type = metadata["phone_set"].upper()
+            if phone_set_type == "MFA":
+                phone_set_type = "IPA"
+            phone_set_type = PhoneSetType[phone_set_type]
+        with trainer.session() as session:
+            dictionaries = session.query(Dictionary).filter(
+                Dictionary.name.not_in(["default", "nonnative"])
+            )
+            dictionary_details = []
+            for d in dictionaries:
+                template_kwargs = {"dialect": d.name}
+                template_kwargs.update(metadata)
+                template_kwargs.update(analyze_dictionary(d, phone_set_type))
+                template_kwargs.update(kwargs)
+                dictionary_details.append(dictionary_template.render(**template_kwargs))
+            metadata["dictionary_details"] = "\n\n".join(dictionary_details)
+        with mfa_open(self.model_card_path, "w") as f:
+            f.write(template.render(**metadata))
+
+    @property
+    def model_card_path(self):
+        return self.directory / "README.md"
+
+    def validate_metadata(self):
+        if not self.model_card_path.exists():
+            raise Exception(f"Model card ({self.model_card_path}) missing")
+
+    def validate(self):
+        self.validate_metadata()
+        self.validate_acoustic_model()
+        self.validate_dictionaries()
+        self.validate_g2p_models()
+
+    def validate_acoustic_model(self):
+        missing = []
+        for f in self._acoustic_files:
+            if not self.acoustic_model_directory.joinpath(f).exists():
+                missing.append(f)
+        if missing:
+            raise MFAError(
+                f"The following files were missing for acoustic model: {', '.join(sorted(missing))}"
+            )
+
+    def validate_dictionaries(self):
+        from montreal_forced_aligner.utils import parse_dictionary_file
+
+        phone_table = pywrapfst.SymbolTable.read_text(self.acoustic_model_directory / "phones.txt")
+        extra = {}
+        for file in self.dictionary_directory.iterdir():
+            extra_phones = set()
+            if file.name == "rules.yaml":
+                continue
+            for line in parse_dictionary_file(file):
+                pronunciation = line[1]
+                for p in pronunciation:
+                    if not phone_table.member(p):
+                        extra_phones.add(p)
+            if extra_phones:
+                extra[file.name] = extra_phones
+        if extra:
+            msg = "The following extra phones were found:"
+            for k, v in extra.items():
+                msg += " " + ", ".join(sorted(v)) + f" ({k})"
+            raise MFAError(msg)
+
+    def validate_g2p_models(self):
+        missing = {}
+        for model_directory in self.g2p_model_directory.iterdir():
+            missing_files = []
+            for f in self._g2p_files:
+                if not model_directory.joinpath(f).exists():
+                    missing_files.append(f)
+            if all(x.endswith(".sym") for x in missing_files):
+                missing_files = []
+            if missing_files:
+                missing[model_directory.name] = missing_files
+        if missing:
+            msg = "The following files were missing for G2P Models:"
+            for k, v in missing.items():
+                msg += " " + ", ".join(sorted(v)) + f" ({k})"
+            raise MFAError(msg)
+
+    @property
+    def acoustic_model_directory(self) -> Path:
+        p = self.directory.joinpath("acoustic")
+        p.mkdir(exist_ok=True, parents=True)
+        return p
+
+    @property
+    def g2p_model_directory(self) -> Path:
+        p = self.directory.joinpath("g2p")
+        p.mkdir(exist_ok=True, parents=True)
+        return p
+
+    @property
+    def dictionary_directory(self) -> Path:
+        p = self.directory.joinpath("dictionary")
+        p.mkdir(exist_ok=True, parents=True)
+        return p
+
+    @property
+    def license_path(self) -> Path:
+        return self.directory.joinpath("LICENSE")
+
+    @property
+    def default_dialect(self) -> str:
+        try:
+            return self.meta["dictionaries"]["default"]
+        except KeyError:
+            return self.available_dialects[0]
+
+    @property
+    def available_dialects(self) -> typing.List[str]:
+        dialects = []
+        for d in self.dictionary_directory.iterdir():
+            if d.suffix != ".dict":
+                continue
+            dialects.append(d.stem)
+        return dialects
+
+    def get_dictionary_path(self, dialect: str) -> Path:
+        return self.dictionary_directory / (dialect + ".dict")
+
+    def get_g2p_model_path(self, dialect: str) -> Path:
+        return self.g2p_model_directory / dialect
+
+    def normalize_dialect(self, dialect: typing.Optional[str]) -> str:
+        if dialect is None:
+            dialect = self.default_dialect
+        lang = self.meta.get("language", "unknown")
+        for x in self.available_dialects:
+            if x.startswith(dialect):
+                dialect = x
+                break
+            elif x.startswith(f"{lang}_{dialect}"):
+                dialect = f"{lang}_{dialect}"
+                break
+        else:
+            raise MFAError(
+                f"Could not find {dialect} (available dialects: {', '.join(self.available_dialects)}"
+            )
+        return dialect
+
+    def get_dictionary_model(self, dialect: str = None) -> DictionaryModel:
+        dialect = self.normalize_dialect(dialect)
+        return DictionaryModel(self.get_dictionary_path(dialect))
+
+    def get_g2p_model(self, dialect: str = None) -> G2PModel:
+        dialect = self.normalize_dialect(dialect)
+        return G2PModel(self.get_g2p_model_path(dialect))
+
+    @property
+    def acoustic_model(self) -> AcousticModel:
+        return AcousticModel(self.acoustic_model_directory)
 
 
 def guess_model_type(path: Path) -> typing.List[str]:
@@ -94,9 +534,9 @@ class Archive(MfaModel):
 
     Parameters
     ----------
-    source: :class:`~pathlib.Path`
+    source: str, :class:`~pathlib.Path`
         Source path
-    root_directory: :class:`~pathlib.Path`
+    root_directory: str, :class:`~pathlib.Path`
         Root directory to unpack and store temporary files
     """
 
@@ -109,29 +549,17 @@ class Archive(MfaModel):
         source: typing.Union[str, Path],
         root_directory: typing.Optional[typing.Union[str, Path]] = None,
     ):
-        from .config import get_temporary_directory
-
-        if isinstance(source, str):
-            source = Path(source)
-        source = source.resolve()
-        if root_directory is None:
-            root_directory = get_temporary_directory().joinpath(
-                "extracted_models", self.model_type
-            )
-        if isinstance(root_directory, str):
-            root_directory = Path(root_directory)
-        self.root_directory = root_directory
-        self.source = source
+        super().__init__(source, root_directory)
         self._meta = {}
         self.name = source.stem
         if os.path.isdir(source):
             self.directory = source
         else:
-            self.directory = root_directory.joinpath(f"{self.name}_{self.model_type}")
+            self.directory = self.root_directory.joinpath(f"{self.name}_{self.model_type}")
             if self.directory.exists():
                 shutil.rmtree(self.directory, ignore_errors=True)
 
-            os.makedirs(root_directory, exist_ok=True)
+            os.makedirs(self.root_directory, exist_ok=True)
             unpack_archive(source, self.directory)
             files = [x for x in self.directory.iterdir()]
             old_dir_path = files[0]
@@ -276,7 +704,7 @@ class Archive(MfaModel):
         :class:`~montreal_forced_aligner.models.Archive`, :class:`~montreal_forced_aligner.models.AcousticModel`, :class:`~montreal_forced_aligner.models.G2PModel`, :class:`~montreal_forced_aligner.models.LanguageModel`, :class:`~montreal_forced_aligner.models.TokenizerModel`, or :class:`~montreal_forced_aligner.models.IvectorExtractorModel`
             Model constructed from the empty directory
         """
-        from .config import get_temporary_directory
+        from montreal_forced_aligner.config import get_temporary_directory
 
         if root_directory is None:
             root_directory = get_temporary_directory().joinpath("temp_models", cls.model_type)
@@ -365,6 +793,8 @@ class AcousticModel(Archive, KalpyAcousticModel):
         params["non_silence_phones"] = {x for x in self.meta["phones"]}
         params["oov_phone"] = self.meta["oov_phone"]
         params["language"] = self.meta["language"]
+        if "tokenization" in self.meta:
+            params["tokenization"] = self.meta["tokenization"]
         params["optional_silence_phone"] = self.meta["optional_silence_phone"]
         params["phone_set_type"] = self.meta["phone_set_type"]
         params["silence_probability"] = self.meta.get("silence_probability", 0.5)
@@ -440,7 +870,7 @@ class AcousticModel(Archive, KalpyAcousticModel):
 
         Parameters
         ----------
-        source: str
+        source: Path
             File to add
         """
         for f in self.files:
@@ -455,24 +885,6 @@ class AcousticModel(Archive, KalpyAcousticModel):
                             out_f.write(line)
                 else:
                     copyfile(source_path, dest_path)
-
-    def add_pronunciation_models(
-        self, source: Path, dictionary_base_names: typing.Collection[str]
-    ) -> None:
-        """
-        Add file into archive
-
-        Parameters
-        ----------
-        source: str
-            File to add
-        dictionary_base_names: list[str]
-            Base names of dictionaries to add pronunciation models
-        """
-        for base_name in dictionary_base_names:
-            for f in [f"{base_name}.fst", f"{base_name}_align.fst"]:
-                if source.joinpath(f).exists():
-                    copyfile(source.joinpath(f), self.directory.joinpath(f))
 
     def export_model(self, destination: Path) -> None:
         """
@@ -601,37 +1013,37 @@ class IvectorExtractorModel(Archive):
     def mfcc_options(self) -> MetaDict:
         """Parameters to use in computing MFCC features."""
         return {
-            "use_energy": self._meta["features"].get("use_energy", False),
-            "dither": self._meta["features"].get("dither", 0.0001),
-            "energy_floor": self._meta["features"].get("energy_floor", 1.0),
-            "num_coefficients": self._meta["features"].get("num_coefficients", 13),
-            "num_mel_bins": self._meta["features"].get("num_mel_bins", 23),
-            "cepstral_lifter": self._meta["features"].get("cepstral_lifter", 22),
-            "preemphasis_coefficient": self._meta["features"].get("preemphasis_coefficient", 0.97),
-            "frame_shift": self._meta["features"].get("frame_shift", 10),
-            "frame_length": self._meta["features"].get("frame_length", 25),
-            "low_frequency": self._meta["features"].get("low_frequency", 20),
-            "high_frequency": self._meta["features"].get("high_frequency", 7800),
-            "sample_frequency": self._meta["features"].get("sample_frequency", 16000),
-            "snip_edges": self._meta["features"].get("snip_edges", True),
+            "use_energy": self.meta["features"].get("use_energy", False),
+            "dither": self.meta["features"].get("dither", 0.0001),
+            "energy_floor": self.meta["features"].get("energy_floor", 1.0),
+            "num_coefficients": self.meta["features"].get("num_coefficients", 13),
+            "num_mel_bins": self.meta["features"].get("num_mel_bins", 23),
+            "cepstral_lifter": self.meta["features"].get("cepstral_lifter", 22),
+            "preemphasis_coefficient": self.meta["features"].get("preemphasis_coefficient", 0.97),
+            "frame_shift": self.meta["features"].get("frame_shift", 10),
+            "frame_length": self.meta["features"].get("frame_length", 25),
+            "low_frequency": self.meta["features"].get("low_frequency", 20),
+            "high_frequency": self.meta["features"].get("high_frequency", 7800),
+            "sample_frequency": self.meta["features"].get("sample_frequency", 16000),
+            "snip_edges": self.meta["features"].get("snip_edges", True),
         }
 
     @property
     def pitch_options(self) -> MetaDict:
         """Parameters to use in computing MFCC features."""
-        use_pitch = self._meta["features"].get("use_pitch", False)
-        use_voicing = self._meta["features"].get("use_voicing", False)
-        use_delta_pitch = self._meta["features"].get("use_delta_pitch", False)
-        normalize = self._meta["features"].get("normalize_pitch", True)
+        use_pitch = self.meta["features"].get("use_pitch", False)
+        use_voicing = self.meta["features"].get("use_voicing", False)
+        use_delta_pitch = self.meta["features"].get("use_delta_pitch", False)
+        normalize = self.meta["features"].get("normalize_pitch", True)
         options = {
-            "frame_shift": self._meta["features"].get("frame_shift", 10),
-            "frame_length": self._meta["features"].get("frame_length", 25),
-            "min_f0": self._meta["features"].get("min_f0", 50),
-            "max_f0": self._meta["features"].get("max_f0", 800),
-            "sample_frequency": self._meta["features"].get("sample_frequency", 16000),
-            "penalty_factor": self._meta["features"].get("penalty_factor", 0.1),
-            "delta_pitch": self._meta["features"].get("delta_pitch", 0.005),
-            "snip_edges": self._meta["features"].get("snip_edges", True),
+            "frame_shift": self.meta["features"].get("frame_shift", 10),
+            "frame_length": self.meta["features"].get("frame_length", 25),
+            "min_f0": self.meta["features"].get("min_f0", 50),
+            "max_f0": self.meta["features"].get("max_f0", 800),
+            "sample_frequency": self.meta["features"].get("sample_frequency", 16000),
+            "penalty_factor": self.meta["features"].get("penalty_factor", 0.1),
+            "delta_pitch": self.meta["features"].get("delta_pitch", 0.005),
+            "snip_edges": self.meta["features"].get("snip_edges", True),
             "add_normalized_log_pitch": False,
             "add_delta_pitch": False,
             "add_pov_feature": False,
@@ -639,7 +1051,7 @@ class IvectorExtractorModel(Archive):
         if use_pitch:
             options["add_normalized_log_pitch"] = normalize
             options["add_raw_log_pitch"] = not normalize
-        if self._meta["version"] == "2.1.0" and "ivector_dimension" in self._meta:
+        if self.meta["version"] == "2.1.0" and "ivector_dimension" in self.meta:
             options["add_normalized_log_pitch"] = True
             options["add_raw_log_pitch"] = True
         options["add_delta_pitch"] = use_delta_pitch
@@ -653,9 +1065,9 @@ class G2PModel(Archive):
 
     Parameters
     ----------
-    source: str
+    source: str, Path
         Path to source archive
-    root_directory: str
+    root_directory: str, Path
         Path to save exported model
     """
 
@@ -753,6 +1165,8 @@ class G2PModel(Archive):
             self._meta["evaluation"] = self._meta.get("evaluation", [])
             self._meta["training"] = self._meta.get("training", [])
             self._meta["unicode_decomposition"] = self._meta.get("unicode_decomposition", False)
+            if "_jamo" in self.source.stem:
+                self._meta["unicode_decomposition"] = True
         return self._meta
 
     @property
@@ -815,6 +1229,26 @@ class G2PModel(Archive):
         """
         os.makedirs(destination, exist_ok=True)
         copy(self.fst_path, destination)
+
+    def validate_phone_symbols(self, dictionary: DictionaryMixin) -> None:
+        """
+        Validate this G2P model against a pronunciation dictionary to ensure their
+        phone sets are compatible (i.e., G2P model will not generate phones not in the dictionary)
+
+        Parameters
+        ----------
+        dictionary: :class:`~montreal_forced_aligner.dictionary.mixins.DictionaryMixin`
+            DictionaryMixin  to compare phone sets with
+
+        Raises
+        ------
+        :class:`~montreal_forced_aligner.exceptions.PronunciationAcousticMismatchError`
+            If there are phones missing from the acoustic model
+        """
+        missing_phones = set(self.meta["phones"]) - dictionary.non_silence_phones
+        missing_phones -= {"sp", "<eps>"}
+        if missing_phones:  # Compatibility
+            raise (PronunciationG2PMismatchError(missing_phones))
 
     def validate(self, word_list: typing.Collection[str]) -> bool:
         """
@@ -1001,7 +1435,7 @@ class LanguageModel(Archive):
     ):
         if source in LanguageModel.get_available_models():
             source = LanguageModel.get_pretrained_path(source)
-        from .config import get_temporary_directory
+        from montreal_forced_aligner.config import get_temporary_directory
 
         if isinstance(source, str):
             source = Path(source)
@@ -1325,7 +1759,7 @@ class DictionaryModel(MfaModel):
                         mapping[path] = (path, set())
                     mapping[path][1].add(speaker)
         else:
-            mapping[str(self.path)] = (self, {"default"})
+            mapping[self] = (self, {"default"})
         return mapping
 
 

@@ -38,13 +38,13 @@ dependencies:
   - seaborn
   - rich
   - rich-click
-  - kalpy>=0.8
+  - kalpy>=0.10
   - pip
   - huggingface_hub
+  - jinja2
   - spacy
   - sudachipy
   - sudachidict-core
-  - jamo
   - pythainlp
   - python-build
   - twine

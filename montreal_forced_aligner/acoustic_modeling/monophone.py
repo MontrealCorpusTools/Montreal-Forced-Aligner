@@ -87,6 +87,8 @@ class MonoAlignEqualFunction(KaldiFunction):
                     job.corpus.current_subset_directory, "feats", "scp", dictionary_id=d.name
                 )
                 train_logger.debug(f"Feature path: {feat_path}")
+                if not feat_path.exists():
+                    continue
                 feature_archive = FeatureArchive(
                     feat_path,
                     deltas=True,
@@ -320,11 +322,14 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
                     d = job.dictionaries[dict_index]
                 except IndexError:
                     break
-                feature_archive = job.construct_feature_archive(self.working_directory, d.name)
-                for i, (_, mat) in enumerate(feature_archive):
-                    if i > 10:
-                        break
-                    feats.append(mat)
+                try:
+                    feature_archive = job.construct_feature_archive(self.working_directory, d.name)
+                    for i, (_, mat) in enumerate(feature_archive):
+                        if i > 10:
+                            break
+                        feats.append(mat)
+                except OSError:
+                    pass
                 dict_index += 1
             if not feats:
                 raise Exception("Could not initialize monophone model due to lack of features")

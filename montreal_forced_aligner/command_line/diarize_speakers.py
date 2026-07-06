@@ -103,12 +103,12 @@ def diarize_speakers_cli(context, **kwargs) -> None:
         )
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"].absolute()
-    ivector_extractor_path = kwargs["ivector_extractor_path"]
+    ivector_extractor = kwargs["ivector_extractor_path"]
     output_directory = kwargs["output_directory"]
     classify = kwargs.get("classify", False)
     classifier = SpeakerDiarizer(
         corpus_directory=corpus_directory,
-        ivector_extractor_path=ivector_extractor_path,
+        ivector_extractor=ivector_extractor,
         **SpeakerDiarizer.parse_parameters(config_path, context.params, context.args),
     )
     try:

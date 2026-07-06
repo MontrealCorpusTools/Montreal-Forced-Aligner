@@ -102,10 +102,15 @@ class AccStatsTwoFeatsFunction(KaldiFunction):
                 feat_path = job.construct_path(
                     job.corpus.current_subset_directory, "feats", "scp", dictionary_id=d.name
                 )
+                if not feat_path.exists():
+                    continue
                 train_logger.debug(f"Feature path: {feat_path}")
                 train_logger.debug(f"LDA transform path: {lda_mat_path}")
                 train_logger.debug(f"Speaker transform path: {fmllr_path}")
-                feature_archive = job.construct_feature_archive(self.working_directory, d.name)
+                try:
+                    feature_archive = job.construct_feature_archive(self.working_directory, d.name)
+                except OSError:
+                    continue
                 si_feature_archive = FeatureArchive(
                     feat_path,
                     lda_mat_file_name=lda_mat_path,

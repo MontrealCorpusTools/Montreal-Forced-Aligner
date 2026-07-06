@@ -1,16 +1,16 @@
+#!/usr/bin/env Python
+# coding=utf-8
 from __future__ import annotations
 
 import re
 
 try:
-    import jamo
     from mecab import MeCab
 
     KO_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
     KO_AVAILABLE = False
     MeCab = None
-    jamo = None
 
 
 class KoreanTokenizer:
@@ -41,12 +41,12 @@ class KoreanTokenizer:
                 join = False
             if join:
                 new_text[-1] += normalized
-                pronunciations[-1] += jamo.h2j(normalized)
+                pronunciations[-1] += normalized
                 continue
             if morph.pos in {"SF", "SY", "SC"} and normalized not in {"<", "(", "{", "["}:
                 continue
             new_text.append(normalized)
-            pronunciations.append(jamo.h2j(normalized))
+            pronunciations.append(normalized)
         new_text = " ".join(new_text)
         pronunciations = " ".join(pronunciations)
         if self.ignore_case:
@@ -57,5 +57,5 @@ class KoreanTokenizer:
 
 def ko_spacy(ignore_case: bool = True):
     if not KO_AVAILABLE:
-        raise ImportError("Please install Korean support via `pip install python-mecab-ko jamo`")
+        raise ImportError("Please install Korean support via `pip install python-mecab-ko`")
     return KoreanTokenizer(ignore_case)

@@ -40,8 +40,9 @@ dependencies:
   - pip
   - rich
   - rich-click
-  - kalpy>=0.8
+  - kalpy>=0.10
   - huggingface_hub
+  - jinja2
     # Tokenization dependencies
   - spacy
   - sudachipy
@@ -52,7 +53,6 @@ dependencies:
       - twine
       # Tokenization dependencies
       - python-mecab-ko
-      - jamo
       - pythainlp
       - hanziconv
       - dragonmapper

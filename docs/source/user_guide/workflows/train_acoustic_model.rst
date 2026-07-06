@@ -3,8 +3,11 @@
 Train a new acoustic model ``(mfa train)``
 ******************************************
 
-You can train new :term:`acoustic models` from scratch using MFA, and export the final alignments as :term:`TextGrids` at the end.  You don't need a ton of data to generate decent alignments (see `the blog post comparing alignments trained on various corpus sizes <https://memcauliffe.com/how-much-data-do-you-need-for-a-good-mfa-alignment.html>`_).  At the end of the day, it comes down to trial and error, so I would recommend trying different workflows of pretrained models vs training your own or adapting a model to your data to see what performs best.
+.. versionadded:: 3.4
 
+   Specifying a directory as the output model path instead of a .zip file will produce a Hugging Face compatible model that can be distributed via Hugging Face Hub.  See :ref:`mfa_model_versions` for more details.
+
+You can train new :term:`acoustic models` from scratch using MFA, and export the final alignments as :term:`TextGrids` at the end.  You don't need a ton of data to generate decent alignments (see `the blog post comparing alignments trained on various corpus sizes <https://memcauliffe.com/how-much-data-do-you-need-for-a-good-mfa-alignment.html>`_).  At the end of the day, it comes down to trial and error, so I would recommend trying different workflows of pretrained models vs training your own or adapting a model to your data to see what performs best.
 
 .. note::
 
@@ -57,6 +60,8 @@ A recent experimental feature for training acoustic models is the ``--train_g2p`
 
    See `MFA models phonological rules for pretrained models <https://github.com/MontrealCorpusTools/mfa-models/tree/main/config/acoustic/rules>`_
    in :xref:`mfa_models_repo` for examples.
+
+.. _language_tokenization:
 
 Language tokenization
 =====================

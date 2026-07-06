@@ -206,6 +206,7 @@ class G2PTrainer(MfaWorker, TrainerMixin):
         num_pronunciations: int = 0,
         evaluation_mode: bool = False,
         unicode_decomposition: bool = False,
+        skip_all_uppercase: bool = True,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -213,6 +214,7 @@ class G2PTrainer(MfaWorker, TrainerMixin):
         self.validation_proportion = validation_proportion
         self.num_pronunciations = num_pronunciations
         self.unicode_decomposition = unicode_decomposition
+        self.skip_all_uppercase = skip_all_uppercase
         self.g2p_training_dictionary = {}
         self.g2p_validation_dictionary = None
         self.g2p_training_graphemes = set()
@@ -673,7 +675,10 @@ class PyniniTrainer(
         self,
         **kwargs,
     ):
-        self._data_source = os.path.splitext(os.path.basename(kwargs["dictionary_path"]))[0]
+        if "dictionary_path" in kwargs:
+            self._data_source = os.path.splitext(os.path.basename(kwargs["dictionary_path"]))[0]
+        else:
+            self._data_source = os.path.splitext(os.path.basename(kwargs["dictionary"].path))[0]
         super().__init__(**kwargs)
         self._fst_path = None
         self._sym_path = None

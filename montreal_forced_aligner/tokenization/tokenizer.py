@@ -8,6 +8,7 @@ import queue
 import threading
 import time
 import typing
+import warnings
 from dataclasses import dataclass
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
@@ -211,10 +212,18 @@ class CorpusTokenizer(AcousticCorpusMixin, TopLevelMfaWorker, DictionaryMixin):
 
     model_class = TokenizerModel
 
-    def __init__(self, tokenizer_model_path: Path = None, **kwargs):
+    def __init__(
+        self, tokenizer_model: TokenizerModel = None, tokenizer_model_path: Path = None, **kwargs
+    ):
         super().__init__(**kwargs)
-        self.tokenizer_model = TokenizerModel(
-            tokenizer_model_path, root_directory=getattr(self, "workflow_directory", None)
+        self.tokenizer_model = tokenizer_model
+        if not self.tokenizer_model and tokenizer_model_path:
+            self.tokenizer_model = TokenizerModel(
+                tokenizer_model_path, root_directory=getattr(self, "workflow_directory", None)
+            )
+        warnings.warn(
+            "Tokenizer MFA model training and usage is deprecated and slated to be removed in 4.0",
+            DeprecationWarning,
         )
 
     def setup(self) -> None:

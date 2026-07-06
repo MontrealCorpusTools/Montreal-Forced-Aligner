@@ -56,12 +56,12 @@ def train_lm_cli(context, **kwargs) -> None:
     initialize_configuration(context)
 
     config_path = kwargs.get("config_path", None)
-    dictionary_path = kwargs.get("dictionary_path", None)
+    dictionary = kwargs.get("dictionary_path", None)
     source_path = kwargs["source_path"]
     output_model_path = kwargs["output_model_path"]
 
     if source_path.suffix.lower() != ".arpa":
-        if not dictionary_path:
+        if not dictionary:
             trainer = MfaLmCorpusTrainer(
                 corpus_directory=source_path,
                 **MfaLmCorpusTrainer.parse_parameters(config_path, context.params, context.args),
@@ -69,7 +69,7 @@ def train_lm_cli(context, **kwargs) -> None:
         else:
             trainer = MfaLmDictionaryCorpusTrainer(
                 corpus_directory=source_path,
-                dictionary_path=dictionary_path,
+                dictionary=dictionary,
                 **MfaLmDictionaryCorpusTrainer.parse_parameters(
                     config_path, context.params, context.args
                 ),
