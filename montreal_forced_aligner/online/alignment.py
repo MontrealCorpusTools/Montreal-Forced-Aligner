@@ -82,7 +82,6 @@ def align_utterance_online(
     utterance.transcript = tokenize_utterance_text(
         utterance.transcript,
         lexicon_compiler,
-        lexicon_compiler,
         tokenizer,
         g2p_model,
         language=acoustic_model.language,

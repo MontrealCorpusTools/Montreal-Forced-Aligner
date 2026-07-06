@@ -100,6 +100,12 @@ __all__ = ["align_corpus_cli", "align_corpus_hf_cli"]
     help="Path to G2P model to use for OOV items.",
     type=click.UNPROCESSED,
 )
+@click.option(
+    "--ignore_oovs",
+    is_flag=True,
+    help="Ignore any file that contains OOV tokens by marking its utterances as ignored.",
+    default=False,
+)
 @common_options
 @click.help_option("-h", "--help")
 @click.pass_context
@@ -118,6 +124,7 @@ def align_corpus_cli(context, **kwargs) -> None:
     output_format = kwargs["output_format"]
     include_original_text = kwargs["include_original_text"]
     extra_kwargs = PretrainedAligner.parse_parameters(config_path, context.params, context.args)
+    extra_kwargs["ignore_oovs"] = kwargs.get("ignore_oovs", False)
     no_tokenization = kwargs["no_tokenization"]
     if no_tokenization:
         extra_kwargs["language"] = "unknown"
