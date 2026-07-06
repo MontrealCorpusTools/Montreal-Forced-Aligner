@@ -72,10 +72,10 @@ try:
             )
 
             FOUND_PYANNOTE = True
-        except (ImportError, OSError):
+        except (ImportError, OSError, AttributeError):
             FOUND_PYANNOTE = False
             PyannoteDiarizationPipeline = None
-except (ImportError, OSError):
+except (ImportError, OSError, AttributeError):
     FOUND_SPEECHBRAIN = False
     FOUND_PYANNOTE = False
     EncoderClassifier = None
