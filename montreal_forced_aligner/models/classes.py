@@ -666,7 +666,7 @@ class Archive(MfaModel):
                 file_format = "yaml"
             with mfa_open(meta_path, "r") as f:
                 if file_format == "yaml":
-                    self._meta = yaml.load(f, Loader=yaml.Loader)
+                    self._meta = yaml.load(f, Loader=yaml.SafeLoader)
                 else:
                     self._meta = json.load(f)
         return self._meta
@@ -1159,7 +1159,7 @@ class G2PModel(Archive):
                     if format == "json":
                         self._meta = json.load(f)
                     else:
-                        self._meta = yaml.load(f, Loader=yaml.Loader)
+                        self._meta = yaml.load(f, Loader=yaml.SafeLoader)
             self._meta["phones"] = set(self._meta.get("phones", []))
             self._meta["graphemes"] = set(self._meta.get("graphemes", []))
             self._meta["evaluation"] = self._meta.get("evaluation", [])
@@ -1329,7 +1329,7 @@ class TokenizerModel(Archive):
                     if format == "json":
                         self._meta = json.load(f)
                     else:
-                        self._meta = yaml.load(f, Loader=yaml.Loader)
+                        self._meta = yaml.load(f, Loader=yaml.SafeLoader)
             self._meta["evaluation"] = self._meta.get("evaluation", [])
             self._meta["training"] = self._meta.get("training", [])
         return self._meta
@@ -1751,7 +1751,7 @@ class DictionaryModel(MfaModel):
         mapping = {}
         if self.is_multiple:
             with mfa_open(self.path, "r") as f:
-                data = yaml.load(f, Loader=yaml.Loader)
+                data = yaml.load(f, Loader=yaml.SafeLoader)
                 for speaker, path in data.items():
                     if path not in mapping:
                         if path != "nonnative":

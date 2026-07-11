@@ -126,7 +126,7 @@ def load_configuration(config_path: typing.Union[str, Path]) -> typing.Dict[str,
         config_path = Path(config_path)
     with mfa_open(config_path, "r") as f:
         if config_path.suffix == ".yaml":
-            data = yaml.load(f, Loader=yaml.Loader)
+            data = yaml.load(f, Loader=yaml.SafeLoader)
         elif config_path.suffix == ".json":
             data = json.load(f)
     if not data:
@@ -544,7 +544,7 @@ class EnhancedJSONEncoder(json.JSONEncoder):
 
 def load_evaluation_mapping(custom_mapping_path):
     with mfa_open(custom_mapping_path, "r") as f:
-        mapping = yaml.load(f, Loader=yaml.Loader)
+        mapping = yaml.load(f, Loader=yaml.SafeLoader)
     for k, v in mapping.items():
         if isinstance(v, str):
             mapping[k] = {v}

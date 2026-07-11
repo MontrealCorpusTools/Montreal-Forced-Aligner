@@ -1077,7 +1077,7 @@ class PhoneRemapperMixin(metaclass=abc.ABCMeta):
 
     def load_mapping(self) -> None:
         with mfa_open(self.phone_mapping_path, "r") as f:
-            self.phone_remapping = yaml.load(f, Loader=yaml.Loader)
+            self.phone_remapping = yaml.load(f, Loader=yaml.SafeLoader)
         for key, values in self.phone_remapping.items():
             if not isinstance(values, list):
                 self.phone_remapping[key] = [values]

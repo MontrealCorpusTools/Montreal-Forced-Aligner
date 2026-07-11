@@ -266,7 +266,7 @@ def validate_model_arg(name: str, model_type: str) -> MfaModel:
             raise click.BadParameter(str(FileArgumentNotFoundError(name)))
         if model_type == "dictionary" and name.suffix.lower() == ".yaml":
             with mfa_open(name, "r") as f:
-                data = yaml.load(f, Loader=yaml.Loader)
+                data = yaml.load(f, Loader=yaml.SafeLoader)
                 paths = sorted(set(data.values()))
                 for path in paths:
                     validate_model_arg(path, "dictionary")

@@ -166,7 +166,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         """
         if self.phone_groups_path is not None and self.phone_groups_path.exists():
             with mfa_open(self.phone_groups_path) as f:
-                self._phone_groups = yaml.load(f, Loader=yaml.Loader)
+                self._phone_groups = yaml.load(f, Loader=yaml.SafeLoader)
                 if isinstance(self._phone_groups, list):
                     self._phone_groups = {k: v for k, v in enumerate(self._phone_groups)}
                 for k, v in self._phone_groups.items():
@@ -214,7 +214,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             with mfa_open(self.topology_path) as f:
                 self._topologies = {
                     k: v
-                    for k, v in yaml.load(f, Loader=yaml.Loader).items()
+                    for k, v in yaml.load(f, Loader=yaml.SafeLoader).items()
                     if k in self.non_silence_phones
                 }
             found_phones = set(self._topologies.keys())
@@ -932,7 +932,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         if not self.rules_path or not self.rules_path.exists():
             return
         with mfa_open(self.rules_path) as f:
-            rule_data = yaml.load(f, Loader=yaml.Loader)
+            rule_data = yaml.load(f, Loader=yaml.SafeLoader)
         with self.session() as session:
             if session.query(PhonologicalRule).first() is not None:
                 return
