@@ -58,7 +58,7 @@ class AlignmentRemapper(PhoneRemapperMixin, TopLevelMfaWorker):
 
     def load_mapping(self) -> None:
         with mfa_open(self.phone_mapping_path, "r") as f:
-            data = yaml.load(f, Loader=yaml.Loader)
+            data = yaml.load(f, Loader=yaml.SafeLoader)
         for key, value in data.items():
             if isinstance(value, list):
                 value = value[0]
