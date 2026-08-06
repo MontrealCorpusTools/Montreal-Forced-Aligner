@@ -4,6 +4,10 @@ Getting started
 ***************
 
 
+.. important::
+
+   Montreal Forced Aligner is a command line utility.  For more information on how to get to the command line and use MFA, see :ref:`command_line`.
+
 Installation
 ------------
 
@@ -13,28 +17,28 @@ Installation
        :text-align: center
        :columns: 12
 
-       MFA is now on :xref:`conda_forge` and can be installed with Anaconda or Miniconda:
+       MFA can be easily installed once conda is available via `Miniforge <https://conda-forge.org/download/>`_ or another source:
 
-       .. code-block:: bash
+       .. code-block:: console
 
           conda config --add channels conda-forge
-          conda create -n aligner montreal-forced-aligner
+          conda create -n aligner montreal-forced-aligner -y
           conda activate aligner
           mfa --help
 
        +++
 
-       .. button-link:: https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html
+       .. button-link:: https://conda-forge.org/download/
           :color: primary
           :expand:
 
-          Install Conda
+          Install Miniforge
 
 
     .. grid-item-card:: In-depth instructions
        :text-align: center
 
-       Using :ref:`Docker <docker_installation>`? Want to :ref:`install via source <source_installation>`?
+       Using :ref:`Docker <docker_installation>`? Want to :ref:`install via source <source_installation>`? Want a step-by-step instructions for installing MFA?
 
        +++
 
@@ -49,15 +53,15 @@ Installation
     .. grid-item-card:: First steps
        :text-align: center
 
-       First time using MFA? Want a walk-through of a specific use case?
+       Once MFA is installed, try it out aligning a demo corpus in English, Japanese, or Mandarin and make sure everything's working and what the inputs/outputs of MFA are
 
        +++
 
-       .. button-ref:: first_steps
+       .. button-ref:: alignment_example
           :expand:
           :color: primary
 
-          First steps
+          Align a demo corpus
 
 
 .. toctree::

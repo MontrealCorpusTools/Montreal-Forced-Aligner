@@ -26,7 +26,7 @@ Configuring specific commands
 
 MFA has the ability to customize various parameters that control aspects of data processing and workflows.  These can be supplied via the command line like:
 
-.. code-block:: bash
+.. code-block:: console
 
    mfa align ... --beam 1000
 
@@ -38,7 +38,7 @@ The above command will set the beam width used in aligning to ``1000`` (and the 
 
 Supplying the above via:
 
-.. code-block:: bash
+.. code-block:: console
 
    mfa align ... --config_path config_above.yaml
 

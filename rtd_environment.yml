@@ -26,6 +26,7 @@ dependencies:
   - sphinx-click
   - sphinx-intl
   - sphinx-immaterial
+  - sphinx-copybutton
   - pydata-sphinx-theme
   - myst-parser
   - mock

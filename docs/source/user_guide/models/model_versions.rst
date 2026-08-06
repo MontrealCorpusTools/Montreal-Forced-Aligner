@@ -13,14 +13,14 @@ Command line signatures
 
 Historically for :ref:`pretrained_alignment`, the command line signature has been:
 
-.. code-block:: bash
+.. code-block:: console
 
    mfa align CORPUS DICTIONARY ACOUSTIC_MODEL OUTPUT
 
 Because the HF models contain dictionaries and acoustic models, the new signature for :ref:`pretrained_alignment_hf` will be:
 
 
-.. code-block:: bash
+.. code-block:: console
 
    mfa align_hf CORPUS HF_MODEL OUTPUT
 
@@ -37,13 +37,13 @@ To use G2P models to generate pronunciations for words not in the dictionary, th
 
 The same changes in signature for ``mfa adapt`` for adding a ``mfa adapt_hf`` command:
 
-.. code-block:: bash
+.. code-block:: console
 
    mfa adapt_hf CORPUS HF_MODEL ADAPTED_HF_MODEL --dialect DIALECT --use_g2p
 
 The ADAPTED_HF_MODEL argument is now a directory instead of a zip file.  For training, there is no command in signature, but supplying a directory instead of a zip file will lead to training a HF model:
 
-.. code-block:: bash
+.. code-block:: console
 
    mfa train CORPUS DICTIONARY OUTPUT_DIRECTORY
 
@@ -92,7 +92,7 @@ As part of ``mfa train`` when specifying a HF-compatible model as the output, a 
 
 These files can be edited and updated after the training is complete to remove placeholders, or a JSON file with metadata about the model can be provided to the ``mfa train`` command:
 
-.. code-block:: bash
+.. code-block:: console
 
    mfa train CORPUS_DIRECTORY DICTIONARY_PATH OUTPUT_MODEL_DIRECTORY --metadata_path /path/to/metadata.json
 
@@ -141,7 +141,7 @@ Uploading the model to Hugging Face
 
 Once you are happy with the license and the model card, you can upload the model via:
 
-.. code-block:: bash
+.. code-block:: console
 
    mfa model upload MODEL_PATH REPO_ID
 

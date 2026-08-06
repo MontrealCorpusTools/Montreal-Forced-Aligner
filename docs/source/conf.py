@@ -57,6 +57,7 @@ extensions = [
     "sphinx_immaterial.graphviz",
     "sphinx_click",
     # "sphinx_autodoc_typehints",
+    "sphinx_copybutton",
 ]
 myst_enable_extensions = ["colon_fence"]
 locale_dirs = ["locale/"]  # path is example but recommended.
@@ -402,7 +403,7 @@ html_theme_options = {
     # "show_toc_level": 2,
     # "collapse_navigation": True,
    "announcement": "Starting with Version 3.4, we are rolling out new model formats that integrate with Hugging Face! "
-                   "See <a href='changelog/news_3.4.html'>here</a> for the latest updates in MFA 3.4.",
+                   "See <a href='/changelog/news_3.4.html'>here</a> for the latest updates in MFA 3.4.",
 }
 html_context = {
     "github_user": "MontrealCorpusTools",
