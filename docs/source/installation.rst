@@ -64,7 +64,7 @@ If this is your first time installing MFA and you don't know exactly how to get 
 Updating Montreal Forced Aligner
 --------------------------------
 
-To install the latest version, please run either :code:`conda update -c conda-forge montreal-forced-aligner kalpy kaldi=*=cpu* --update-deps` or  :code:`mamba update -c conda-forge montreal-forced-aligner kalpy kaldi=*=cpu* --update-deps` if you have mamba installed.
+To install the latest version, please run either :code:`conda update -c conda-forge montreal-forced-aligner kalpy --update-deps` or  :code:`mamba update -c conda-forge montreal-forced-aligner kalpy --update-deps` if you have mamba installed.
 
 .. versionadded:: 3.0.5
 
