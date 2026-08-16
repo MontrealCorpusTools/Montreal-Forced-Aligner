@@ -73,6 +73,45 @@ def test_align_one_lab(
     assert t
 
 
+def test_align_one_no_tokenization(
+    basic_corpus_dir,
+    generated_dir,
+    english_us_mfa_dictionary,
+    temp_dir,
+    english_mfa_acoustic_model,
+    db_setup,
+):
+    output_directory = generated_dir.joinpath("basic_output")
+    wav_path = basic_corpus_dir.joinpath("michael", "acoustic_corpus.wav")
+    lab_path = basic_corpus_dir.joinpath("michael", "acoustic_corpus.lab")
+    output_path = output_directory.joinpath("align_one_output_no_tokenization.TextGrid")
+    command = [
+        "align_one",
+        wav_path,
+        lab_path,
+        english_us_mfa_dictionary,
+        english_mfa_acoustic_model,
+        output_path,
+        "-q",
+        "--clean",
+        "--debug",
+        "--verbose",
+        "--no_tokenization",
+        "-p",
+        "test",
+    ]
+    command = [str(x) for x in command]
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+
+    assert os.path.exists(output_path)
+
+
 def test_align_one_hf(
     basic_corpus_dir,
     generated_dir,

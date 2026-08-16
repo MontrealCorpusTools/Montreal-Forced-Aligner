@@ -21,6 +21,7 @@ from montreal_forced_aligner.db import (
     get_next_primary_key,
 )
 from montreal_forced_aligner.models import AcousticModel, G2PModel
+from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
 
 
 def tokenize_utterance_text(
@@ -32,7 +33,7 @@ def tokenize_utterance_text(
 ):
     if tokenizer is None:
         return text.lower()
-    if language is Language.unknown:
+    if language is Language.unknown or isinstance(tokenizer, SimpleTokenizer):
         normalized_text, _, oovs = tokenizer(text)
         if g2p_model is not None:
             for w in oovs:
