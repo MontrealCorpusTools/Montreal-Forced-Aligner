@@ -73,7 +73,7 @@ class MfaYamlDumper(yaml.dumper.SafeDumper):
     pass
 
 
-yaml.add_representer(type(Path()), path_representer, MfaYamlDumper)
+MfaYamlDumper.add_representer(type(Path()), path_representer)
 
 
 class MfaYamlLoader(yaml.loader.SafeLoader):
@@ -84,15 +84,15 @@ def path_constructor(loader: yaml.loader.SafeLoader, node):
     return Path("/".join(loader.construct_sequence(node)))
 
 
-MfaYamlLoader.add_constructor(
+for tag in [
+    "tag:yaml.org,2002:python/object/apply:pathlib.PosixPath",
     "tag:yaml.org,2002:python/object/apply:pathlib._local.PosixPath",
-    path_constructor,
-)
-
-MfaYamlLoader.add_constructor(
     "tag:yaml.org,2002:python/object/apply:pathlib.WindowsPath",
-    path_constructor,
-)
+]:
+    MfaYamlLoader.add_constructor(
+        tag,
+        path_constructor,
+    )
 
 
 @contextmanager
