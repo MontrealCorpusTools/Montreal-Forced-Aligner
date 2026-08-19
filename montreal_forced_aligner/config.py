@@ -262,6 +262,9 @@ class MfaConfiguration:
         data["profiles"] = {
             k: dataclasses.asdict(v) for k, v in self.profiles.items() if k != "global"
         }
+        for k, v in data.items():
+            if isinstance(v, pathlib.Path):
+                data[k] = str(v)
         with mfa_open(self.config_path, "w") as f:
             yaml.dump(data, f, Dumper=self._dumper)
 
