@@ -80,6 +80,25 @@ yaml.add_representer(
 )
 
 
+class MfaYamlLoader(yaml.loader.SafeLoader):
+    pass
+
+
+def path_constructor(loader: yaml.loader.SafeLoader, node):
+    return Path("/".join(loader.construct_sequence(node)))
+
+
+MfaYamlLoader.add_constructor(
+    "tag:yaml.org,2002:python/object/apply:pathlib._local.PosixPath",
+    path_constructor,
+)
+
+MfaYamlLoader.add_constructor(
+    "tag:yaml.org,2002:python/object/apply:pathlib.WindowsPath",
+    path_constructor,
+)
+
+
 @contextmanager
 def mfa_open(
     path: typing.Union[Path, str],

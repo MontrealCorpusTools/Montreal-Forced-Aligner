@@ -18,7 +18,7 @@ import rich_click as click
 import yaml
 
 from montreal_forced_aligner.exceptions import RootDirectoryError
-from montreal_forced_aligner.helper import MfaYamlDumper, mfa_open
+from montreal_forced_aligner.helper import MfaYamlDumper, MfaYamlLoader, mfa_open
 
 __all__ = [
     "generate_config_path",
@@ -223,6 +223,8 @@ class MfaConfiguration:
         self.config_path = generate_config_path()
         self.global_profile = MfaProfile()
         self.profiles: Dict[str, MfaProfile] = {"global": self.global_profile}
+        self._dumper = MfaYamlDumper
+        self._loader = MfaYamlLoader
         if not os.path.exists(self.config_path):
             self.save()
         else:
@@ -256,18 +258,17 @@ class MfaConfiguration:
 
     def save(self) -> None:
         """Save MFA configuration"""
-        global_configuration_file = generate_config_path()
         data = dataclasses.asdict(self.global_profile)
         data["profiles"] = {
             k: dataclasses.asdict(v) for k, v in self.profiles.items() if k != "global"
         }
-        with mfa_open(global_configuration_file, "w") as f:
-            yaml.dump(data, f, Dumper=MfaYamlDumper)
+        with mfa_open(self.config_path, "w") as f:
+            yaml.dump(data, f, Dumper=self._dumper)
 
     def load(self) -> None:
         """Load MFA configuration"""
         with mfa_open(self.config_path, "r") as f:
-            data = yaml.load(f, Loader=yaml.SafeLoader)
+            data = yaml.load(f, Loader=self._loader)
         for k, v in data.items():
             if any(k.endswith(x) for x in ["_path", "_directory", "_dir"]):
                 data[k] = pathlib.Path(v)

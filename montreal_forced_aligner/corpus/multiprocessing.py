@@ -76,11 +76,11 @@ class AcousticDirectoryParser(threading.Thread):
 
     Parameters
     ----------
-    corpus_directory: str
+    corpus_directory: :class:`~os.PathLike`
         Directory to parse
     job_queue: Queue
         Queue to add file names to
-    audio_directory: str
+    audio_directory: :class:`~os.PathLike`
         Directory with additional audio files
     stopped: :class:`~threading.Event`
         Check for whether to exit early
@@ -92,9 +92,9 @@ class AcousticDirectoryParser(threading.Thread):
 
     def __init__(
         self,
-        corpus_directory: str,
+        corpus_directory: os.PathLike,
         job_queue: Queue,
-        audio_directory: str,
+        audio_directory: os.PathLike,
         stopped: threading.Event,
         finished_adding: threading.Event,
         file_counts: Counter,
