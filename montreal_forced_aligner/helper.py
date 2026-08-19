@@ -73,7 +73,7 @@ class MfaYamlDumper(yaml.dumper.SafeDumper):
     pass
 
 
-MfaYamlDumper.add_representer(Path, path_representer)
+yaml.add_representer(type(Path()), path_representer, MfaYamlDumper)
 
 
 class MfaYamlLoader(yaml.loader.SafeLoader):
