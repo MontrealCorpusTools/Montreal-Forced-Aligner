@@ -9,6 +9,7 @@ import pywrapfst
 
 from montreal_forced_aligner.data import BRACKETED_WORD, CUTOFF_WORD, LAUGHTER_WORD, OOV_WORD
 from montreal_forced_aligner.helper import make_re_character_set_safe
+from montreal_forced_aligner.tokenization.classes import BaseTokenizer, TokenizedText
 
 __all__ = ["SanitizeFunction", "SplitWordsFunction", "SimpleTokenizer"]
 
@@ -313,7 +314,7 @@ class SplitWordsFunction:
         return self.split_clitics(item)
 
 
-class SimpleTokenizer:
+class SimpleTokenizer(BaseTokenizer):
     def __init__(
         self,
         word_break_markers: typing.List[str],
@@ -326,10 +327,11 @@ class SimpleTokenizer:
         bracketed_word: str = BRACKETED_WORD,
         cutoff_word: str = CUTOFF_WORD,
         ignore_case: bool = True,
-        clitic_set: typing.Iterable = None,
-        grapheme_set: typing.Iterable = None,
-        word_table: pywrapfst.SymbolTable = None,
+        clitic_set: typing.Optional[typing.Iterable] = None,
+        grapheme_set: typing.Optional[typing.Iterable] = None,
+        word_table: typing.Optional[pywrapfst.SymbolTable] = None,
     ):
+        super().__init__(None, ignore_case)
         self.word_break_markers = word_break_markers
         self.word_table = word_table
         self.punctuation = punctuation
@@ -343,7 +345,6 @@ class SimpleTokenizer:
         initial_brackets = re.escape("".join(x[0] for x in self.brackets))
         final_brackets = re.escape("".join(x[1] for x in self.brackets))
         self.cutoff_identifier = re.sub(rf"[{initial_brackets}{final_brackets}]", "", cutoff_word)
-        self.ignore_case = ignore_case
         self.clitic_set = set()
         if clitic_set is not None:
             self.clitic_set.update(clitic_set)
@@ -475,42 +476,26 @@ class SimpleTokenizer:
             if final_clitics:
                 self.final_clitic_regex = re.compile(rf"(?<=\w)({'|'.join(final_clitics)})$")
 
-    def _dictionary_sanitize(self, text):
+    def _dictionary_sanitize(self, text) -> TokenizedText:
         words = self.sanitize_function(text)
         normalized_text = []
-        normalized_character_text = []
         oovs = set()
         for w in words:
             for new_w in self.split_function(w):
                 if not self.word_table.member(new_w):
                     oovs.add(new_w)
                 normalized_text.append(self.split_function.to_str(new_w))
-                if normalized_character_text:
-                    if not self.clitic_marker or (
-                        not normalized_text[-1].endswith(self.clitic_marker)
-                        and not new_w.startswith(self.clitic_marker)
-                    ):
-                        normalized_character_text.append("<space>")
-                for c in self.split_function.parse_graphemes(new_w):
-                    normalized_character_text.append(c)
         normalized_text = " ".join(normalized_text)
-        normalized_character_text = " ".join(normalized_character_text)
-        return normalized_text, normalized_character_text, sorted(oovs)
+        return TokenizedText(normalized_text, normalized_text, sorted(oovs))
 
-    def _no_dictionary_sanitize(self, text):
+    def _no_dictionary_sanitize(self, text) -> TokenizedText:
         normalized_text = []
-        normalized_character_text = []
         for w in self.sanitize_function(text):
             normalized_text.append(w)
-            if normalized_character_text:
-                normalized_character_text.append("<space>")
-            for g in w:
-                normalized_character_text.append(g)
         normalized_text = " ".join(normalized_text)
-        normalized_character_text = " ".join(normalized_character_text)
-        return normalized_text, normalized_character_text, []
+        return TokenizedText(normalized_text, normalized_text, [])
 
-    def __call__(self, text):
+    def __call__(self, text) -> TokenizedText:
         """Run the function"""
         if self.word_table or self.grapheme_set:
             return self._dictionary_sanitize(text)

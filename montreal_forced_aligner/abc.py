@@ -31,7 +31,13 @@ from montreal_forced_aligner.exceptions import (
     KaldiProcessingError,
     MultiprocessingError,
 )
-from montreal_forced_aligner.helper import MfaYamlDumper, comma_join, load_configuration, mfa_open
+from montreal_forced_aligner.helper import (
+    MfaYamlDumper,
+    MfaYamlLoader,
+    comma_join,
+    load_configuration,
+    mfa_open,
+)
 
 __all__ = [
     "MfaModel",
@@ -630,6 +636,8 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
                 and name not in {"rules_path", "phone_groups_path", "topology_path"}
             ):
                 continue
+            if param_type == os.PathLike:
+                param_type = Path
             if args is not None and name in args and args[name] is not None:
                 if param_type == Language:
                     params[name] = param_type[args[name]]
@@ -1077,7 +1085,7 @@ class PhoneRemapperMixin(metaclass=abc.ABCMeta):
 
     def load_mapping(self) -> None:
         with mfa_open(self.phone_mapping_path, "r") as f:
-            self.phone_remapping = yaml.load(f, Loader=yaml.SafeLoader)
+            self.phone_remapping = yaml.load(f, Loader=MfaYamlLoader)
         for key, values in self.phone_remapping.items():
             if not isinstance(values, list):
                 self.phone_remapping[key] = [values]

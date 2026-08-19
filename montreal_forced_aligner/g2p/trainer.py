@@ -16,7 +16,6 @@ import typing
 import unicodedata
 from pathlib import Path
 from queue import Queue
-from typing import Any, List, NamedTuple, Set
 
 import pynini
 import pywrapfst
@@ -34,7 +33,7 @@ from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.models import G2PModel
 from montreal_forced_aligner.utils import thirdparty_binary
 
-Labels = List[Any]
+Labels = typing.List[typing.Any]
 
 TOKEN_TYPES = ["byte", "utf8"]
 INF = float("inf")
@@ -45,7 +44,7 @@ __all__ = ["RandomStartWorker", "PyniniTrainer", "PyniniTrainerMixin", "G2PTrain
 logger = logging.getLogger("mfa")
 
 
-class RandomStart(NamedTuple):
+class RandomStart(typing.NamedTuple):
     """Parameters for random starts"""
 
     idx: int
@@ -54,17 +53,17 @@ class RandomStart(NamedTuple):
     output_far_path: Path
     cg_path: Path
     tempdir: Path
-    train_opts: List[str]
+    train_opts: typing.List[str]
 
 
-def _get_far_labels(far_path: typing.Union[Path, str]) -> Set[int]:
+def _get_far_labels(far_path: os.PathLike) -> typing.Set[int]:
     """Extracts label set from acceptors in a FAR.
     Args:
       far_path: :class:`~pathlib.Path` to FAR file.
     Returns:
       A set of integer labels found in the FAR.
     """
-    labels: Set[int] = set()
+    labels: typing.Set[int] = set()
     reader = pywrapfst.FarReader.open(far_path)
     while not reader.done():
         fst = reader.get_fst()

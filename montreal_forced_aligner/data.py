@@ -49,6 +49,12 @@ __all__ = [
     "SIL_WORD",
     "SIL_PHONE",
     "OOV_PHONE",
+    "DEFAULT_PUNCTUATION",
+    "DEFAULT_WORD_BREAK_MARKERS",
+    "DEFAULT_QUOTE_MARKERS",
+    "DEFAULT_CLITIC_MARKERS",
+    "DEFAULT_COMPOUND_MARKERS",
+    "DEFAULT_BRACKETS",
 ]
 
 WORD_BEGIN_SYMBOL = "#1"
@@ -60,6 +66,18 @@ CUTOFF_WORD = "<cutoff>"
 SIL_WORD = "<eps>"
 SIL_PHONE = "sil"
 OOV_PHONE = "spn"
+
+DEFAULT_PUNCTUATION = list(
+    r'、。।，？！!@<>→"”()“„–,.:;—¿?¡：）|؟!\\&%#*،~【】，…‥「」『』〝〟″⟨⟩♪・‚‘‹›«»～′$+=‘۔―'
+)
+
+DEFAULT_WORD_BREAK_MARKERS = list(r'？！!()，,.:;¡¿?“„"”&~%#—…‥、。|【】$+=〝〟″‹›«»・⟨⟩،「」『』؟')
+
+DEFAULT_QUOTE_MARKERS = list("“„\"”〝〟″「」『』‚ʻʿ‘′'")
+
+DEFAULT_CLITIC_MARKERS = list("'’‘")
+DEFAULT_COMPOUND_MARKERS = list("-‑/")
+DEFAULT_BRACKETS = [("<", ">"), ("[", "]"), ("{", "}"), ("(", ")"), ("＜", "＞")]
 
 
 # noinspection PyUnresolvedReferences

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-import typing
+import os
 from pathlib import Path
 
 from montreal_forced_aligner import config
@@ -18,7 +18,7 @@ logger = logging.getLogger("mfa")
 
 
 class AlignmentComparisonMixin(TopLevelMfaWorker):
-    def __init__(self, test_directory: typing.Union[Path, str], **kwargs):
+    def __init__(self, test_directory: os.PathLike, **kwargs):
         super().__init__(**kwargs)
         self.test_directory = test_directory
 
@@ -58,7 +58,7 @@ class AlignmentComparer(TextCorpusMixin, AlignmentComparisonMixin):
         self.create_corpus_split()
         self.load_test_alignments(self.test_directory)
 
-    def load_mapping(self, custom_mapping_path: typing.Union[Path, str], strict=False):
+    def load_mapping(self, custom_mapping_path: os.PathLike, strict=False):
         mapping = load_evaluation_mapping(custom_mapping_path)
         with self.session() as session:
             reference_phones = {
@@ -124,7 +124,7 @@ class AlignmentAudioComparer(AcousticCorpusMixin, AlignmentComparisonMixin):
         self.create_corpus_split()
         self.load_test_alignments(self.test_directory)
 
-    def load_mapping(self, custom_mapping_path: typing.Union[Path, str], strict=False):
+    def load_mapping(self, custom_mapping_path: os.PathLike, strict=False):
         mapping = load_evaluation_mapping(custom_mapping_path)
         with self.session() as session:
             reference_phones = {

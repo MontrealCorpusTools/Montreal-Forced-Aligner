@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from montreal_forced_aligner.tokenization.classes import BaseTokenizer, TokenizedText
+
 try:
     import hanziconv
     import spacy_pkuseg
@@ -17,12 +19,11 @@ except (ImportError, ModuleNotFoundError):
     to_pinyin = None
 
 
-class ChineseTokenizer:
-    def __init__(self, ignore_case):
-        self.tokenizer = spacy_pkuseg.pkuseg(postag=True)
-        self.ignore_case = ignore_case
+class ChineseTokenizer(BaseTokenizer):
+    def __init__(self, ignore_case: bool = True):
+        super().__init__(spacy_pkuseg.pkuseg(postag=True), ignore_case)
 
-    def __call__(self, text):
+    def __call__(self, text: str) -> TokenizedText:
         for t in [
             "·",
             ",",
@@ -75,12 +76,16 @@ class ChineseTokenizer:
         assert len(new_text) == len(pronunciations)
         new_text = " ".join(new_text)
         pronunciations = " ".join(pronunciations)
+        oov_indices = [
+            i for i, x in enumerate(pronunciations) if re.search(r"[^A-Za-z0-9]", x) is not None
+        ]
+        oovs = [x for i, x in enumerate(new_text) if i in oov_indices]
         if is_traditional:
             new_text = hanziconv.HanziConv.toTraditional(new_text)
         if self.ignore_case:
             new_text = new_text.lower()
             pronunciations = pronunciations.lower()
-        return new_text, pronunciations
+        return TokenizedText(new_text, pronunciations, oovs)
 
 
 def zh_spacy(ignore_case: bool = True):

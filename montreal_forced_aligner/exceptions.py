@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import os
 import sys
 import typing
 from pathlib import Path
@@ -321,8 +322,8 @@ class PhoneGroupTopologyMismatchError(DictionaryError):
         error_topologies: typing.List[
             typing.Tuple[typing.List[str], typing.List[typing.Tuple[int, int]]]
         ],
-        phone_groups_path: typing.Union[Path, str],
-        topologies_path: typing.Union[Path, str],
+        phone_groups_path: os.PathLike,
+        topologies_path: os.PathLike,
     ):
         super().__init__("There were multiple topologies found for phones in the same group: ")
         for k, v in error_topologies:
@@ -1006,7 +1007,7 @@ class KaldiProcessingError(MFAError):
         Overall log file to find more information
     """
 
-    def __init__(self, error_logs: List[typing.Union[Path, str]], log_file: Optional[Path] = None):
+    def __init__(self, error_logs: List[os.PathLike], log_file: Optional[Path] = None):
         super().__init__(
             f"There were {len(error_logs)} job(s) with errors when running Kaldi binaries."
         )

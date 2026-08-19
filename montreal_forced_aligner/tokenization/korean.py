@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from montreal_forced_aligner.tokenization.classes import BaseTokenizer, TokenizedText
+
 try:
     from mecab import MeCab
 
@@ -13,12 +15,11 @@ except (ImportError, ModuleNotFoundError):
     MeCab = None
 
 
-class KoreanTokenizer:
+class KoreanTokenizer(BaseTokenizer):
     def __init__(self, ignore_case: bool = True):
-        self.ignore_case = ignore_case
-        self.tokenizer = MeCab()
+        super().__init__(MeCab(), ignore_case)
 
-    def __call__(self, text):
+    def __call__(self, text) -> TokenizedText:
         new_text = []
         morphs = self.tokenizer.parse(text)
         pronunciations = []
@@ -52,7 +53,7 @@ class KoreanTokenizer:
         if self.ignore_case:
             new_text = new_text.lower()
             pronunciations = pronunciations.lower()
-        return new_text, pronunciations
+        return TokenizedText(new_text, pronunciations, [])
 
 
 def ko_spacy(ignore_case: bool = True):

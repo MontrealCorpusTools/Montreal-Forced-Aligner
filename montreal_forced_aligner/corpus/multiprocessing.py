@@ -38,7 +38,7 @@ from montreal_forced_aligner.utils import Counter
 
 if typing.TYPE_CHECKING:
     from montreal_forced_aligner.models import G2PModel
-    from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
+    from montreal_forced_aligner.tokenization.classes import BaseTokenizer
 
     try:
         from spacy.language import Language as SpacyLanguage
@@ -243,7 +243,7 @@ class NormalizeTextArguments(MfaArguments):
 
     """
 
-    tokenizers: typing.Union[typing.Dict[int, SimpleTokenizer], Language]
+    tokenizers: typing.Union[typing.Dict[int, BaseTokenizer], Language]
     g2p_model: typing.Optional[G2PModel]
     ignore_case: bool
     use_cutoff_model: bool
@@ -281,9 +281,6 @@ class NormalizeTextFunction(KaldiFunction):
 
     def _run(self):
         """Run the function"""
-
-        from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
-
         with self.session() as session:
             dict_count = session.query(Dictionary).join(Dictionary.words).limit(1).count()
             if dict_count > 0 or isinstance(self.tokenizers, dict):
@@ -293,7 +290,6 @@ class NormalizeTextFunction(KaldiFunction):
                         tokenizer = self.tokenizers[d.id]
                     else:
                         tokenizer = self.tokenizers
-                    simple_tokenization = isinstance(tokenizer, SimpleTokenizer)
                     if isinstance(tokenizer, Language):
                         from montreal_forced_aligner.tokenization.spacy import (
                             generate_language_tokenizer,
@@ -311,53 +307,30 @@ class NormalizeTextFunction(KaldiFunction):
                         .filter(Speaker.dictionary_id == d.id)
                     )
                     for u_id, u_text in utterances:
-                        if simple_tokenization:
-                            normalized_text, normalized_character_text, oovs = tokenizer(u_text)
-                            if self.use_cutoff_model:
-                                new_text = []
-                                text = normalized_text.split()
-                                for i, w in enumerate(text):
-                                    if w == d.cutoff_word and i != len(text) - 1:
-                                        next_w = text[i + 1]
-                                        if tokenizer.word_table.member(
-                                            next_w
-                                        ) and not tokenizer.bracket_regex.match(next_w):
-                                            w = f"{d.cutoff_word[:-1]}-{next_w}{d.cutoff_word[-1]}"
-                                    new_text.append(w)
-                                normalized_text = " ".join(new_text)
-                            self.callback(
-                                (
-                                    {
-                                        "id": u_id,
-                                        "oovs": " ".join(sorted(oovs)),
-                                        "normalized_text": normalized_text,
-                                        "normalized_character_text": normalized_character_text,
-                                    },
-                                    d.id,
-                                )
+                        tokenized = tokenizer(u_text)
+                        if self.use_cutoff_model:
+                            new_text = []
+                            text = tokenized.normalized_text.split()
+                            for i, w in enumerate(text):
+                                if w == d.cutoff_word and i != len(text) - 1:
+                                    next_w = text[i + 1]
+                                    if tokenizer.word_table.member(
+                                        next_w
+                                    ) and not tokenizer.bracket_regex.match(next_w):
+                                        w = f"{d.cutoff_word[:-1]}-{next_w}{d.cutoff_word[-1]}"
+                                new_text.append(w)
+                            tokenized.normalized_text = " ".join(new_text)
+                        self.callback(
+                            (
+                                {
+                                    "id": u_id,
+                                    "oovs": " ".join(tokenized.oovs),
+                                    "normalized_text": tokenized.normalized_text,
+                                    "normalized_character_text": tokenized.pronunciation_text,
+                                },
+                                d.id,
                             )
-                        else:
-                            tokenized = tokenizer(u_text)
-                            if isinstance(tokenized, tuple):
-                                normalized_text, pronunciation_form = tokenized
-                            else:
-                                if not isinstance(tokenized, str):
-                                    tokenized = " ".join([x.text for x in tokenized])
-                                if self.ignore_case:
-                                    tokenized = tokenized.lower()
-                                normalized_text, pronunciation_form = tokenized, tokenized.lower()
-                            oovs = set()
-                            self.callback(
-                                (
-                                    {
-                                        "id": u_id,
-                                        "oovs": " ".join(sorted(oovs)),
-                                        "normalized_text": normalized_text,
-                                        "normalized_character_text": pronunciation_form,
-                                    },
-                                    d.id,
-                                )
-                            )
+                        )
             else:
                 tokenizer = self.tokenizers
                 if isinstance(tokenizer, Language):
@@ -378,14 +351,10 @@ class NormalizeTextFunction(KaldiFunction):
                         normalized_text, pronunciation_form = u_text, u_text
                     else:
                         tokenized = tokenizer(u_text)
-                        if isinstance(tokenized, tuple):
-                            normalized_text, pronunciation_form = tokenized[:2]
-                        else:
-                            if not isinstance(tokenized, str):
-                                tokenized = " ".join([x.text for x in tokenized])
-                            if self.ignore_case:
-                                tokenized = tokenized.lower()
-                            normalized_text, pronunciation_form = tokenized, tokenized.lower()
+                        normalized_text, pronunciation_form = (
+                            tokenized.normalized_text,
+                            tokenized.pronunciation_text,
+                        )
                     self.callback(
                         (
                             {

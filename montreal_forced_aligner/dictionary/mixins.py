@@ -13,24 +13,22 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from montreal_forced_aligner.abc import DatabaseMixin
-from montreal_forced_aligner.data import PhoneSetType, PhoneType, WordType
+from montreal_forced_aligner.data import (
+    DEFAULT_BRACKETS,
+    DEFAULT_CLITIC_MARKERS,
+    DEFAULT_COMPOUND_MARKERS,
+    DEFAULT_PUNCTUATION,
+    DEFAULT_QUOTE_MARKERS,
+    DEFAULT_WORD_BREAK_MARKERS,
+    PhoneSetType,
+    PhoneType,
+    WordType,
+)
 from montreal_forced_aligner.db import Dictionary, Phone, Word
 from montreal_forced_aligner.helper import mfa_open
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
-
-DEFAULT_PUNCTUATION = list(
-    r'、。।，？！!@<>→"”()“„–,.:;—¿?¡：）|؟!\\&%#*،~【】，…‥「」『』〝〟″⟨⟩♪・‚‘‹›«»～′$+=‘۔―'
-)
-
-DEFAULT_WORD_BREAK_MARKERS = list(r'？！!()，,.:;¡¿?“„"”&~%#—…‥、。|【】$+=〝〟″‹›«»・⟨⟩،「」『』؟')
-
-DEFAULT_QUOTE_MARKERS = list("“„\"”〝〟″「」『』‚ʻʿ‘′'")
-
-DEFAULT_CLITIC_MARKERS = list("'’‘")
-DEFAULT_COMPOUND_MARKERS = list("-‑/")
-DEFAULT_BRACKETS = [("<", ">"), ("[", "]"), ("{", "}"), ("(", ")"), ("＜", "＞")]
 
 __all__ = ["DictionaryMixin", "TemporaryDictionaryMixin"]
 

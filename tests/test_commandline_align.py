@@ -33,6 +33,9 @@ def test_align_one_lab(
         "--verbose",
         "-p",
         "test",
+        "--boost_silence",
+        "0.5",
+        "--no_tokenization",
     ]
     command = [str(x) for x in command]
     result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)

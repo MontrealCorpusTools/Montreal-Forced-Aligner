@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from montreal_forced_aligner.tokenization.classes import BaseTokenizer, TokenizedText
+
 try:
     from pythainlp.tokenize import word_tokenize
 
@@ -13,11 +15,11 @@ except (ImportError, ModuleNotFoundError):
     word_tokenize = None
 
 
-class ThaiTokenizer:
+class ThaiTokenizer(BaseTokenizer):
     def __init__(self, ignore_case: bool):
-        self.ignore_case = ignore_case
+        super().__init__(word_tokenize, ignore_case)
 
-    def __call__(self, text):
+    def __call__(self, text: str) -> TokenizedText:
         new_text = []
         morphs = word_tokenize(text)
         pronunciations = []
@@ -66,7 +68,7 @@ class ThaiTokenizer:
         if self.ignore_case:
             new_text = new_text.lower()
             pronunciations = pronunciations.lower()
-        return new_text, pronunciations
+        return TokenizedText(new_text, pronunciations, [])
 
 
 def th_spacy(ignore_case: bool = True):

@@ -105,7 +105,7 @@ def load_command_history() -> List[Dict[str, Any]]:
     history = []
     if path.exists():
         with mfa_open(path, "r") as f:
-            history = yaml.load(f, Loader=yaml.SafeLoader)
+            history = yaml.load(f, Loader=MfaYamlLoader)
             if not history:
                 history = []
     history = [h for h in history if h["command"]]
@@ -289,7 +289,7 @@ def load_configuration():
     if not config_path.exists():
         return
     with mfa_open(config_path, "r") as f:
-        data = yaml.load(f, Loader=yaml.SafeLoader)
+        data = yaml.load(f, Loader=MfaYamlLoader)
     profiles = data.pop("profiles", {})
     if CURRENT_PROFILE_NAME == "global":
         update_configuration(data)

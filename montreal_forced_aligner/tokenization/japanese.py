@@ -5,6 +5,8 @@ from __future__ import annotations
 import pathlib
 import re
 
+from montreal_forced_aligner.tokenization.classes import BaseTokenizer, TokenizedText
+
 try:
     import sudachipy
 
@@ -14,27 +16,27 @@ except (ImportError, ModuleNotFoundError):
     sudachipy = None
 
 
-class JapaneseTokenizer:
+class JapaneseTokenizer(BaseTokenizer):
     def __init__(self, ignore_case: bool = True):
-        self.ignore_case = ignore_case
         resource_dir = pathlib.Path(__file__).parent.joinpath("resources")
         config_path = str(resource_dir.joinpath("japanese", "sudachi_config.json"))
         try:
-            self.tokenizer = sudachipy.Dictionary(dict="full", config_path=config_path).create(
+            tokenizer = sudachipy.Dictionary(dict="full", config_path=config_path).create(
                 mode=sudachipy.SplitMode.B
             )
         except ModuleNotFoundError:
             try:
-                self.tokenizer = sudachipy.Dictionary(dict="core", config_path=config_path).create(
+                tokenizer = sudachipy.Dictionary(dict="core", config_path=config_path).create(
                     mode=sudachipy.SplitMode.B
                 )
             except ModuleNotFoundError:
                 raise ModuleNotFoundError(
                     "Please install a Japanese dictionary via `conda install -c conda-forge sudachidict-core` or install `sudachidict-full`, `sudachidict-core`, or `sudachidict-small` from pip"
                 )
+        super().__init__(tokenizer, ignore_case)
         self.morphemes = self.tokenizer.tokenize("")
 
-    def __call__(self, text):
+    def __call__(self, text: str) -> TokenizedText:
         self.tokenizer.tokenize(text, out=self.morphemes)
         new_text = []
         pronunciations = []
@@ -278,12 +280,16 @@ class JapaneseTokenizer:
             space_indices = [i for i, x in enumerate(new_text) if x == " "]
             new_text = [x for i, x in enumerate(new_text) if i not in space_indices]
             pronunciations = [x for i, x in enumerate(pronunciations) if i not in space_indices]
+        oov_indices = [
+            i for i, x in enumerate(pronunciations) if re.search(r"[^ァ-ン]", x) is not None
+        ]
+        oovs = [x for i, x in enumerate(new_text) if i in oov_indices]
         new_text = " ".join(new_text)
         pronunciations = " ".join(pronunciations)
         if self.ignore_case:
             new_text = new_text.lower()
             pronunciations = pronunciations.lower()
-        return new_text, pronunciations
+        return TokenizedText(new_text, pronunciations, oovs)
 
 
 def ja_spacy(ignore_case: bool = True):
