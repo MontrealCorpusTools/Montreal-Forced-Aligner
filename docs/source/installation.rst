@@ -5,33 +5,66 @@
 Installation
 ************
 
+
 .. important::
 
-   Kaldi and MFA are now built on :xref:`conda_forge` :fas:`party-horn`, so installation of third party binaries is wholly through conda. Installing MFA via conda will pick up Kaldi as well.
+   Montreal Forced Aligner is a command line utility.  For more information on how to get to the command line and use MFA, see :ref:`command_line`.
 
 
 General installation
 ====================
 
-1. Install :xref:`miniconda`/:xref:`conda_installation`
-2. Create new environment and install MFA: :code:`conda create -n aligner -c conda-forge montreal-forced-aligner`
+Installing Conda
+----------------
 
-   a.  You can enable the :code:`conda-forge` channel by default by running :code:`conda config --add channels conda-forge` in order to omit the :code:`-c conda-forge` from these commands
+Conda is a command line utility for managing multiple software environments. Montreal Forced Aligner is distributed as a package that can be installed into a Conda environment, so the first step is to make sure the ``conda`` command is working. If you want to check if you have conda installed, you can run:
 
-3. Ensure you're in the new environment created (:code:`conda activate aligner`)
+.. code-block:: console
+
+   conda --help
+
+If it prints out a long list of commands, then it's installed and you can go to installing/updating MFA.  If it reports that the conda command is not found, you can install the conda command by downloading an installer for your OS from `Miniforge downloads page <https://conda-forge.org/download/>`_, and running the installer via the steps at the bottom of the download page.
 
 .. note::
 
-   I recommend using :code:`mamba` as the primary installer.  Mamba is a drop-in replacement for the conda command that needs to be installed in the conda base environment.  You can install and use :code:`mamba` via:
+   Miniforge also installs the command ``mamba`` which is a drop-in replacement command for ``conda``.  The key benefit of ``mamba`` over ``conda`` is that it's much faster when installing packages, but functionally will result in the same results.
 
-   1. :code:`conda activate base`
-   2. :code:`conda install -c conda-forge mamba`
-   3. :code:`mamba create -n aligner -c conda-forge montreal-forced-aligner`
+Installing Montreal Forced Aligner
+----------------------------------
+
+Once ``conda`` is installed as above and can be invoked on the :ref:`command line <command_line>`, you can create a Conda environment with MFA installed via:
+
+.. code-block:: console
+
+   conda create -n aligner -c conda-forge montreal-forced-aligner -y
+
+
+.. note::
+
+   If you did not install conda via `Miniforge <https://conda-forge.org/download/>`_, then you may have to add the :code:`conda-forge` channel with the command:
+
+   .. code-block:: console
+
+      conda config --add channels conda-forge
+
+Once the ``conda create`` command completes, you will have to activate the environment to get easy access to the ``mfa`` command:
+
+.. code-block::
+
+   conda activate aligner
+
+From here you should be able to run MFA with the help flag to get a list of available MFA commands and their descriptions via:
+
+.. code-block::
+
+   mfa --help
+
+If this is your first time installing MFA and you don't know exactly how to get started, see the :ref:`Alignment tutorial <alignment_example>` to align a demo corpus in English, Japanese, or Mandarin and get a sense of what MFA takes as inputs and produces as outputs.  If you want to start working with your own data and want to know the commands that MFA has to help get you to an aligned dataset, see the decision tree in :ref:`first_steps`.
 
 Updating Montreal Forced Aligner
 --------------------------------
 
-To install the latest version, please run either :code:`conda update -c conda-forge montreal-forced-aligner kalpy kaldi=*=cpu* --update-deps` or  :code:`mamba update -c conda-forge montreal-forced-aligner kalpy kaldi=*=cpu* --update-deps` if you have mamba installed.
+To install the latest version, please run either :code:`conda update -c conda-forge montreal-forced-aligner kalpy --update-deps` or  :code:`mamba update -c conda-forge montreal-forced-aligner kalpy --update-deps` if you have mamba installed.
 
 .. versionadded:: 3.0.5
 
@@ -55,7 +88,7 @@ Installing older versions of MFA
 
 If you need to use an older version of MFA, you can install it via:
 
-.. code-block:: bash
+.. code-block:: console
 
    conda install montreal-forced-aligner=X.X.X
 

@@ -6,6 +6,19 @@
 User Guide
 **********
 
+.. _command_line:
+
+Getting to the command line
+===========================
+
+Montreal Forced Aligner is a command line utility.  If you're not familiar with the command line on your computer, you can access it via specific apps on your computer.
+
+* :fab:`apple` **Mac:** you can access it via the Terminal application via Launchpad (It may be in a folder called "Other").
+* :fab:`windows` **Windows:** you can use either the Windows Command Prompt or PowerShell.  To access these, open the start menu and search for either "cmd" or "PowerShell"
+* :fab:`linux` **Linux:** you probably already know how to get to the terminal
+
+For a general introduction to using Bash (Mac and Linux), see `the Bash Shell Basics section in Eleanor Chodroff's Corpus Phonetics Tutorial <https://eleanorchodroff.com/tutorial/bash-shell-basics.html>`_.
+
 What is forced alignment?
 =========================
 
