@@ -10,7 +10,7 @@ from kalpy.fstext.lexicon import Pronunciation as KalpyPronunciation
 from kalpy.gmm.data import HierarchicalCtm
 from kalpy.utterance import Utterance as KalpyUtterance
 
-from montreal_forced_aligner.data import Language, WordType
+from montreal_forced_aligner.data import WordType
 from montreal_forced_aligner.db import (
     Phone,
     PhoneInterval,
@@ -21,56 +21,43 @@ from montreal_forced_aligner.db import (
     get_next_primary_key,
 )
 from montreal_forced_aligner.models import AcousticModel, G2PModel
+from montreal_forced_aligner.tokenization.classes import BaseTokenizer
 
 
 def tokenize_utterance_text(
     text,
     lexicon_compiler: LexiconCompiler,
-    tokenizer=None,
-    g2p_model: G2PModel = None,
-    language: Language = Language.unknown,
-):
+    tokenizer: typing.Optional[BaseTokenizer] = None,
+    g2p_model: typing.Optional[G2PModel] = None,
+) -> str:
     if tokenizer is None:
         return text.lower()
-    if language is Language.unknown:
-        normalized_text, _, oovs = tokenizer(text)
-        if g2p_model is not None:
-            for w in oovs:
-                if not lexicon_compiler.word_table.member(w):
-                    pron = g2p_model.rewriter(w)
-                    if pron:
-                        pronunciation = pron[0][0] if isinstance(pron[0], tuple) else pron[0]
-                        lexicon_compiler.add_pronunciation(
-                            KalpyPronunciation(
-                                w, pron[0].pronunciation, None, None, None, None, None
-                            )
-                        )
-
-    else:
-        normalized_text, pronunciation_form = tokenizer(text)
-        if not pronunciation_form:
-            pronunciation_form = text
-        g2p_cache = {}
-        if g2p_model is not None:
-            for norm_w, w in zip(text.split(), pronunciation_form.split()):
-                if w not in g2p_cache:
-                    pron = g2p_model.rewriter(w)
-                    if not pron:
-                        continue
-                    g2p_cache[w] = pron[0].pronunciation
-                if w in g2p_cache and not lexicon_compiler.word_table.member(norm_w):
-                    lexicon_compiler.add_pronunciation(
-                        KalpyPronunciation(norm_w, g2p_cache[w], None, None, None, None, None)
-                    )
-    return normalized_text
+    tokenized = tokenizer(text)
+    if not tokenized.pronunciation_text:
+        tokenized.pronunciation_text = tokenized.normalized_text
+    g2p_cache = {}
+    if g2p_model is not None:
+        for norm_w, w in zip(
+            tokenized.normalized_text.split(), tokenized.pronunciation_text.split()
+        ):
+            if w not in g2p_cache:
+                pron = g2p_model.rewriter(w)
+                if not pron:
+                    continue
+                g2p_cache[w] = pron[0].pronunciation
+            if w in g2p_cache and not lexicon_compiler.word_table.member(norm_w):
+                lexicon_compiler.add_pronunciation(
+                    KalpyPronunciation(norm_w, g2p_cache[w], None, None, None, None, None)
+                )
+    return tokenized.normalized_text
 
 
 def align_utterance_online(
     acoustic_model: AcousticModel,
     utterance: KalpyUtterance,
     lexicon_compiler: LexiconCompiler,
-    tokenizer=None,
-    g2p_model: G2PModel = None,
+    tokenizer: typing.Optional[BaseTokenizer] = None,
+    g2p_model: typing.Optional[G2PModel] = None,
     beam: int = 10,
     retry_beam: int = 40,
     transition_scale: float = 1.0,
@@ -84,7 +71,6 @@ def align_utterance_online(
         lexicon_compiler,
         tokenizer,
         g2p_model,
-        language=acoustic_model.language,
     )
     kalpy_aligner = KalpyAligner(
         acoustic_model,

@@ -284,7 +284,7 @@ def output_textgrid_writing_errors(
             f.write(f"{str(result)}\n\n")
 
 
-def load_textgrid(path: typing.Union[Path, str]):
+def load_textgrid(path: os.PathLike):
     """
     Load a TextGrid
 

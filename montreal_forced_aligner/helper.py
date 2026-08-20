@@ -9,7 +9,7 @@ import dataclasses
 import itertools
 import json
 import logging
-import pathlib
+import os
 import re
 import typing
 from contextlib import contextmanager
@@ -73,16 +73,31 @@ class MfaYamlDumper(yaml.dumper.SafeDumper):
     pass
 
 
-yaml.add_representer(
-    type(pathlib.Path()),
-    path_representer,
-    MfaYamlDumper,
-)
+MfaYamlDumper.add_representer(type(Path()), path_representer)
+
+
+class MfaYamlLoader(yaml.loader.SafeLoader):
+    pass
+
+
+def path_constructor(loader: yaml.loader.SafeLoader, node):
+    return Path("/".join(loader.construct_sequence(node)))
+
+
+for tag in [
+    "tag:yaml.org,2002:python/object/apply:pathlib.PosixPath",
+    "tag:yaml.org,2002:python/object/apply:pathlib._local.PosixPath",
+    "tag:yaml.org,2002:python/object/apply:pathlib.WindowsPath",
+]:
+    MfaYamlLoader.add_constructor(
+        tag,
+        path_constructor,
+    )
 
 
 @contextmanager
 def mfa_open(
-    path: typing.Union[Path, str],
+    path: os.PathLike,
     mode: str = "r",
     encoding: str = "utf8",
     newline: typing.Optional[str] = "",
@@ -126,7 +141,7 @@ def load_configuration(config_path: typing.Union[str, Path]) -> typing.Dict[str,
         config_path = Path(config_path)
     with mfa_open(config_path, "r") as f:
         if config_path.suffix == ".yaml":
-            data = yaml.load(f, Loader=yaml.SafeLoader)
+            data = yaml.load(f, Loader=MfaYamlLoader)
         elif config_path.suffix == ".json":
             data = json.load(f)
     if not data:
@@ -544,7 +559,7 @@ class EnhancedJSONEncoder(json.JSONEncoder):
 
 def load_evaluation_mapping(custom_mapping_path):
     with mfa_open(custom_mapping_path, "r") as f:
-        mapping = yaml.load(f, Loader=yaml.SafeLoader)
+        mapping = yaml.load(f, Loader=MfaYamlLoader)
     for k, v in mapping.items():
         if isinstance(v, str):
             mapping[k] = {v}

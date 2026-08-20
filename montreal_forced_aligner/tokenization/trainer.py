@@ -243,7 +243,13 @@ class TokenizerMixin(AcousticCorpusMixin, G2PTrainer, DictionaryMixin, TopLevelM
                 Utterance.ignored == True  # noqa
             )
             for (text,) in query:
-                tokenized = text.split()
+                text = text.split()
+                tokenized = []
+                for w in text:
+                    if tokenized:
+                        tokenized.append("<space>")
+                    for g in w:
+                        tokenized.append(g)
                 untokenized = [x for x in tokenized if x != "<space>"]
                 tokenized = [x if x != "<space>" else " " for x in tokenized]
                 validation_set[" ".join(untokenized)] = "".join(tokenized)
@@ -369,11 +375,13 @@ class PhonetisaurusTokenizerTrainer(PhonetisaurusTrainerMixin, TokenizerMixin):
                 self.working_directory.joinpath("output.txt"), "w"
             ) as tokenized_f:
                 for (text,) in query:
-                    assert text
-                    tokenized = [
-                        x if counts[x] >= self.oov_count_threshold else unk_character
-                        for x in text.split()
-                    ]
+                    text = text.split()
+                    tokenized = []
+                    for w in text:
+                        if tokenized:
+                            tokenized.append("<space>")
+                        for g in w:
+                            tokenized.append(g)
                     untokenized = [x for x in tokenized if x != "<space>"]
                     self.num_training_utterances += 1
                     self.training_graphemes.update(tokenized)
@@ -507,11 +515,13 @@ class TokenizerTrainer(PyniniTrainerMixin, TokenizerMixin):
                 self.output_path, "w"
             ) as tokenized_f:
                 for (text,) in query:
-                    assert text
-                    tokenized = [
-                        x if counts[x] >= self.oov_count_threshold else unk_character
-                        for x in text.split()
-                    ]
+                    text = text.split()
+                    tokenized = []
+                    for w in text:
+                        if tokenized:
+                            tokenized.append("<space>")
+                        for g in w:
+                            tokenized.append(g)
                     untokenized = [x for x in tokenized if x != "<space>"]
                     self.num_training_utterances += 1
                     self.training_graphemes.update(tokenized)

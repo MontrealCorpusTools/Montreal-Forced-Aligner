@@ -28,7 +28,7 @@ from montreal_forced_aligner.exceptions import (
     ModelTypeNotSupportedError,
     PretrainedModelNotFoundError,
 )
-from montreal_forced_aligner.helper import configure_cli_logger, mfa_open
+from montreal_forced_aligner.helper import MfaYamlLoader, configure_cli_logger, mfa_open
 from montreal_forced_aligner.models import MODEL_TYPES, MfaAlignmentModel
 from montreal_forced_aligner.utils import check_third_party
 
@@ -266,7 +266,7 @@ def validate_model_arg(name: str, model_type: str) -> MfaModel:
             raise click.BadParameter(str(FileArgumentNotFoundError(name)))
         if model_type == "dictionary" and name.suffix.lower() == ".yaml":
             with mfa_open(name, "r") as f:
-                data = yaml.load(f, Loader=yaml.SafeLoader)
+                data = yaml.load(f, Loader=MfaYamlLoader)
                 paths = sorted(set(data.values()))
                 for path in paths:
                     validate_model_arg(path, "dictionary")

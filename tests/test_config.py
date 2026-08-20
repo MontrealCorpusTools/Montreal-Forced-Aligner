@@ -1,6 +1,8 @@
 import os
+import pathlib
 
 import pytest
+import yaml
 
 from montreal_forced_aligner.acoustic_modeling import (
     LdaTrainer,
@@ -12,6 +14,18 @@ from montreal_forced_aligner.acoustic_modeling import (
 from montreal_forced_aligner.alignment import PretrainedAligner
 from montreal_forced_aligner.exceptions import ConfigError
 from montreal_forced_aligner.ivector.trainer import TrainableIvectorExtractor
+
+
+def test_load_previous_version_config(generated_dir, temp_dir):
+    from montreal_forced_aligner.config import MfaConfiguration
+
+    config = MfaConfiguration()
+    assert isinstance(config.profiles["test"].temporary_directory, pathlib.Path)
+    config.config_path = generated_dir.joinpath("test_config.yaml")
+    config._dumper = yaml.dumper.Dumper
+    config.save()
+    config.load()
+    assert isinstance(config.profiles["test"].temporary_directory, pathlib.Path)
 
 
 def test_monophone_config(basic_corpus_dir, basic_dict_path, temp_dir):

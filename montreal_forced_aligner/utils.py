@@ -9,7 +9,6 @@ import datetime
 import logging
 import multiprocessing as mp
 import os
-import pathlib
 import queue
 import re
 import shutil
@@ -605,9 +604,7 @@ class KaldiProcessWorkerMp(mp.Process):
 
 
 @contextmanager
-def thread_logger(
-    log_name: str, log_path: typing.Union[pathlib.Path, str], job_name: int = None
-) -> logging.Logger:
+def thread_logger(log_name: str, log_path: os.PathLike, job_name: int = None) -> logging.Logger:
     kalpy_logging = logging.getLogger(log_name)
     file_handler = logging.FileHandler(log_path, encoding="utf8")
     file_handler.setLevel(logging.DEBUG)

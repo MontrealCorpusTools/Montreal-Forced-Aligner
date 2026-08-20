@@ -1162,7 +1162,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
     def export_files(
         self,
-        output_directory: typing.Union[Path, str],
+        output_directory: os.PathLike,
         output_format: typing.Optional[str] = None,
         include_original_text: bool = False,
     ) -> None:

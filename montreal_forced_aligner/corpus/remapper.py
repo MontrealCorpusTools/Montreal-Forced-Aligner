@@ -17,7 +17,7 @@ from montreal_forced_aligner.abc import PhoneRemapperMixin, TopLevelMfaWorker
 from montreal_forced_aligner.corpus.helper import find_exts
 from montreal_forced_aligner.corpus.multiprocessing import AlignmentRemapperWorker
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
-from montreal_forced_aligner.helper import mfa_open
+from montreal_forced_aligner.helper import MfaYamlLoader, mfa_open
 
 logger = logging.getLogger("mfa")
 
@@ -58,7 +58,7 @@ class AlignmentRemapper(PhoneRemapperMixin, TopLevelMfaWorker):
 
     def load_mapping(self) -> None:
         with mfa_open(self.phone_mapping_path, "r") as f:
-            data = yaml.load(f, Loader=yaml.SafeLoader)
+            data = yaml.load(f, Loader=MfaYamlLoader)
         for key, value in data.items():
             if isinstance(value, list):
                 value = value[0]
@@ -91,7 +91,7 @@ class AlignmentRemapper(PhoneRemapperMixin, TopLevelMfaWorker):
 
     def remap_alignments(
         self,
-        output_directory: typing.Union[Path, str],
+        output_directory: os.PathLike,
         output_format: typing.Literal[
             "short_textgrid", "long_textgrid", "json", "textgrid_json"
         ] = "short_textgrid",
@@ -238,7 +238,7 @@ class AlignmentDictionaryRemapper(
 
     def remap_alignments(
         self,
-        output_directory: typing.Union[Path, str],
+        output_directory: os.PathLike,
         output_format: typing.Literal[
             "short_textgrid", "long_textgrid", "json", "textgrid_json"
         ] = "short_textgrid",

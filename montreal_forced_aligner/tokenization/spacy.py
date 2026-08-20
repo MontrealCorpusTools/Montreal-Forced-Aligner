@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
+
+from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
 
 try:
     import spacy
@@ -11,12 +14,22 @@ except (ImportError, ModuleNotFoundError):
     spacy = None
     SPACY_AVAILABLE = False
 
-from montreal_forced_aligner.data import Language
+from montreal_forced_aligner.data import (
+    DEFAULT_BRACKETS,
+    DEFAULT_CLITIC_MARKERS,
+    DEFAULT_COMPOUND_MARKERS,
+    DEFAULT_PUNCTUATION,
+    DEFAULT_WORD_BREAK_MARKERS,
+    Language,
+)
 from montreal_forced_aligner.tokenization.chinese import ZH_AVAILABLE, zh_spacy
+from montreal_forced_aligner.tokenization.classes import BaseTokenizer
 from montreal_forced_aligner.tokenization.english import en_spacy
 from montreal_forced_aligner.tokenization.japanese import JA_AVAILABLE, ja_spacy
 from montreal_forced_aligner.tokenization.korean import KO_AVAILABLE, ko_spacy
 from montreal_forced_aligner.tokenization.thai import TH_AVAILABLE, th_spacy
+
+logger = logging.getLogger("mfa")
 
 language_model_mapping = {
     # Use small models optimized for CPU because tokenizer accuracy does not depend on model
@@ -63,9 +76,22 @@ def generate_language_tokenizer(language: Language, ignore_case: bool = True):
         return th_spacy(ignore_case)
     if not SPACY_AVAILABLE:
         raise ImportError("Please install spacy via `conda install spacy`")
-    name = language_model_mapping[language]
-    nlp = spacy.load(name)
-    return nlp
+    if language in language_model_mapping:
+        name = language_model_mapping[language]
+        nlp = spacy.load(name)
+        tokenizer = BaseTokenizer(nlp, ignore_case)
+    else:
+        logger.info(
+            f"The Language {language} does not have a dedicated tokenizer, using default simple tokenization instead."
+        )
+        tokenizer = SimpleTokenizer(
+            DEFAULT_WORD_BREAK_MARKERS,
+            DEFAULT_PUNCTUATION,
+            DEFAULT_CLITIC_MARKERS,
+            DEFAULT_COMPOUND_MARKERS,
+            DEFAULT_BRACKETS,
+        )
+    return tokenizer
 
 
 def check_language_tokenizer_availability(language: Language):

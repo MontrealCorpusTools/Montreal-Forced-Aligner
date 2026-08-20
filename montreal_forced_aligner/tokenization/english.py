@@ -7,6 +7,8 @@ import re
 import subprocess
 import typing
 
+from montreal_forced_aligner.tokenization.classes import BaseTokenizer, TokenizedText
+
 try:
     import spacy
     from spacy.symbols import NORM, ORTH
@@ -453,68 +455,82 @@ class BracketedReTokenize:
         return doc
 
 
+class EnglishTokenizer(BaseTokenizer):
+    def __init__(self, ignore_case: bool = True):
+        name = "en_core_web_sm"
+        try:
+            en_nlp = spacy.load(name)
+        except OSError:
+            subprocess.call(["python", "-m", "spacy", "download", name], env=os.environ)
+            en_nlp = spacy.load(name)
+
+        @spacy.Language.factory("en_re_tokenize")
+        def en_re_tokenize(nlp, name):
+            return EnglishReTokenize(nlp.vocab)
+
+        @spacy.Language.factory("en_split_suffixes")
+        def en_split_suffixes(nlp, name):
+            return EnglishSplitSuffixes(nlp.vocab)
+
+        @spacy.Language.factory("en_split_prefixes")
+        def en_split_prefixes(nlp, name):
+            return EnglishSplitPrefixes(nlp.vocab)
+
+        @spacy.Language.factory("en_bracketed_re_tokenize")
+        def en_bracketed_re_tokenize(nlp, name):
+            return BracketedReTokenize(nlp.vocab)
+
+        initial_brackets = r"\(\[\{<"
+        final_brackets = r"\)\]\}>"
+
+        en_nlp.tokenizer.token_match = re.compile(
+            rf"[{initial_brackets}][-\w_']+[?!,][{final_brackets}]"
+        ).match
+        en_nlp.tokenizer.add_special_case(
+            "wanna", [{ORTH: "wan", NORM: "want"}, {ORTH: "na", NORM: "to"}]
+        )
+        en_nlp.tokenizer.add_special_case(
+            "dunno", [{ORTH: "dun", NORM: "don't"}, {ORTH: "no", NORM: "know"}]
+        )
+        en_nlp.tokenizer.add_special_case(
+            "woulda", [{ORTH: "would", NORM: "would"}, {ORTH: "a", NORM: "have"}]
+        )
+        en_nlp.tokenizer.add_special_case(
+            "sorta", [{ORTH: "sort", NORM: "sort"}, {ORTH: "a", NORM: "of"}]
+        )
+        en_nlp.tokenizer.add_special_case(
+            "kinda", [{ORTH: "kind", NORM: "kind"}, {ORTH: "a", NORM: "of"}]
+        )
+        en_nlp.tokenizer.add_special_case(
+            "coulda", [{ORTH: "could", NORM: "could"}, {ORTH: "a", NORM: "have"}]
+        )
+        en_nlp.tokenizer.add_special_case(
+            "shoulda", [{ORTH: "should", NORM: "should"}, {ORTH: "a", NORM: "have"}]
+        )
+        en_nlp.tokenizer.add_special_case(
+            "finna", [{ORTH: "fin", NORM: "fixing"}, {ORTH: "na", NORM: "to"}]
+        )
+        en_nlp.tokenizer.add_special_case(
+            "yknow", [{ORTH: "y", NORM: "you"}, {ORTH: "know", NORM: "know"}]
+        )
+        en_nlp.tokenizer.add_special_case(
+            "y'know", [{ORTH: "y'", NORM: "you"}, {ORTH: "know", NORM: "know"}]
+        )
+        en_nlp.add_pipe("en_re_tokenize", before="tagger")
+        en_nlp.add_pipe("en_bracketed_re_tokenize", before="tagger")
+        en_nlp.add_pipe("en_split_prefixes")
+        en_nlp.add_pipe("en_split_suffixes")
+        super().__init__(en_nlp, ignore_case)
+
+    def __call__(self, text: str) -> TokenizedText:
+        doc = self.tokenizer(text)
+        tokenized = " ".join([x.text for x in doc])
+        if self.ignore_case:
+            tokenized = tokenized.lower()
+        return TokenizedText(tokenized, tokenized, [])
+
+
 def en_spacy(ignore_case: bool = True):
-    name = "en_core_web_sm"
-    try:
-        en_nlp = spacy.load(name)
-    except OSError:
-        subprocess.call(["python", "-m", "spacy", "download", name], env=os.environ)
-        en_nlp = spacy.load(name)
-
-    @spacy.Language.factory("en_re_tokenize")
-    def en_re_tokenize(nlp, name):
-        return EnglishReTokenize(nlp.vocab)
-
-    @spacy.Language.factory("en_split_suffixes")
-    def en_split_suffixes(nlp, name):
-        return EnglishSplitSuffixes(nlp.vocab)
-
-    @spacy.Language.factory("en_split_prefixes")
-    def en_split_prefixes(nlp, name):
-        return EnglishSplitPrefixes(nlp.vocab)
-
-    @spacy.Language.factory("en_bracketed_re_tokenize")
-    def en_bracketed_re_tokenize(nlp, name):
-        return BracketedReTokenize(nlp.vocab)
-
-    initial_brackets = r"\(\[\{<"
-    final_brackets = r"\)\]\}>"
-
-    en_nlp.tokenizer.token_match = re.compile(
-        rf"[{initial_brackets}][-\w_']+[?!,][{final_brackets}]"
-    ).match
-    en_nlp.tokenizer.add_special_case(
-        "wanna", [{ORTH: "wan", NORM: "want"}, {ORTH: "na", NORM: "to"}]
-    )
-    en_nlp.tokenizer.add_special_case(
-        "dunno", [{ORTH: "dun", NORM: "don't"}, {ORTH: "no", NORM: "know"}]
-    )
-    en_nlp.tokenizer.add_special_case(
-        "woulda", [{ORTH: "would", NORM: "would"}, {ORTH: "a", NORM: "have"}]
-    )
-    en_nlp.tokenizer.add_special_case(
-        "sorta", [{ORTH: "sort", NORM: "sort"}, {ORTH: "a", NORM: "of"}]
-    )
-    en_nlp.tokenizer.add_special_case(
-        "kinda", [{ORTH: "kind", NORM: "kind"}, {ORTH: "a", NORM: "of"}]
-    )
-    en_nlp.tokenizer.add_special_case(
-        "coulda", [{ORTH: "could", NORM: "could"}, {ORTH: "a", NORM: "have"}]
-    )
-    en_nlp.tokenizer.add_special_case(
-        "shoulda", [{ORTH: "should", NORM: "should"}, {ORTH: "a", NORM: "have"}]
-    )
-    en_nlp.tokenizer.add_special_case(
-        "finna", [{ORTH: "fin", NORM: "fixing"}, {ORTH: "na", NORM: "to"}]
-    )
-    en_nlp.tokenizer.add_special_case(
-        "yknow", [{ORTH: "y", NORM: "you"}, {ORTH: "know", NORM: "know"}]
-    )
-    en_nlp.tokenizer.add_special_case(
-        "y'know", [{ORTH: "y'", NORM: "you"}, {ORTH: "know", NORM: "know"}]
-    )
-    en_nlp.add_pipe("en_re_tokenize", before="tagger")
-    en_nlp.add_pipe("en_bracketed_re_tokenize", before="tagger")
-    en_nlp.add_pipe("en_split_prefixes")
-    en_nlp.add_pipe("en_split_suffixes")
-    return en_nlp
+    if not SPACY_AVAILABLE:
+        raise ImportError("Please install spacy support via `conda install -c conda-forge spacy`")
+    return EnglishTokenizer(ignore_case)

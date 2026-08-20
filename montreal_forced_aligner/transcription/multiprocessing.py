@@ -684,7 +684,7 @@ class SpeechbrainAsrFunction(KaldiFunction):
             for i, u_id in enumerate(batch.utterance_id):
                 text = predicted_words[i]
                 if self.tokenizer is not None:
-                    text = self.tokenizer(text)[0]
+                    text = self.tokenizer(text).normalized_text
                 self.callback((int(u_id), text))
             del predicted_words
             del predicted_tokens
@@ -1005,7 +1005,7 @@ class WhisperAsrFunction(KaldiFunction):
                     for seg in segments:
                         seg["text"] = seg["text"].strip()
                         if self.tokenizer is not None:
-                            seg["text"] = self.tokenizer(seg["text"])[0]
+                            seg["text"] = self.tokenizer(seg["text"]).normalized_text
                         texts.append(seg["text"])
                         b = round(vad_result.utterance_begin + seg["start"], 3)
                         e = round(vad_result.utterance_begin + seg["end"], 3)

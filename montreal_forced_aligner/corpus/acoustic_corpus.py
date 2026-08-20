@@ -40,7 +40,6 @@ from montreal_forced_aligner.corpus.multiprocessing import (
 from montreal_forced_aligner.data import DatabaseImportData, WordType
 from montreal_forced_aligner.db import (
     Corpus,
-    File,
     PhoneInterval,
     ReferencePhoneInterval,
     SoundFile,
@@ -96,7 +95,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         Stop check for loading the corpus
     """
 
-    def __init__(self, audio_directory: typing.Optional[typing.Union[Path, str]] = None, **kwargs):
+    def __init__(self, audio_directory: typing.Optional[os.PathLike] = None, **kwargs):
         super().__init__(**kwargs)
         self.audio_directory = audio_directory
         self.sound_file_errors = []
@@ -294,12 +293,10 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         with self.session() as session:
             total_count = (
                 session.query(sqlalchemy.func.count(Utterance.id))
-                .filter(Utterance.ignored == False)
+                .filter(Utterance.ignored == False)  # noqa
                 .scalar()
             )
-        for _ in run_kaldi_function(
-            FinalFeatureFunction, arguments, total_count=total_count
-        ):
+        for _ in run_kaldi_function(FinalFeatureFunction, arguments, total_count=total_count):
             pass
         with self.session() as session:
             update_mapping = {}
@@ -507,7 +504,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         with self.session() as session:
             total_count = (
                 session.query(sqlalchemy.func.count(Utterance.id))
-                .filter(Utterance.ignored == False)
+                .filter(Utterance.ignored == False)  # noqa
                 .scalar()
             )
         update_mapping = []
@@ -944,8 +941,8 @@ class AcousticCorpusPronunciationMixin(
 
     def __init__(
         self,
-        reference_directory: typing.Optional[typing.Union[Path, str]] = None,
-        custom_mapping_path: typing.Optional[typing.Union[Path, str]] = None,
+        reference_directory: typing.Optional[os.PathLike] = None,
+        custom_mapping_path: typing.Optional[os.PathLike] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)

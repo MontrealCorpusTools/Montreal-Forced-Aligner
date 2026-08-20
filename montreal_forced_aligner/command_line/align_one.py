@@ -123,7 +123,6 @@ def align_one_function(
             lexicon_compiler,
             tokenizer,
             g2p_model,
-            language=acoustic_model.language,
         )
         utt = KalpyUtterance(seg, normalized_text)
         utt.generate_mfccs(acoustic_model.mfcc_computer)

@@ -108,7 +108,7 @@ def transcribe_utterance_online_whisper(
         texts.append(seg["text"].strip())
     text = " ".join(texts)
     if tokenizer is not None:
-        text = tokenizer(text)[0]
+        text = tokenizer(text).normalized_text
     return text.strip()
 
 
@@ -130,5 +130,5 @@ def transcribe_utterance_online_speechbrain(
     predicted_words, predicted_tokens = model.transcribe_batch(waveform, lens)
     text = predicted_words[0]
     if tokenizer is not None:
-        text = tokenizer(text)[0]
+        text = tokenizer(text).normalized_text
     return text

@@ -490,7 +490,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         """
         self._load_alignments(reference_directory, WorkflowType.reference)
 
-    def load_test_alignments(self, directory: typing.Union[Path, str]) -> None:
+    def load_test_alignments(self, directory: os.PathLike) -> None:
         """
         Load alignments to use in alignment evaluation from a directory
 
@@ -502,7 +502,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         """
         self._load_alignments(directory, WorkflowType.alignment)
 
-    def load_mapping(self, custom_mapping_path: typing.Union[Path, str]):
+    def load_mapping(self, custom_mapping_path: os.PathLike):
         mapping = load_evaluation_mapping(custom_mapping_path)
         with self.session() as session:
             extra_phones = {
@@ -1191,6 +1191,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     row = [*row]
                     writer.writerow(row)
         logger.debug(f"Alignment evaluation took {time.time() - all_begin} seconds")
+
     def _apply_ignore_oovs(self, session: Session, *, force: bool = False) -> None:
         """Mark utterances as ignored if their file contains OOV tokens.
 
