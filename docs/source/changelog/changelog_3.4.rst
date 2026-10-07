@@ -5,7 +5,7 @@
 3.4 Changelog
 *************
 
-3.4.1
+3.4.3
 -----
 
 - Fixed a bug that prevented speaker adaptation from running :github_issue:`974`
