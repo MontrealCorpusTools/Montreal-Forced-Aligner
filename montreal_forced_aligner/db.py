@@ -1741,7 +1741,9 @@ class Utterance(MfaSqlBase):
     begin = Column(Float, nullable=False, index=True)
     end = Column(Float, nullable=False)
     _duration = sqlalchemy.orm.deferred(
-        Column("duration", Float, sqlalchemy.Computed('"end" - "begin"'), index=True)
+        Column(
+            "duration", Float, sqlalchemy.Computed('"end" - "begin"', persisted=True), index=True
+        )
     )
     channel = Column(Integer, nullable=False)
     num_frames = Column(Integer)
@@ -1780,7 +1782,9 @@ class Utterance(MfaSqlBase):
         Column(
             "kaldi_id",
             String,
-            sqlalchemy.Computed("CAST(speaker_id AS text)|| '-' ||CAST(id AS text)"),
+            sqlalchemy.Computed(
+                "CAST(speaker_id AS text)|| '-' ||CAST(id AS text)", persisted=True
+            ),
             unique=True,
         )
     )
@@ -2022,7 +2026,9 @@ class PhoneInterval(MfaSqlBase):
     end_error = Column(Float, nullable=True)
     intensity = Column(Float, nullable=True)
     _duration = sqlalchemy.orm.deferred(
-        Column("duration", Float, sqlalchemy.Computed('"end" - "begin"'), index=True)
+        Column(
+            "duration", Float, sqlalchemy.Computed('"end" - "begin"', persisted=True), index=True
+        )
     )
 
     phone_id = Column(
@@ -2132,7 +2138,9 @@ class ReferencePhoneInterval(MfaSqlBase):
     begin = Column(Float, nullable=False, index=True)
     end = Column(Float, nullable=False)
     _duration = sqlalchemy.orm.deferred(
-        Column("duration", Float, sqlalchemy.Computed('"end" - "begin"'), index=True)
+        Column(
+            "duration", Float, sqlalchemy.Computed('"end" - "begin"', persisted=True), index=True
+        )
     )
 
     phone_id = Column(
@@ -2239,7 +2247,7 @@ class WordInterval(MfaSqlBase):
     begin = Column(Float, nullable=False, index=True)
     end = Column(Float, nullable=False)
     _duration = sqlalchemy.orm.deferred(
-        Column("duration", Float, sqlalchemy.Computed('"end" - "begin"'))
+        Column("duration", Float, sqlalchemy.Computed('"end" - "begin"', persisted=True))
     )
 
     utterance_id = Column(
@@ -2348,7 +2356,7 @@ class ReferenceWordInterval(MfaSqlBase):
     begin = Column(Float, nullable=False, index=True)
     end = Column(Float, nullable=False)
     _duration = sqlalchemy.orm.deferred(
-        Column("duration", Float, sqlalchemy.Computed('"end" - "begin"'))
+        Column("duration", Float, sqlalchemy.Computed('"end" - "begin"', persisted=True))
     )
 
     utterance_id = Column(
