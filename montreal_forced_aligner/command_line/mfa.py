@@ -51,6 +51,8 @@ class MfaGroup(click.RichGroup):
             args.insert(1, t)
         if args[0] == "models":
             args[0] = "model"
+        if args[0].endswith("_legacy"):
+            args[0] = args[0].replace("_legacy", "")
         return super().resolve_command(ctx, args)
 
 

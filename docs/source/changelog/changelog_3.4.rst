@@ -5,6 +5,13 @@
 3.4 Changelog
 *************
 
+3.4.1
+-----
+
+- Fixed a bug that prevented speaker adaptation from running :github_issue:`974`
+- Fixed a bug for not using log-duration in phone duration deviation calculations :github_issue:`973`
+- Fixed a bug in exporting the :code:`alignment_analysis.csv` file on alignment runs :github_issue:`972`
+
 3.4.0
 -----
 

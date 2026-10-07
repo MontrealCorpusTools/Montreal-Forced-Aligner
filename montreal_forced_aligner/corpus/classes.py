@@ -6,7 +6,6 @@ import os
 import typing
 import unicodedata
 from dataclasses import dataclass
-from typing import Optional, Union
 
 from kalpy.gmm.data import CtmInterval
 from praatio import textgrid
@@ -55,10 +54,10 @@ class FileData:
     def parse_file(
         cls,
         file_name: str,
-        wav_path: Optional[str],
-        text_path: Optional[str],
+        wav_path: typing.Optional[str],
+        text_path: typing.Optional[str],
         relative_path: str,
-        speaker_characters: Union[int, str],
+        speaker_characters: typing.Union[int, str],
     ):
         """
         Parse a collection of sound file and transcription file into a File

@@ -381,6 +381,11 @@ def test_align_multilingual(
             phone_tier = tg.getTier("phones")
             labels = {x.label for x in phone_tier.entries}
             assert "spn" not in labels
+    corpus_name = multilingual_ipa_corpus_dir.stem
+    temp_path = temp_dir.joinpath(corpus_name, corpus_name, "split2", "trans.1.1.scp")
+    assert not temp_path.exists()
+    alignment_analysis_path = output_dir.joinpath("alignment_analysis.csv")
+    assert alignment_analysis_path.exists()
 
 
 def test_align_multilingual_hf(

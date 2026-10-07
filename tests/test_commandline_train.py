@@ -5,7 +5,7 @@ import pytest
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
 from montreal_forced_aligner.exceptions import PhoneGroupTopologyMismatchError
-from montreal_forced_aligner.models import MfaAlignmentModel
+from montreal_forced_aligner.models import AcousticModel, MfaAlignmentModel
 
 
 def test_train_acoustic_hf_output(
@@ -58,6 +58,7 @@ def test_train_acoustic_hf_output(
     assert os.path.exists(output_model)
 
     model = MfaAlignmentModel(output_model, output_model)
+    assert model.meta["features"]["uses_speaker_adaptation"]
     model.validate()
     print(model.model_card_path)
     with open(model.model_card_path, "r", encoding="utf8") as f:
@@ -140,3 +141,5 @@ def test_train_and_align_basic_speaker_dict(
     assert not result.return_value
     assert os.path.exists(textgrid_output_model_path)
     assert os.path.exists(output_directory)
+    acoustic_model = AcousticModel(textgrid_output_model_path)
+    assert acoustic_model.meta["features"]["uses_speaker_adaptation"]
