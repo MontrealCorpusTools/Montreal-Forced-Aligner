@@ -13,7 +13,7 @@ dependencies:
   - pynini
   - pgvector
   - pgvector-python
-  - postgresql<18.4
+  - postgresql<18.0
   - scikit-learn
   - hdbscan
   - psycopg2

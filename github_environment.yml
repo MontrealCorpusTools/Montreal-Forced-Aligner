@@ -21,7 +21,7 @@ dependencies:
   - pgvector
   - pgvector-python
   - sqlite
-  - postgresql<18.4
+  - postgresql<18.0
   - psycopg2
   - click
   - setuptools_scm
