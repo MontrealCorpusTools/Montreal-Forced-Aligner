@@ -1781,7 +1781,7 @@ class Utterance(MfaSqlBase):
             "kaldi_id",
             String,
             sqlalchemy.Computed("CAST(speaker_id AS text)|| '-' ||CAST(id AS text)"),
-            index=True,
+            unique=True,
         )
     )
     job_id = Column(Integer, ForeignKey("job.id"), index=True, nullable=True)
