@@ -272,6 +272,24 @@ def test_24bit_wav(transcribe_corpus_24bit_dir, basic_dict_path, generated_dir, 
     corpus.cleanup_connections()
 
 
+def test_words_tier_only(words_tier_only_corpus_dir, generated_dir):
+    output_directory = generated_dir.joinpath("corpus_tests", "words_tier_only")
+    config.TEMPORARY_DIRECTORY = output_directory
+    config.USE_POSTGRES = False
+    if os.path.exists(output_directory):
+        shutil.rmtree(output_directory, ignore_errors=True)
+
+    corpus = AcousticCorpus(
+        corpus_directory=words_tier_only_corpus_dir,
+    )
+    corpus.load_corpus()
+    assert corpus.num_utterances == 1
+    assert len([x for x in corpus.utterances() if not x.ignored]) == 1
+    assert len([x for x in corpus.utterances() if x.features is not None]) == 1
+    corpus.cleanup_connections()
+    config.USE_POSTGRES = True
+
+
 def test_short_segments(shortsegments_corpus_dir, generated_dir, db_setup):
     output_directory = generated_dir.joinpath("corpus_tests", "short_segments")
     config.TEMPORARY_DIRECTORY = output_directory

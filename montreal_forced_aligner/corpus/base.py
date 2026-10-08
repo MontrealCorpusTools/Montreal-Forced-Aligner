@@ -250,6 +250,19 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 if word.id > max_word_id:
                     max_word_id = word.id
             max_word_id += 1
+            if "<eps>" not in word_mapping:
+                new_words.append(
+                    {
+                        "id": max_word_id,
+                        "mapping_id": max_word_id - 1,
+                        "word": "<eps>",
+                        "dictionary_id": 1,
+                        "word_type": WordType.silence,
+                        "included": False,
+                        "count": 0,
+                    }
+                )
+                max_word_id += 1
             utterance_mapping = []
             for root, _, files in os.walk(reference_directory, followlinks=True):
                 if root.startswith("."):  # Ignore hidden directories

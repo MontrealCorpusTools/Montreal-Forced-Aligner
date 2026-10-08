@@ -1038,7 +1038,7 @@ class AnalyzeAlignmentsFunction(KaldiFunction):
                     if pi.phone_goodness is not None:
                         log_like_sum += pi.phone_goodness
                     m, sd = phones[pi.phone_id]
-                    duration_zscore = abs((pi.duration - m) / sd)
+                    duration_zscore = abs((math.log(pi.duration) - m) / sd)
                     if duration_zscore > duration_zscore_max:
                         duration_zscore_max = duration_zscore
                     if pi.duration < 0.011:

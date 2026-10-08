@@ -796,6 +796,16 @@ def shortsegments_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
     return path
 
 
+@pytest.fixture()
+def words_tier_only_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
+    path = corpus_root_dir.joinpath("test_words_tier_only")
+    os.makedirs(path, exist_ok=True)
+    name = "words_tier_only"
+    shutil.copyfile(wav_dir.joinpath("dummy.wav"), path.joinpath(name + ".wav"))
+    shutil.copyfile(textgrid_dir.joinpath(name + ".TextGrid"), path.joinpath(name + ".TextGrid"))
+    return path
+
+
 @pytest.fixture(scope="session")
 def train_metadata_path(test_dir):
     return test_dir.joinpath("model_metadata.json")

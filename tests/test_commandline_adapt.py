@@ -3,6 +3,7 @@ import os
 import click.testing
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
+from montreal_forced_aligner.models import AcousticModel
 
 
 def test_adapt_basic(
@@ -29,15 +30,15 @@ def test_adapt_basic(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
         print(result.exc_info)
         raise result.exception
     assert os.path.exists(adapted_model_path)
+    acoustic_model = AcousticModel(adapted_model_path)
+    assert acoustic_model.meta["features"]["uses_speaker_adaptation"]
 
 
 def test_adapt_multilingual(
@@ -68,12 +69,12 @@ def test_adapt_multilingual(
         "test",
     ]
     command = [str(x) for x in command]
-    result = click.testing.CliRunner().invoke(
-        mfa_cli, command, catch_exceptions=True
-    )
+    result = click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=True)
     print(result.stdout)
     print(result.stderr)
     if result.exception:
         print(result.exc_info)
         raise result.exception
     assert os.path.exists(adapted_model_path)
+    acoustic_model = AcousticModel(adapted_model_path)
+    assert acoustic_model.meta["features"]["uses_speaker_adaptation"]

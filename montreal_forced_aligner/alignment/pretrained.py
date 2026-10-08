@@ -85,6 +85,7 @@ class PretrainedAligner(TranscriberMixin, TopLevelMfaWorker):
         self.fine_tune = fine_tune
         self.fine_tune_boundary_tolerance = fine_tune_boundary_tolerance
         self.final_alignment = True
+        self.output_analysis = True
         self.kalpy_aligner = None
 
     def setup_acoustic_model(self) -> None:

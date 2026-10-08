@@ -282,8 +282,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         if acoustic_model is not None:
             acoustic_model.export_model(self.working_directory)
         try:
-            self.uses_speaker_adaptation = False
-
             self.compile_train_graphs()
             self._align()
             self.collect_alignments()
