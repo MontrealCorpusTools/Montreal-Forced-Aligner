@@ -14,6 +14,7 @@ from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from queue import Queue
 
+import praatio.utilities.errors
 import pynini
 import pywrapfst
 from kalpy.gmm.data import to_tg_interval
@@ -307,8 +308,13 @@ class CorpusTokenizer(AcousticCorpusMixin, TopLevelMfaWorker, DictionaryMixin):
                             minT=0,
                             maxT=round(duration, 5),
                         )
-
-                        tg.addTier(tier)
+                        try:
+                            tg.addTier(tier)
+                        except praatio.utilities.errors.TierNameExistsError:
+                            logger.warning(speaker)
+                            logger.warning(file.speakers)
+                            logger.warning(tier)
+                            raise
                     tg.save(output_path, includeBlankSpaces=True, format=output_format)
 
     def tokenize_arguments(self) -> typing.List[TokenizerArguments]:
