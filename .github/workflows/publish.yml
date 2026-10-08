@@ -8,14 +8,17 @@ jobs:
   build-n-publish:
     name: Build and publish to PyPI
     runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
     steps:
       - uses: actions/checkout@main
         with:
           fetch-depth: 0
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v3
+      - name: Set up Python
+        uses: actions/setup-python@v7
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
       - name: Install pypa/build
         run: >-
@@ -35,6 +38,3 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
