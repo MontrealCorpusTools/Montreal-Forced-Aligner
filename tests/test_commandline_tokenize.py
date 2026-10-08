@@ -1,12 +1,10 @@
 import os
 
 import click.testing
-import pytest
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
-@pytest.mark.skip
 def test_tokenize_pretrained(
     japanese_tokenizer_model, japanese_cv_dir, temp_dir, generated_dir, db_setup
 ):
@@ -32,7 +30,6 @@ def test_tokenize_pretrained(
     assert os.path.exists(out_directory)
 
 
-@pytest.mark.skip
 def test_tokenize_unicode(
     japanese_tokenizer_model, japanese_cv_japanese_name_dir, temp_dir, generated_dir, db_setup
 ):
@@ -58,7 +55,6 @@ def test_tokenize_unicode(
     assert os.path.exists(out_directory)
 
 
-@pytest.mark.skip
 def test_train_tokenizer(combined_corpus_dir, temp_dir, generated_dir, db_setup):
     output_path = generated_dir.joinpath("test_tokenizer.zip")
     command = [
@@ -81,7 +77,6 @@ def test_train_tokenizer(combined_corpus_dir, temp_dir, generated_dir, db_setup)
     assert os.path.exists(output_path)
 
 
-@pytest.mark.skip
 def test_train_tokenizer_phonetisaurus(combined_corpus_dir, temp_dir, generated_dir, db_setup):
     output_path = generated_dir.joinpath("test_tokenizer_model_phonetisaurus.zip")
     command = [
@@ -107,7 +102,6 @@ def test_train_tokenizer_phonetisaurus(combined_corpus_dir, temp_dir, generated_
     assert os.path.exists(output_path)
 
 
-@pytest.mark.skip
 def test_tokenize_textgrid(
     multilingual_ipa_tg_corpus_dir,
     test_tokenizer_model,
@@ -137,7 +131,6 @@ def test_tokenize_textgrid(
     assert os.path.exists(output_directory)
 
 
-@pytest.mark.skip
 def test_tokenize_textgrid_phonetisaurus(
     multilingual_ipa_tg_corpus_dir,
     test_tokenizer_model_phonetisaurus,

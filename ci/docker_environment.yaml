@@ -26,7 +26,7 @@ dependencies:
   - pkg-config
   - pgvector
   - pgvector-python
-  - postgresql<18.0
+  - postgresql
   - psycopg2
   - click
   - pytorch<2.9

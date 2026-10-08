@@ -116,6 +116,7 @@ class FileData:
         ensure_root_speaker: bool, defaults to False
             Flag for ensuring that root_speaker is used as the speaker name
         """
+        speaker_name = root_speaker
         if self.text_type == TextFileType.LAB:
             try:
                 text = load_text(self.text_path)
@@ -149,6 +150,11 @@ class FileData:
                 self.speaker_ordering.append(root_speaker)
             phone_data = {}
             word_data = {}
+            has_phone_tier = False
+            for i, tier_name in enumerate(tg.tierNames):
+                if tier_name.endswith("phones"):
+                    has_phone_tier = True
+                    break
             for i, tier_name in enumerate(tg.tierNames):
                 if tier_name.endswith("phones"):
                     if " - " in tier_name:
@@ -167,7 +173,7 @@ class FileData:
                             continue
                         end = min(end, duration)
                         phone_data[speaker_name].append(CtmInterval(begin, end, text))
-                elif tier_name.endswith("words"):
+                elif tier_name.endswith("words") and has_phone_tier:
                     if " - " in tier_name:
                         speaker_name = tier_name.split(" - ")[0]
                     else:
@@ -184,10 +190,13 @@ class FileData:
                             continue
                         end = min(end, duration)
                         word_data[speaker_name].append(CtmInterval(begin, end, text))
+            speaker_channel_mapping = {}
             for i, tier_name in enumerate(tg.tierNames):
                 if tier_name.lower() == "notes":
                     continue
-                if tier_name.endswith("words") or tier_name.endswith("phones"):
+                if has_phone_tier and (
+                    tier_name.endswith("words") or tier_name.endswith("phones")
+                ):
                     if root_speaker not in self.speaker_ordering:
                         self.speaker_ordering.append(root_speaker)
                     continue
@@ -198,12 +207,14 @@ class FileData:
                     speaker_name = tier_name.strip()
                 else:
                     speaker_name = root_speaker
-                if speaker_name in {"utterance", "text", "utterances", "texts"}:
+                if speaker_name in {"utterance", "text", "utterances", "texts", "words", "word"}:
                     speaker_name = root_speaker
-                self.speaker_ordering.append(speaker_name)
+                if speaker_name not in self.speaker_ordering:
+                    self.speaker_ordering.append(speaker_name)
                 channel = 0
                 if num_channels == 2 and i >= num_tiers / 2:
                     channel = 1
+                speaker_channel_mapping[speaker_name] = channel
                 for begin, end, text in ti.entries:
                     text = text.strip()
                     if not text:
@@ -233,7 +244,7 @@ class FileData:
                         begin=0,
                         end=duration,
                         text=" ".join(wi.label for wi in word_intervals),
-                        channel=1,  # FIXME assuming channel
+                        channel=speaker_channel_mapping[speaker_name],
                     )
                     self.utterances.append(current_utt)
             for utt in self.utterances:

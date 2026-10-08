@@ -22,7 +22,7 @@ dependencies:
   - pgvector
   - pgvector-python
   - sqlite
-  - postgresql<18.0
+  - postgresql
   - psycopg2
   - click
   - setuptools_scm
