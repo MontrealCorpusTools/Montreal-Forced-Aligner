@@ -19,7 +19,6 @@ from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional
 
-import praatio
 from kalpy.gmm.data import to_tg_interval
 from praatio import textgrid
 from sqlalchemy.orm import joinedload, selectinload
@@ -328,13 +327,7 @@ class TranscriptionEvaluationMixin:
                             maxT=round(duration, 5),
                         )
 
-                        try:
-                            tg.addTier(tier)
-                        except praatio.utilities.errors.TierNameExistsError:
-                            logger.warning(speaker)
-                            logger.warning(file.speakers)
-                            logger.warning(tier)
-                            raise
+                        tg.addTier(tier)
                     tg.save(output_path, includeBlankSpaces=True, format=output_format)
 
 
