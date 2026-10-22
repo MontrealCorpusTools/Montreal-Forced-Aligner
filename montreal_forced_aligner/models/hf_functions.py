@@ -187,11 +187,14 @@ def create_corpus_information(corpus: AcousticCorpusPronunciationMixin, multiple
                 with mfa_open(speaker_info_path, "r") as f:
                     reader = csv.reader(f, delimiter="\t")
                     for line in reader:
-                        if line[2].lower().startswith("f"):
-                            num_female += 1
-                        elif line[2].lower().startswith("m"):
-                            num_male += 1
-                        else:
+                        try:
+                            if line[2].lower().startswith("f"):
+                                num_female += 1
+                            elif line[2].lower().startswith("m"):
+                                num_male += 1
+                            else:
+                                num_unspecified += 1
+                        except IndexError:
                             num_unspecified += 1
                 data["num_female"] = num_female
                 data["num_male"] = num_male
