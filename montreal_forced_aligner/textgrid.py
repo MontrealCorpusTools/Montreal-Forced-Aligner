@@ -13,6 +13,7 @@ import re
 import sys
 import traceback
 import typing
+from itertools import groupby
 from pathlib import Path
 from typing import Dict, List
 
@@ -390,6 +391,7 @@ def construct_textgrid_output(
     output_format: str = TextgridFormats.SHORT_TEXTGRID,
     include_original_text: bool = False,
 ):
+    file_ids = list(file_batch.keys())
     phone_interval_query = (
         sqlalchemy.select(
             PhoneInterval.begin, PhoneInterval.end, Phone.phone, Speaker.name, Utterance.file_id
@@ -399,7 +401,7 @@ def construct_textgrid_output(
         .join(PhoneInterval.utterance)
         .join(Utterance.speaker)
         .filter(PhoneInterval.duration > 0)
-        .filter(Utterance.file_id.in_(list(file_batch.keys())))
+        .filter(Utterance.file_id.in_(file_ids))
     )
     word_interval_query = (
         sqlalchemy.select(
@@ -410,110 +412,86 @@ def construct_textgrid_output(
         .join(WordInterval.utterance)
         .join(Utterance.speaker)
         .filter(WordInterval.duration > 0)
-        .filter(Utterance.file_id.in_(list(file_batch.keys())))
+        .filter(Utterance.file_id.in_(file_ids))
     )
     if cleanup_textgrids:
         phone_interval_query = phone_interval_query.filter(Phone.phone_type != PhoneType.silence)
         word_interval_query = word_interval_query.filter(Word.word_type != WordType.silence)
-    phone_intervals = session.execute(
-        phone_interval_query.order_by(Utterance.file_id, PhoneInterval.begin)
+
+    def grouped_rows(rows):
+        for file_id, group in groupby(rows, key=lambda row: row[-1]):
+            yield file_id, [row[:-1] for row in group]
+
+    def consume_file_group(groups, current_group, file_id):
+        while current_group is not None and current_group[0] < file_id:
+            current_group = next(groups, None)
+        if current_group is not None and current_group[0] == file_id:
+            return current_group[1], next(groups, None)
+        return [], current_group
+
+    phone_groups = grouped_rows(
+        session.execute(phone_interval_query.order_by(Utterance.file_id, PhoneInterval.begin))
     )
-    word_intervals = session.execute(
-        word_interval_query.order_by(Utterance.file_id, WordInterval.begin)
+    word_groups = grouped_rows(
+        session.execute(word_interval_query.order_by(Utterance.file_id, WordInterval.begin))
     )
-    utterances = None
+    phone_group = next(phone_groups, None)
+    word_group = next(word_groups, None)
+
+    utterance_groups = iter(())
     if include_original_text:
-        utterances = session.execute(
+        utterance_query = (
             sqlalchemy.select(
                 Utterance.begin, Utterance.end, Utterance.text, Speaker.name, Utterance.file_id
             )
             .execution_options(yield_per=1000)
             .join(Utterance.speaker)
-            .filter(Utterance.file_id.in_(list(file_batch.keys())))
+            .filter(Utterance.file_id.in_(file_ids))
             .order_by(Utterance.file_id)
         )
-    pi_current_file_id = None
-    wi_current_file_id = None
-    u_current_file_id = None
-    word_data = []
-    phone_data = []
-    utterance_data = []
+        utterance_groups = grouped_rows(session.execute(utterance_query))
+    utterance_group = next(utterance_groups, None)
 
-    def process_phone_data():
-        for beg, end, p, speaker_name in phone_data:
+    for file_id, file_info in sorted(file_batch.items()):
+        phone_rows, phone_group = consume_file_group(phone_groups, phone_group, file_id)
+        word_rows, word_group = consume_file_group(word_groups, word_group, file_id)
+        utterance_rows, utterance_group = consume_file_group(
+            utterance_groups, utterance_group, file_id
+        )
+        data = {}
+
+        def ensure_speaker(speaker_name):
             if speaker_name not in data:
                 data[speaker_name] = {"words": [], "phones": []}
                 if include_original_text:
                     data[speaker_name]["utterances"] = []
-            data[speaker_name]["phones"].append(CtmInterval(beg, end, p))
+            return data[speaker_name]
 
-    def process_word_data():
-        for beg, end, w, speaker_name in word_data:
+        for begin, end, phone, speaker_name in phone_rows:
+            ensure_speaker(speaker_name)["phones"].append(CtmInterval(begin, end, phone))
+
+        for begin, end, word, speaker_name in word_rows:
+            word_intervals = ensure_speaker(speaker_name)["words"]
             if (
                 cleanup_textgrids
-                and data[speaker_name]["words"]
-                and beg - data[speaker_name]["words"][-1].end < 0.02
+                and word_intervals
+                and begin - word_intervals[-1].end < 0.02
                 and clitic_marker
                 and (
-                    data[speaker_name]["words"][-1].label.endswith(clitic_marker)
-                    or w.startswith(clitic_marker)
+                    word_intervals[-1].label.endswith(clitic_marker)
+                    or word.startswith(clitic_marker)
                 )
             ):
-                data[speaker_name]["words"][-1].end = end
-                data[speaker_name]["words"][-1].label += w
+                word_intervals[-1].end = end
+                word_intervals[-1].label += word
             else:
-                data[speaker_name]["words"].append(CtmInterval(beg, end, w))
+                word_intervals.append(CtmInterval(begin, end, word))
 
-    def process_utterance_data():
-        for beg, end, u, speaker_name in utterance_data:
-            data[speaker_name]["utterances"].append(CtmInterval(beg, end, u))
-
-    while True:
-        data = {}
-        for pi_begin, pi_end, phone, pi_speaker_name, pi_file_id in phone_intervals:
-            if pi_current_file_id is None:
-                pi_current_file_id = pi_file_id
-            if pi_file_id != pi_current_file_id:
-                process_phone_data()
-                phone_data = [(pi_begin, pi_end, phone, pi_speaker_name)]
-                current_file_id = pi_current_file_id
-                pi_current_file_id = pi_file_id
-                break
-            phone_data.append((pi_begin, pi_end, phone, pi_speaker_name))
-        else:
-            if phone_data:
-                process_phone_data()
-                current_file_id = pi_current_file_id
-                phone_data = []
-            else:
-                break
-        for wi_begin, wi_end, word, wi_speaker_name, wi_file_id in word_intervals:
-            if wi_current_file_id is None:
-                wi_current_file_id = wi_file_id
-            if wi_file_id != wi_current_file_id:
-                process_word_data()
-                word_data = [(wi_begin, wi_end, word, wi_speaker_name)]
-                wi_current_file_id = wi_file_id
-                break
-            word_data.append((wi_begin, wi_end, word, wi_speaker_name))
-        else:
-            if word_data:
-                process_word_data()
         if include_original_text:
-            for u_begin, u_end, text, u_speaker_name, u_file_id in utterances:
-                if u_current_file_id is None:
-                    u_current_file_id = u_file_id
-                if u_file_id != u_current_file_id:
-                    process_utterance_data()
-                    utterance_data = [(u_begin, u_end, text, u_speaker_name)]
-                    u_current_file_id = u_file_id
-                    break
-                utterance_data.append((u_begin, u_end, text, u_speaker_name))
-            else:
-                if utterance_data:
-                    process_utterance_data()
+            for begin, end, text, speaker_name in utterance_rows:
+                ensure_speaker(speaker_name)["utterances"].append(CtmInterval(begin, end, text))
 
-        file_name, relative_path, file_duration, text_file_path = file_batch[current_file_id]
+        file_name, relative_path, file_duration, text_file_path = file_info
         output_path = construct_output_path(
             file_name, relative_path, output_directory, text_file_path, output_format
         )

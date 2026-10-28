@@ -1,0 +1,146 @@
+File type = "ooTextFile"
+Object class = "TextGrid"
+
+xmin = 0
+xmax = 11.64
+tiers? <exists>
+size = 3
+item []:
+    item [1]:
+        class = "IntervalTier"
+        name = "words"
+        xmin = 0
+        xmax = 11.64
+        intervals: size = 29
+        intervals [1]:
+            xmin = 0.0
+            xmax = 0.71
+            text = ""
+        intervals [2]:
+            xmin = 0.71
+            xmax = 0.81
+            text = "y"
+        intervals [3]:
+            xmin = 0.81
+            xmax = 1.02
+            text = "se"
+        intervals [4]:
+            xmin = 1.02
+            xmax = 1.6
+            text = "disipará"
+        intervals [5]:
+            xmin = 1.6
+            xmax = 1.75
+            text = "la"
+        intervals [6]:
+            xmin = 1.75
+            xmax = 2.22
+            text = "envidia"
+        intervals [7]:
+            xmin = 2.22
+            xmax = 2.37
+            text = "de"
+        intervals [8]:
+            xmin = 2.37
+            xmax = 3.0
+            text = "ephraim"
+        intervals [9]:
+            xmin = 3.0
+            xmax = 3.33
+            text = ""
+        intervals [10]:
+            xmin = 3.33
+            xmax = 3.44
+            text = "y"
+        intervals [11]:
+            xmin = 3.44
+            xmax = 3.67
+            text = "los"
+        intervals [12]:
+            xmin = 3.67
+            xmax = 4.21
+            text = "enemigos"
+        intervals [13]:
+            xmin = 4.21
+            xmax = 4.31
+            text = "de"
+        intervals [14]:
+            xmin = 4.31
+            xmax = 4.73
+            text = "judá"
+        intervals [15]:
+            xmin = 4.73
+            xmax = 5.13
+            text = "serán"
+        intervals [16]:
+            xmin = 5.13
+            xmax = 5.9
+            text = "talados"
+        intervals [17]:
+            xmin = 5.9
+            xmax = 6.36
+            text = ""
+        intervals [18]:
+            xmin = 6.36
+            xmax = 7.0
+            text = "ephraim"
+        intervals [19]:
+            xmin = 7.0
+            xmax = 7.03
+            text = ""
+        intervals [20]:
+            xmin = 7.03
+            xmax = 7.29
+            text = "no"
+        intervals [21]:
+            xmin = 7.29
+            xmax = 7.67
+            text = "tendrá"
+        intervals [22]:
+            xmin = 7.67
+            xmax = 8.18
+            text = "envidia"
+        intervals [23]:
+            xmin = 8.18
+            xmax = 8.48
+            text = "contra"
+        intervals [24]:
+            xmin = 8.48
+            xmax = 8.99
+            text = "judá"
+        intervals [25]:
+            xmin = 8.99
+            xmax = 9.29
+            text = ""
+        intervals [26]:
+            xmin = 9.29
+            xmax = 9.43
+            text = "ni"
+        intervals [27]:
+            xmin = 9.43
+            xmax = 9.93
+            text = "judá"
+        intervals [28]:
+            xmin = 9.93
+            xmax = 11.36
+            text = "afligirá"
+        intervals [29]:
+            xmin = 11.36
+            xmax = 11.64
+            text = ""
+    item [2]:
+        class = "IntervalTier"
+        name = "phones"
+        xmin = 0
+        xmax = 11.64
+        intervals: size = 0
+    item [3]:
+        class = "IntervalTier"
+        name = "utterances"
+        xmin = 0
+        xmax = 11.64
+        intervals: size = 1
+        intervals [1]:
+            xmin = 0.0
+            xmax = 11.64
+            text = "y se disipará la envidia de ephraim y los enemigos de judá serán talados ephraim no tendrá envidia contra judá ni judá afligirá"

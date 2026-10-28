@@ -1,0 +1,7 @@
+{
+  "mfa_version": "3.4.1",
+  "models": {
+    "dictionary/spanish_mfa.dict": "b0d63e1a12dc3e6bb7bc35399d4d6c7617d37e27817ebe33af7e78986c69236c",
+    "acoustic/spanish_mfa.zip": "287f0a6a0f0c38380e794ea92e1eb04d5d61a6c24c8cd795b832e00d7939f15f"
+  }
+}

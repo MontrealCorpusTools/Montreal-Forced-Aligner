@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-28",
+  "regression_tests_passed": 4,
+  "portable_cli": [
+    {
+      "version": "base",
+      "exit_code": 1,
+      "textgrids": 4
+    },
+    {
+      "version": "pr",
+      "exit_code": 0,
+      "textgrids": 9
+    }
+  ],
+  "portable_same_database_exports": {
+    "portable_export_base_clean": {
+      "error": "AssertionError",
+      "textgrids": 4,
+      "database_unchanged": true
+    },
+    "portable_export_base_raw": {
+      "error": null,
+      "textgrids": 9,
+      "database_unchanged": true
+    },
+    "portable_export_pr_clean": {
+      "error": null,
+      "textgrids": 9,
+      "database_unchanged": true
+    },
+    "portable_export_pr_raw": {
+      "error": null,
+      "textgrids": 9,
+      "database_unchanged": true
+    }
+  },
+  "fresh_public_inputs": {
+    "files": 9,
+    "transcripts_and_wav_bytes_match_original_test_inputs": true
+  },
+  "actual_export_function_ast_sha256": {
+    "base": [
+      "42bb5881621c89bc32acc376130331e0e346ddbaffb140c398848e1ffefc083a"
+    ],
+    "pr": [
+      "daf961583ec2c82095cc2c450730143f170b7ccfe48f21db86c28dc5af0057ad"
+    ]
+  }
+}

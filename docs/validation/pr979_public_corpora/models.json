@@ -1,0 +1,10 @@
+{
+  "acoustic": {
+    "name": "portuguese_mfa.zip",
+    "sha256": "8b85544d693f4d8202364d8ddda4c5d263942ae32dd4b4a6d4f8cc144a5a4a70"
+  },
+  "dictionary": {
+    "name": "portuguese_brazil_mfa.dict",
+    "sha256": "eb6f03ba5a774d12489f131179af554b8d359a5170057acaf9945517e76bef48"
+  }
+}

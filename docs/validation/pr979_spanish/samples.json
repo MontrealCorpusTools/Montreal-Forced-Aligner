@@ -1,0 +1,20 @@
+[
+  {
+    "id": "mls_es_10206_10282_000001",
+    "speaker": "mls_es_10206",
+    "duration": 11.64,
+    "original": "y se disipará la envidia de ephraim y los enemigos de judá serán talados ephraim no tendrá envidia contra judá ni judá afligirá",
+    "corrected": "y se disipará la envidia de ephraim y los enemigos de judá serán talados ephraim no tendrá envidia contra judá ni judá afligirá á ephraim",
+    "audio_sha256": "1bd382257ca3fdf3be649965bb7af6e4d46de6d7161df3317ac8f9af7ecfa0d8",
+    "mls_id": "10206_10282_000001"
+  },
+  {
+    "id": "mls_es_8882_10139_000000",
+    "speaker": "mls_es_8882",
+    "duration": 10.2,
+    "original": "pestañeado quedóse en donde estaba apoyándose apenas en su muleta y con los ojos clavados en su compañero como una víbora lista para abalanzarse",
+    "corrected": "quedóse en donde estaba apoyándose apenas en su muleta y con los ojos clavados en su compañero como una víbora lista para abalanzarse",
+    "audio_sha256": "b76a7ac9fc4561deda0613255f766b0189631c90ca28c2fd1becc1b6cb8399c7",
+    "mls_id": "8882_10139_000000"
+  }
+]
