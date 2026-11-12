@@ -4,24 +4,20 @@ from __future__ import annotations
 
 import re
 
+from montreal_forced_aligner.compat import ZH_AVAILABLE
 from montreal_forced_aligner.tokenization.classes import BaseTokenizer, TokenizedText
-
-try:
-    import hanziconv
-    import spacy_pkuseg
-    from dragonmapper.hanzi import to_pinyin
-
-    ZH_AVAILABLE = True
-except (ImportError, ModuleNotFoundError):
-    ZH_AVAILABLE = False
-    spacy_pkuseg = None
-    hanziconv = None
-    to_pinyin = None
 
 
 class ChineseTokenizer(BaseTokenizer):
     def __init__(self, ignore_case: bool = True):
+        import hanziconv
+        import spacy_pkuseg
+        from dragonmapper.hanzi import to_pinyin
+
         super().__init__(spacy_pkuseg.pkuseg(postag=True), ignore_case)
+        self.to_simplified = hanziconv.HanziConv.toSimplified
+        self.to_traditional = hanziconv.HanziConv.toTraditional
+        self.to_pinyin = to_pinyin
 
     def __call__(self, text: str) -> TokenizedText:
         for t in [
@@ -38,7 +34,7 @@ class ChineseTokenizer(BaseTokenizer):
         new_text = []
 
         # pkuseg was trained on simplified characters
-        simplified = hanziconv.HanziConv.toSimplified(text)
+        simplified = self.to_simplified(text)
         is_traditional = simplified != text
 
         morphs = self.tokenizer.cut(simplified)
@@ -48,7 +44,7 @@ class ChineseTokenizer(BaseTokenizer):
             if pos in {"w"} and normalized not in {"<", "(", "{", "["}:
                 continue
             m = re.search(r"[]})>][<({[]", normalized)
-            p = to_pinyin(normalized)
+            p = self.to_pinyin(normalized)
             if new_text and m:
                 new_text[-1] += normalized[: m.start() + 1]
                 normalized = normalized[m.end() - 1 :]
@@ -69,7 +65,7 @@ class ChineseTokenizer(BaseTokenizer):
             if pos == "m":  # numerals
                 for c in normalized:
                     new_text.append(c)
-                    pronunciations.append(to_pinyin(c))
+                    pronunciations.append(self.to_pinyin(c))
                 continue
             new_text.append(normalized)
             pronunciations.append(p)
@@ -81,7 +77,7 @@ class ChineseTokenizer(BaseTokenizer):
         ]
         oovs = [x for i, x in enumerate(new_text) if i in oov_indices]
         if is_traditional:
-            new_text = hanziconv.HanziConv.toTraditional(new_text)
+            new_text = self.to_traditional(new_text)
         if self.ignore_case:
             new_text = new_text.lower()
             pronunciations = pronunciations.lower()

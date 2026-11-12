@@ -10,15 +10,9 @@ import threading
 import time
 import traceback
 import typing
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
-
-try:
-    import hdbscan
-
-    HDBSCAN_ENABLED = True
-except (ImportError, ModuleNotFoundError):
-    HDBSCAN_ENABLED = False
 
 import numpy as np
 import sqlalchemy
@@ -26,12 +20,11 @@ from _kalpy.ivector import Plda
 from kalpy.data import Segment
 from kalpy.ivector.plda import PldaScorer
 from kalpy.utils import kalpy_logger
-from scipy.spatial import distance
-from sklearn import cluster, manifold, metrics, neighbors, preprocessing
 from sqlalchemy.orm import joinedload
 
 from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import KaldiFunction
+from montreal_forced_aligner.compat import FOUND_HDBSCAN, import_speechbrain_diarization_modules
 from montreal_forced_aligner.data import (
     ClusterType,
     DistanceMetric,
@@ -39,49 +32,6 @@ from montreal_forced_aligner.data import (
     MfaArguments,
 )
 from montreal_forced_aligner.db import File, Job, SoundFile, Speaker, Utterance
-from montreal_forced_aligner.vad.models import MfaVAD
-
-try:
-    import warnings
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        torch_logger = logging.getLogger("speechbrain.utils.torch_audio_backend")
-        torch_logger.setLevel(logging.ERROR)
-        torch_logger = logging.getLogger("speechbrain.utils.train_logger")
-        torch_logger.setLevel(logging.ERROR)
-        import torch
-
-        try:
-            try:
-                from speechbrain.pretrained import EncoderClassifier, SpeakerRecognition
-            except (ImportError, ModuleNotFoundError):  # speechbrain 1.0
-                from speechbrain.inference.classifiers import EncoderClassifier
-                from speechbrain.inference.speaker import SpeakerRecognition
-            from speechbrain.utils.metric_stats import EER
-
-            FOUND_SPEECHBRAIN = True
-        except (ImportError, OSError):
-            FOUND_SPEECHBRAIN = False
-            EncoderClassifier = None
-            SpeakerRecognition = None
-            EER = None
-        try:
-            from pyannote.audio.pipelines.speaker_diarization import (
-                SpeakerDiarization as PyannoteDiarizationPipeline,
-            )
-
-            FOUND_PYANNOTE = True
-        except (ImportError, OSError, AttributeError):
-            FOUND_PYANNOTE = False
-            PyannoteDiarizationPipeline = None
-except (ImportError, OSError, AttributeError):
-    FOUND_SPEECHBRAIN = False
-    FOUND_PYANNOTE = False
-    EncoderClassifier = None
-    SpeakerRecognition = None
-    EER = None
-    PyannoteDiarizationPipeline = None
 
 __all__ = [
     "PldaClassificationArguments",
@@ -91,6 +41,7 @@ __all__ = [
     "SpeechbrainArguments",
     "SpeechbrainClassificationFunction",
     "SpeechbrainEmbeddingFunction",
+    "PyannoteEmbeddingFunction",
     "cluster_matrix",
     "visualize_clusters",
 ]
@@ -138,6 +89,8 @@ def visualize_clusters(
     plda: typing.Optional[Plda] = None,
     quick=False,
 ):
+    from sklearn import manifold, preprocessing
+
     logger.debug(f"Generating 2D representation of ivectors with {manifold_algorithm.name}...")
     begin = time.time()
     to_fit = ivectors
@@ -217,6 +170,7 @@ def calculate_distance_threshold(
         Absolute distance threshold
     """
     import kneed
+    from sklearn import neighbors
 
     logger.debug(f"Calculating distance threshold from {min_samples} nearest neighbors...")
     nbrs = neighbors.NearestNeighbors(
@@ -294,6 +248,7 @@ def cluster_matrix(
     numpy.ndarray
         Cluster labels for each utterance
     """
+    from sklearn import cluster, metrics, preprocessing
 
     logger.debug(f"Running {cluster_type}...")
 
@@ -404,8 +359,10 @@ def cluster_matrix(
             score_metric = "euclidean"
         c_labels = cluster.MeanShift(n_jobs=config.NUM_JOBS, **kwargs).fit_predict(to_fit)
     elif cluster_type is ClusterType.hdbscan:
-        if not HDBSCAN_ENABLED:
+        if not FOUND_HDBSCAN:
             raise ImportError("Please install `hdbscan` package.")
+        import hdbscan
+
         if score_metric == "cosine":
             to_fit = preprocessing.normalize(to_fit, norm="l2")
             score_metric = "euclidean"
@@ -565,6 +522,8 @@ class ComputeEerFunction(KaldiFunction):
     # noinspection PyTypeChecker
     def _run(self):
         """Run the function"""
+        from scipy.spatial import distance
+
         if self.use_xvector:
             columns = [Utterance.id, Utterance.speaker_id, Utterance.xvector]
             filter = Utterance.xvector != None  # noqa
@@ -646,6 +605,10 @@ class SpeechbrainClassificationFunction(KaldiFunction):
 
     def _run(self) -> None:
         """Run the function"""
+
+        import torch
+
+        EncoderClassifier, SpeakerRecognition = import_speechbrain_diarization_modules()
         run_opts = None
         if self.cuda:
             run_opts = {"device": "cuda"}
@@ -705,9 +668,17 @@ class SpeechbrainEmbeddingFunction(KaldiFunction):
 
     def _run(self) -> None:
         """Run the function"""
+        from scipy.spatial import distance
+        from sklearn import preprocessing
+
+        from montreal_forced_aligner.vad.models import MfaVAD
+
         run_opts = None
         if self.cuda:
             run_opts = {"device": "cuda"}
+        import torch
+
+        EncoderClassifier, SpeakerRecognition = import_speechbrain_diarization_modules()
         if self.cluster:
             model_class = SpeakerRecognition
         else:
@@ -808,11 +779,20 @@ class PyannoteEmbeddingFunction(KaldiFunction):
 
     def _run(self) -> None:
         """Run the function"""
+
+        from scipy.spatial import distance
+        from sklearn import preprocessing
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            import torch
+        from pyannote.audio.pipelines.speaker_diarization import SpeakerDiarization
+
         with kalpy_logger("kalpy.ivector", self.log_path) as embedding_logger:
             device = "cpu"
             if self.cuda:
                 device = "cuda"
-            model = PyannoteDiarizationPipeline.from_pretrained(
+            model = SpeakerDiarization.from_pretrained(
                 "pyannote/speaker-diarization-3.1",
                 cache_dir=os.path.join(config.TEMPORARY_DIRECTORY, "models", "hf_cache"),
                 use_auth_token=config.HF_TOKEN,
@@ -904,38 +884,6 @@ class PyannoteEmbeddingFunction(KaldiFunction):
                 raise exception
 
 
-if FOUND_SPEECHBRAIN:
-    from speechbrain.dataio.batch import PaddedBatch, batch_pad_right
-
-    class VadPaddedBatch(PaddedBatch):
-        def __init__(
-            self,
-            examples,
-            padded_keys=None,
-            device_prep_keys=None,
-            padding_func=batch_pad_right,
-            padding_kwargs={},
-            apply_default_convert=True,
-            nonpadded_stack=True,
-        ):
-            new_examples = []
-            for e in examples:
-                for s, d in zip(e["signal"], e["duration"]):
-                    new_e = dict(**e)
-                    new_e["signal"] = s
-                    new_e["duration"] = d
-                    new_examples.append(new_e)
-            super().__init__(
-                new_examples,
-                padded_keys,
-                device_prep_keys,
-                padding_func,
-                padding_kwargs,
-                apply_default_convert,
-                nonpadded_stack,
-            )
-
-
 class UtteranceFileLoader(threading.Thread):
     """
     Helper process for loading utterance waveforms in parallel with embedding extraction
@@ -962,7 +910,7 @@ class UtteranceFileLoader(threading.Thread):
         stopped: threading.Event,
         finished_adding: threading.Event,
         model=None,
-        vad_model: MfaVAD = None,
+        vad_model=None,
         for_xvector=True,
         batch_output=True,
     ):
@@ -982,8 +930,37 @@ class UtteranceFileLoader(threading.Thread):
         Run the waveform loading job
         """
         import speechbrain
-        from speechbrain.dataio.batch import PaddedBatch
+        import torch
+        from speechbrain.dataio.batch import PaddedBatch, batch_pad_right
         from torch.utils.data import DataLoader
+
+        class VadPaddedBatch(PaddedBatch):
+            def __init__(
+                self,
+                examples,
+                padded_keys=None,
+                device_prep_keys=None,
+                padding_func=batch_pad_right,
+                padding_kwargs={},
+                apply_default_convert=True,
+                nonpadded_stack=True,
+            ):
+                new_examples = []
+                for e in examples:
+                    for s, d in zip(e["signal"], e["duration"]):
+                        new_e = dict(**e)
+                        new_e["signal"] = s
+                        new_e["duration"] = d
+                        new_examples.append(new_e)
+                super().__init__(
+                    new_examples,
+                    padded_keys,
+                    device_prep_keys,
+                    padding_func,
+                    padding_kwargs,
+                    apply_default_convert,
+                    nonpadded_stack,
+                )
 
         @speechbrain.utils.data_pipeline.takes("segment")
         @speechbrain.utils.data_pipeline.provides("signal", "duration")

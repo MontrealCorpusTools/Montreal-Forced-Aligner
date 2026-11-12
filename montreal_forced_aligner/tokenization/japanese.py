@@ -5,19 +5,14 @@ from __future__ import annotations
 import pathlib
 import re
 
+from montreal_forced_aligner.compat import JA_AVAILABLE
 from montreal_forced_aligner.tokenization.classes import BaseTokenizer, TokenizedText
-
-try:
-    import sudachipy
-
-    JA_AVAILABLE = True
-except (ImportError, ModuleNotFoundError):
-    JA_AVAILABLE = False
-    sudachipy = None
 
 
 class JapaneseTokenizer(BaseTokenizer):
     def __init__(self, ignore_case: bool = True):
+        import sudachipy
+
         resource_dir = pathlib.Path(__file__).parent.joinpath("resources")
         config_path = str(resource_dir.joinpath("japanese", "sudachi_config.json"))
         try:

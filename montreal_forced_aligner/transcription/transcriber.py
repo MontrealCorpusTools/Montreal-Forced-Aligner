@@ -26,6 +26,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import FileExporterMixin, TopLevelMfaWorker
 from montreal_forced_aligner.alignment.base import CorpusAligner
+from montreal_forced_aligner.compat import FOUND_WHISPERX
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
 from montreal_forced_aligner.data import (
     ISO_LANGUAGE_MAPPING,
@@ -57,9 +58,7 @@ from montreal_forced_aligner.language_modeling.multiprocessing import (
 )
 from montreal_forced_aligner.models import AcousticModel, LanguageModel
 from montreal_forced_aligner.textgrid import construct_output_path
-from montreal_forced_aligner.transcription.models import FOUND_WHISPERX, load_model
 from montreal_forced_aligner.transcription.multiprocessing import (
-    CUDA_AVAILABLE,
     FOUND_SPEECHBRAIN,
     CarpaLmRescoreArguments,
     CarpaLmRescoreFunction,
@@ -67,7 +66,6 @@ from montreal_forced_aligner.transcription.multiprocessing import (
     CreateHclgFunction,
     DecodeArguments,
     DecodeFunction,
-    EncoderASR,
     FinalFmllrArguments,
     FinalFmllrFunction,
     FmllrRescoreArguments,
@@ -82,12 +80,12 @@ from montreal_forced_aligner.transcription.multiprocessing import (
     SpeechbrainAsrCudaArguments,
     SpeechbrainAsrFunction,
     WhisperArguments,
-    WhisperASR,
     WhisperAsrFunction,
     WhisperCudaArguments,
+    import_speechbrain_transcription_modules,
 )
 from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
-from montreal_forced_aligner.vad.models import SpeechbrainSegmenterMixin
+from montreal_forced_aligner.vad.mixins import SpeechbrainSegmenterMixin
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
@@ -1305,6 +1303,10 @@ class WhisperTranscriber(HuggingFaceTranscriber, SpeechbrainSegmenterMixin):
         super().setup()
 
     def setup_model(self, online=False) -> None:
+        import torch.cuda
+
+        from montreal_forced_aligner.transcription.models import load_model
+
         iso_code = self.language.iso_code
         if iso_code is None and self.language is not Language.unknown:
             raise ModelError(
@@ -1312,7 +1314,7 @@ class WhisperTranscriber(HuggingFaceTranscriber, SpeechbrainSegmenterMixin):
             )
         try:
             vad_model = None
-            if not CUDA_AVAILABLE:
+            if not torch.cuda.is_available():
                 logger.warning("cuda was specified but not available, using CPU mode")
                 self.cuda = False
             if self.cuda:
@@ -1441,7 +1443,7 @@ class SpeechbrainTranscriber(HuggingFaceTranscriber):
         """
         if self.initialized:
             return
-        if not CUDA_AVAILABLE or not self.cuda:
+        if not self.cuda:
             raise ModelError(
                 "Speechbrain transcription must use CUDA. "
                 "If your device does not have CUDA support, "
@@ -1453,6 +1455,7 @@ class SpeechbrainTranscriber(HuggingFaceTranscriber):
                 f"The language {self.language.name} not in {', '.join(sorted(ISO_LANGUAGE_MAPPING.keys()))}"
             )
         model_key = f"speechbrain/asr-{self.architecture}-commonvoice-14-{common_voice_code}"
+        EncoderASR, WhisperASR = import_speechbrain_transcription_modules()
         try:
             with warnings.catch_warnings():
                 from speechbrain.utils.fetching import fetch

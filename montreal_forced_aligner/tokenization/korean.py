@@ -4,19 +4,14 @@ from __future__ import annotations
 
 import re
 
+from montreal_forced_aligner.compat import KO_AVAILABLE
 from montreal_forced_aligner.tokenization.classes import BaseTokenizer, TokenizedText
-
-try:
-    from mecab import MeCab
-
-    KO_AVAILABLE = True
-except (ImportError, ModuleNotFoundError):
-    KO_AVAILABLE = False
-    MeCab = None
 
 
 class KoreanTokenizer(BaseTokenizer):
     def __init__(self, ignore_case: bool = True):
+        from mecab import MeCab
+
         super().__init__(MeCab(), ignore_case)
 
     def __call__(self, text) -> TokenizedText:

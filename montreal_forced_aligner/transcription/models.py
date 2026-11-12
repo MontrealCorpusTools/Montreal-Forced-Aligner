@@ -17,12 +17,9 @@ try:
         from whisperx import asr
         from whisperx.asr import FasterWhisperPipeline
 
-    FOUND_WHISPERX = True
-
 except (ImportError, OSError):
     FasterWhisperPipeline = object
     TranscriptionOptions = object
-    FOUND_WHISPERX = False
 
 if typing.TYPE_CHECKING:
     import torch

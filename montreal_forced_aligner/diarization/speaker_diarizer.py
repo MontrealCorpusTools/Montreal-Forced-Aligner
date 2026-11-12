@@ -23,12 +23,16 @@ import yaml
 from _kalpy.ivector import Plda, ivector_normalize_length
 from _kalpy.matrix import DoubleVector, FloatVector
 from kalpy.utils import read_kaldi_object
-from sklearn import metrics
 from sqlalchemy.orm import joinedload, selectinload
 from tqdm.rich import tqdm
 
 from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import FileExporterMixin, TopLevelMfaWorker
+from montreal_forced_aligner.compat import (
+    FOUND_PYANNOTE,
+    FOUND_SPEECHBRAIN,
+    import_speechbrain_diarization_modules,
+)
 from montreal_forced_aligner.config import (
     IVECTOR_DIMENSION,
     MEMORY,
@@ -54,17 +58,11 @@ from montreal_forced_aligner.db import (
     bulk_update,
 )
 from montreal_forced_aligner.diarization.multiprocessing import (
-    EER,
-    FOUND_PYANNOTE,
-    FOUND_SPEECHBRAIN,
     ComputeEerArguments,
     ComputeEerFunction,
-    EncoderClassifier,
     PldaClassificationArguments,
     PldaClassificationFunction,
-    PyannoteDiarizationPipeline,
     PyannoteEmbeddingFunction,
-    SpeakerRecognition,
     SpeechbrainArguments,
     SpeechbrainClassificationFunction,
     SpeechbrainEmbeddingFunction,
@@ -80,7 +78,7 @@ from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function, 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
 
-__all__ = ["SpeakerDiarizer", "FOUND_SPEECHBRAIN"]
+__all__ = ["SpeakerDiarizer"]
 
 logger = logging.getLogger("mfa")
 
@@ -247,6 +245,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             return
         log_dir = self.working_directory.joinpath("log")
         os.makedirs(log_dir, exist_ok=True)
+        EncoderClassifier, SpeakerRecognition = import_speechbrain_diarization_modules()
         try:
             if self.ivector_extractor is None:  # Download models if needed
                 if self.ivector_extractor_path == "speechbrain":
@@ -255,7 +254,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                         savedir=os.path.join(
                             config.TEMPORARY_DIRECTORY,
                             "models",
-                            "EncoderClassifier",
+                            "SpeakerRecognition",
                         ),
                     )
                     _ = SpeakerRecognition.from_hparams(
@@ -267,7 +266,9 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                         ),
                     )
                 else:
-                    _ = PyannoteDiarizationPipeline.from_pretrained(
+                    from pyannote.audio.pipelines.speaker_diarization import SpeakerDiarization
+
+                    _ = SpeakerDiarization.from_pretrained(
                         "pyannote/speaker-diarization-3.1",
                         cache_dir=os.path.join(config.TEMPORARY_DIRECTORY, "models", "hf_cache"),
                         use_auth_token=config.HF_TOKEN,
@@ -452,6 +453,8 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
 
     def evaluate_clustering(self) -> None:
         """Compute clustering metric scores and output clustering evaluation results"""
+        from sklearn import metrics
+
         label_to_ground_truth_mapping = self.map_speakers_to_ground_truth()
         with self.session() as session, mfa_open(
             self.working_directory.joinpath("diarization_evaluation_results.csv"), "w"
@@ -514,6 +517,8 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
 
     def evaluate_classification(self) -> None:
         """Evaluate and output classification accuracy"""
+        from sklearn import metrics
+
         label_to_ground_truth_mapping = self.map_speakers_to_ground_truth()
         with self.session() as session, mfa_open(
             self.working_directory.joinpath("diarization_evaluation_results.csv"), "w"
@@ -1282,6 +1287,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             logger.info("No speechbrain found, skipping EER calculation.")
             return 0.0, 0.0
         import torch
+        from speechbrain.utils.metric_stats import EER
 
         logger.info("Calculating EER using ground truth speakers...")
         limit_per_speaker = 5

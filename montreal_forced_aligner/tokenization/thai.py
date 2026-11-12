@@ -4,24 +4,19 @@ from __future__ import annotations
 
 import re
 
+from montreal_forced_aligner.compat import TH_AVAILABLE
 from montreal_forced_aligner.tokenization.classes import BaseTokenizer, TokenizedText
-
-try:
-    from pythainlp.tokenize import word_tokenize
-
-    TH_AVAILABLE = True
-except (ImportError, ModuleNotFoundError):
-    TH_AVAILABLE = False
-    word_tokenize = None
 
 
 class ThaiTokenizer(BaseTokenizer):
     def __init__(self, ignore_case: bool):
+        from pythainlp.tokenize import word_tokenize
+
         super().__init__(word_tokenize, ignore_case)
 
     def __call__(self, text: str) -> TokenizedText:
         new_text = []
-        morphs = word_tokenize(text)
+        morphs = self.tokenizer(text)
         pronunciations = []
 
         # some "words" have spaces in them which messes with processing reduplication

@@ -27,12 +27,12 @@ from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.db import File, Job, Speaker, Utterance
 from montreal_forced_aligner.exceptions import SegmenterError
 from montreal_forced_aligner.models import AcousticModel, G2PModel
-from montreal_forced_aligner.vad.models import MfaVAD, get_initial_segmentation, merge_segments
 
 if TYPE_CHECKING:
     SpeakerCharacterType = Union[str, int]
 
     from montreal_forced_aligner.abc import MetaDict
+    from montreal_forced_aligner.vad.models import MfaVAD
 
 __all__ = [
     "SegmentTranscriptArguments",
@@ -318,6 +318,8 @@ def segment_utterance_vad(
     adaptive: bool = True,
     allow_empty: bool = True,
 ) -> typing.List[Segment]:
+    from montreal_forced_aligner.vad.models import get_initial_segmentation, merge_segments
+
     mfcc_options["use_energy"] = True
     mfcc_options["raw_energy"] = False
     mfcc_options["dither"] = 0.0
@@ -376,6 +378,7 @@ class SegmentVadFunction(KaldiFunction):
     def _run(self):
         """Run the function"""
         reader = SequentialBaseFloatVectorReader(generate_read_specifier(self.vad_path))
+        from montreal_forced_aligner.vad.models import get_initial_segmentation, merge_segments
 
         while not reader.Done():
             utt_id = reader.Key()
