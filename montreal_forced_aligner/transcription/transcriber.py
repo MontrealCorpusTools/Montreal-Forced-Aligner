@@ -26,7 +26,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import FileExporterMixin, TopLevelMfaWorker
 from montreal_forced_aligner.alignment.base import CorpusAligner
-from montreal_forced_aligner.compat import FOUND_WHISPERX
+from montreal_forced_aligner.compat import FOUND_SPEECHBRAIN, FOUND_WHISPERX
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
 from montreal_forced_aligner.data import (
     ISO_LANGUAGE_MAPPING,
@@ -59,7 +59,6 @@ from montreal_forced_aligner.language_modeling.multiprocessing import (
 from montreal_forced_aligner.models import AcousticModel, LanguageModel
 from montreal_forced_aligner.textgrid import construct_output_path
 from montreal_forced_aligner.transcription.multiprocessing import (
-    FOUND_SPEECHBRAIN,
     CarpaLmRescoreArguments,
     CarpaLmRescoreFunction,
     CreateHclgArguments,

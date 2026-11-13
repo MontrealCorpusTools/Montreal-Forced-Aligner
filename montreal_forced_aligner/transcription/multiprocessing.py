@@ -6,7 +6,6 @@ Transcription functions
 from __future__ import annotations
 
 import dataclasses
-import importlib.util
 import logging
 import os
 import queue
@@ -43,9 +42,6 @@ from montreal_forced_aligner.diarization.multiprocessing import UtteranceFileLoa
 from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
 from montreal_forced_aligner.utils import thread_logger
 
-FOUND_SPEECHBRAIN = importlib.util.find_spec("speechbrain") is not None
-
-
 if typing.TYPE_CHECKING:
     EncoderASR, WhisperASR = import_speechbrain_transcription_modules()
     from montreal_forced_aligner.transcription.models import MfaFasterWhisperPipeline
@@ -65,7 +61,6 @@ __all__ = [
     "WhisperCudaArguments",
     "SpeechbrainAsrFunction",
     "WhisperAsrFunction",
-    "FOUND_SPEECHBRAIN",
 ]
 
 logger = logging.getLogger("mfa")
