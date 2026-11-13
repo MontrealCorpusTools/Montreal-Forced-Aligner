@@ -1273,7 +1273,7 @@ class WhisperTranscriber(HuggingFaceTranscriber, SpeechbrainSegmenterMixin):
     ):
         if not FOUND_WHISPERX:
             raise Exception(
-                "Could not import whisperx, please ensure it is installed via `pip install whisperx`"
+                "Could not import whisperx, please ensure it is installed via `pip install whisperx transformers<5.0`"
             )
         if architecture not in self.ARCHITECTURES:
             raise ModelError(
@@ -1393,7 +1393,7 @@ class SpeechbrainTranscriber(HuggingFaceTranscriber):
     def __init__(self, architecture: str = "whisper-medium", **kwargs):
         if not FOUND_SPEECHBRAIN:
             logger.error(
-                "Could not import speechbrain, please ensure it is installed via `pip install speechbrain==1.0.3`"
+                "Could not import speechbrain, please ensure it is installed via `pip install speechbrain==1.0.3 transformers<5.0`"
             )
             sys.exit(1)
         if architecture not in self.ARCHITECTURES:

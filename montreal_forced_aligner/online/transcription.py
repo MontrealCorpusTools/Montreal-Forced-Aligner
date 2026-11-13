@@ -122,7 +122,7 @@ def transcribe_utterance_online_speechbrain(
 ) -> str:
     if not FOUND_SPEECHBRAIN:
         raise Exception(
-            "Could not import speechbrain, please ensure it is installed via `pip install speechbrain==1.0.3`"
+            "Could not import speechbrain, please ensure it is installed via `pip install speechbrain==1.0.3 transformers<5.0`"
         )
     import torch
 
