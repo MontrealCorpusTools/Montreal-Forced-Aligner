@@ -118,10 +118,9 @@ def create_corpus_information(corpus: AcousticCorpusPronunciationMixin, multiple
         data["num_speakers"] = corpus.num_speakers
         data["num_hours"] = total_duration
         speaker_info_path = training_root_directory / "speaker_info.tsv"
+        num_female = 0
+        num_male = 0
         if speaker_info_path.exists():
-            num_female = 0
-            num_male = 0
-            num_unspecified = 0
             with mfa_open(speaker_info_path, "r") as f:
                 for line in f:
                     line = line.split()
@@ -129,11 +128,9 @@ def create_corpus_information(corpus: AcousticCorpusPronunciationMixin, multiple
                         num_female += 1
                     elif line[2].lower().startswith("m"):
                         num_male += 1
-                    else:
-                        num_unspecified += 1
-            data["num_female"] = num_female
-            data["num_male"] = num_male
-            data["num_unspecified"] = num_unspecified
+        data["num_female"] = num_female
+        data["num_male"] = num_male
+        data["num_unspecified"] = max(0, data["num_speakers"] - (num_female + num_male))
         with mfa_open(corpus_data_path, "w") as f:
             json.dump(data, f)
         corpus_data[corpus_name] = data
@@ -173,29 +170,30 @@ def create_corpus_information(corpus: AcousticCorpusPronunciationMixin, multiple
                     .filter(Utterance.text != "")
                     .filter(Utterance.file_id.in_(file_query.subquery()))
                     .first()[0]
-                    / 3600
                 )
+                if total_duration is not None:
+                    total_duration /= 3600
                 data["num_utterances"] = utterance_query.count()
                 data["num_files"] = file_query.count()
                 data["num_speakers"] = speaker_query.count()
                 data["num_hours"] = total_duration
             speaker_info_path = corpus_directory / "speaker_info.tsv"
+            num_female = 0
+            num_male = 0
             if speaker_info_path.exists():
-                num_female = 0
-                num_male = 0
-                num_unspecified = 0
                 with mfa_open(speaker_info_path, "r") as f:
                     reader = csv.reader(f, delimiter="\t")
                     for line in reader:
-                        if line[2].lower().startswith("f"):
-                            num_female += 1
-                        elif line[2].lower().startswith("m"):
-                            num_male += 1
-                        else:
-                            num_unspecified += 1
-                data["num_female"] = num_female
-                data["num_male"] = num_male
-                data["num_unspecified"] = num_unspecified
+                        try:
+                            if line[2].lower().startswith("f"):
+                                num_female += 1
+                            elif line[2].lower().startswith("m"):
+                                num_male += 1
+                        except IndexError:
+                            pass
+            data["num_female"] = num_female
+            data["num_male"] = num_male
+            data["num_unspecified"] = max(0, data["num_speakers"] - (num_female + num_male))
             with mfa_open(corpus_data_path, "w") as f:
                 json.dump(data, f)
             if data["license"] in LICENSES:

@@ -1,8 +1,8 @@
 channels:
   - conda-forge
 dependencies:
-  - python=3.12
-  - numpy<2.4.0
+  - python =3.12
+  - numpy <2.4.0
   - librosa
   - pysoundfile
   - tqdm
@@ -16,8 +16,8 @@ dependencies:
   - hdbscan
   - baumwelch
   - ngram
-  - praatio>=6.0.0
-  - sqlalchemy>=2.0
+  - praatio >=6.0.0
+  - sqlalchemy >=2.0
   - pgvector
   - pgvector-python
   - sqlite
@@ -49,16 +49,16 @@ dependencies:
   - python-build
   - twine
   # speechbrain dependencies
-  - transformers>=4.48.0
-  - pandas<2.3.0
+  - transformers =4.48.0
+  - pandas <2.3.0
   - sentencepiece
-  - pytorch=2.8.0
-  - torchaudio=2.8.0
+  - pytorch =2.8.0
+  - torchaudio =2.8.0
   # whisperx dependencies
   - triton
   - nltk
-  - av<16.0.0
-  - onnxruntime<1.20.0
+  - av <16.0.0
+  - onnxruntime <1.20.0
   - pip:
       - speechbrain==1.0.3
       - whisperx

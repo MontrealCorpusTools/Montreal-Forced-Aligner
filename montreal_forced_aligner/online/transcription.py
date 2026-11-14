@@ -13,15 +13,18 @@ from kalpy.gmm.decode import GmmDecoder
 from kalpy.utterance import Utterance as KalpyUtterance
 
 from montreal_forced_aligner import config
+from montreal_forced_aligner.compat import (
+    FOUND_SPEECHBRAIN,
+    FOUND_WHISPERX,
+    import_speechbrain_transcription_modules,
+)
 from montreal_forced_aligner.exceptions import AlignerError
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
-from montreal_forced_aligner.transcription.models import FOUND_WHISPERX, MfaFasterWhisperPipeline
-from montreal_forced_aligner.transcription.multiprocessing import (
-    FOUND_SPEECHBRAIN,
-    EncoderASR,
-    WhisperASR,
-)
+
+if typing.TYPE_CHECKING:
+    EncoderASR, WhisperASR = import_speechbrain_transcription_modules()
+    from montreal_forced_aligner.transcription.models import MfaFasterWhisperPipeline
 
 
 def transcribe_utterance_online(
@@ -119,7 +122,7 @@ def transcribe_utterance_online_speechbrain(
 ) -> str:
     if not FOUND_SPEECHBRAIN:
         raise Exception(
-            "Could not import speechbrain, please ensure it is installed via `pip install speechbrain==1.0.3`"
+            "Could not import speechbrain, please ensure it is installed via `pip install speechbrain==1.0.3 transformers<5.0`"
         )
     import torch
 

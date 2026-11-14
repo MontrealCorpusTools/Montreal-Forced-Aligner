@@ -777,17 +777,17 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             for k in ["sound_file_errors", "decode_error_files", "textgrid_read_errors"]:
                 if hasattr(self, k):
                     if k in error_dict:
-                        logger.info(
+                        logger.warning(
                             "There were some issues with files in the corpus. "
                             "Please look at the log file or run the validator for more information."
                         )
-                        logger.debug(f"{k} showed {len(error_dict[k])} errors:")
+                        logger.warning(f"{k} showed {len(error_dict[k])} errors:")
                         if k in {"textgrid_read_errors", "sound_file_errors"}:
                             getattr(self, k).extend(error_dict[k])
                             for e in error_dict[k]:
-                                logger.debug(f"{e.file_name}: {e.error}")
+                                logger.warning(f"{e.file_name}: {e.error}")
                         else:
-                            logger.debug(", ".join(str(error_dict[k])))
+                            logger.warning(", ".join(str(error_dict[k])))
                             setattr(self, k, error_dict[k])
 
         except Exception as e:

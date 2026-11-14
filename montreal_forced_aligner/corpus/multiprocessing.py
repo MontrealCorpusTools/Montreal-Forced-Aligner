@@ -314,9 +314,9 @@ class NormalizeTextFunction(KaldiFunction):
                             for i, w in enumerate(text):
                                 if w == d.cutoff_word and i != len(text) - 1:
                                     next_w = text[i + 1]
-                                    if tokenizer.word_table.member(
-                                        next_w
-                                    ) and not tokenizer.bracket_regex.match(next_w):
+                                    if d.word_table.member(next_w) and (
+                                        not d.bracket_regex or not d.bracket_regex.match(next_w)
+                                    ):
                                         w = f"{d.cutoff_word[:-1]}-{next_w}{d.cutoff_word[-1]}"
                                 new_text.append(w)
                             tokenized.normalized_text = " ".join(new_text)

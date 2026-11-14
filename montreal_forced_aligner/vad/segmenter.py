@@ -36,7 +36,7 @@ from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.tokenization.spacy import generate_language_tokenizer
 from montreal_forced_aligner.transcription.transcriber import TranscriberMixin
 from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function
-from montreal_forced_aligner.vad.models import SegmenterMixin, SpeechbrainSegmenterMixin
+from montreal_forced_aligner.vad.mixins import SegmenterMixin, SpeechbrainSegmenterMixin
 from montreal_forced_aligner.vad.multiprocessing import (
     SegmentTranscriptArguments,
     SegmentTranscriptFunction,
