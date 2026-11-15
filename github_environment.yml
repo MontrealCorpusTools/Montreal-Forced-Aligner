@@ -49,11 +49,12 @@ dependencies:
   - python-build
   - twine
   # speechbrain dependencies
-  - transformers =4.48.0
+  - transformers >=4.48.0,<5.0
   - pandas <2.3.0
   - sentencepiece
   - pytorch =2.8.0
   - torchaudio =2.8.0
+  - torchvision
   # whisperx dependencies
   - triton
   - nltk
