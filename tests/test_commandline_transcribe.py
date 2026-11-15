@@ -141,6 +141,10 @@ def test_transcribe_whisper_vad(
 ):
     if not FOUND_WHISPERX:
         pytest.skip("whisperx not installed")
+    try:
+        import whisperx.asr  # noqa
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Error in whisperx imports on some platforms")
     output_path = generated_dir.joinpath("transcribe_test_whisper")
     command = [
         "transcribe_whisper",
@@ -177,6 +181,10 @@ def test_transcribe_whisper_vad_evaluate(
 ):
     if not FOUND_WHISPERX:
         pytest.skip("whisperx not installed")
+    try:
+        import whisperx.asr  # noqa
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Error in whisperx imports on some platforms")
     output_path = generated_dir.joinpath("transcribe_test_whisper")
     command = [
         "transcribe_whisper",
@@ -214,6 +222,10 @@ def test_transcribe_whisper_no_cuda(
 ):
     if not FOUND_WHISPERX:
         pytest.skip("whisperx not installed")
+    try:
+        import whisperx.asr  # noqa
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Error in whisperx imports on some platforms")
     output_path = generated_dir.joinpath("transcribe_test_whisper")
     command = [
         "transcribe_whisper",
