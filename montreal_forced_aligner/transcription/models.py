@@ -14,7 +14,7 @@ try:
         warnings.simplefilter("ignore")
         import faster_whisper
         from faster_whisper.transcribe import TranscriptionOptions
-        from whisperx.asr import FasterWhisperPipeline
+        from whisperx.asr import FasterWhisperPipeline, WhisperModel
 
 except (ImportError, OSError):
     FasterWhisperPipeline = object
@@ -22,7 +22,6 @@ except (ImportError, OSError):
 
 if typing.TYPE_CHECKING:
     import torch
-    from whisperx.asr import WhisperModel
 
 
 class MfaFasterWhisperPipeline(FasterWhisperPipeline):
@@ -183,7 +182,6 @@ def load_model(
     Returns:
         A Whisper pipeline.
     """
-    from whisperx.asr import WhisperModel
 
     if whisper_arch.endswith(".en"):
         language = "en"
