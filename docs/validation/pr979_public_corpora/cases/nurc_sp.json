@@ -1,0 +1,90 @@
+{
+  "dataset": "nilc-nlp/CORAA-NURC-SP-Audio-Corpus",
+  "revision": "c02be121ec191fe35fc5808209c346b59fe7e3e9",
+  "config": "original",
+  "split": "validation",
+  "rows_scanned": 1700,
+  "cli_runs": [
+    {
+      "version": "base",
+      "exit_code": 1,
+      "seconds": 28.381467580795288,
+      "textgrids": 0
+    },
+    {
+      "version": "pr",
+      "exit_code": 0,
+      "seconds": 28.113877773284912,
+      "textgrids": 9
+    }
+  ],
+  "word_only": [
+    "row_001230",
+    "row_001624",
+    "row_001639"
+  ],
+  "database_unchanged": true,
+  "same_db_tests": [
+    {
+      "version": "base",
+      "cleanup": true,
+      "include_original_text": false,
+      "files": 0,
+      "error": "KeyError"
+    },
+    {
+      "version": "pr",
+      "cleanup": true,
+      "include_original_text": false,
+      "files": 9,
+      "error": null
+    },
+    {
+      "version": "base",
+      "cleanup": true,
+      "include_original_text": true,
+      "files": 0,
+      "error": "KeyError"
+    },
+    {
+      "version": "pr",
+      "cleanup": true,
+      "include_original_text": true,
+      "files": 9,
+      "error": null
+    },
+    {
+      "version": "base",
+      "cleanup": false,
+      "include_original_text": false,
+      "files": 9,
+      "error": null
+    },
+    {
+      "version": "pr",
+      "cleanup": false,
+      "include_original_text": false,
+      "files": 9,
+      "error": null
+    },
+    {
+      "version": "base",
+      "cleanup": false,
+      "include_original_text": true,
+      "files": 9,
+      "error": null
+    },
+    {
+      "version": "pr",
+      "cleanup": false,
+      "include_original_text": true,
+      "files": 9,
+      "error": null
+    }
+  ],
+  "pr_sql_check": {
+    "words": 70,
+    "label_errors": [],
+    "max_time_difference_seconds": 1.5258789076710855e-07
+  }
+}

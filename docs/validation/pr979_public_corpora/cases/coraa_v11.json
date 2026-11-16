@@ -1,0 +1,132 @@
+{
+  "dataset": "Racoci/CORAA-v1.1",
+  "revision": "2eeee0cfd5d2427677e09f2474d7a4708f571e28",
+  "config": "default",
+  "split": "dev",
+  "rows_scanned": 100,
+  "cli_runs": [
+    {
+      "version": "base",
+      "exit_code": 1,
+      "seconds": 27.965718507766724,
+      "textgrids": 4
+    },
+    {
+      "version": "pr",
+      "exit_code": 0,
+      "seconds": 28.705312967300415,
+      "textgrids": 9
+    }
+  ],
+  "word_only": [
+    "row_000046",
+    "row_000039",
+    "row_000044"
+  ],
+  "database_unchanged": true,
+  "same_db_tests": [
+    {
+      "version": "base",
+      "cleanup": true,
+      "include_original_text": false,
+      "files": 4,
+      "error": "AssertionError"
+    },
+    {
+      "version": "pr",
+      "cleanup": true,
+      "include_original_text": false,
+      "files": 9,
+      "error": null
+    },
+    {
+      "version": "base",
+      "cleanup": true,
+      "include_original_text": true,
+      "files": 4,
+      "error": "AssertionError"
+    },
+    {
+      "version": "pr",
+      "cleanup": true,
+      "include_original_text": true,
+      "files": 9,
+      "error": null
+    },
+    {
+      "version": "base",
+      "cleanup": false,
+      "include_original_text": false,
+      "files": 9,
+      "error": null
+    },
+    {
+      "version": "pr",
+      "cleanup": false,
+      "include_original_text": false,
+      "files": 9,
+      "error": null
+    },
+    {
+      "version": "base",
+      "cleanup": false,
+      "include_original_text": true,
+      "files": 9,
+      "error": null
+    },
+    {
+      "version": "pr",
+      "cleanup": false,
+      "include_original_text": true,
+      "files": 9,
+      "error": null
+    }
+  ],
+  "pr_sql_check": {
+    "words": 52,
+    "label_errors": [],
+    "max_time_difference_seconds": 6.373291014938332e-07
+  },
+  "example": {
+    "row_idx": 0,
+    "speaker": "speaker_unknown",
+    "source_metadata": {
+      "file_path": "dev/sp/58031_sp_.wav",
+      "text": "no meu ponto de vista"
+    },
+    "base_words": [
+      [
+        0.0,
+        0.03,
+        "<unk>"
+      ]
+    ],
+    "pr_words": [
+      [
+        0.05,
+        0.19,
+        "no"
+      ],
+      [
+        0.19,
+        0.34,
+        "meu"
+      ],
+      [
+        0.34,
+        0.63,
+        "ponto"
+      ],
+      [
+        0.63,
+        0.77,
+        "de"
+      ],
+      [
+        0.77,
+        1.17,
+        "vista"
+      ]
+    ]
+  }
+}

@@ -1,0 +1,205 @@
+[
+  {
+    "corpus": "ami",
+    "files": 130,
+    "word_only": [],
+    "phone_only": [],
+    "database_unchanged": true,
+    "comparisons": [
+      {
+        "cleanup": true,
+        "include_original_text": false,
+        "equal": true
+      },
+      {
+        "cleanup": true,
+        "include_original_text": true,
+        "equal": true
+      },
+      {
+        "cleanup": false,
+        "include_original_text": false,
+        "equal": true
+      },
+      {
+        "cleanup": false,
+        "include_original_text": true,
+        "equal": true
+      }
+    ]
+  },
+  {
+    "corpus": "mls_spanish",
+    "files": 24,
+    "word_only": [],
+    "phone_only": [],
+    "database_unchanged": true,
+    "comparisons": [
+      {
+        "cleanup": true,
+        "include_original_text": false,
+        "equal": true
+      },
+      {
+        "cleanup": true,
+        "include_original_text": true,
+        "equal": true
+      },
+      {
+        "cleanup": false,
+        "include_original_text": false,
+        "equal": true
+      },
+      {
+        "cleanup": false,
+        "include_original_text": true,
+        "equal": true
+      }
+    ]
+  },
+  {
+    "corpus": "mls_french",
+    "files": 24,
+    "word_only": [],
+    "phone_only": [],
+    "database_unchanged": true,
+    "comparisons": [
+      {
+        "cleanup": true,
+        "include_original_text": false,
+        "equal": true
+      },
+      {
+        "cleanup": true,
+        "include_original_text": true,
+        "equal": true
+      },
+      {
+        "cleanup": false,
+        "include_original_text": false,
+        "equal": true
+      },
+      {
+        "cleanup": false,
+        "include_original_text": true,
+        "equal": true
+      }
+    ]
+  },
+  {
+    "corpus": "mls_german",
+    "files": 24,
+    "word_only": [],
+    "phone_only": [],
+    "database_unchanged": true,
+    "comparisons": [
+      {
+        "cleanup": true,
+        "include_original_text": false,
+        "equal": true
+      },
+      {
+        "cleanup": true,
+        "include_original_text": true,
+        "equal": true
+      },
+      {
+        "cleanup": false,
+        "include_original_text": false,
+        "equal": true
+      },
+      {
+        "cleanup": false,
+        "include_original_text": true,
+        "equal": true
+      }
+    ]
+  },
+  {
+    "corpus": "mls_spanish",
+    "files": 7,
+    "word_only": [],
+    "phone_only": [],
+    "database_unchanged": true,
+    "comparisons": [
+      {
+        "cleanup": true,
+        "include_original_text": false,
+        "equal": true
+      },
+      {
+        "cleanup": true,
+        "include_original_text": true,
+        "equal": true
+      },
+      {
+        "cleanup": false,
+        "include_original_text": false,
+        "equal": true
+      },
+      {
+        "cleanup": false,
+        "include_original_text": true,
+        "equal": true
+      }
+    ]
+  },
+  {
+    "corpus": "mls_french",
+    "files": 2,
+    "word_only": [],
+    "phone_only": [],
+    "database_unchanged": true,
+    "comparisons": [
+      {
+        "cleanup": true,
+        "include_original_text": false,
+        "equal": true
+      },
+      {
+        "cleanup": true,
+        "include_original_text": true,
+        "equal": true
+      },
+      {
+        "cleanup": false,
+        "include_original_text": false,
+        "equal": true
+      },
+      {
+        "cleanup": false,
+        "include_original_text": true,
+        "equal": true
+      }
+    ]
+  },
+  {
+    "corpus": "mls_german",
+    "files": 21,
+    "word_only": [],
+    "phone_only": [],
+    "database_unchanged": true,
+    "comparisons": [
+      {
+        "cleanup": true,
+        "include_original_text": false,
+        "equal": true
+      },
+      {
+        "cleanup": true,
+        "include_original_text": true,
+        "equal": true
+      },
+      {
+        "cleanup": false,
+        "include_original_text": false,
+        "equal": true
+      },
+      {
+        "cleanup": false,
+        "include_original_text": true,
+        "equal": true
+      }
+    ]
+  }
+]
