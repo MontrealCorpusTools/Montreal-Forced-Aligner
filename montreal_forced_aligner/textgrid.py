@@ -172,8 +172,14 @@ class Textgrid(tgio.Textgrid):
 
                 for tierNum, (name, tier) in enumerate(self._tierDict.items()):
                     if includeBlankSpaces and tier._entries:
-                        if tier._entries[0][0] > 0.001:
-                            tier._entries.insert(0, Interval(0.0, tier._entries[0][0], ""))
+                        # A grid that does not start at 0 still needs its leading
+                        # blank measured from xmin. Comparing against 0 inserts a
+                        # silence before the grid.
+                        grid_start = 0.0 if self.minTimestamp is None else self.minTimestamp
+                        if tier._entries[0][0] - grid_start > 0.001:
+                            tier._entries.insert(
+                                0, Interval(grid_start, tier._entries[0][0], "")
+                            )
                         interval_index = 1
                         while interval_index < len(tier._entries):
                             start, end, label = tier._entries[interval_index]
