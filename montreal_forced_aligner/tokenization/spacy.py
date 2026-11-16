@@ -4,16 +4,7 @@ import logging
 import os
 import subprocess
 
-from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
-
-try:
-    import spacy
-
-    SPACY_AVAILABLE = True
-except (ImportError, ModuleNotFoundError):
-    spacy = None
-    SPACY_AVAILABLE = False
-
+from montreal_forced_aligner.compat import SPACY_AVAILABLE
 from montreal_forced_aligner.data import (
     DEFAULT_BRACKETS,
     DEFAULT_CLITIC_MARKERS,
@@ -27,6 +18,7 @@ from montreal_forced_aligner.tokenization.classes import BaseTokenizer
 from montreal_forced_aligner.tokenization.english import en_spacy
 from montreal_forced_aligner.tokenization.japanese import JA_AVAILABLE, ja_spacy
 from montreal_forced_aligner.tokenization.korean import KO_AVAILABLE, ko_spacy
+from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
 from montreal_forced_aligner.tokenization.thai import TH_AVAILABLE, th_spacy
 
 logger = logging.getLogger("mfa")
@@ -76,6 +68,8 @@ def generate_language_tokenizer(language: Language, ignore_case: bool = True):
         return th_spacy(ignore_case)
     if not SPACY_AVAILABLE:
         raise ImportError("Please install spacy via `conda install spacy`")
+    import spacy
+
     if language in language_model_mapping:
         name = language_model_mapping[language]
         nlp = spacy.load(name)
@@ -121,6 +115,8 @@ def check_language_tokenizer_availability(language: Language):
             raise ImportError("Please install spacy via `conda install spacy`")
         if language not in language_model_mapping:
             raise ImportError(f"Language '{language}' not yet currently supported in spacy.")
+        import spacy
+
         name = language_model_mapping[language]
         try:
             _ = spacy.load(name)

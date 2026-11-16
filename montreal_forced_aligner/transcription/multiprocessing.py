@@ -35,40 +35,16 @@ from sqlalchemy.orm import joinedload, subqueryload
 
 from montreal_forced_aligner import config
 from montreal_forced_aligner.abc import KaldiFunction, MetaDict
+from montreal_forced_aligner.compat import import_speechbrain_transcription_modules
 from montreal_forced_aligner.data import Language, MfaArguments, PhoneType
 from montreal_forced_aligner.db import File, Job, Phone, SoundFile, Speaker, Utterance
 from montreal_forced_aligner.diarization.multiprocessing import UtteranceFileLoader
 from montreal_forced_aligner.tokenization.simple import SimpleTokenizer
-from montreal_forced_aligner.transcription.models import MfaFasterWhisperPipeline, load_model
 from montreal_forced_aligner.utils import thread_logger
-from montreal_forced_aligner.vad.models import MfaVAD
 
-try:
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        torch_logger = logging.getLogger("speechbrain.utils.torch_audio_backend")
-        torch_logger.setLevel(logging.ERROR)
-        torch_logger = logging.getLogger("speechbrain.utils.train_logger")
-        torch_logger.setLevel(logging.ERROR)
-        transformers_logger = logging.getLogger("transformers.modeling_utils")
-        transformers_logger.setLevel(logging.ERROR)
-        transformers_logger = logging.getLogger(
-            "speechbrain.lobes.models.huggingface_transformers.huggingface"
-        )
-        transformers_logger.setLevel(logging.ERROR)
-        import torch
-
-        CUDA_AVAILABLE = torch.cuda.is_available()
-        try:
-            from speechbrain.pretrained import EncoderASR, WhisperASR
-        except (ImportError, ModuleNotFoundError):  # speechbrain 1.0
-            from speechbrain.inference.ASR import EncoderASR, WhisperASR
-    FOUND_SPEECHBRAIN = True
-except (ImportError, OSError):
-    FOUND_SPEECHBRAIN = False
-    CUDA_AVAILABLE = False
-    WhisperASR = None
-    EncoderASR = None
+if typing.TYPE_CHECKING:
+    EncoderASR, WhisperASR = import_speechbrain_transcription_modules()
+    from montreal_forced_aligner.transcription.models import MfaFasterWhisperPipeline
 
 
 __all__ = [
@@ -79,16 +55,12 @@ __all__ = [
     "DecodeFunction",
     "LmRescoreFunction",
     "CreateHclgFunction",
-    "WhisperASR",
-    "EncoderASR",
     "SpeechbrainAsrArguments",
     "SpeechbrainAsrCudaArguments",
     "WhisperArguments",
     "WhisperCudaArguments",
     "SpeechbrainAsrFunction",
     "WhisperAsrFunction",
-    "FOUND_SPEECHBRAIN",
-    "CUDA_AVAILABLE",
 ]
 
 logger = logging.getLogger("mfa")
@@ -134,7 +106,7 @@ class CreateHclgArguments(MfaArguments):
 @dataclass
 class SpeechbrainAsrArguments(MfaArguments):
     """
-    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`
+    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.SpeechbrainAsrFunction`
 
     Parameters
     ----------
@@ -157,7 +129,7 @@ class SpeechbrainAsrArguments(MfaArguments):
 @dataclass
 class SpeechbrainAsrCudaArguments(MfaArguments):
     """
-    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`
+    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.SpeechbrainAsrFunction`
 
     Parameters
     ----------
@@ -179,7 +151,7 @@ class SpeechbrainAsrCudaArguments(MfaArguments):
 @dataclass
 class WhisperArguments(MfaArguments):
     """
-    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`
+    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.WhisperAsrFunction`
 
     Parameters
     ----------
@@ -204,7 +176,7 @@ class WhisperArguments(MfaArguments):
 @dataclass
 class WhisperCudaArguments(MfaArguments):
     """
-    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`
+    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.WhisperAsrFunction`
 
     Parameters
     ----------
@@ -594,7 +566,7 @@ class SpeechbrainAsrFunction(KaldiFunction):
 
     Parameters
     ----------
-    args: :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeArguments`
+    args: :class:`~montreal_forced_aligner.transcription.multiprocessing.SpeechbrainAsrArguments`
         Arguments for the function
     """
 
@@ -613,6 +585,9 @@ class SpeechbrainAsrFunction(KaldiFunction):
 
     def _run(self) -> None:
         """Run the function"""
+        import torch
+
+        EncoderASR, WhisperASR = import_speechbrain_transcription_modules()
         run_opts = None
         if self.cuda:
             run_opts = {"device": "cuda"}
@@ -883,7 +858,7 @@ class WhisperAsrFunction(KaldiFunction):
 
     Parameters
     ----------
-    args: :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeArguments`
+    args: :class:`~montreal_forced_aligner.transcription.multiprocessing.WhisperArguments`
         Arguments for the function
     """
 
@@ -891,7 +866,7 @@ class WhisperAsrFunction(KaldiFunction):
         super().__init__(args)
         self.working_directory = args.working_directory
         self.working_directory = args.working_directory
-        self.cuda = args.cuda and CUDA_AVAILABLE
+        self.cuda = args.cuda
         self.architecture = None
         self.model = None
         self.language = None
@@ -906,6 +881,9 @@ class WhisperAsrFunction(KaldiFunction):
     def _run(self) -> None:
         """Run the function"""
         from praatio import textgrid
+
+        from montreal_forced_aligner.transcription.models import load_model
+        from montreal_forced_aligner.vad.models import MfaVAD
 
         model = self.model
         if model is None:

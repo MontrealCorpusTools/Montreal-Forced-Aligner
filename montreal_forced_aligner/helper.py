@@ -25,7 +25,6 @@ from rich.theme import Theme
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
 
-
 __all__ = [
     "comma_join",
     "make_safe",

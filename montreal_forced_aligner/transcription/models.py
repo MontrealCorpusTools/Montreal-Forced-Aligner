@@ -14,15 +14,11 @@ try:
         warnings.simplefilter("ignore")
         import faster_whisper
         from faster_whisper.transcribe import TranscriptionOptions
-        from whisperx import asr
-        from whisperx.asr import FasterWhisperPipeline
-
-    FOUND_WHISPERX = True
+        from whisperx.asr import FasterWhisperPipeline, WhisperModel
 
 except (ImportError, OSError):
     FasterWhisperPipeline = object
     TranscriptionOptions = object
-    FOUND_WHISPERX = False
 
 if typing.TYPE_CHECKING:
     import torch
@@ -168,7 +164,7 @@ def load_model(
     language: typing.Optional[str] = None,
     vad_model=None,
     vad_options=None,
-    model: typing.Optional[asr.WhisperModel] = None,
+    model: typing.Optional[WhisperModel] = None,
     download_root=None,
     threads=4,
 ):
@@ -190,7 +186,7 @@ def load_model(
     if whisper_arch.endswith(".en"):
         language = "en"
 
-    model = model or asr.WhisperModel(
+    model = model or WhisperModel(
         whisper_arch,
         device=device,
         device_index=device_index,

@@ -7,18 +7,15 @@ import re
 import subprocess
 import typing
 
+from montreal_forced_aligner.compat import SPACY_AVAILABLE
 from montreal_forced_aligner.tokenization.classes import BaseTokenizer, TokenizedText
 
-try:
-    import spacy
+GENERIC_PREFIXES = {"non", "electro", "multi", "cross", "pseudo", "techno", "robo", "thermo"}
+
+if typing.TYPE_CHECKING:
+    from spacy import Vocab
     from spacy.symbols import NORM, ORTH
     from spacy.tokens import Doc, Token
-
-    SPACY_AVAILABLE = True
-except (ImportError, ModuleNotFoundError):
-    SPACY_AVAILABLE = False
-
-GENERIC_PREFIXES = {"non", "electro", "multi", "cross", "pseudo", "techno", "robo", "thermo"}
 
 
 class EnglishReTokenize:
@@ -47,7 +44,7 @@ class EnglishSplitPrefixes:
     Retokenizer for splitting prefixes
     """
 
-    def __init__(self, vocab: spacy.Vocab):
+    def __init__(self, vocab: Vocab):
         self.vocab = vocab
 
     def __call__(self, doc):
@@ -457,6 +454,8 @@ class BracketedReTokenize:
 
 class EnglishTokenizer(BaseTokenizer):
     def __init__(self, ignore_case: bool = True):
+        import spacy
+
         name = "en_core_web_sm"
         try:
             en_nlp = spacy.load(name)

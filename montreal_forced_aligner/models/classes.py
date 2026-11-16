@@ -19,9 +19,6 @@ import pynini
 import pywrapfst
 import requests
 import yaml
-from huggingface_hub import HfApi
-from huggingface_hub.errors import HfHubHTTPError, RepositoryNotFoundError
-from jinja2 import Environment, PackageLoader, select_autoescape
 from kalpy.models import AcousticModel as KalpyAcousticModel
 from rich.pretty import pprint
 
@@ -179,6 +176,9 @@ class MfaAlignmentModel(MfaModel):
         overwrite_version: bool
             Flag to update version tag if specified, defaults to false
         """
+        from huggingface_hub import HfApi
+        from huggingface_hub.errors import HfHubHTTPError, RepositoryNotFoundError
+
         api = HfApi()
         if "/" not in repo_id:
             repo_id = f"{repo_id}/{self.name}"
@@ -312,6 +312,8 @@ class MfaAlignmentModel(MfaModel):
             json.dump(metadata, f, cls=EnhancedJSONEncoder)
 
     def generate_model_card(self, trainer: TrainableAligner, metadata_path: Path = None, **kwargs):
+        from jinja2 import Environment, PackageLoader, select_autoescape
+
         from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 
         env = Environment(

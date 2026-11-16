@@ -5,8 +5,14 @@ import click.testing
 import pytest
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
-from montreal_forced_aligner.transcription.models import FOUND_WHISPERX
-from montreal_forced_aligner.transcription.multiprocessing import CUDA_AVAILABLE, FOUND_SPEECHBRAIN
+from montreal_forced_aligner.compat import FOUND_SPEECHBRAIN, FOUND_WHISPERX
+
+try:
+    import torch  # noqa
+
+    CUDA_AVAILABLE = torch.cuda.is_available()
+except ImportError:
+    CUDA_AVAILABLE = False
 
 
 def test_transcribe(
@@ -135,6 +141,10 @@ def test_transcribe_whisper_vad(
 ):
     if not FOUND_WHISPERX:
         pytest.skip("whisperx not installed")
+    try:
+        import whisperx.asr  # noqa
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Error in whisperx imports on some platforms")
     output_path = generated_dir.joinpath("transcribe_test_whisper")
     command = [
         "transcribe_whisper",
@@ -171,6 +181,10 @@ def test_transcribe_whisper_vad_evaluate(
 ):
     if not FOUND_WHISPERX:
         pytest.skip("whisperx not installed")
+    try:
+        import whisperx.asr  # noqa
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Error in whisperx imports on some platforms")
     output_path = generated_dir.joinpath("transcribe_test_whisper")
     command = [
         "transcribe_whisper",
@@ -208,6 +222,10 @@ def test_transcribe_whisper_no_cuda(
 ):
     if not FOUND_WHISPERX:
         pytest.skip("whisperx not installed")
+    try:
+        import whisperx.asr  # noqa
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Error in whisperx imports on some platforms")
     output_path = generated_dir.joinpath("transcribe_test_whisper")
     command = [
         "transcribe_whisper",

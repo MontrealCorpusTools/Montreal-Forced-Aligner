@@ -4,6 +4,7 @@
 import montreal_forced_aligner.acoustic_modeling as acoustic_modeling
 import montreal_forced_aligner.alignment as alignment
 import montreal_forced_aligner.command_line as command_line
+import montreal_forced_aligner.compat as compat
 import montreal_forced_aligner.corpus as corpus
 import montreal_forced_aligner.dictionary as dictionary
 import montreal_forced_aligner.exceptions as exceptions
@@ -34,4 +35,5 @@ __all__ = [
     "transcription",
     "textgrid",
     "utils",
+    "compat",
 ]
