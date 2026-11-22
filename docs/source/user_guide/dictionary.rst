@@ -191,36 +191,37 @@ Modeling cutoffs and hesitations
 
 Often in spontaneous speech, speakers will produce truncated or cut-off words of the following word/words. To help model this specific case, using the flag :code:`--use_cutoff_model` will enable a mode where pronunciations are generated for cutoff words matching one of the following criteria:
 
-1. The cutoff word matches the pattern of :code:`{start_bracket}(cutoff|hes)`, where :code:`{start_bracket}` is the set of all left side brackets defined in :code:`brackets` (:ref:`configuration_dictionary`). Optionally, you can specify the intended word via a hyphen within the brackets (i.e., :code:`<cutoff-cut>`).  If a target word isn't specified, then the immediately following word will be used if it's not an OOV or non-speech word (silence, laughter, another cutoff, etc).
+1. The cutoff word matches the pattern of :code:`{start_bracket}(cutoff|hes)`, where :code:`{start_bracket}` is the set of all left side brackets defined in :code:`brackets` (:ref:`configuration_dictionary`). Optionally, you can specify the intended word via a hyphen within the brackets (e.g., :code:`<cutoff-tea>`).  If a target word isn't specified, then the immediately following word will be used if it's not an OOV or non-speech word (silence, laughter, etc).
 2. The cutoff word matches the pattern of :code:`{start_bracket}(cutoff|hes)[-_](word){end_bracket}`, where start and end brackets are defined in :code:`brackets` (:ref:`configuration_dictionary`).  The :code:`word` will be used in place of the following word above, but needs to be present in the dictionary, otherwise the target word for the cutoff will default back to the following word.
 
-The generated pronunciations will be subsequences of the following word, along with an :code:`spn` pronunciation.  For example, consider an utterance transcript like
+Suppose a speaker orders tea for one person, starts to order tea for another, then switches to coffee.
+The speaker hesitates before the word ``cake`` and breaks off again at the end.
+You can write the transcript like this:
 
 ::
 
-   <cutoff-off> with the <cutoff> <cutoff> cut off
+   tea for me <cutoff-tea> coffee and <cutoff> cake for <cutoff>
 
-Internally, MFA will transform this transcript a normalized version. Note the final "<cutoff>" has been replaced with "<cutoff-cut>", as "<cutoff>" without an explicit target word will take its target as the following word.
-Note as well that "<cutoff-off>" and the first "<cutoff>" remain unchanged by the normalization, as "<cutoff-off>" already has a target word specified, and the first "<cutoff>" doesn't have a valid target word following it, so it will just be modeled with the OOV ``spn`` phone.
-
-::
-
-   <cutoff-off> with the <cutoff> <cutoff-cut> cut off
-
-The following pronunciations will be generated for  the `English (US) MFA dictionary <https://mfa-models.readthedocs.io/en/latest/dictionary/English/English%20%28US%29%20MFA%20dictionary%20v3_0_0.html>`_:
+The marker ``<cutoff-tea>`` names the intended word. The first bare ``<cutoff>`` precedes the dictionary word ``cake``,
+so MFA uses ``cake`` as its target. The final ``<cutoff>`` has no following word. MFA models it with the unknown phone ``spn``. The normalized transcript is:
 
 ::
 
-  <cutoff>   spn
-  <cutoff-cut>   spn
-  <cutoff-cut>   kʰ ɐ t
-  <cutoff-cut>   kʰ ɐ
-  <cutoff-cut>   kʰ
-  <cutoff-off>   spn
-  <cutoff-off>   ɒ f
-  <cutoff-off>   ɒ
-  <cutoff-off>   ɑ f
-  <cutoff-off>   ɑ
+   tea for me <cutoff-tea> coffee and <cutoff-cake> cake for <cutoff>
+
+For each pronunciation of the target word, MFA allows every prefix, including the full pronunciation. It also allows ``spn``.
+The `English (US) MFA dictionary <https://mfa-models.readthedocs.io/en/latest/dictionary/English/English%20%28US%29%20MFA%20dictionary%20v3_0_0.html>`_ gives the pronunciations of ``tea`` and ``cake``. MFA generates these alternatives:
+
+::
+
+  <cutoff-tea>    spn
+  <cutoff-tea>    tʲ
+  <cutoff-tea>    tʲ iː
+  <cutoff>        spn
+  <cutoff-cake>   spn
+  <cutoff-cake>   cʰ
+  <cutoff-cake>   cʰ ej
+  <cutoff-cake>   cʰ ej k
 
 
 .. _speaker_dictionaries:
