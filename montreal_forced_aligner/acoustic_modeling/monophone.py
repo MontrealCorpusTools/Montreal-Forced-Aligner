@@ -112,12 +112,14 @@ class MonoAlignEqualFunction(KaldiFunction):
                         num_error += 1
                         continue
                     while True:
-                        alignment, words = gmm_align_equal(
-                            decode_fst, feats, rand_seed=random.randint(0, 30000)
-                        )
-
+                        try:
+                            alignment, words = gmm_align_equal(
+                                decode_fst, feats, rand_seed=random.randint(0, 30000)
+                            )
+                        except Exception:
+                            alignment, words = gmm_align_equal(decode_fst, feats)
+                            break
                         a = Alignment(utt_id, alignment, words)
-                        aligned_text = " ".join(word_table.find(x) for x in words)
                         ctm = a.generate_ctm(accumulator.transition_model, d.phone_table)
                         if not ctm:
                             break
@@ -128,6 +130,9 @@ class MonoAlignEqualFunction(KaldiFunction):
                         num_error += 1
                         continue
                     else:
+                        a = Alignment(utt_id, alignment, words)
+                        aligned_text = " ".join(word_table.find(x) for x in words)
+                        ctm = a.generate_ctm(accumulator.transition_model, d.phone_table)
                         train_logger.debug(f"Words for {utt_id}: {aligned_text}")
                         train_logger.debug(f"Phone CTM for {utt_id}: {ctm}")
                     writer.Write(utt_id, alignment)
