@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import random
 import typing
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from _kalpy.matrix import DoubleVector
 from _kalpy.util import Int32VectorWriter
 from kalpy.decoder.data import FstArchive
 from kalpy.feat.data import FeatureArchive
+from kalpy.gmm.data import Alignment
 from kalpy.gmm.train import GmmStatsAccumulator
 from kalpy.gmm.utils import read_gmm_model, read_topology, read_tree, write_gmm_model
 from kalpy.utils import generate_write_specifier, kalpy_logger
@@ -80,6 +82,7 @@ class MonoAlignEqualFunction(KaldiFunction):
             for d in job.training_dictionaries:
                 train_logger.debug(f"Aligning for dictionary {d.name} ({d.id})")
                 train_logger.debug(f"Aligning with model: {self.model_path}")
+                word_table = d.word_table
                 fst_path = job.construct_path(self.working_directory, "fsts", "ark", d.name)
                 train_logger.debug(f"Training graph archive: {fst_path}")
                 accumulator = GmmStatsAccumulator(self.model_path)
@@ -108,11 +111,25 @@ class MonoAlignEqualFunction(KaldiFunction):
                         train_logger.warning(f"Empty decoding graph for {utt_id}")
                         num_error += 1
                         continue
-                    alignment, words = gmm_align_equal(decode_fst, feats)
+                    while True:
+                        alignment, words = gmm_align_equal(
+                            decode_fst, feats, rand_seed=random.randint(0, 30000)
+                        )
+
+                        a = Alignment(utt_id, alignment, words)
+                        aligned_text = " ".join(word_table.find(x) for x in words)
+                        ctm = a.generate_ctm(accumulator.transition_model, d.phone_table)
+                        if not ctm:
+                            break
+                        if ctm[0].label == d.optional_silence_phone == ctm[-1].label:
+                            break
                     if alignment is None or len(alignment) == 0:
                         train_logger.warning(f"AlignEqual: did not align utterance {utt_id}")
                         num_error += 1
                         continue
+                    else:
+                        train_logger.debug(f"Words for {utt_id}: {aligned_text}")
+                        train_logger.debug(f"Phone CTM for {utt_id}: {ctm}")
                     writer.Write(utt_id, alignment)
                     tot_like_this_file = accumulator.gmm_accs.acc_stats(
                         accumulator.acoustic_model,
