@@ -1,0 +1,217 @@
+{
+  "dataset": "nilc-nlp/CORAA-MUPE-ASR",
+  "revision": "d3d5f9c699bd619f9e1c45681cabf214d1b080e1",
+  "split": "train",
+  "scope": "Two real clips selected from the unchanged database of the 12-file full CLI run; no database rows changed.",
+  "control": {
+    "file": "row_000000",
+    "speaker": "MA_HV273",
+    "row_idx": 0,
+    "text": "elas tinham já uma certa idade então elas criavam criaram novos núcleos de amizade e ela",
+    "original_text": "Elas tinham já uma certa idade, então elas criavam, criaram novos núcleos de amizade e ela,",
+    "source_path": "train/pc_ma_hv273/pc_ma_hv273_346_2280.4359999999997_2289.3199999999997.wav",
+    "source_audio_name": "pc_ma_hv273",
+    "source_start": 2280.43994140625,
+    "source_end": 2289.320068359375,
+    "download_sha256": "85421fbcf2645f78eb945a9435c8b227ac543d62ad9c169172e8a663d90417be"
+  },
+  "trigger": {
+    "file": "row_000354",
+    "speaker": "MA_HV273",
+    "row_idx": 354,
+    "text": "passanel",
+    "original_text": "<tia. Passanel.",
+    "source_path": "train/pc_ma_hv273/pc_ma_hv273_85_674.596_675.457.wav",
+    "source_audio_name": "pc_ma_hv273",
+    "source_start": 674.5960083007812,
+    "source_end": 675.4569702148438,
+    "download_sha256": "4ab4fafa1bf5981c2e4a4701ed0ae4cacae2d877463bdaa2b5200919e8e981d4"
+  },
+  "base_words": [
+    [
+      0.0,
+      0.861,
+      "passanel"
+    ]
+  ],
+  "pr_words": [
+    [
+      0.0,
+      0.19,
+      "elas"
+    ],
+    [
+      0.19,
+      0.78,
+      "tinham"
+    ],
+    [
+      1.24,
+      1.38,
+      "já"
+    ],
+    [
+      1.38,
+      1.53,
+      "uma"
+    ],
+    [
+      1.53,
+      1.89,
+      "certa"
+    ],
+    [
+      1.89,
+      2.4,
+      "idade"
+    ],
+    [
+      2.4,
+      2.8,
+      "então"
+    ],
+    [
+      3.29,
+      3.57,
+      "elas"
+    ],
+    [
+      3.57,
+      3.64,
+      "criavam"
+    ],
+    [
+      3.64,
+      4.04,
+      "criaram"
+    ],
+    [
+      4.79,
+      5.22,
+      "novos"
+    ],
+    [
+      5.22,
+      5.74,
+      "núcleos"
+    ],
+    [
+      5.74,
+      5.83,
+      "de"
+    ],
+    [
+      5.83,
+      6.8,
+      "amizade"
+    ],
+    [
+      7.55,
+      8.0,
+      "e"
+    ],
+    [
+      8.04,
+      8.4,
+      "ela"
+    ]
+  ],
+  "sql_words": [
+    [
+      0.0,
+      0.1899999976158142,
+      "elas"
+    ],
+    [
+      0.1899999976158142,
+      0.7799999713897705,
+      "tinham"
+    ],
+    [
+      1.2400000095367432,
+      1.3799999952316284,
+      "já"
+    ],
+    [
+      1.3799999952316284,
+      1.5299999713897705,
+      "uma"
+    ],
+    [
+      1.5299999713897705,
+      1.8899999856948853,
+      "certa"
+    ],
+    [
+      1.8899999856948853,
+      2.4000000953674316,
+      "idade"
+    ],
+    [
+      2.4000000953674316,
+      2.799999952316284,
+      "então"
+    ],
+    [
+      3.2899999618530273,
+      3.569999933242798,
+      "elas"
+    ],
+    [
+      3.569999933242798,
+      3.640000104904175,
+      "criavam"
+    ],
+    [
+      3.640000104904175,
+      4.039999961853027,
+      "criaram"
+    ],
+    [
+      4.789999961853027,
+      5.21999979019165,
+      "novos"
+    ],
+    [
+      5.21999979019165,
+      5.739999771118164,
+      "núcleos"
+    ],
+    [
+      5.739999771118164,
+      5.829999923706055,
+      "de"
+    ],
+    [
+      5.829999923706055,
+      6.800000190734863,
+      "amizade"
+    ],
+    [
+      7.550000190734863,
+      8.0,
+      "e"
+    ],
+    [
+      8.039999961853027,
+      8.399999618530273,
+      "ela"
+    ]
+  ],
+  "pr_matches_sql": true,
+  "source_database_unchanged": true,
+  "full_cli_runs": [
+    {
+      "version": "base",
+      "exit_code": 1,
+      "seconds": 28.17642879486084,
+      "textgrids": 0
+    },
+    {
+      "version": "pr",
+      "exit_code": 0,
+      "seconds": 28.050389766693115,
+      "textgrids": 12
+    }
+  ]
+}

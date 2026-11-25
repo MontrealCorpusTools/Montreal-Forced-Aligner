@@ -1,0 +1,161 @@
+{
+  "dataset": "nilc-nlp/CORAA-MUPE-ASR",
+  "revision": "d3d5f9c699bd619f9e1c45681cabf214d1b080e1",
+  "config": "default",
+  "split": "validation",
+  "rows_scanned": 400,
+  "cli_runs": [
+    {
+      "version": "base",
+      "exit_code": 1,
+      "seconds": 27.61024570465088,
+      "textgrids": 1
+    },
+    {
+      "version": "pr",
+      "exit_code": 0,
+      "seconds": 29.944173097610474,
+      "textgrids": 9
+    }
+  ],
+  "word_only": [
+    "row_000120",
+    "row_000356",
+    "row_000054"
+  ],
+  "database_unchanged": true,
+  "same_db_tests": [
+    {
+      "version": "base",
+      "cleanup": true,
+      "include_original_text": false,
+      "files": 1,
+      "error": "AssertionError"
+    },
+    {
+      "version": "pr",
+      "cleanup": true,
+      "include_original_text": false,
+      "files": 9,
+      "error": null
+    },
+    {
+      "version": "base",
+      "cleanup": true,
+      "include_original_text": true,
+      "files": 1,
+      "error": "AssertionError"
+    },
+    {
+      "version": "pr",
+      "cleanup": true,
+      "include_original_text": true,
+      "files": 9,
+      "error": null
+    },
+    {
+      "version": "base",
+      "cleanup": false,
+      "include_original_text": false,
+      "files": 9,
+      "error": null
+    },
+    {
+      "version": "pr",
+      "cleanup": false,
+      "include_original_text": false,
+      "files": 9,
+      "error": null
+    },
+    {
+      "version": "base",
+      "cleanup": false,
+      "include_original_text": true,
+      "files": 9,
+      "error": null
+    },
+    {
+      "version": "pr",
+      "cleanup": false,
+      "include_original_text": true,
+      "files": 9,
+      "error": null
+    }
+  ],
+  "pr_sql_check": {
+    "words": 78,
+    "label_errors": [],
+    "max_time_difference_seconds": 2.0980834936068504e-07
+  },
+  "example": {
+    "row_idx": 8,
+    "speaker": "MA_HV052",
+    "source_metadata": {
+      "audio_name": "pc_ma_hv052",
+      "file_path": "validation/pc_ma_hv052/pc_ma_hv052_100_340.22_343.34.wav",
+      "start_time": 340.2229919433594,
+      "end_time": 343.343994140625,
+      "normalized_text": "fazia só quando não tinha nada não não tinha dinheiro",
+      "original_text": "Fazia só quando não tinha nada, não não tinha dinheiro."
+    },
+    "base_words": [
+      [
+        0.0,
+        0.581,
+        "cabuetei"
+      ]
+    ],
+    "pr_words": [
+      [
+        0.0,
+        0.39,
+        "fazia"
+      ],
+      [
+        0.39,
+        0.56,
+        "só"
+      ],
+      [
+        0.56,
+        0.78,
+        "quando"
+      ],
+      [
+        0.78,
+        0.86,
+        "não"
+      ],
+      [
+        0.86,
+        1.0,
+        "tinha"
+      ],
+      [
+        1.0,
+        1.35,
+        "nada"
+      ],
+      [
+        1.8,
+        1.88,
+        "não"
+      ],
+      [
+        1.88,
+        1.96,
+        "não"
+      ],
+      [
+        1.96,
+        2.49,
+        "tinha"
+      ],
+      [
+        2.49,
+        3.121,
+        "dinheiro"
+      ]
+    ]
+  }
+}

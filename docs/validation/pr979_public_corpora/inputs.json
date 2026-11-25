@@ -1,0 +1,350 @@
+{
+  "coraa_mupe_train": {
+    "dataset": "nilc-nlp/CORAA-MUPE-ASR",
+    "revision": "d3d5f9c699bd619f9e1c45681cabf214d1b080e1",
+    "config": "default",
+    "split": "train",
+    "text_field": "normalized_text",
+    "rows": [
+      {
+        "row_idx": 354,
+        "file": "row_000354",
+        "speaker": "MA_HV273",
+        "text": "passanel",
+        "file_path": "train/pc_ma_hv273/pc_ma_hv273_85_674.596_675.457.wav",
+        "download_sha256": "4ab4fafa1bf5981c2e4a4701ed0ae4cacae2d877463bdaa2b5200919e8e981d4"
+      },
+      {
+        "row_idx": 636,
+        "file": "row_000636",
+        "speaker": "TM001",
+        "text": "suta",
+        "file_path": "train/mb_hv110/mb_hv110_353_1375.03_1375.91.wav",
+        "download_sha256": "806db769dd3afd21e32d7da7209884f5b967535cc45a1485b68e932770bec721"
+      },
+      {
+        "row_idx": 1411,
+        "file": "row_001411",
+        "speaker": "MB_HV090",
+        "text": "rezando",
+        "file_path": "train/mb_hv090/mb_hv090_379_1221.98_1223.70.wav",
+        "download_sha256": "28b2f6f53063a9329b625452bf3b285bc0ecb837f1c3fb6b1dc07e8c09a531f8"
+      },
+      {
+        "row_idx": 1797,
+        "file": "row_001797",
+        "speaker": "MB_HV090",
+        "text": "rebocador",
+        "file_path": "train/mb_hv090/mb_hv090_498_1671.02_1672.06.wav",
+        "download_sha256": "ab61aa31c815f8da7c9dc8d4b78aa3f94be9179cee67bfd30e245e0c16f4a65c"
+      },
+      {
+        "row_idx": 0,
+        "file": "row_000000",
+        "speaker": "MA_HV273",
+        "text": "elas tinham já uma certa idade então elas criavam criaram novos núcleos de amizade e ela",
+        "file_path": "train/pc_ma_hv273/pc_ma_hv273_346_2280.4359999999997_2289.3199999999997.wav",
+        "download_sha256": "85421fbcf2645f78eb945a9435c8b227ac543d62ad9c169172e8a663d90417be"
+      },
+      {
+        "row_idx": 1,
+        "file": "row_000001",
+        "speaker": "MA_HV273",
+        "text": "então esses quatro jovens turcos que tiveram uma",
+        "file_path": "train/pc_ma_hv273/pc_ma_hv273_406_2681.2019999999998_2684.803.wav",
+        "download_sha256": "3c04861cfa515b416f86858cbe6ea653ddaa8191bad2482b78327a89054d9ae6"
+      },
+      {
+        "row_idx": 2,
+        "file": "row_000002",
+        "speaker": "MA_HV273",
+        "text": "então a gente minha mãe participava do trabalho caseiro ah e ao mesmo tempo ajudava meu pai na indústria",
+        "file_path": "train/pc_ma_hv273/pc_ma_hv273_123_922.289_931.9000000000001.wav",
+        "download_sha256": "82f29b7f764195d696850733ff9b4a15c1cf5ddda799b79774439e51c4b862bf"
+      },
+      {
+        "row_idx": 3,
+        "file": "row_000003",
+        "speaker": "MA_HV273",
+        "text": "e minha mãe eu passei a ficar na casa da minha mãe porque eu estava muito mal",
+        "file_path": "train/pc_ma_hv273/pc_ma_hv273_310_2080.6279999999997_2086.47.wav",
+        "download_sha256": "800721711fe0d2989cf8e08ddeb176743f170a7b6254fc4fae0f260bead0157e"
+      },
+      {
+        "row_idx": 4,
+        "file": "row_000004",
+        "speaker": "MA_HV273",
+        "text": "durante 15 anos mais ou menos",
+        "file_path": "train/pc_ma_hv273/pc_ma_hv273_372_2448.31_2450.872.wav",
+        "download_sha256": "29b09e61162ca841a5775da5765645c9422e3710e23d49576a6c800bdd133e0c"
+      },
+      {
+        "row_idx": 6,
+        "file": "row_000006",
+        "speaker": "MA_HV273",
+        "text": "tem muita similaridade a música armênia com a árabe a grega a turca",
+        "file_path": "train/pc_ma_hv273/pc_ma_hv273_144_1098.0520000000001_1105.538.wav",
+        "download_sha256": "b8143745febb1183b2765b4095721ee38cb5ea90982d104bf75b377df5172da3"
+      },
+      {
+        "row_idx": 7,
+        "file": "row_000007",
+        "speaker": "MA_HV273",
+        "text": "então eu estou muito restrita",
+        "file_path": "train/pc_ma_hv273/pc_ma_hv273_469_3127.3619999999996_3130.8239999999996.wav",
+        "download_sha256": "eb043ed2901643d15c09f3c80a14a51d89c1ff7257128c1e502a28908554d669"
+      },
+      {
+        "row_idx": 8,
+        "file": "row_000008",
+        "speaker": "MA_HV273",
+        "text": "tendo de começar era uma raça dentro era um povo dentro de outro povo",
+        "file_path": "train/pc_ma_hv273/pc_ma_hv273_424_2803.308_2809.3709999999996.wav",
+        "download_sha256": "6ce5db258b478e3a5cf7dc6f2b09672c09097dddaa5540aa81638a9d72f7a19c"
+      }
+    ]
+  },
+  "coraa_v11": {
+    "dataset": "Racoci/CORAA-v1.1",
+    "revision": "2eeee0cfd5d2427677e09f2474d7a4708f571e28",
+    "config": "default",
+    "split": "dev",
+    "text_field": "text",
+    "rows": [
+      {
+        "row_idx": 39,
+        "file": "row_000039",
+        "speaker": "speaker_unknown",
+        "text": "poxa",
+        "file_path": "dev/sp/58106_sp_.wav",
+        "download_sha256": "2c79552db1286e8eddf1a6fba868a96e3db255d19153159e3d1a811d5638e301"
+      },
+      {
+        "row_idx": 44,
+        "file": "row_000044",
+        "speaker": "speaker_unknown",
+        "text": "ah",
+        "file_path": "dev/sp/58115_sp_.wav",
+        "download_sha256": "e0af4c01d46f41b20f1ebae0063b6e9dc6e03be2ec8043b9dccc1b764cea367b"
+      },
+      {
+        "row_idx": 46,
+        "file": "row_000046",
+        "speaker": "speaker_unknown",
+        "text": "ah",
+        "file_path": "dev/sp/58117_sp_.wav",
+        "download_sha256": "7f87595585c11467d70335e32349a7b8039b32f30355eafa58d1e998201bf8db"
+      },
+      {
+        "row_idx": 0,
+        "file": "row_000000",
+        "speaker": "speaker_unknown",
+        "text": "no meu ponto de vista",
+        "file_path": "dev/sp/58031_sp_.wav",
+        "download_sha256": "af274caac6dbfa5a2d70835357907163f1049d454a5280b3241a730ebc64b6f8"
+      },
+      {
+        "row_idx": 1,
+        "file": "row_000001",
+        "speaker": "speaker_unknown",
+        "text": "cada cidadão cada ser humano é um mundo né cada um vê as coisas da sua fo",
+        "file_path": "dev/sp/58032_sp_.wav",
+        "download_sha256": "3fa01325a80124f8816047b46d4fa4d8bb07c88c5273731f11e1b65ac44c73d3"
+      },
+      {
+        "row_idx": 4,
+        "file": "row_000004",
+        "speaker": "speaker_unknown",
+        "text": "eh na cidade numa cidade",
+        "file_path": "dev/sp/58035_sp_.wav",
+        "download_sha256": "38c2ab8d2ed41b41a4178a7a52c30b85832edec25bef43acb82e1738452edf06"
+      },
+      {
+        "row_idx": 5,
+        "file": "row_000005",
+        "speaker": "speaker_unknown",
+        "text": "que nem são paulo uma cidade grande né",
+        "file_path": "dev/sp/58036_sp_.wav",
+        "download_sha256": "8db52250a3251843259e9cd3fa0236454041132fed64b165755c9790cdbe6a60"
+      },
+      {
+        "row_idx": 6,
+        "file": "row_000006",
+        "speaker": "speaker_unknown",
+        "text": "é selva de pedra né",
+        "file_path": "dev/sp/58038_sp_.wav",
+        "download_sha256": "e397993bf60013beda4bffdb14ce1b5f8b31f7624b8f2ea861220bf28623e473"
+      },
+      {
+        "row_idx": 10,
+        "file": "row_000010",
+        "speaker": "speaker_unknown",
+        "text": "a a a a violência em si até né",
+        "file_path": "dev/sp/58045_sp_.wav",
+        "download_sha256": "fcbf09b3f7a13d100a002ba31475f5335c61d85e54c525956046e31401ae7036"
+      }
+    ]
+  },
+  "nurc_sp": {
+    "dataset": "nilc-nlp/CORAA-NURC-SP-Audio-Corpus",
+    "revision": "c02be121ec191fe35fc5808209c346b59fe7e3e9",
+    "config": "original",
+    "split": "validation",
+    "text_field": "text",
+    "rows": [
+      {
+        "row_idx": 1230,
+        "file": "row_001230",
+        "speaker": "SP_DID_119_0",
+        "text": "Recitação.",
+        "file_path": "dev/SP_DID_119/0255_SP_DID_119_1436.806_1437.726.wav",
+        "download_sha256": "7be0052ab6b12d9e8c6ff8ed13274ca5d2dec98b5870c9ca49c2880bd94fa497"
+      },
+      {
+        "row_idx": 1624,
+        "file": "row_001624",
+        "speaker": "SP_EF_366_0",
+        "text": "Elegia.",
+        "file_path": "dev/SP_EF_366/0107_SP_EF_366_833.436_836.658.wav",
+        "download_sha256": "39ccc89b25141ff6d822a4423d7e62b7c71a2a3569c83b59421546fea50043b1"
+      },
+      {
+        "row_idx": 1639,
+        "file": "row_001639",
+        "speaker": "SP_EF_366_0",
+        "text": "Tangulomango.",
+        "file_path": "dev/SP_EF_366/0156_SP_EF_366_1150.339_1153.101.wav",
+        "download_sha256": "2f09f47cdb569313b04fd7707fc6bac484b6f4371ddfbc58ca2b200a60189284"
+      },
+      {
+        "row_idx": 0,
+        "file": "row_000000",
+        "speaker": "SP_D2_173_0",
+        "text": "E para trazer modificações também bastante grandes na nossa família.",
+        "file_path": "dev/SP_D2_173/0937_SP_D2_173_4483.041_4486.342.wav",
+        "download_sha256": "d76ac1a551ef6c1282e12e4f81884af3c389f0a3490311b99bc6d3b908c69e22"
+      },
+      {
+        "row_idx": 1,
+        "file": "row_000001",
+        "speaker": "SP_D2_173_0",
+        "text": "Mais do que na nossa casa, garanto que você não tirou terra, em Carlos. É pigarro na garganta",
+        "file_path": "dev/SP_D2_173/0805_SP_D2_173_3851.92_3855.262.wav",
+        "download_sha256": "72a312fafb2eaddd4b73aaa47cf302005db195411f628e6cbc7a2172caadb11d"
+      },
+      {
+        "row_idx": 2,
+        "file": "row_000002",
+        "speaker": "SP_D2_173_1",
+        "text": "E naquela época, eu me lembro perfeitamente,",
+        "file_path": "dev/SP_D2_173/0111_SP_D2_173_549.924_551.885.wav",
+        "download_sha256": "8ebf05bd1c643c952b1327f119a403e977601d4f69f242d0f40f379fe072296e"
+      },
+      {
+        "row_idx": 4,
+        "file": "row_000004",
+        "speaker": "SP_D2_173_0",
+        "text": "Então, hoje, a nossa casa assim, tem mais conforto, porque quando nós casamos, nós fizemos duas salas.",
+        "file_path": "dev/SP_D2_173/0715_SP_D2_173_3458.26_3464.802.wav",
+        "download_sha256": "b1cdac5f884c3b4cc76be3e85bc6f219d98a9d6445836b063f7a4ce5857b7bdb"
+      },
+      {
+        "row_idx": 5,
+        "file": "row_000005",
+        "speaker": "SP_D2_173_0",
+        "text": "Ela modifica, inclusive, o modo e a maneira de pensar.",
+        "file_path": "dev/SP_D2_173/0941_SP_D2_173_4497.328_4500.629.wav",
+        "download_sha256": "3dad69792185fa56db4111af83072b5e0e0f7f3addf000a64aaad3700f84af11"
+      },
+      {
+        "row_idx": 6,
+        "file": "row_000006",
+        "speaker": "SP_D2_173_1",
+        "text": "Mas voltando ao assunto básico,",
+        "file_path": "dev/SP_D2_173/0384_SP_D2_173_1919.76_1921.261.wav",
+        "download_sha256": "89a3c8ff6e9924b7aa16b44a61aa8da130b7b29f99b43888f4c10aa2c2a57cdb"
+      }
+    ]
+  },
+  "mupe_validation": {
+    "dataset": "nilc-nlp/CORAA-MUPE-ASR",
+    "revision": "d3d5f9c699bd619f9e1c45681cabf214d1b080e1",
+    "config": "default",
+    "split": "validation",
+    "text_field": "normalized_text",
+    "rows": [
+      {
+        "row_idx": 54,
+        "file": "row_000054",
+        "speaker": "AD030",
+        "text": "nadinha",
+        "file_path": "validation/pc_ma_hv052/pc_ma_hv052_962_3322.78_3324.35.wav",
+        "download_sha256": "f4771e720e468556064f6213adfdebdfda6031f820a39f9ba2deae18bd16f586"
+      },
+      {
+        "row_idx": 120,
+        "file": "row_000120",
+        "speaker": "MA_HV052",
+        "text": "cabuetei",
+        "file_path": "validation/pc_ma_hv052/pc_ma_hv052_365_1205.64_1206.22.wav",
+        "download_sha256": "6ae6a24dac225adf70d39dc201be41f763e2d1adffa31ba43ff068a51cdfc773"
+      },
+      {
+        "row_idx": 356,
+        "file": "row_000356",
+        "speaker": "MA_HV052",
+        "text": "ah",
+        "file_path": "validation/pc_ma_hv052/pc_ma_hv052_817_2859.13_2859.41.wav",
+        "download_sha256": "21a32d12309eb347b8939ae2c094cb29b3fff87b57d7fa3621c585c2d1956e5d"
+      },
+      {
+        "row_idx": 1,
+        "file": "row_000001",
+        "speaker": "MA_HV052",
+        "text": "também quando eu passo perto de um menino assim que está deitado no chão não tem nem o que falar",
+        "file_path": "validation/pc_ma_hv052/pc_ma_hv052_655_2215.57_2218.94.wav",
+        "download_sha256": "a085835800b7b508ed06b75a38ec4d6ab6032d48bb649d2182884ef91e341d1b"
+      },
+      {
+        "row_idx": 2,
+        "file": "row_000002",
+        "speaker": "MA_HV052",
+        "text": "eu pego o nome assim e tudo",
+        "file_path": "validation/pc_ma_hv052/pc_ma_hv052_896_3120.70_3123.16.wav",
+        "download_sha256": "6c28d31c45ccc85244fbf3db356e970647395b3746c3a3da1cb437bdb366f08e"
+      },
+      {
+        "row_idx": 4,
+        "file": "row_000004",
+        "speaker": "MA_HV052",
+        "text": "mas já passou assim um nem pergunto",
+        "file_path": "validation/pc_ma_hv052/pc_ma_hv052_950_3294.61_3297.02.wav",
+        "download_sha256": "99ac476113e26af31911f491c77636c5678acbcbdce246c77e0c0e0f6b30cad3"
+      },
+      {
+        "row_idx": 6,
+        "file": "row_000006",
+        "speaker": "MA_HV052",
+        "text": "na hora que você já entra lá você já vê dois olhos lá que eles desenharam lá na janela lá",
+        "file_path": "validation/pc_ma_hv052/pc_ma_hv052_546_1868.36_1873.38.wav",
+        "download_sha256": "c1d205ade893a305ac39c411eb438ffa60e331ca32ff6e7fc654e6a0d3d9b801"
+      },
+      {
+        "row_idx": 8,
+        "file": "row_000008",
+        "speaker": "MA_HV052",
+        "text": "fazia só quando não tinha nada não não tinha dinheiro",
+        "file_path": "validation/pc_ma_hv052/pc_ma_hv052_100_340.22_343.34.wav",
+        "download_sha256": "886d557026285dd760c71178ebdcd835ad47a2fa9e6b16cf4bd19daa42f29fd7"
+      },
+      {
+        "row_idx": 9,
+        "file": "row_000009",
+        "speaker": "MA_HV052",
+        "text": "aquela ali já está mais mais porque a mãe briga assim",
+        "file_path": "validation/pc_ma_hv052/pc_ma_hv052_699_2392.32_2398.87.wav",
+        "download_sha256": "1ca5a70bb3e91ea1d36362db7ab3df1d2237e309cc3129ae845e23e16c650f8a"
+      }
+    ]
+  }
+}
