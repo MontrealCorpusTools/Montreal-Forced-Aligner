@@ -424,7 +424,14 @@ class Dictionary(MfaSqlBase):
     def word_table(self):
         if not hasattr(self, "_word_table"):
             if self.words_symbol_path.exists():
-                self._word_table = pywrapfst.SymbolTable.read_text(str(self.words_symbol_path))
+                while True:
+                    try:
+                        self._word_table = pywrapfst.SymbolTable.read_text(
+                            str(self.words_symbol_path)
+                        )
+                        break
+                    except pywrapfst.FstIOError:
+                        pass
                 return self._word_table
             self.temp_directory.mkdir(parents=True, exist_ok=True)
             session = sqlalchemy.orm.Session.object_session(self)
